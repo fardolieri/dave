@@ -24,11 +24,17 @@ A spec, ready to hand to an implementer, for a single-room web app where up to f
 
 <!-- one line per resolved ticket: gist, then link to the ticket for detail -->
 
+- [Iroh viability in the browser for voice and screenshare](issues/01-iroh-browser-viability.md): not viable. Browser Iroh is relay-only, carries data not media, and the WebCodecs route fails on Firefox. WebRTC only from here.
+- [WebRTC library landscape for a small mesh](issues/02-webrtc-libraries.md): two candidates survive, raw WebRTC over our own WebSocket signaling or Trystero. PeerJS cannot add share tracks mid-call, simple-peer is unmaintained, libp2p is data-only. TURN credentials must reach the client before peers are built.
+- [Free hosting for an always-on WebSocket hub and static SPA](issues/03-free-hosting-websocket-hub.md): only Cloudflare Workers + Durable Objects, Oracle Always Free VM, and GCP e2-micro stay up for free. Cloudflare is card-free but not Node; the VMs run Node or Bun but need a card on file. Deno Deploy and Render sleep when idle.
+- [Free TURN relay options](issues/04-free-turn-providers.md): Cloudflare Realtime TURN (1,000 GB/month) is the only hosted free tier with real headroom, card status unconfirmed. Metered is 20 GB or 500 MB depending on which of its pages you believe. Self-hosted coturn on an Oracle free VM is the unlimited fallback. All need server-minted short-lived credentials.
+- [Multiple simultaneous screen shares in a WebRTC mesh](issues/06-multistream-screenshare.md): works if viewers opt in per share and sharers pause encoding for non-watchers via setParameters or replaceTrack, no renegotiation needed. Sharer upload is 2.5 Mbps per watching peer. Publishing is desktop-only; share audio is Chromium-only; mobile can view with a wake lock.
+- [Solid 2 release-candidate status and fit](issues/05-solid-2-status.md): rc.6 as of 2026-09-02, API frozen, weekly fixes, one open P1 store bug. Usable if all packages are pinned in lockstep; skip the router entirely. MediaStream objects are never proxied by stores, so WebRTC state must be mirrored into signals.
+
 ## Not yet specified
 
 - Reconnection and failure behaviour: what a participant sees when the server restarts, when a peer drops, when their own network flaps. Sharpens once the presence and transport model is decided.
-- Share audio: whether a share carries tab or system audio where the browser offers it. Depends on the screenshare research.
-- Exact mobile scope: which of voice, text, and viewing shares actually work on iOS Safari and Android Chrome, and what the UI hides there. Depends on the screenshare research and the UI prototype.
+- Exact mobile scope: publishing a share does not exist on mobile (settled by research); what remains is how the UI hides it and whether voice and viewing shares are actually reliable on iOS Safari and Android Chrome. Depends on the UI prototype and the voice and share behaviour ticket.
 - Provisioning: signing up for the chosen hosting platform and TURN provider, generating credentials, wiring short-lived TURN credentials through the server. Becomes a task ticket once hosting and TURN are decided.
 - Background notification when a friend starts or joins a call while the tab is unfocused, and whether that is in the spec at all.
 - Voice controls: mute, push-to-talk, device selection, noise suppression. Sharpens in the voice and share behaviour ticket, may spill into its own.
