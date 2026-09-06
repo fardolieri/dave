@@ -1,6 +1,6 @@
 import { createSignal, Switch, Match, createMemo, onCleanup } from 'solid-js';
 import { loadIdentity, type LocalIdentity } from './identity';
-import { getName, getSecret, setName, takeSecretFromInviteLink } from './session';
+import { getName, getSecret, setName, takeSecretFromInviteLink } from './invite';
 import { connect, type ConnectionStatus } from './connection';
 import { normaliseName } from '../core/protocol';
 
@@ -10,8 +10,9 @@ export default function App() {
   const [secret] = createSignal(getSecret());
   const [name, setNameSignal] = createSignal(getName());
   const [identity, setIdentity] = createSignal<LocalIdentity | null>(null);
+  const [identityError, setIdentityError] = createSignal<string | null>(null);
 
-  loadIdentity().then(setIdentity);
+  loadIdentity().then(setIdentity, (e: unknown) => setIdentityError(e instanceof Error ? e.message : String(e)));
 
   const ready = createMemo(() => (secret() && name() && identity() ? { secret: secret()!, name: name()!, identity: identity()! } : null));
 
@@ -25,17 +26,20 @@ export default function App() {
         <Match when={!name()}>
           <NameForm onSubmit={(n) => { setName(n); setNameSignal(n); }} />
         </Match>
+        <Match when={identityError()}>
+          <p style="color: #c33">This browser could not create or load an identity key ({identityError()}). Private windows and blocked site data cause this.</p>
+        </Match>
         <Match when={!identity()}>
           <p>Preparing your identity…</p>
         </Match>
-        <Match when={ready()}>{(r) => <Session {...r()} />}</Match>
+        <Match when={ready()}>{(r) => <Gate {...r()} />}</Match>
       </Switch>
     </main>
   );
 }
 
-// Owns the socket: a component body runs once, so `connect` is called once per session.
-function Session(props: { secret: string; name: string; identity: LocalIdentity }) {
+// Owns the socket: a component body runs once, so `connect` is called exactly once.
+function Gate(props: { secret: string; name: string; identity: LocalIdentity }) {
   const conn = connect({ secret: props.secret, name: props.name, identity: props.identity });
   onCleanup(conn.close);
   return <Status status={conn.status()} identity={props.identity} name={props.name} />;
@@ -62,12 +66,13 @@ function Status(props: { status: ConnectionStatus; identity: LocalIdentity; name
       </Match>
       <Match when={props.status.kind === 'connected'}>
         <p>You are in. <b>{props.name}</b> <code>{props.identity.fingerprint}</code></p>
+        <details><summary style="color: #888">your identity key</summary><code style="word-break: break-all">{props.identity.publicKey}</code></details>
       </Match>
-      <Match when={props.status.kind === 'refused'}>
-        <p style="color: #c33">Refused: {(props.status as { reason: string }).reason}. Ask for a fresh invite link.</p>
+      <Match when={props.status.kind === 'refused' && props.status}>
+        {(s) => <p style="color: #c33">Refused: {s().reason}. Ask for a fresh invite link.</p>}
       </Match>
-      <Match when={props.status.kind === 'closed'}>
-        <p style="color: #c33">Disconnected: {(props.status as { reason: string }).reason || 'connection closed'}.</p>
+      <Match when={props.status.kind === 'closed' && props.status}>
+        {(s) => <p style="color: #c33">Disconnected: {s().reason || 'connection closed'}.</p>}
       </Match>
     </Switch>
   );

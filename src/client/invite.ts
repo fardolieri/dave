@@ -6,8 +6,7 @@ import { local } from './storage';
 export function takeSecretFromInviteLink(): void {
   const hash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
   if (!hash) return;
-  const secret = decodeURIComponent(hash);
-  if (secret.length >= 8) local.set('secret', secret);
+  local.set('secret', decodeURIComponent(hash));
   history.replaceState(null, '', location.pathname + location.search);
 }
 

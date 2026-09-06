@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { answerChallenge, exportPublicKey, fingerprint, fromBase64Url, generateIdentityKeyPair, randomNonce, toBase64Url, verifyAnswer } from '../src/core/identity';
+import { answerChallenge, buildAuthMessage, exportPublicKey, fingerprint, fromBase64Url, generateIdentityKeyPair, randomNonce, toBase64Url, verifyAnswer } from '../src/core/identity';
 
 describe('identity primitives', () => {
   it('base64url round-trips and strips padding', () => {
     const bytes = new Uint8Array([0, 1, 2, 250, 251, 252, 253, 254, 255]);
     const text = toBase64Url(bytes);
     expect(text).not.toMatch(/[+/=]/);
-    expect(Array.from(fromBase64Url(text))).toEqual(Array.from(bytes));
+    expect(Array.from(fromBase64Url(text)!)).toEqual(Array.from(bytes));
+  });
+
+  it('base64url decoding returns null for malformed input instead of throwing', () => {
+    expect(fromBase64Url('aaaaa')).toBeNull(); // length 1 mod 4
+    expect(fromBase64Url('not base64!')).toBeNull();
+    expect(fromBase64Url('')).toEqual(new Uint8Array(0));
   });
 
   it('fingerprints are six readable characters and deterministic', async () => {
@@ -63,5 +69,20 @@ describe('challenge and answer', () => {
   it('rejects a malformed public key', async () => {
     const { nonce, answer } = await setup();
     expect(await verifyAnswer({ secret, nonce, publicKeyRaw: new Uint8Array(10), ...answer })).toBe(false);
+  });
+});
+
+describe('buildAuthMessage', () => {
+  it('produces an auth message the server accepts', async () => {
+    const keys = await generateIdentityKeyPair();
+    const publicKeyRaw = await exportPublicKey(keys.publicKey);
+    const nonce = randomNonce();
+    const msg = await buildAuthMessage({ secret: 's', nonce: toBase64Url(nonce), publicKeyRaw, privateKey: keys.privateKey, name: 'Dave' });
+    expect(msg.t).toBe('auth');
+    expect(await verifyAnswer({ secret: 's', nonce, publicKeyRaw, hmac: fromBase64Url(msg.hmac)!, signature: fromBase64Url(msg.signature)! })).toBe(true);
+  });
+  it('rejects a malformed nonce', async () => {
+    const keys = await generateIdentityKeyPair();
+    await expect(buildAuthMessage({ secret: 's', nonce: 'aaaaa', publicKeyRaw: await exportPublicKey(keys.publicKey), privateKey: keys.privateKey, name: 'D' })).rejects.toThrow();
   });
 });

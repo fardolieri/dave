@@ -9,9 +9,16 @@ export function toBase64Url(bytes: Uint8Array): string {
   return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-export function fromBase64Url(text: string): Uint8Array {
+/** Decodes base64url. Returns null for malformed input instead of throwing; callers treat null as a failed check. */
+export function fromBase64Url(text: string): Uint8Array | null {
+  if (!/^[A-Za-z0-9_-]*$/.test(text) || text.length % 4 === 1) return null;
   const b64 = text.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (text.length % 4)) % 4);
-  const s = atob(b64);
+  let s: string;
+  try {
+    s = atob(b64);
+  } catch {
+    return null;
+  }
   const out = new Uint8Array(s.length);
   for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
   return out;
@@ -107,4 +114,18 @@ export async function verifyAnswer(input: {
     return false;
   }
   return subtle().verify(SIGN, publicKey, input.signature as BufferSource, input.nonce as BufferSource);
+}
+
+/** Client side: turn a challenge into the complete `auth` message. Shared by the app and the tests. */
+export async function buildAuthMessage(input: {
+  secret: string;
+  nonce: string;
+  publicKeyRaw: Uint8Array;
+  privateKey: CryptoKey;
+  name: string;
+}): Promise<{ t: 'auth'; publicKey: string; name: string; hmac: string; signature: string }> {
+  const nonce = fromBase64Url(input.nonce);
+  if (!nonce) throw new Error('malformed challenge nonce');
+  const { hmac, signature } = await answerChallenge({ secret: input.secret, nonce, publicKeyRaw: input.publicKeyRaw, privateKey: input.privateKey });
+  return { t: 'auth', publicKey: toBase64Url(input.publicKeyRaw), name: input.name, hmac: toBase64Url(hmac), signature: toBase64Url(signature) };
 }

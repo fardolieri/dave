@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 Skeleton and deploy pipeline.
 
-**Status:** in-progress (branch `build/02-identity`)
+**Status:** done (2026-09-06), awaiting deploy
 
 - [x] Secret read from the URL fragment on load, stored locally, fragment stripped immediately; later visits use the stored secret.
 - [x] ECDSA P-256 keypair generated once with `extractable: false` and kept in IndexedDB; the public key and its six-character fingerprint are shown in the UI.
@@ -18,3 +18,4 @@
 - 2026-09-06: built on branch `build/02-identity`. The handshake and per-socket state machine live in `src/core` (WebCrypto only) and are exercised end to end inside workerd (19 tests). Per-IP limiting uses the Workers rate-limit binding `UPGRADE_LIMIT` (10 attempts per 60 s), optional in code so local dev and tests run without it.
 - Browser check with headless Chromium against the dev server: fresh profile shows "you need an invite link"; opening `/#<secret>` stores it and shows the name prompt; reloading without the fragment keeps working.
 - **Deploy prerequisite:** a new Worker secret `ROOM_SECRET` (the shared passphrase) must exist as a GitHub repository secret before the next push; the workflow pushes it to the Worker. The invite link is then `https://dave.danielmittereder.workers.dev/#<passphrase>`. Local dev reads it from `.dev.vars` (copy `.dev.vars.example`).
+- Code review (two-axis) findings addressed: malformed base64url no longer throws and every bad pre-auth frame counts as a strike (three-strikes cannot be bypassed); unanswered challenges are closed by a Room alarm after 10 s; the client closes its socket on the first refusal; unknown socket states fail closed; identity load failures are shown; the public key is visible behind a disclosure; "session" renamed to invite/gate per the glossary; auth-message construction shared via `buildAuthMessage`; the 8-character secret minimum removed. The rate-limit binding is emulated in tests and the 429 path is asserted. 24 tests.
