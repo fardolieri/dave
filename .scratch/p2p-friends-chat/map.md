@@ -18,6 +18,7 @@ A spec, ready to hand to an implementer, for a single-room web app where up to f
   - Text chat is ephemeral: live relay only, nothing stored.
   - Stack: TypeScript end to end, Solid 2 (release candidate) for the SPA, Node plus wrangler toolchain, workerd in production (decided 2026-09-06, was "Node or Bun").
   - Targets: desktop Chromium and Firefox fully. Mobile browsers for voice, text, and viewing shares as a stretch.
+- Transparency: the UI always shows the real connection state. Per-peer direct versus relayed through TURN, reconnecting, unreachable, and the server socket state are visible, never hidden behind a generic spinner. Raised 2026-09-06.
 - Plan, don't do: this map produces decisions and a spec, not code. The one exception is the prototype ticket, which produces throwaway UI.
 
 ## Decisions so far
@@ -33,10 +34,10 @@ A spec, ready to hand to an implementer, for a single-room web app where up to f
 - [Signaling and media stack decision](issues/07-signaling-and-media-stack.md): raw WebRTC mesh over our own WebSocket server, fixed transceivers per connection so only join and leave renegotiate, one share per participant, shares flow to nobody until a viewer subscribes, all control over the WebSocket, TURN credentials minted at join, runtime-neutral signaling core. ADR 0001.
 - [Hosting platform, server runtime, and TURN provider decision](issues/08-hosting-and-runtime.md): Cloudflare Workers + Durable Objects for hub and SPA, Cloudflare Realtime TURN for relay, all on one free account with a card allowed but zero spend. Node plus wrangler toolchain, Bun dropped. Hibernation means server state is derived from attached sockets only. GitHub Actions deploys. ADR 0002.
 - [Provision the Cloudflare account, TURN key, and deploy secrets](issues/15-provision-cloudflare.md): done. Free plan, TURN key created with no plan change, three GitHub secrets in place, $1 budget alert, app URL dave.danielmittereder.workers.dev created by first deploy.
+- [Presence and ephemeral text transport model](issues/09-presence-and-text-transport.md): server relays text with no buffer; presence and call membership derived from attached sockets and broadcast as full snapshots; ping auto-response plus a 60 s alarm during calls sweeps dead sockets; server presence wins over media failure; polite role now by identity key so reconnects need no state; speaking indicators stay local; 20 msg/s rate limit.
 
 ## Not yet specified
 
-- Reconnection and failure behaviour: what a participant sees when the server restarts, when a peer drops, when their own network flaps. ICE restart with refreshed TURN credentials is settled; the rest sharpens once the presence and transport model is decided.
 - Exact mobile scope: publishing a share does not exist on mobile (settled by research); what remains is how the UI hides it and whether voice and viewing shares are actually reliable on iOS Safari and Android Chrome. Depends on the UI prototype and the voice and share behaviour ticket.
 - Background notification when a friend starts or joins a call while the tab is unfocused, and whether that is in the spec at all.
 - Voice controls: mute, push-to-talk, device selection, noise suppression. Sharpens in the voice and share behaviour ticket, may spill into its own.

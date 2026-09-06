@@ -20,7 +20,7 @@ We need voice and multiple screen shares between up to five (tolerate eight) fri
 
 - One share per participant at a time. Share tiles in the UI are rendered from signaling state, not from `track` events, because remote tracks exist (muted, empty) from join time.
 - A share flows to nobody until a viewer subscribes; subscribe and unsubscribe are control messages over the server WebSocket that the sharer honours by flipping `encodings[0].active` on that one peer connection.
-- Newcomers initiate offers to each existing participant; on glare the participant with the lower server-assigned join sequence is polite.
+- Newcomers initiate offers to each existing participant; on glare the participant whose identity public key compares lower is polite. (Amended 2026-09-06: was join sequence, which does not survive a server reconnect.)
 - All in-call control messages (subscribe, mute state, speaking, share announcements) travel over the server WebSocket. Data channels are not used.
 - TURN credentials are minted server-side and returned in the reply to "join call" with the provider's maximum TTL; refreshed on rejoin or, before an ICE restart, via `setConfiguration`.
 - The signaling core is written against Web-standard WebSocket and Request/Response APIs with a thin adapter per runtime, so hosting can choose between Cloudflare Durable Objects and a Node or Bun process freely.

@@ -36,6 +36,10 @@ _Avoid_: Subscriber, watcher, spectator
 The exchange, through the server, of the offers, answers, and candidates two participants need to connect directly. Never carries media.
 _Avoid_: Handshake, negotiation (reserve for the WebRTC offer/answer state machine)
 
+**Relayed**:
+A link between two participants whose media passes through a TURN relay because a direct path could not be established. The relay cannot read the media.
+_Avoid_: Proxied, tunnelled
+
 **Shared secret**:
 The single invite passphrase or link that gates entry to the room. Everyone who holds it is a friend.
 _Avoid_: Password, token, invite code
