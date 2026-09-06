@@ -141,6 +141,8 @@ Best effort: "works on recent iOS Safari and Android Chrome, not a supported tar
 ### 8.1 Server socket
 Client keeps peer connections alive, reconnects with exponential backoff capped at 30 s, redoes the challenge, and re-declares role, sharing, and muted. The server treats it as a fresh socket; the polite role does not depend on anything that changed (§2.2). Presence is frozen and dimmed meanwhile; text is disabled.
 
+The other participants keep their media connection to a friend who vanished from presence without an explicit `left` for a 60 s grace period, showing them dimmed as "connection to server lost", so the friend's reconnect does not interrupt voice. After the friend rejoins, connections that died meanwhile are rebuilt by the rejoiner, who now holds the highest join sequence. (Added 2026-09-06 while building ticket 04; confirmed by the owner the same day.)
+
 ### 8.2 Peer connections
 Per connection, read `getStats` every 2 s. The selected candidate pair's type gives direct versus relayed. ICE state maps to the badge: connected or completed is direct or relayed; disconnected is "reconnecting" and triggers an ICE restart after 5 s; failed is "unreachable" and retries ICE restart with backoff. **Server presence wins**: a failed peer link never removes anyone from the Call; only an explicit leave or a dead socket does.
 

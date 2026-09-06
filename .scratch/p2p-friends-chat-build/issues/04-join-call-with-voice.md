@@ -4,7 +4,7 @@
 
 **Blocked by:** 03 Presence and text for visitors.
 
-**Status:** done (2026-09-06), awaiting deploy
+**Status:** done (2026-09-06)
 
 - [x] Join assigns a join sequence and returns TURN `iceServers` minted server-side from Cloudflare with a 12-hour TTL; credentials revoked on leave; STUN shipped to visitors.
 - [x] Newcomer creates the connection and first offer to each existing participant; the offerer pre-adds the three fixed transceivers (voice audio, share video, share audio); the answerer adopts the created ones, sets them to sendrecv, attaches tracks, then answers. Verified by the mesh spike (branch `prototype/mesh-spike`) and by the browser driver, not by unit tests: both sides end with exactly three transceivers and one negotiation round.
@@ -24,3 +24,4 @@
 - Learned: killed headless Chromes leave live processes behind unless the whole process group is killed; the "ghost visitors" seen earlier were those, not stale server sockets. The sweep-while-attached amendment stays because real network loss produces exactly that shape.
 - Code review (two-axis) addressed: the answerer now attaches the offerer's voice (track events fire during setRemoteDescription, before the transceivers are recorded, so the slot is found by position); the join sequence is stored before the TURN fetch so concurrent joins cannot collide; TURN credentials are revoked on leave and on socket close, TURNS entries are ordered last, and the mint fetch has a 5 s timeout; a participant reappearing as a visitor while rejoining is kept for the grace period instead of being closed; dead connections are rebuilt after one's own rejoin and a fresh offer replaces a dead or vanished connection; the sweep keeps the 10 s interval while challenges are pending; error frames carry the rejected message type so signaling errors no longer appear in the chat; join is guarded against re-entry; analyser sources are disconnected; wording follows the glossary.
 - Reception verified deterministically after the fixes: a dev-only `window.__dave.peers()` hook (absent in production builds) reports inbound audio bytes per connection; all six directions in a three-browser mesh carry audio, three transceivers each, all direct. Speaking rings depend on a 100 ms timer that headless background tabs throttle, so ring counts there are noisy; foreground tabs are unaffected.
+- 2026-09-06: deployed and verified live. A Node client's join reply carried Cloudflare TURN credentials (turn UDP/TCP, turns 5349 and 443) alongside STUN; two headless browsers joined the live room, formed a direct connection, propagated mute, and left cleanly. The owner confirmed the 60 s grace period.
