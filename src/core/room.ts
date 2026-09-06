@@ -3,8 +3,9 @@
 // Everything here is plain data plus WebCrypto, so it survives hibernation.
 // No Cloudflare, Node, or DOM imports; scripts/check-core-isolation.mjs enforces that.
 import { fromBase64Url, fingerprint, randomNonce, toBase64Url, verifyAnswer } from './identity';
-import { CLOSE_AUTH_FAILED, parseClientMessage, type Person, type ServerMessage } from './protocol';
+import { CLOSE_AUTH_FAILED, parseClientMessage, type IceServer, type Person, type ServerMessage } from './protocol';
 import { newBucket, takeToken, type Bucket } from './ratelimit';
+import { nextJoinSeq } from './mesh';
 
 export const MAX_AUTH_ATTEMPTS = 3;
 /** A socket that has not answered its challenge within this window is closed by the sweep. */
@@ -12,7 +13,7 @@ export const CHALLENGE_TIMEOUT_MS = 10_000;
 
 export type SocketState =
   | { stage: 'challenge'; nonce: string; attempts: number; since: number }
-  | { stage: 'attached'; person: Person; bucket: Bucket };
+  | { stage: 'attached'; person: Person; bucket: Bucket; attachedAt: number };
 
 export type Outcome = {
   state: SocketState;
@@ -22,6 +23,8 @@ export type Outcome = {
   broadcast?: ServerMessage[];
   /** The set or shape of attached people changed; the adapter must broadcast a fresh snapshot. */
   presenceChanged?: boolean;
+  /** Deliver to the one attached participant with this public key. */
+  relay?: { to: string; message: ServerMessage };
   close?: { code: number; reason: string };
 };
 
@@ -30,6 +33,10 @@ export type RoomContext = {
   secret: string;
   /** Current time in ms; injected so tests can drive time. */
   now: number;
+  /** Everyone else currently attached (this socket excluded). Join sequences derive from it. */
+  others: Iterable<Person>;
+  /** Mints ICE servers (TURN credentials) for a participant. Provided by the adapter. */
+  mintIce: () => Promise<IceServer[]>;
 };
 
 /** A socket has just been accepted: challenge it. */
@@ -80,7 +87,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       sharing: false,
       muted: false,
     };
-    return { state: { stage: 'attached', person, bucket: newBucket(ctx.now) }, replies: [{ t: 'welcome', you: person }], presenceChanged: true };
+    return { state: { stage: 'attached', person, bucket: newBucket(ctx.now), attachedAt: ctx.now }, replies: [{ t: 'welcome', you: person }], presenceChanged: true };
   }
 
   if (state.stage !== 'attached') {
@@ -104,6 +111,33 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     case 'text': {
       const { publicKey, fingerprint: fp, name } = state.person;
       return { state: next, replies: [], broadcast: [{ t: 'text', from: { publicKey, fingerprint: fp, name }, text: msg.text, at: ctx.now }] };
+    }
+    case 'join': {
+      // Joining twice (after a server reconnect) is fine: a fresh join sequence, same identity.
+      const joinSeq = nextJoinSeq([...ctx.others, state.person]);
+      const person: Person = { ...state.person, role: 'participant', joinSeq, muted: msg.muted, sharing: false };
+      const iceServers = await ctx.mintIce();
+      return { state: { ...next, person }, replies: [{ t: 'call', joinSeq, iceServers, issuedAt: ctx.now }], presenceChanged: true };
+    }
+    case 'leave': {
+      if (state.person.role !== 'participant') return { state: next, replies: [] };
+      const person: Person = { ...state.person, role: 'visitor', joinSeq: null, sharing: false, muted: false };
+      return { state: { ...next, person }, replies: [], broadcast: [{ t: 'left', publicKey: person.publicKey }], presenceChanged: true };
+    }
+    case 'mute': {
+      if (state.person.role !== 'participant' || state.person.muted === msg.muted) return { state: next, replies: [] };
+      return { state: { ...next, person: { ...state.person, muted: msg.muted } }, replies: [], presenceChanged: true };
+    }
+    case 'ice': {
+      if (state.person.role !== 'participant') return { state: next, replies: [{ t: 'error', reason: 'not in the call' }] };
+      return { state: next, replies: [{ t: 'ice', iceServers: await ctx.mintIce(), issuedAt: ctx.now }] };
+    }
+    case 'signal': {
+      if (state.person.role !== 'participant') return { state: next, replies: [{ t: 'error', reason: 'not in the call' }] };
+      let target: Person | undefined;
+      for (const p of ctx.others) if (p.publicKey === msg.to) { target = p; break; }
+      if (!target || target.role !== 'participant') return { state: next, replies: [{ t: 'error', reason: 'peer not in the call' }] };
+      return { state: next, replies: [], relay: { to: msg.to, message: { t: 'signal', from: state.person.publicKey, data: msg.data } } };
     }
   }
 }

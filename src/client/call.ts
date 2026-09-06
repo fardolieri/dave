@@ -1,0 +1,349 @@
+import { createEffect, createSignal, onCleanup } from 'solid-js';
+import {
+  ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
+} from '../core/mesh';
+import type { IceServer, Person, ServerMessage, SignalData } from '../core/protocol';
+import type { createRoom } from './room';
+import { local } from './storage';
+
+export type ConnState = 'connecting' | 'direct' | 'relayed' | 'reconnecting' | 'unreachable';
+
+/** What the UI shows per remote participant. Plain data mirrored from WebRTC events (spec §2.1). */
+export type PeerView = { publicKey: string; name: string; conn: ConnState; speaking: boolean; serverLost: boolean };
+
+type Peer = {
+  key: string;
+  name: string;
+  pc: RTCPeerConnection;
+  polite: boolean;
+  tx: RTCRtpTransceiver[];
+  makingOffer: boolean;
+  ignoreOffer: boolean;
+  srdAnswerPending: boolean;
+  audio: HTMLAudioElement;
+  analyser?: AnalyserNode;
+  disconnectTimer?: ReturnType<typeof setTimeout>;
+  restartTimer?: ReturnType<typeof setTimeout>;
+  restarts: number;
+  graceTimer?: ReturnType<typeof setTimeout>;
+  view: PeerView;
+};
+
+const SPEAK_THRESHOLD = 0.02;
+const SPEAK_HOLD_MS = 300;
+
+/**
+ * The Call from this browser's point of view (ADR 0001): one RTCPeerConnection per other
+ * participant, three fixed transceivers, perfect negotiation with polite = lower key,
+ * newcomer initiates, all control over the room socket. Voice only for now; shares come with ticket 05.
+ */
+export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
+  const [inCall, setInCall] = createSignal(false);
+  const [muted, setMutedSignal] = createSignal(local.get('muted') === 'true');
+  const [views, setViews] = createSignal<PeerView[]>([]);
+  const [speakingSelf, setSpeakingSelf] = createSignal(false);
+  const [joinError, setJoinError] = createSignal<string | null>(null);
+
+  const peers = new Map<string, Peer>();
+  let localStream: MediaStream | null = null;
+  let voiceTrack: MediaStreamTrack | null = null;
+  let iceServers: IceServer[] = [];
+  let iceIssuedAt = 0;
+  let myJoinSeq: number | null = null;
+  let audioCtx: AudioContext | null = null;
+  let localAnalyser: AnalyserNode | null = null;
+  let pendingCall: ((m: Extract<ServerMessage, { t: 'call' }>) => void) | null = null;
+  let pendingIce: ((m: Extract<ServerMessage, { t: 'ice' }>) => void) | null = null;
+
+  const me = (): Person | null => room.people().find((p) => p.publicKey === myKey) ?? null;
+  const publish = () => setViews([...peers.values()].map((p) => ({ ...p.view })));
+  const setView = (p: Peer, patch: Partial<PeerView>) => { Object.assign(p.view, patch); publish(); };
+
+  // ---- media
+  async function openMicrophone(): Promise<void> {
+    if (voiceTrack) return;
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    voiceTrack = localStream.getAudioTracks()[0] ?? null;
+    if (voiceTrack) voiceTrack.enabled = !muted();
+    audioCtx ??= new AudioContext();
+    localAnalyser = analyserFor(localStream);
+  }
+  function analyserFor(stream: MediaStream): AnalyserNode {
+    const ctx = audioCtx!;
+    const src = ctx.createMediaStreamSource(stream);
+    const an = ctx.createAnalyser();
+    an.fftSize = 512;
+    src.connect(an);
+    return an;
+  }
+  const levelOf = (an: AnalyserNode): number => {
+    const buf = new Float32Array(an.fftSize);
+    an.getFloatTimeDomainData(buf);
+    let sum = 0;
+    for (const v of buf) sum += v * v;
+    return Math.sqrt(sum / buf.length);
+  };
+  const lastLoud = new Map<string, number>();
+  const speakingTimer = setInterval(() => {
+    if (!audioCtx) return;
+    const now = Date.now();
+    const loud = (key: string, an: AnalyserNode | null | undefined, gate: boolean) => {
+      if (an && gate && levelOf(an) > SPEAK_THRESHOLD) lastLoud.set(key, now);
+      return now - (lastLoud.get(key) ?? 0) < SPEAK_HOLD_MS;
+    };
+    setSpeakingSelf(loud('me', localAnalyser, !muted()));
+    let changed = false;
+    for (const p of peers.values()) {
+      const s = loud(p.key, p.analyser, true);
+      if (s !== p.view.speaking) { p.view.speaking = s; changed = true; }
+    }
+    if (changed) publish();
+  }, 100);
+
+  // ---- peers
+  function createPeer(key: string, name: string, initiator: boolean): Peer {
+    const pc = new RTCPeerConnection({ iceServers });
+    const audio = new Audio();
+    audio.autoplay = true;
+    const peer: Peer = {
+      key, name, pc, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, restarts: 0,
+      view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false },
+    };
+    if (initiator) {
+      // Only the offering side pre-adds transceivers (ADR 0001, spike finding).
+      peer.tx = [pc.addTransceiver('audio', { direction: 'sendrecv' }), pc.addTransceiver('video', { direction: 'sendrecv' }), pc.addTransceiver('audio', { direction: 'sendrecv' })];
+      attachLocalTracks(peer);
+    }
+    pc.onnegotiationneeded = async () => {
+      try {
+        peer.makingOffer = true;
+        await pc.setLocalDescription();
+        room.send({ t: 'signal', to: key, data: { description: pc.localDescription } });
+      } catch (e) {
+        console.warn('negotiationneeded failed', e);
+      } finally {
+        peer.makingOffer = false;
+      }
+    };
+    pc.onicecandidate = ({ candidate }) => room.send({ t: 'signal', to: key, data: { candidate } });
+    pc.oniceconnectionstatechange = () => onIceState(peer);
+    pc.ontrack = ({ track, transceiver }) => {
+      if (track.kind === 'audio' && transceiver.mid === peer.tx[SLOT_INDEX.voice]?.mid) {
+        const stream = new MediaStream([track]);
+        audio.srcObject = stream;
+        audio.play().catch(() => { /* needs a gesture on some browsers; the join click normally suffices */ });
+        if (audioCtx) peer.analyser = analyserFor(stream);
+      }
+    };
+    peers.set(key, peer);
+    publish();
+    return peer;
+  }
+
+  function attachLocalTracks(peer: Peer): void {
+    const voiceSender = peer.tx[SLOT_INDEX.voice]?.sender;
+    if (voiceSender && voiceTrack) voiceSender.replaceTrack(voiceTrack).catch((e) => console.warn('replaceTrack voice', e));
+  }
+
+  async function onSignal(from: string, data: SignalData): Promise<void> {
+    if (!inCall()) return;
+    let peer = peers.get(from);
+    if (!peer) {
+      const person = room.people().find((p) => p.publicKey === from);
+      if (!person || person.role !== 'participant') return;
+      peer = createPeer(from, person.name, false);
+    }
+    const { pc } = peer;
+    try {
+      if (data.description) {
+        const description = data.description as RTCSessionDescriptionInit;
+        const collision = description.type === 'offer' && (peer.makingOffer || (pc.signalingState !== 'stable' && !peer.srdAnswerPending));
+        peer.ignoreOffer = !peer.polite && collision;
+        if (peer.ignoreOffer) return;
+        peer.srdAnswerPending = description.type === 'answer';
+        await pc.setRemoteDescription(description);
+        peer.srdAnswerPending = false;
+        if (description.type === 'offer') {
+          if (peer.tx.length === 0) {
+            // The answerer adopts the offered transceivers and makes them bidirectional before answering.
+            peer.tx = pc.getTransceivers().slice(0, 3);
+            for (const t of peer.tx) t.direction = 'sendrecv';
+            attachLocalTracks(peer);
+          }
+          await pc.setLocalDescription();
+          room.send({ t: 'signal', to: from, data: { description: pc.localDescription } });
+        }
+      } else if (data.candidate !== undefined) {
+        try {
+          await pc.addIceCandidate((data.candidate as RTCIceCandidateInit | null) ?? undefined);
+        } catch (e) {
+          if (!peer.ignoreOffer) throw e;
+        }
+      }
+    } catch (e) {
+      console.warn('signal handling failed', e);
+    }
+  }
+
+  function onIceState(peer: Peer): void {
+    const s = peer.pc.iceConnectionState;
+    clearTimeout(peer.disconnectTimer);
+    if (s === 'connected' || s === 'completed') {
+      peer.restarts = 0;
+      clearTimeout(peer.restartTimer);
+      if (peer.view.conn === 'connecting' || peer.view.conn === 'reconnecting' || peer.view.conn === 'unreachable') setView(peer, { conn: 'direct' });
+      void refreshStats(peer);
+    } else if (s === 'disconnected') {
+      setView(peer, { conn: 'reconnecting' });
+      peer.disconnectTimer = setTimeout(() => { if (peer.pc.iceConnectionState === 'disconnected') void restartIce(peer); }, ICE_DISCONNECTED_GRACE_MS);
+    } else if (s === 'failed') {
+      setView(peer, { conn: 'unreachable' });
+      const delay = ICE_RESTART_BACKOFF_MS[Math.min(peer.restarts, ICE_RESTART_BACKOFF_MS.length - 1)]!;
+      peer.restarts++;
+      peer.restartTimer = setTimeout(() => void restartIce(peer), delay);
+    } else if (s === 'closed') {
+      setView(peer, { conn: 'unreachable' });
+    }
+  }
+
+  async function restartIce(peer: Peer): Promise<void> {
+    if (peer.pc.connectionState === 'closed') return;
+    if (Date.now() - iceIssuedAt > ICE_REFRESH_AFTER_MS) {
+      const fresh = await requestIce();
+      if (fresh) { iceServers = fresh.iceServers; iceIssuedAt = fresh.issuedAt; peer.pc.setConfiguration({ iceServers }); }
+    }
+    peer.pc.restartIce();
+  }
+
+  function requestIce(): Promise<Extract<ServerMessage, { t: 'ice' }> | null> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { pendingIce = null; resolve(null); }, 5000);
+      pendingIce = (m) => { clearTimeout(timer); pendingIce = null; resolve(m); };
+      room.send({ t: 'ice' });
+    });
+  }
+
+  async function refreshStats(peer: Peer): Promise<void> {
+    if (peer.pc.connectionState === 'closed') return;
+    const st = await peer.pc.getStats();
+    let pair: RTCIceCandidatePairStats | undefined;
+    st.forEach((r) => { if (r.type === 'transport' && (r as RTCTransportStats).selectedCandidatePairId) pair = st.get((r as RTCTransportStats).selectedCandidatePairId!) as RTCIceCandidatePairStats; });
+    if (!pair) st.forEach((r) => { if (r.type === 'candidate-pair' && (r as RTCIceCandidatePairStats).state === 'succeeded' && (r as RTCIceCandidatePairStats & { selected?: boolean }).selected) pair = r as RTCIceCandidatePairStats; });
+    if (!pair) return;
+    type CandidateStats = { candidateType?: string };
+    const local = st.get(pair.localCandidateId) as CandidateStats | undefined;
+    const remote = st.get(pair.remoteCandidateId) as CandidateStats | undefined;
+    const relayed = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
+    const ice = peer.pc.iceConnectionState;
+    if ((ice === 'connected' || ice === 'completed') && peer.view.conn !== (relayed ? 'relayed' : 'direct')) setView(peer, { conn: relayed ? 'relayed' : 'direct' });
+  }
+  const statsTimer = setInterval(() => { for (const p of peers.values()) void refreshStats(p); }, 2000);
+
+  function closePeer(key: string): void {
+    const peer = peers.get(key);
+    if (!peer) return;
+    clearTimeout(peer.disconnectTimer); clearTimeout(peer.restartTimer); clearTimeout(peer.graceTimer);
+    peer.pc.close();
+    peer.audio.srcObject = null;
+    peers.delete(key);
+    lastLoud.delete(key);
+    publish();
+  }
+
+  /** Server presence is authoritative for membership; media follows it (spec §8.2). */
+  function reconcile(people: Person[]): void {
+    const self = people.find((p) => p.publicKey === myKey);
+    if (!inCall() || !self || self.role !== 'participant') return;
+    for (const p of people) {
+      if (p.publicKey === myKey || p.role !== 'participant') continue;
+      const existing = peers.get(p.publicKey);
+      if (existing) {
+        if (existing.view.serverLost) { clearTimeout(existing.graceTimer); setView(existing, { serverLost: false, name: p.name }); }
+        continue;
+      }
+      if (initiatesTo({ ...self, joinSeq: myJoinSeq }, p)) createPeer(p.publicKey, p.name, true);
+    }
+    for (const peer of peers.values()) {
+      const person = people.find((p) => p.publicKey === peer.key);
+      if (person && person.role === 'participant') continue;
+      if (person) { closePeer(peer.key); continue; } // became a visitor without a "left": treat as left
+      if (!peer.view.serverLost) {
+        // Vanished from presence without saying "leave": their server socket dropped. Keep media for a grace period.
+        setView(peer, { serverLost: true });
+        peer.graceTimer = setTimeout(() => closePeer(peer.key), PEER_GRACE_MS);
+      }
+    }
+  }
+  createEffect(() => room.people(), (people) => reconcile(people));
+
+  // Re-declare after our own server reconnect (spec §8.1): peer connections stay, join sequence is fresh.
+  createEffect(() => room.status().kind, (kind, prev) => {
+    if (kind === 'connected' && prev !== undefined && prev !== 'connected' && inCall()) void declareJoin();
+  });
+
+  function declareJoin(): Promise<Extract<ServerMessage, { t: 'call' }> | null> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { pendingCall = null; resolve(null); }, 8000);
+      pendingCall = (m) => {
+        clearTimeout(timer); pendingCall = null;
+        myJoinSeq = m.joinSeq; iceServers = m.iceServers; iceIssuedAt = m.issuedAt;
+        resolve(m);
+      };
+      room.send({ t: 'join', muted: muted() });
+    });
+  }
+
+  const unsubscribe = room.subscribe((m) => {
+    switch (m.t) {
+      case 'call': pendingCall?.(m); return;
+      case 'ice': pendingIce?.(m); return;
+      case 'signal': void onSignal(m.from, m.data); return;
+      case 'left': closePeer(m.publicKey); return;
+    }
+  });
+
+  // ---- actions
+  async function join(): Promise<void> {
+    if (inCall()) return;
+    setJoinError(null);
+    try {
+      await openMicrophone();
+    } catch (e) {
+      setJoinError(e instanceof Error && e.name === 'NotAllowedError' ? 'Microphone access was denied.' : `Could not open the microphone: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    const reply = await declareJoin();
+    if (!reply) { setJoinError('The server did not answer the join request.'); return; }
+    setInCall(true);
+    reconcile(room.people());
+  }
+
+  function leave(): void {
+    if (!inCall()) return;
+    room.send({ t: 'leave' });
+    for (const key of [...peers.keys()]) closePeer(key);
+    setInCall(false);
+    myJoinSeq = null;
+    voiceTrack?.stop();
+    localStream?.getTracks().forEach((t) => t.stop());
+    voiceTrack = null; localStream = null; localAnalyser = null;
+    setSpeakingSelf(false);
+  }
+
+  function setMuted(m: boolean): void {
+    setMutedSignal(m);
+    local.set('muted', String(m));
+    if (voiceTrack) voiceTrack.enabled = !m;
+    if (inCall()) room.send({ t: 'mute', muted: m });
+  }
+
+  onCleanup(() => {
+    unsubscribe();
+    clearInterval(statsTimer);
+    clearInterval(speakingTimer);
+    leave();
+    audioCtx?.close();
+  });
+
+  return { inCall, muted, views, speakingSelf, joinError, join, leave, setMuted, myJoinSeq: () => myJoinSeq };
+}

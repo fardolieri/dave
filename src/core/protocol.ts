@@ -21,16 +21,36 @@ export type Person = Identity & {
   muted: boolean;
 };
 
+/** An entry for RTCPeerConnection's iceServers. */
+export type IceServer = { urls: string | string[]; username?: string; credential?: string };
+
+/** Opaque WebRTC signaling payload, relayed untouched between two participants. */
+export type SignalData = { description?: unknown; candidate?: unknown };
+
 export type ClientMessage =
   | { t: 'auth'; publicKey: string; name: string; hmac: string; signature: string }
   | { t: 'ping' }
-  | { t: 'text'; text: string };
+  | { t: 'text'; text: string }
+  /** Enter the Call (or re-declare after a server reconnect). */
+  | { t: 'join'; muted: boolean }
+  | { t: 'leave' }
+  | { t: 'mute'; muted: boolean }
+  /** Point-to-point signaling to another participant, by public key. */
+  | { t: 'signal'; to: string; data: SignalData }
+  /** Ask for fresh TURN credentials (before an ICE restart with expired ones). */
+  | { t: 'ice' };
 
 export type ServerMessage =
   | { t: 'challenge'; nonce: string }
   | { t: 'welcome'; you: Person }
   | { t: 'presence'; people: Person[] }
   | { t: 'text'; from: Identity; text: string; at: number }
+  /** Reply to join: your place in the Call and the ICE servers to build peer connections with. */
+  | { t: 'call'; joinSeq: number; iceServers: IceServer[]; issuedAt: number }
+  /** A participant left on purpose; peers close that connection at once. A vanished socket only drops out of presence. */
+  | { t: 'left'; publicKey: string }
+  | { t: 'signal'; from: string; data: SignalData }
+  | { t: 'ice'; iceServers: IceServer[]; issuedAt: number }
   | { t: 'pong' }
   | { t: 'error'; reason: string };
 
@@ -79,6 +99,22 @@ export function parseClientMessage(raw: unknown): ClientMessage | Invalid {
     }
     case 'ping':
       return { t: 'ping' };
+    case 'join':
+      return { t: 'join', muted: m.muted === true };
+    case 'leave':
+      return { t: 'leave' };
+    case 'mute':
+      return typeof m.muted === 'boolean' ? { t: 'mute', muted: m.muted } : invalid('unrecognised message');
+    case 'ice':
+      return { t: 'ice' };
+    case 'signal': {
+      if (!b64(m.to) || typeof m.data !== 'object' || m.data === null) return invalid('unrecognised message');
+      const d = m.data as Record<string, unknown>;
+      const data: SignalData = {};
+      if ('description' in d) data.description = d.description;
+      if ('candidate' in d) data.candidate = d.candidate;
+      return { t: 'signal', to: m.to, data };
+    }
     case 'text': {
       if (typeof m.text !== 'string') return invalid('unrecognised message');
       const text = m.text.trim();

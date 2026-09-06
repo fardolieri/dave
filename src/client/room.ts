@@ -30,6 +30,7 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
   const [you, setYou] = createSignal<Person | null>(null);
   const [people, setPeople] = createSignal<Person[]>([]);
   const [lines, setLines] = createSignal<ChatLine[]>([]);
+  const listeners = new Set<(m: ServerMessage) => void>();
   let nextId = 1;
   type NewLine = { kind: 'text'; from: Identity; text: string; at: number } | { kind: 'system'; text: string; at: number };
   const push = (line: NewLine) => setLines((l) => [...l, { ...line, id: nextId++ }]);
@@ -93,6 +94,8 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
           return;
         case 'pong':
           return;
+        default:
+          for (const l of listeners) l(m);
       }
     };
 
@@ -134,6 +137,9 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
     you,
     people,
     lines,
+    send,
     sendText: (text: string) => send({ t: 'text', text }),
+    /** Messages the room store does not handle itself (call, left, signal, ice) go to subscribers. */
+    subscribe: (l: (m: ServerMessage) => void) => { listeners.add(l); return () => listeners.delete(l); },
   };
 }

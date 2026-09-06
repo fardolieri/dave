@@ -12,7 +12,9 @@ type Client = { ws: WebSocket; you: Person; inbox: ServerMessage[]; next: (pred?
 
 /** Opens and authenticates a visitor (attaches a socket), returning a client whose inbox records everything after the welcome. */
 async function attach(name: string): Promise<Client> {
-  const res = await exports.default.fetch(new Request('https://dave.test/ws', { headers: { Upgrade: 'websocket' } }));
+  // a distinct client address per socket, so the per-IP upgrade limit never trips inside a test file
+  const ip = `10.0.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
+  const res = await exports.default.fetch(new Request('https://dave.test/ws', { headers: { Upgrade: 'websocket', 'cf-connecting-ip': ip } }));
   const ws = res.webSocket!;
   ws.accept();
   const inbox: ServerMessage[] = [];

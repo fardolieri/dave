@@ -46,3 +46,24 @@ code.fp { font-size: 11px; color: var(--dim); }
   .side { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
   .chat { min-height: 60vh; }
 }
+
+/* call */
+.plist li { flex-wrap: wrap; }
+.plist .pname { flex: 1; min-width: 0; }
+.plist .pflags { display: flex; gap: 6px; align-items: center; }
+.plist li.lost { opacity: .5; }
+.avatar.speaking { box-shadow: 0 0 0 2px var(--ok); }
+em { font-style: normal; font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.conn { font-size: 11px; display: inline-flex; align-items: center; gap: 4px; }
+.conn i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: currentColor; }
+.conn-connecting { color: var(--dim); } .conn-connecting i { animation: pulse 1s infinite; }
+.conn-direct { color: var(--ok); }
+.conn-relayed { color: var(--warn); }
+.conn-reconnecting { color: var(--warn); } .conn-reconnecting i { animation: pulse 1s infinite; }
+.conn-unreachable { color: var(--bad); }
+@keyframes pulse { 50% { opacity: .2; } }
+.actions { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.actions button { width: 100%; }
+button.on { background: var(--acc); border-color: var(--acc); color: #fff; }
+button.join { background: var(--ok); color: #062; border-color: transparent; font-weight: 600; }
+button.leave { background: var(--bad); color: #fff; border-color: transparent; }
