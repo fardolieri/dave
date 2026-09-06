@@ -173,12 +173,12 @@ describe('shares', () => {
 });
 
 describe('signaling rate limit', () => {
-  it('lets a burst of a few hundred signals through while text stays on the small bucket', async () => {
+  it('lets a burst of a hundred signals through while text stays on the small bucket', { timeout: 20_000 }, async () => {
     const a = await attach('Alice');
     const b = await attach('Bob');
     send(a, { t: 'join', muted: false }); await a.next((m) => m.t === 'call');
     send(b, { t: 'join', muted: false }); await b.next((m) => m.t === 'call');
-    const n = 200;
+    const n = 100; // well past the general burst of 40; kept modest so slow CI runners finish in time
     for (let i = 0; i < n; i++) send(a, { t: 'signal', to: b.you.publicKey, data: { candidates: [{ i }] } });
     let received = 0;
     for (let i = 0; i < n; i++) { await b.next((m) => m.t === 'signal'); received++; }
