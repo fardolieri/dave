@@ -154,6 +154,12 @@ try {
       }
     }
     if (shotDir) {
+      if (process.env.OPEN_PANELS) {
+        const a = browsers[0];
+        await a.eval(`document.querySelector('.actions .gear')?.click(); 'audio gear'`);
+        await a.eval(`document.querySelector('.prow button.vol')?.click(); 'slider'`);
+        await sleep(400);
+      }
       mkdirSync(shotDir, { recursive: true });
       for (const b of browsers) await b.screenshot(`${shotDir}/${b.name}.png`, narrowLast && b === browsers[browsers.length - 1] ? 390 : undefined);
       console.log(`screenshots in ${shotDir}`);

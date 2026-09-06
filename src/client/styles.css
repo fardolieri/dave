@@ -56,8 +56,10 @@ code.fp { font-size: 11px; color: var(--dim); }
 .plist li { flex-wrap: nowrap; }
 /* The name never wraps: it truncates with an ellipsis while fingerprint and badges keep their width. */
 .plist .pname { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
-.plist .pname .nm { min-width: 2ch; overflow: hidden; text-overflow: ellipsis; }
-.plist .pname .fp, .plist .pname .new { flex: none; }
+.plist .pname .nm { min-width: 8ch; overflow: hidden; text-overflow: ellipsis; }
+/* When space is tight the fingerprint gives way before the name; it is also in the row's hover title. */
+.plist .pname .fp { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.plist .pname .new { flex: none; }
 .plist .pflags { flex: none; }
 .plist .pflags { display: flex; gap: 6px; align-items: center; }
 .plist li.lost { opacity: .5; }
@@ -105,7 +107,10 @@ button.leave { background: var(--bad); color: #fff; border-color: transparent; }
 .actions .row button:first-child { flex: 1; }
 .actions .gear { width: 38px; flex: none; }
 .panel { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); font-size: 13px; }
-.panel label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.panel label { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+/* Native selects (Firefox has no customizable select) size to their longest option; let them shrink instead of overflowing. */
+.panel select.picker { flex: 1 1 6em; min-width: 0; width: 6em; max-width: 100%; }
+.panel > button { width: 100%; }
 .panel label.check { justify-content: flex-start; }
 .panel .presets button { flex: 1; }
 .panel input[type=number] { width: 4.5em; padding: 4px 6px; }
@@ -123,4 +128,6 @@ select.picker option::checkmark { order: 1; margin-left: auto; }
 .volrow { flex-basis: 100%; display: flex; align-items: center; gap: 8px; padding-left: 36px; }
 .plist li.prow { flex-wrap: wrap; } /* only the volume row may wrap under the name line */
 .plist li.prow > .avatar, .plist li.prow > .pname, .plist li.prow > .pflags { flex-wrap: nowrap; }
-.volrow input[type=range] { flex: 1; accent-color: var(--acc); }
+/* Firefox keeps a range input at its intrinsic width unless told it may shrink. */
+.volrow input[type=range] { flex: 1 1 0; min-width: 0; width: 0; accent-color: var(--acc); }
+.volrow .dim { flex: none; min-width: 3.5em; text-align: right; }

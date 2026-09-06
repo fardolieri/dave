@@ -244,7 +244,7 @@ function ParticipantRow(props: { p: Person; isMe: boolean; view?: PeerView; spea
   return (
     <li class="prow">
       <span class={`avatar ${props.speaking ? 'speaking' : ''}`}>{props.p.name[0]}</span>
-      <span class="pname"><span class="nm" title={props.p.name}>{props.p.name}{props.isMe ? ' (you)' : ''}</span> <code class="fp">{props.p.fingerprint}</code></span>
+      <span class="pname" title={`${props.p.name} ${props.p.fingerprint}`}><span class="nm">{props.p.name}{props.isMe ? ' (you)' : ''}</span> <code class="fp">{props.p.fingerprint}</code></span>
       <span class="pflags">
         <Show when={props.p.muted}><em>muted</em></Show>
         <Show when={props.p.sharing}><em>sharing</em></Show>
