@@ -6,7 +6,7 @@ import { createRoom, type ChatLine, type ServerStatus } from './room';
 import { createCall, type ConnState, type PeerView } from './call';
 import { isKnown, markKnown } from './seenKeys';
 import { MAX_TEXT_LENGTH, normaliseName, type Person } from '../core/protocol';
-import { LOW_LATENCY_MS, processingIsDefault, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
+import { LOW_LATENCY_MS, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 
 export default function App() {
   takeSecretFromInviteLink();
@@ -191,16 +191,16 @@ function SharePanel(props: { call: Call }) {
         <option value="0">native</option><option value="1080">up to 1080p</option><option value="720">up to 720p</option></select></label>
       <label>Under pressure keep <select class="picker" value={s().degradation} onChange={(e) => props.call.changeShare({ degradation: e.currentTarget.value as Degradation })}>
         <option value="maintain-resolution">resolution</option><option value="maintain-framerate">frame rate</option><option value="balanced">a balance</option></select></label>
-      <label>Upload budget <input type="number" min="1" max="50" step="0.5" value={mbps(s().budgetBps)} onChange={(e) => props.call.changeShare({ budgetBps: Math.round(Number(e.currentTarget.value) * 1_000_000) })} /> Mbps total</label>
-      <label>Per viewer up to <input type="number" min="0.5" max="20" step="0.5" value={mbps(s().ceilingBps)} onChange={(e) => props.call.changeShare({ ceilingBps: Math.round(Number(e.currentTarget.value) * 1_000_000) })} /> Mbps</label>
-      <label class="check"><input type="checkbox" checked={props.call.viewerSettings().jitterBufferTargetMs > 0} onChange={(e) => props.call.setViewerSettings({ jitterBufferTargetMs: e.currentTarget.checked ? LOW_LATENCY_MS : 0 })} /> Low latency when watching others</label>
+      <label>Upload budget <input type="number" min="1" max="50" step="0.5" value={mbps(s().budgetBps)} onChange={(e) => props.call.changeShare({ budgetBps: mbpsToBps(e.currentTarget.value, s().budgetBps, 1, 50) })} /> Mbps total</label>
+      <label>Per viewer up to <input type="number" min="0.5" max="20" step="0.5" value={mbps(s().ceilingBps)} onChange={(e) => props.call.changeShare({ ceilingBps: mbpsToBps(e.currentTarget.value, s().ceilingBps, 0.5, 20) })} /> Mbps</label>
     </div>
   );
 }
 
+// Audio and listening settings. Lives under Mute so it is reachable on phones too, where screen sharing (and its gear) is absent.
 function AudioPanel(props: { call: Call }) {
   const a = () => props.call.audioSettings();
-  const set = (change: Partial<typeof a extends () => infer T ? T : never>) => void props.call.setAudioSettings({ ...a(), ...change });
+  const set = (change: Partial<AudioSettings>) => void props.call.changeAudio(change);
   const label = (d: MediaDeviceInfo, i: number) => d.label || `${d.kind === 'audioinput' ? 'Microphone' : 'Speaker'} ${i + 1}`;
   return (
     <div class="panel">
@@ -210,10 +210,13 @@ function AudioPanel(props: { call: Call }) {
         <label>Speaker <select class="picker" value={a().speakerId} onChange={(e) => set({ speakerId: e.currentTarget.value })}>
           <option value="">Default</option><For each={props.call.devices().speakers}>{(d, i) => <option value={d.deviceId}>{label(d, i())}</option>}</For></select></label>
       </Show>
-      <Show when={!processingIsDefault(a())}><div class="warn">Changing audio processing usually makes you sound worse to others. Turn everything back on if friends complain.</div></Show>
+      <div class={processingIsDefault(a()) ? 'hint' : 'warn'}>
+        {processingIsDefault(a()) ? 'Turning these off usually makes you sound worse to others.' : 'Audio processing is off. Turn everything back on if friends complain.'}
+      </div>
       <label class="check"><input type="checkbox" checked={a().echoCancellation} onChange={(e) => set({ echoCancellation: e.currentTarget.checked })} /> Echo cancellation</label>
       <label class="check"><input type="checkbox" checked={a().noiseSuppression} onChange={(e) => set({ noiseSuppression: e.currentTarget.checked })} /> Noise suppression</label>
       <label class="check"><input type="checkbox" checked={a().autoGainControl} onChange={(e) => set({ autoGainControl: e.currentTarget.checked })} /> Automatic gain</label>
+      <label class="check"><input type="checkbox" checked={props.call.viewerSettings().jitterBufferTargetMs > 0} onChange={(e) => props.call.setViewerSettings({ jitterBufferTargetMs: e.currentTarget.checked ? LOW_LATENCY_MS : 0 })} /> Low latency when watching shares</label>
     </div>
   );
 }

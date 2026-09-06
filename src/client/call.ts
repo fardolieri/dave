@@ -1,11 +1,11 @@
 import { createEffect, createSignal, onCleanup } from 'solid-js';
 import {
-  ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite, perViewerBitrate,
+  ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
 } from '../core/mesh';
 import type { IceServer, Person, ServerMessage, SignalData } from '../core/protocol';
 import {
-  DEFAULT_AUDIO, DEFAULT_SHARE, DEFAULT_VIEWER, applyPreset, contentHint, parseSettings, shareEncoding, trackConstraints, withChange,
-  type AudioSettings, type ShareSettings, type ViewerSettings,
+  SMALL_SCREEN_QUERY, applyPreset, contentHint, parseAudioSettings, parseShareSettings, parseViewerSettings, shareEncoding, trackConstraints, withChange,
+  type AudioSettings, type PresetName, type ShareSettings, type ViewerSettings,
 } from '../core/settings';
 import type { createRoom } from './room';
 import { local } from './storage';
@@ -72,12 +72,17 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   const earlyViewers = new Map<string, number>();
 
   // ---- settings (spec §6.1, §6.3), remembered per browser
-  const [shareSettings, setShareSettingsSignal] = createSignal<ShareSettings>(parseSettings(DEFAULT_SHARE, local.get('shareSettings')));
-  const [audioSettings, setAudioSettingsSignal] = createSignal<AudioSettings>(parseSettings(DEFAULT_AUDIO, local.get('audioSettings')));
-  const [viewerSettings, setViewerSettingsSignal] = createSignal<ViewerSettings>(parseSettings(DEFAULT_VIEWER, local.get('viewerSettings')));
+  /** A setting signal that also persists: [read, write]. */
+  function persisted<T extends object>(key: string, parse: (raw: string | null) => T): [() => T, (next: T) => void] {
+    const [get, set] = createSignal<T>(parse(local.get(key)) as Exclude<T, Function>);
+    return [get, (next) => { set(() => next); local.set(key, JSON.stringify(next)); }];
+  }
+  const [shareSettings, storeShareSettings] = persisted('shareSettings', parseShareSettings);
+  const [audioSettings, storeAudioSettings] = persisted('audioSettings', parseAudioSettings);
+  const [viewerSettings, storeViewerSettings] = persisted('viewerSettings', parseViewerSettings);
   const [devices, setDevices] = createSignal<{ microphones: MediaDeviceInfo[]; speakers: MediaDeviceInfo[] }>({ microphones: [], speakers: [] });
   const canPickSpeaker = typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype;
-  const smallScreen = () => typeof matchMedia !== 'undefined' && matchMedia('(max-width: 700px)').matches;
+  const smallScreen = () => typeof matchMedia !== 'undefined' && matchMedia(SMALL_SCREEN_QUERY).matches;
 
   const peers = new Map<string, Peer>();
   let localStream: MediaStream | null = null;
@@ -106,7 +111,8 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   function microphoneConstraints(): MediaTrackConstraints {
     const a = audioSettings();
     const c: MediaTrackConstraints = { echoCancellation: a.echoCancellation, noiseSuppression: a.noiseSuppression, autoGainControl: a.autoGainControl };
-    if (a.microphoneId) c.deviceId = { exact: a.microphoneId };
+    // `ideal`, not `exact`: a remembered microphone that is unplugged must not lock anyone out of the call.
+    if (a.microphoneId) c.deviceId = { ideal: a.microphoneId };
     return c;
   }
   async function openMicrophone(): Promise<void> {
@@ -136,48 +142,59 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     try { (receiver as RTCRtpReceiver & { jitterBufferTarget: number | null }).jitterBufferTarget = ms > 0 ? ms : null; } catch { /* unsupported */ }
   }
 
-  /** Change audio settings live: processing via constraints, a new microphone via re-capture and replaceTrack, speaker via setSinkId. */
-  async function setAudioSettings(next: AudioSettings): Promise<void> {
+  /**
+   * Change audio settings live: processing via constraints, a new microphone via re-capture and
+   * replaceTrack, speaker via setSinkId. A microphone switch is persisted only once it succeeded;
+   * switches are serialised so a slow one cannot stop a newer track.
+   */
+  let audioChain: Promise<void> = Promise.resolve();
+  function changeAudio(change: Partial<AudioSettings>): Promise<void> {
+    audioChain = audioChain.then(() => changeAudioNow(change)).catch((e) => console.warn('audio settings', e));
+    return audioChain;
+  }
+  async function changeAudioNow(change: Partial<AudioSettings>): Promise<void> {
     const prev = audioSettings();
-    setAudioSettingsSignal(next);
-    local.set('audioSettings', JSON.stringify(next));
+    const next = { ...prev, ...change };
     if (voiceTrack && next.microphoneId !== prev.microphoneId) {
+      storeAudioSettings(next); // so microphoneConstraints() sees the new id
+      let stream: MediaStream;
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: microphoneConstraints() });
-        const track = stream.getAudioTracks()[0];
-        if (track) {
-          track.enabled = !muted();
-          for (const p of peers.values()) void p.tx[SLOT_INDEX.voice]?.sender.replaceTrack(track);
-          voiceTrack.stop();
-          voiceTrack = track;
-          localStream = stream;
-          localAnalyser = analyserFor('me', stream);
-        }
+        stream = await navigator.mediaDevices.getUserMedia({ audio: microphoneConstraints() });
       } catch (e) {
+        storeAudioSettings(prev); // roll back: the old microphone stays live and selected
         console.warn('microphone switch failed', e);
+        return;
       }
-    } else if (voiceTrack) {
-      voiceTrack.applyConstraints(microphoneConstraints()).catch((e) => console.warn('applyConstraints audio', e));
+      const track = stream.getAudioTracks()[0];
+      if (track) {
+        track.enabled = !muted();
+        await Promise.all([...peers.values()].map((p) => p.tx[SLOT_INDEX.voice]?.sender.replaceTrack(track)));
+        voiceTrack.stop();
+        voiceTrack = track;
+        localStream = stream;
+        localAnalyser = analyserFor('me', stream);
+      }
+    } else {
+      storeAudioSettings(next);
+      if (voiceTrack) await voiceTrack.applyConstraints(microphoneConstraints()).catch((e) => console.warn('applyConstraints audio', e));
     }
     if (next.speakerId !== prev.speakerId) for (const p of peers.values()) { void applySink(p.audio); void applySink(p.shareAudio); }
   }
 
   /** Change share settings live: track constraints and content hint on the capture, encodings per Viewer. */
   function setShareSettings(next: ShareSettings): void {
-    setShareSettingsSignal(next);
-    local.set('shareSettings', JSON.stringify(next));
+    storeShareSettings(next);
     if (shareVideo) {
       shareVideo.applyConstraints(trackConstraints(next)).catch((e) => console.warn('applyConstraints share', e));
       shareVideo.contentHint = contentHint(next);
     }
     reapplyShareEncodings();
   }
-  const setPreset = (preset: 'detail' | 'motion') => setShareSettings(applyPreset(shareSettings(), preset));
+  const setPreset = (preset: PresetName) => setShareSettings(applyPreset(shareSettings(), preset));
   const changeShare = (change: Partial<Omit<ShareSettings, 'preset'>>) => setShareSettings(withChange(shareSettings(), change));
 
   function setViewerSettings(next: ViewerSettings): void {
-    setViewerSettingsSignal(next);
-    local.set('viewerSettings', JSON.stringify(next));
+    storeViewerSettings(next);
     for (const p of peers.values()) for (const slot of [SLOT_INDEX.shareVideo, SLOT_INDEX.shareAudio]) { const r = p.tx[slot]?.receiver; if (r) applyJitterTarget(r); }
   }
   function analyserFor(key: string, stream: MediaStream): AnalyserNode {
@@ -658,6 +675,6 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   return {
     inCall, muted, views, speakingSelf, joinError, join, leave, setMuted, myJoinSeq: () => myJoinSeq,
     sharing, shareError, startShare, stopShare, watch, watchOnly, shareStreamOf,
-    shareSettings, setPreset, changeShare, audioSettings, setAudioSettings, viewerSettings, setViewerSettings, devices, refreshDevices, canPickSpeaker,
+    shareSettings, setPreset, changeShare, audioSettings, changeAudio, viewerSettings, setViewerSettings, devices, refreshDevices, canPickSpeaker,
   };
 }
