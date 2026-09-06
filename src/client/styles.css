@@ -53,8 +53,12 @@ code.fp { font-size: 11px; color: var(--dim); }
 }
 
 /* call */
-.plist li { flex-wrap: wrap; }
-.plist .pname { flex: 1; min-width: 0; }
+.plist li { flex-wrap: nowrap; }
+/* The name never wraps: it truncates with an ellipsis while fingerprint and badges keep their width. */
+.plist .pname { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.plist .pname .nm { min-width: 2ch; overflow: hidden; text-overflow: ellipsis; }
+.plist .pname .fp, .plist .pname .new { flex: none; }
+.plist .pflags { flex: none; }
 .plist .pflags { display: flex; gap: 6px; align-items: center; }
 .plist li.lost { opacity: .5; }
 .avatar.speaking { box-shadow: 0 0 0 2px var(--ok); }
@@ -117,4 +121,6 @@ select.picker option::checkmark { order: 1; margin-left: auto; }
 .vol { padding: 2px 6px; font-size: 12px; display: inline-flex; gap: 4px; align-items: center; }
 .vol small { font-size: 10px; }
 .volrow { flex-basis: 100%; display: flex; align-items: center; gap: 8px; padding-left: 36px; }
+.plist li.prow { flex-wrap: wrap; } /* only the volume row may wrap under the name line */
+.plist li.prow > .avatar, .plist li.prow > .pname, .plist li.prow > .pflags { flex-wrap: nowrap; }
 .volrow input[type=range] { flex: 1; accent-color: var(--acc); }
