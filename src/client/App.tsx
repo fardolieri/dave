@@ -127,7 +127,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
         </aside>
         <main class={`main ${sharers().length > 0 ? 'split' : ''}`}>
           <Show when={sharers().length > 0}>
-            <section class="shares" style={`grid-template-columns: repeat(${Math.min(sharers().length, 4)}, 1fr)`}>
+            <section class="shares" style={`grid-template-columns: repeat(${sharers().length}, 1fr)`}>
               <For each={sharers()}>
                 {(p) => (
                   <ShareTile
@@ -187,23 +187,25 @@ function ShareTile(props: { p: Person; isMe: boolean; inCall: boolean; view?: Pe
   const state = () => {
     if (props.isMe) return 'own';
     if (!props.inCall) return 'locked';
+    if (props.view?.conn === 'unreachable') return 'unreachable';
     if (!props.view?.watching) return 'closed';
-    if (props.view.conn === 'unreachable') return 'unreachable';
     return props.view.shareLive ? 'live' : 'opening';
   };
+  const showsVideo = () => state() === 'live' || state() === 'own';
   const goFullscreen = (e: MouseEvent) => {
     e.stopPropagation();
-    props.onFullscreen();
-    video?.requestFullscreen().catch(() => {});
+    props.onFullscreen(); // subscribes to this share if needed and drops the others
+    const el = video as (HTMLVideoElement & { webkitRequestFullscreen?: () => Promise<void> }) | undefined;
+    (el?.requestFullscreen?.() ?? el?.webkitRequestFullscreen?.())?.catch(() => {});
   };
   return (
     <div class={`share share-${state()}`} onClick={() => { if (!props.isMe && props.inCall) props.onToggle(); }}>
       <div class="share-head">
         <span>{props.isMe ? 'Your screen' : `${props.p.name}'s screen`}</span>
-        <Show when={props.isMe ? undefined : props.view}>{(v) => <span class={`conn conn-${v().conn}`}><i />{CONN_LABEL[v().conn]}</span>}</Show>
-        <Show when={state() === 'live' || state() === 'own'}><button class="fs" title="Fullscreen" onClick={goFullscreen}>⛶</button></Show>
+        <Show when={!props.isMe && props.view ? props.view : undefined}>{(v) => <span class={`conn conn-${v().conn}`}><i />{CONN_LABEL[v().conn]}</span>}</Show>
+        <Show when={state() !== 'locked' && state() !== 'unreachable'}><button class="fs" title="Fullscreen" onClick={goFullscreen}>⛶</button></Show>
       </div>
-      <video ref={video} autoplay playsinline muted hidden={state() !== 'live' && state() !== 'own'} />
+      <video ref={video} autoplay playsinline muted hidden={!showsVideo()} />
       <Switch>
         <Match when={state() === 'locked'}><div class="share-note">Join to watch</div></Match>
         <Match when={state() === 'closed'}><div class="share-note">Click to watch</div></Match>

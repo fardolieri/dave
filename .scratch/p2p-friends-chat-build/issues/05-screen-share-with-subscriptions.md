@@ -4,12 +4,12 @@
 
 **Blocked by:** 04 Join a call with voice.
 
-**Status:** in-progress (branch `build/05-shares`, under review)
+**Status:** done (2026-09-06), awaiting deploy
 
 - [x] Share screen calls the display picker with audio requested, system audio included where offered, own tab excluded, surface switching allowed; the track's end (button or browser control) stops the share and announces it.
 - [x] Start is `replaceTrack(track)` on the share transceivers of every connection, stop is `replaceTrack(null)`; no offer/answer during a call; one share per participant.
 - [x] After attaching, the sharer deactivates the share encodings for every peer that has not subscribed, waiting until each sender has encodings (retry every 100 ms).
-- [x] Subscribe and unsubscribe messages toggle `encodings[0].active` on the sharer's connection to that viewer; bitrate to unsubscribed peers measured at zero in a test with stats.
+- [x] Subscribe and unsubscribe messages toggle `encodings[0].active` on the sharer's connection to that viewer; inbound video bytes at non-subscribed participants measured at zero by the browser driver (not by a unit test).
 - [x] Main column splits when at least one share exists: equal-width tiles in one row above the chat; chat fills the column otherwise. Tiles render from signaling state, not track events.
 - [x] Tile states: join to watch (visitor), click to watch, spinner until first frame, live with bitrate and direct or relayed caption, own share preview, unreachable dimmed.
 - [x] Fullscreen button per tile; entering fullscreen unsubscribes all other shares; leaving does nothing automatic.
@@ -24,3 +24,4 @@
 - Fullscreen: the button calls `watchOnly` (unsubscribes every other share) before `requestFullscreen`; leaving fullscreen does nothing. Not exercised headlessly (needs a user gesture); reviewed only.
 - Share audio: requested with `systemAudio: 'include'`; attached to the third transceiver when the browser provides a track. Not exercised headlessly.
 - Tests in this repo do not exercise WebRTC itself; the mesh spike and the browser driver do.
+- Code review (two-axis) addressed: the deactivation retry no longer gives up (it keeps trying every 100 ms while the share and connection live) and waits for both share replaceTrack calls; a viewer's subscription resets when the sharer's presence flag drops, so a restarted share shows "click to watch" instead of a stuck spinner; the budget re-splits when a viewer's connection closes; share audio plays through its own element; the leave path stops sharing without announcing (the server clears the flag); stop and start cannot interleave; setParameters calls are serialised per connection; a subscribe arriving before the connection exists is remembered; remote share streams are held in a signal so rebuilt connections refresh the tile; unreachable dims a tile whether or not you were watching; fullscreen is available on any openable tile and subscribes first; kbps is rated over at least 500 ms; the core shares one participant lookup. Driver rerun: identical results.

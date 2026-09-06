@@ -3,7 +3,7 @@
 // Everything here is plain data plus WebCrypto, so it survives hibernation.
 // No Cloudflare, Node, or DOM imports; scripts/check-core-isolation.mjs enforces that.
 import { fromBase64Url, fingerprint, randomNonce, toBase64Url, verifyAnswer } from './identity';
-import { CLOSE_AUTH_FAILED, parseClientMessage, type IceServer, type Person, type ServerMessage } from './protocol';
+import { CLOSE_AUTH_FAILED, parseClientMessage, type ClientMessage, type IceServer, type Person, type ServerMessage } from './protocol';
 import { newBucket, takeToken, type Bucket } from './ratelimit';
 import { nextJoinSeq } from './mesh';
 
@@ -107,7 +107,11 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
   const taken = takeToken(state.bucket, ctx.now);
   const next: SocketState = { ...state, bucket: taken.bucket };
   if (!taken.ok) return { state: next, replies: [{ t: 'error', reason: 'rate limited', ref: msg.t === 'invalid' ? undefined : msg.t }] };
-  const notInCall = (ref: 'ice' | 'signal' | 'share' | 'subscribe'): Outcome => ({ state: next, replies: [{ t: 'error', reason: 'not in the call', ref }] });
+  const notInCall = (ref: ClientMessage['t']): Outcome => ({ state: next, replies: [{ t: 'error', reason: 'not in the call', ref }] });
+  const participantByKey = (key: string): Person | undefined => {
+    for (const p of ctx.others) if (p.publicKey === key) return p.role === 'participant' ? p : undefined;
+    return undefined;
+  };
 
   switch (msg.t) {
     case 'invalid':
@@ -159,16 +163,12 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     }
     case 'subscribe': {
       if (state.person.role !== 'participant') return notInCall('subscribe');
-      let target: Person | undefined;
-      for (const p of ctx.others) if (p.publicKey === msg.to) { target = p; break; }
-      if (!target || target.role !== 'participant') return { state: next, replies: [{ t: 'error', reason: 'that participant is not in the call', ref: 'subscribe' }] };
+      if (!participantByKey(msg.to)) return { state: next, replies: [{ t: 'error', reason: 'that participant is not in the call', ref: 'subscribe' }] };
       return { state: next, replies: [], relay: { to: msg.to, message: { t: 'subscribe', from: state.person.publicKey, on: msg.on } } };
     }
     case 'signal': {
       if (state.person.role !== 'participant') return notInCall('signal');
-      let target: Person | undefined;
-      for (const p of ctx.others) if (p.publicKey === msg.to) { target = p; break; }
-      if (!target || target.role !== 'participant') return { state: next, replies: [{ t: 'error', reason: 'that participant is not in the call', ref: 'signal' }] };
+      if (!participantByKey(msg.to)) return { state: next, replies: [{ t: 'error', reason: 'that participant is not in the call', ref: 'signal' }] };
       return { state: next, replies: [], relay: { to: msg.to, message: { t: 'signal', from: state.person.publicKey, data: msg.data } } };
     }
   }
