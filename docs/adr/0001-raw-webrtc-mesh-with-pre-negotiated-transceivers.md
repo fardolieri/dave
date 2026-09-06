@@ -24,4 +24,6 @@ We need voice and multiple screen shares between up to five (tolerate eight) fri
 - All in-call control messages (subscribe, mute state, speaking, share announcements) travel over the server WebSocket. Data channels are not used.
 - TURN credentials are minted server-side and returned in the reply to "join call" with the provider's maximum TTL; refreshed on rejoin or, before an ICE restart, via `setConfiguration`.
 - The signaling core is written against Web-standard WebSocket and Request/Response APIs with a thin adapter per runtime, so hosting can choose between Cloudflare Durable Objects and a Node or Bun process freely.
-- We own the perfect-negotiation loop, ICE restart, and reconnection logic. A mesh spike across Firefox and Chromium validates the negotiation before the spec is assembled.
+- Only the offering side pre-adds the three transceivers. The answering side adopts the ones the offer creates, flips them to send-receive, and attaches its tracks before answering. JSEP associates offered lines only with transceivers created by `addTrack`, so pre-adding on both sides yields six transceivers and two rounds (found in the mesh spike, 2026-09-06).
+- Deactivating a share encoding for a peer that just joined must wait until the answer is applied; before that the sender has no encodings and `setParameters` throws.
+- We own the perfect-negotiation loop, ICE restart, and reconnection logic. The mesh spike (branch `prototype/mesh-spike`) validated all of the above on Firefox and Chromium, including 114 forced offer collisions with zero errors.
