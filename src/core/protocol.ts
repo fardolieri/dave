@@ -38,7 +38,11 @@ export type ClientMessage =
   /** Point-to-point signaling to another participant, by public key. */
   | { t: 'signal'; to: string; data: SignalData }
   /** Ask for fresh TURN credentials (before an ICE restart with expired ones). */
-  | { t: 'ice' };
+  | { t: 'ice' }
+  /** Announce that my share started or stopped; everyone learns through the presence flag. */
+  | { t: 'share'; on: boolean }
+  /** Ask a sharer to start or stop sending me their share. */
+  | { t: 'subscribe'; to: string; on: boolean };
 
 export type ServerMessage =
   | { t: 'challenge'; nonce: string }
@@ -50,6 +54,7 @@ export type ServerMessage =
   /** A participant left on purpose; peers close that connection at once. A vanished socket only drops out of presence. */
   | { t: 'left'; publicKey: string }
   | { t: 'signal'; from: string; data: SignalData }
+  | { t: 'subscribe'; from: string; on: boolean }
   | { t: 'ice'; iceServers: IceServer[]; issuedAt: number }
   | { t: 'pong' }
   /** `ref` names the client message type that was rejected, when known, so the client can attribute it. */
@@ -108,6 +113,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | Invalid {
       return typeof m.muted === 'boolean' ? { t: 'mute', muted: m.muted } : invalid('unrecognised message');
     case 'ice':
       return { t: 'ice' };
+    case 'share':
+      return typeof m.on === 'boolean' ? { t: 'share', on: m.on } : invalid('unrecognised message');
+    case 'subscribe':
+      return b64(m.to) && typeof m.on === 'boolean' ? { t: 'subscribe', to: m.to, on: m.on } : invalid('unrecognised message');
     case 'signal': {
       if (!b64(m.to) || typeof m.data !== 'object' || m.data === null) return invalid('unrecognised message');
       const d = m.data as Record<string, unknown>;

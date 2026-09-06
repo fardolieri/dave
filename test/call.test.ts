@@ -129,3 +129,41 @@ describe('sweep', () => {
     expect(await a.closed).toBe(CLOSE_SILENT);
   });
 });
+
+describe('shares', () => {
+  it('share on/off travels through the presence flag and subscribe is relayed to the sharer', async () => {
+    const a = await attach('Alice');
+    const b = await attach('Bob');
+    send(a, { t: 'join', muted: false }); await a.next((m) => m.t === 'call');
+    send(b, { t: 'join', muted: false }); await b.next((m) => m.t === 'call');
+    send(a, { t: 'share', on: true });
+    const snap = await b.next((m) => m.t === 'presence' && inCall(m).some((p) => p.name === 'Alice' && p.sharing));
+    expect(inCall(snap).find((p) => p.name === 'Alice')!.sharing).toBe(true);
+    send(b, { t: 'subscribe', to: a.you.publicKey, on: true });
+    expect(await a.next((m) => m.t === 'subscribe')).toEqual({ t: 'subscribe', from: b.you.publicKey, on: true });
+    send(a, { t: 'share', on: false });
+    await b.next((m) => m.t === 'presence' && inCall(m).some((p) => p.name === 'Alice' && !p.sharing));
+    a.ws.close(1000); b.ws.close(1000);
+  });
+
+  it('leaving clears the sharing flag', async () => {
+    const a = await attach('Alice');
+    const b = await attach('Bob');
+    send(a, { t: 'join', muted: false }); await a.next((m) => m.t === 'call');
+    send(a, { t: 'share', on: true });
+    await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => p.name === 'Alice' && p.sharing));
+    send(a, { t: 'leave' });
+    const snap = await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => p.name === 'Alice' && p.role === 'visitor'));
+    expect((snap as { people: Person[] }).people.find((p) => p.name === 'Alice')!.sharing).toBe(false);
+    a.ws.close(1000); b.ws.close(1000);
+  });
+
+  it('visitors cannot share or subscribe', async () => {
+    const v = await attach('Visitor');
+    send(v, { t: 'share', on: true });
+    expect(await v.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'not in the call', ref: 'share' });
+    send(v, { t: 'subscribe', to: v.you.publicKey, on: true });
+    expect(await v.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'not in the call', ref: 'subscribe' });
+    v.ws.close(1000);
+  });
+});

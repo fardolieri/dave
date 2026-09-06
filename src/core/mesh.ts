@@ -31,3 +31,13 @@ export const ICE_REFRESH_AFTER_MS = 11 * 3600 * 1000;
 /** ICE disconnected: wait this long before restarting ICE. Failed: restart with this backoff. */
 export const ICE_DISCONNECTED_GRACE_MS = 5_000;
 export const ICE_RESTART_BACKOFF_MS = [2_000, 5_000, 10_000, 30_000] as const;
+
+/** Sharer upload budget split across active viewers (spec §6.4). Values in bits per second. */
+export const SHARE_BUDGET_BPS = 8_000_000;
+export const SHARE_CEILING_BPS = 2_500_000;
+export const SHARE_FLOOR_BPS = 1_000_000;
+
+export function perViewerBitrate(activeViewers: number, budget = SHARE_BUDGET_BPS, ceiling = SHARE_CEILING_BPS, floor = SHARE_FLOOR_BPS): number {
+  if (activeViewers <= 0) return ceiling;
+  return Math.max(floor, Math.min(ceiling, Math.floor(budget / activeViewers)));
+}

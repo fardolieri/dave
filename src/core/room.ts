@@ -107,7 +107,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
   const taken = takeToken(state.bucket, ctx.now);
   const next: SocketState = { ...state, bucket: taken.bucket };
   if (!taken.ok) return { state: next, replies: [{ t: 'error', reason: 'rate limited', ref: msg.t === 'invalid' ? undefined : msg.t }] };
-  const notInCall = (ref: 'ice' | 'signal'): Outcome => ({ state: next, replies: [{ t: 'error', reason: 'not in the call', ref }] });
+  const notInCall = (ref: 'ice' | 'signal' | 'share' | 'subscribe'): Outcome => ({ state: next, replies: [{ t: 'error', reason: 'not in the call', ref }] });
 
   switch (msg.t) {
     case 'invalid':
@@ -151,6 +151,18 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       if (state.person.role !== 'participant') return notInCall('ice');
       const now = ctx.now;
       return { state: next, replies: [], after: async () => { const { iceServers, turnUser } = await ctx.mintIce(); return { replies: [{ t: 'ice', iceServers, issuedAt: now }], patch: turnUser ? { turnUser } : {} }; } };
+    }
+    case 'share': {
+      if (state.person.role !== 'participant') return notInCall('share');
+      if (state.person.sharing === msg.on) return { state: next, replies: [] };
+      return { state: { ...next, person: { ...state.person, sharing: msg.on } }, replies: [], presenceChanged: true };
+    }
+    case 'subscribe': {
+      if (state.person.role !== 'participant') return notInCall('subscribe');
+      let target: Person | undefined;
+      for (const p of ctx.others) if (p.publicKey === msg.to) { target = p; break; }
+      if (!target || target.role !== 'participant') return { state: next, replies: [{ t: 'error', reason: 'that participant is not in the call', ref: 'subscribe' }] };
+      return { state: next, replies: [], relay: { to: msg.to, message: { t: 'subscribe', from: state.person.publicKey, on: msg.on } } };
     }
     case 'signal': {
       if (state.person.role !== 'participant') return notInCall('signal');

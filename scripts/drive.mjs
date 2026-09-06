@@ -13,6 +13,7 @@ const CHROME = process.env.CHROME ?? `${process.env.HOME}/.cache/ms-playwright/c
 const args = process.argv.slice(2);
 const holdArg = args.find((a) => a.startsWith('--hold='));
 const joinAll = args.includes('--join');
+const shareToo = args.includes('--share');
 const hold = holdArg ? Number(holdArg.slice(7)) : 0;
 const [url, secret, ...names] = args.filter((a) => !a.startsWith('--'));
 if (!url || !secret || names.length === 0) { console.error('usage: drive.mjs <url> <secret> <name> [name2 ...]'); process.exit(2); }
@@ -73,6 +74,38 @@ try {
       }
       for (const b of browsers) console.log(`[${b.name}] call after mute: ${await b.text('.side ul:nth-of-type(2) li')} | heard ringing: ${[...seen.get(b.name)].join(', ') || 'nobody'}`);
       for (const b of browsers) console.log(`[${b.name}] mesh: ${JSON.stringify(await b.eval(`window.__dave?.peers() ?? 'no debug hook'`))}`);
+    }
+    if (shareToo && browsers.length > 1) {
+      const [sharer, viewer, ...rest] = browsers;
+      await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Share screen')?.click(); 'share'`);
+      await sleep(3000);
+      for (const b of browsers) console.log(`[${b.name}] tiles: ${await b.text('.share') || '(none)'}`);
+      console.log(`[${sharer.name}] mesh before anyone watches: ${JSON.stringify(await sharer.eval(`window.__dave?.peers().map(p => ({ name: p.name, subscribedToMe: p.subscribedToMe }))`))}`);
+      const bytesBefore = Object.fromEntries(await Promise.all(browsers.slice(1).map(async (b) => [b.name, (await b.eval(`window.__dave?.peers().find(p => p.name === ${JSON.stringify(sharer.name)})?.videoBytesIn ?? -1`))])));
+      await viewer.eval(`[...document.querySelectorAll('.share')].find(t => t.textContent.includes(${JSON.stringify(sharer.name)}))?.click(); 'watch'`);
+      await sleep(5000);
+      const bytesAfter = Object.fromEntries(await Promise.all(browsers.slice(1).map(async (b) => [b.name, (await b.eval(`window.__dave?.peers().find(p => p.name === ${JSON.stringify(sharer.name)})?.videoBytesIn ?? -1`))])));
+      console.log(`share bytes before/after ${viewer.name} clicked: ${JSON.stringify({ before: bytesBefore, after: bytesAfter })}`);
+      console.log(`[${viewer.name}] tile now: ${await viewer.text('.share')}`);
+      for (const b of rest) console.log(`[${b.name}] tile (never subscribed): ${await b.text('.share')}`);
+      console.log(`[${sharer.name}] mesh after: ${JSON.stringify(await sharer.eval(`window.__dave?.peers().map(p => ({ name: p.name, subscribedToMe: p.subscribedToMe }))`))}`);
+      if (rest[0]) {
+        // Second sharer: the viewer shares too; the third browser watches both, then drops one.
+        const third = rest[0];
+        await viewer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Share screen')?.click(); 'share2'`);
+        await sleep(2500);
+        await third.eval(`[...document.querySelectorAll('.share')].forEach(t => t.click()); 'watch both'`);
+        await sleep(5000);
+        console.log(`[${third.name}] watching both: ${await third.text('.share')}`);
+        const b1 = await third.eval(`Object.fromEntries(window.__dave.peers().map(p => [p.name, p.videoBytesIn]))`);
+        await third.eval(`[...document.querySelectorAll('.share')].find(t => t.textContent.includes(${JSON.stringify(sharer.name)}))?.click(); 'unwatch first'`);
+        await sleep(4000);
+        const b2 = await third.eval(`Object.fromEntries(window.__dave.peers().map(p => [p.name, p.videoBytesIn]))`);
+        await sleep(3000);
+        const b3 = await third.eval(`Object.fromEntries(window.__dave.peers().map(p => [p.name, p.videoBytesIn]))`);
+        console.log(`[${third.name}] bytes at unwatch of ${sharer.name}: ${JSON.stringify(b1)} -> ${JSON.stringify(b2)} -> ${JSON.stringify(b3)} (first should stop growing, second keeps growing)`);
+        console.log(`[${third.name}] tiles after unwatch: ${await third.text('.share')}`);
+      }
     }
     const last = browsers[browsers.length - 1];
     if (browsers.length > 1) {

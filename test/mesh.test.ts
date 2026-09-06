@@ -48,3 +48,15 @@ describe('turn helpers', () => {
     expect(turnRevokeRequest('k', 't', 'a b').url).toBe('https://rtc.live.cloudflare.com/v1/turn/keys/k/credentials/a%20b/revoke');
   });
 });
+
+describe('share bandwidth rule', () => {
+  it('splits the budget with a ceiling and a floor', async () => {
+    const { perViewerBitrate } = await import('../src/core/mesh');
+    expect(perViewerBitrate(0)).toBe(2_500_000);
+    expect(perViewerBitrate(1)).toBe(2_500_000);
+    expect(perViewerBitrate(3)).toBe(2_500_000); // 8/3 Mbps capped
+    expect(perViewerBitrate(4)).toBe(2_000_000);
+    expect(perViewerBitrate(7)).toBe(1_142_857);
+    expect(perViewerBitrate(20)).toBe(1_000_000);
+  });
+});

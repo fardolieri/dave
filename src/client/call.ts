@@ -1,6 +1,6 @@
 import { createEffect, createSignal, onCleanup } from 'solid-js';
 import {
-  ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
+  ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite, perViewerBitrate,
 } from '../core/mesh';
 import type { IceServer, Person, ServerMessage, SignalData } from '../core/protocol';
 import type { createRoom } from './room';
@@ -9,7 +9,11 @@ import { local } from './storage';
 export type ConnState = 'connecting' | 'direct' | 'relayed' | 'reconnecting' | 'unreachable';
 
 /** What the UI shows per remote participant. Plain data mirrored from WebRTC events (spec §2.1). */
-export type PeerView = { publicKey: string; name: string; conn: ConnState; speaking: boolean; serverLost: boolean; audioBytesIn: number };
+export type PeerView = {
+  publicKey: string; name: string; conn: ConnState; speaking: boolean; serverLost: boolean; audioBytesIn: number;
+  /** Their share as I see it: whether I asked for it, whether frames have arrived, and the inbound rate. */
+  watching: boolean; shareLive: boolean; shareKbps: number;
+};
 
 type Peer = {
   key: string;
@@ -27,6 +31,11 @@ type Peer = {
   restarts: number;
   graceTimer?: ReturnType<typeof setTimeout>;
   view: PeerView;
+  /** They asked to receive my share. */
+  subscribedToMe: boolean;
+  remoteShare: MediaStream;
+  videoBytesIn: number;
+  videoBytesAt: number;
 };
 
 const SPEAK_THRESHOLD = 0.02;
@@ -43,6 +52,10 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   const [views, setViews] = createSignal<PeerView[]>([]);
   const [speakingSelf, setSpeakingSelf] = createSignal(false);
   const [joinError, setJoinError] = createSignal<string | null>(null);
+  const [sharing, setSharing] = createSignal<MediaStream | null>(null);
+  const [shareError, setShareError] = createSignal<string | null>(null);
+  let shareVideo: MediaStreamTrack | null = null;
+  let shareAudio: MediaStreamTrack | null = null;
 
   const peers = new Map<string, Peer>();
   let localStream: MediaStream | null = null;
@@ -117,7 +130,8 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     audio.autoplay = true;
     const peer: Peer = {
       key, name, pc, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, restarts: 0,
-      view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0 },
+      view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0 },
+      subscribedToMe: false, remoteShare: new MediaStream(), videoBytesIn: 0, videoBytesAt: 0,
     };
     if (initiator) {
       // Only the offering side pre-adds transceivers (ADR 0001, spike finding).
@@ -146,6 +160,14 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
         audio.srcObject = stream;
         audio.play().catch(() => { /* needs a gesture on some browsers; the join click normally suffices */ });
         if (audioCtx) peer.analyser = analyserFor(key, stream);
+      } else if (slot === SLOT_INDEX.shareVideo || slot === SLOT_INDEX.shareAudio) {
+        // Share tracks exist from join time, muted and empty until the sharer sends. "Live" follows the
+        // unmute/mute events, which is how a viewer knows frames are actually arriving (spec §6.5).
+        peer.remoteShare.addTrack(track);
+        if (slot === SLOT_INDEX.shareVideo) {
+          track.onunmute = () => setView(peer, { shareLive: true });
+          track.onmute = () => setView(peer, { shareLive: false, shareKbps: 0 });
+        }
       }
     };
     peers.set(key, peer);
@@ -156,6 +178,38 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   function attachLocalTracks(peer: Peer): void {
     const voiceSender = peer.tx[SLOT_INDEX.voice]?.sender;
     if (voiceSender && voiceTrack) voiceSender.replaceTrack(voiceTrack).catch((e) => console.warn('replaceTrack voice', e));
+    if (shareVideo) {
+      // A share flows to nobody until they subscribe: deactivate right after attaching (waits for the answer).
+      peer.tx[SLOT_INDEX.shareVideo]?.sender.replaceTrack(shareVideo).then(() => applyShareEncoding(peer)).catch((e) => console.warn('replaceTrack share video', e));
+      if (shareAudio) peer.tx[SLOT_INDEX.shareAudio]?.sender.replaceTrack(shareAudio).catch((e) => console.warn('replaceTrack share audio', e));
+    }
+  }
+
+  /** Sender-side toggle for one viewer: active follows their subscription, bitrate follows the budget rule (spec §6.4). Retries until the answer has produced encodings. */
+  async function applyShareEncoding(peer: Peer, attempt = 0): Promise<void> {
+    if (!shareVideo || peer.pc.connectionState === 'closed') return;
+    const viewers = [...peers.values()].filter((p) => p.subscribedToMe).length;
+    for (const slot of [SLOT_INDEX.shareVideo, SLOT_INDEX.shareAudio]) {
+      const sender = peer.tx[slot]?.sender;
+      if (!sender?.track) continue;
+      const params = sender.getParameters();
+      if (!params.encodings?.length) {
+        if (attempt < 30) setTimeout(() => void applyShareEncoding(peer, attempt + 1), 100);
+        return;
+      }
+      params.encodings[0]!.active = peer.subscribedToMe;
+      if (slot === SLOT_INDEX.shareVideo) params.encodings[0]!.maxBitrate = perViewerBitrate(viewers);
+      try {
+        await sender.setParameters(params);
+      } catch (e) {
+        console.warn('setParameters share', e);
+      }
+    }
+  }
+
+  /** Re-apply the budget split to every current viewer when the viewer set changes. */
+  function reapplyShareEncodings(): void {
+    for (const p of peers.values()) if (p.subscribedToMe) void applyShareEncoding(p);
   }
 
   async function onSignal(from: string, data: SignalData): Promise<void> {
@@ -240,8 +294,21 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     if (peer.pc.connectionState === 'closed') return;
     const st = await peer.pc.getStats();
     let audioBytesIn = 0;
-    st.forEach((r) => { if (r.type === 'inbound-rtp' && (r as RTCInboundRtpStreamStats).kind === 'audio') audioBytesIn += (r as RTCInboundRtpStreamStats).bytesReceived ?? 0; });
+    let videoBytesIn = 0;
+    st.forEach((r) => {
+      if (r.type !== 'inbound-rtp') return;
+      const rtp = r as RTCInboundRtpStreamStats;
+      if (rtp.kind === 'audio') audioBytesIn += rtp.bytesReceived ?? 0;
+      if (rtp.kind === 'video') videoBytesIn += rtp.bytesReceived ?? 0;
+    });
     if (audioBytesIn !== peer.view.audioBytesIn) peer.view.audioBytesIn = audioBytesIn;
+    const now = Date.now();
+    if (peer.videoBytesAt) {
+      const kbps = Math.round(((videoBytesIn - peer.videoBytesIn) * 8) / Math.max(1, now - peer.videoBytesAt));
+      if (kbps !== peer.view.shareKbps && peer.view.shareLive) setView(peer, { shareKbps: kbps });
+    }
+    peer.videoBytesIn = videoBytesIn;
+    peer.videoBytesAt = now;
     let pair: RTCIceCandidatePairStats | undefined;
     st.forEach((r) => { if (r.type === 'transport' && (r as RTCTransportStats).selectedCandidatePairId) pair = st.get((r as RTCTransportStats).selectedCandidatePairId!) as RTCIceCandidatePairStats; });
     if (!pair) st.forEach((r) => { if (r.type === 'candidate-pair' && (r as RTCIceCandidatePairStats).state === 'succeeded' && (r as RTCIceCandidatePairStats & { selected?: boolean }).selected) pair = r as RTCIceCandidatePairStats; });
@@ -323,8 +390,74 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       case 'ice': pending.get('ice')?.(m); return;
       case 'signal': void onSignal(m.from, m.data); return;
       case 'left': closePeer(m.publicKey); return;
+      case 'subscribe': {
+        const peer = peers.get(m.from);
+        if (!peer) return;
+        peer.subscribedToMe = m.on;
+        reapplyShareEncodings();
+        if (!m.on) void applyShareEncoding(peer); // the one leaving must be deactivated too
+        return;
+      }
     }
   });
+
+  // ---- shares (spec §6.2, §6.5)
+  async function startShare(): Promise<void> {
+    if (!inCall() || shareVideo) return;
+    setShareError(null);
+    let stream: MediaStream;
+    try {
+      const constraints: DisplayMediaStreamOptions & Record<string, unknown> = {
+        video: { frameRate: { ideal: 30, max: 30 } },
+        audio: true,
+        systemAudio: 'include',
+        selfBrowserSurface: 'exclude',
+        surfaceSwitching: 'include',
+      };
+      stream = await navigator.mediaDevices.getDisplayMedia(constraints);
+    } catch (e) {
+      if (!(e instanceof Error && e.name === 'NotAllowedError')) setShareError(`Could not start sharing: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    shareVideo = stream.getVideoTracks()[0] ?? null;
+    shareAudio = stream.getAudioTracks()[0] ?? null;
+    if (!shareVideo) return;
+    shareVideo.contentHint = 'detail';
+    shareVideo.onended = () => void stopShare(); // the browser's own "stop sharing" control
+    for (const peer of peers.values()) attachLocalTracks(peer);
+    setSharing(stream);
+    room.send({ t: 'share', on: true });
+  }
+
+  async function stopShare(): Promise<void> {
+    if (!shareVideo) return;
+    shareVideo.stop();
+    shareAudio?.stop();
+    shareVideo = null;
+    shareAudio = null;
+    for (const peer of peers.values()) {
+      peer.subscribedToMe = false;
+      await peer.tx[SLOT_INDEX.shareVideo]?.sender.replaceTrack(null).catch(() => {});
+      await peer.tx[SLOT_INDEX.shareAudio]?.sender.replaceTrack(null).catch(() => {});
+    }
+    setSharing(null);
+    room.send({ t: 'share', on: false });
+  }
+
+  /** Viewer side: ask the sharer to start or stop sending me their share. */
+  function watch(key: string, on: boolean): void {
+    const peer = peers.get(key);
+    if (!peer || peer.view.watching === on) return;
+    setView(peer, { watching: on, shareKbps: 0 });
+    room.send({ t: 'subscribe', to: key, on });
+  }
+
+  /** Fullscreen on one share unsubscribes every other (spec §6.5); leaving fullscreen does nothing. */
+  function watchOnly(key: string): void {
+    for (const p of peers.values()) if (p.key !== key && p.view.watching) watch(p.key, false);
+  }
+
+  const shareStreamOf = (key: string): MediaStream | undefined => peers.get(key)?.remoteShare;
 
   // ---- actions
   let joining = false;
@@ -350,6 +483,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
 
   function leave(): void {
     if (!inCall()) return;
+    void stopShare();
     room.send({ t: 'leave' });
     for (const key of [...peers.keys()]) closePeer(key);
     setInCall(false);
@@ -379,9 +513,9 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   if (import.meta.env.DEV) {
     // Dev aid for scripts/drive.mjs: inspect the mesh from the DevTools protocol. Absent in production builds.
     (window as unknown as { __dave?: unknown }).__dave = {
-      peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, audioBytesIn: p.view.audioBytesIn, transceivers: p.pc.getTransceivers().length })),
+      peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, audioBytesIn: p.view.audioBytesIn, videoBytesIn: p.videoBytesIn, watching: p.view.watching, shareLive: p.view.shareLive, subscribedToMe: p.subscribedToMe, transceivers: p.pc.getTransceivers().length })),
     };
   }
 
-  return { inCall, muted, views, speakingSelf, joinError, join, leave, setMuted, myJoinSeq: () => myJoinSeq };
+  return { inCall, muted, views, speakingSelf, joinError, join, leave, setMuted, myJoinSeq: () => myJoinSeq, sharing, shareError, startShare, stopShare, watch, watchOnly, shareStreamOf };
 }

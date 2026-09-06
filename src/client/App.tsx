@@ -84,6 +84,9 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
   });
   const viewOf = (key: string): PeerView | undefined => call.views().find((v) => v.publicKey === key);
   const callExists = () => inCallList().others.length > 0 || inCallList().self !== undefined;
+  // Sharers, from presence (tiles render from signaling state, never from track events).
+  const sharers = createMemo(() => room.people().filter((p) => p.role === 'participant' && p.sharing));
+  const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
   const clash = createMemo(() => room.people().some((p) => p.publicKey !== me() && p.name === props.name));
   const connected = () => room.status().kind === 'connected';
 
@@ -107,18 +110,39 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
             <Show when={!call.inCall()} fallback={
               <>
                 <button class={call.muted() ? 'on' : ''} onClick={() => call.setMuted(!call.muted())}>{call.muted() ? 'Unmute' : 'Mute'}</button>
+                <Show when={canShare} fallback={<div class="hint">Screen sharing is not available on this device</div>}>
+                  <button class={call.sharing() ? 'on' : ''} onClick={() => void (call.sharing() ? call.stopShare() : call.startShare())}>{call.sharing() ? 'Stop sharing' : 'Share screen'}</button>
+                </Show>
                 <button class="leave" onClick={call.leave}>Leave</button>
               </>
             }>
               <button class="join" disabled={!connected()} onClick={() => void call.join()}>Join</button>
             </Show>
             <Show when={call.joinError()}>{(e) => <div class="warn">{e()}</div>}</Show>
+            <Show when={call.shareError()}>{(e) => <div class="warn">{e()}</div>}</Show>
           </div>
           <Show when={clash()}>
             <div class="warn">Someone else here is also called {props.name}. Your fingerprint <code>{props.identity.fingerprint}</code> tells you apart.</div>
           </Show>
         </aside>
-        <main class="main">
+        <main class={`main ${sharers().length > 0 ? 'split' : ''}`}>
+          <Show when={sharers().length > 0}>
+            <section class="shares" style={`grid-template-columns: repeat(${Math.min(sharers().length, 4)}, 1fr)`}>
+              <For each={sharers()}>
+                {(p) => (
+                  <ShareTile
+                    p={p}
+                    isMe={p.publicKey === me()}
+                    inCall={call.inCall()}
+                    view={viewOf(p.publicKey)}
+                    stream={p.publicKey === me() ? call.sharing() ?? undefined : call.shareStreamOf(p.publicKey)}
+                    onToggle={() => call.watch(p.publicKey, !viewOf(p.publicKey)?.watching)}
+                    onFullscreen={() => call.watchOnly(p.publicKey)}
+                  />
+                )}
+              </For>
+            </section>
+          </Show>
           <Chat lines={room.lines()} connected={connected()} onSend={room.sendText} />
         </main>
       </div>
@@ -149,9 +173,46 @@ function ParticipantRow(props: { p: Person; isMe: boolean; view?: PeerView; spea
       <span class="pname">{props.p.name}{props.isMe ? ' (you)' : ''} <code class="fp">{props.p.fingerprint}</code></span>
       <span class="pflags">
         <Show when={props.p.muted}><em>muted</em></Show>
+        <Show when={props.p.sharing}><em>sharing</em></Show>
         <Show when={props.view}>{(v) => <span class={`conn conn-${v().conn}`} title={CONN_LABEL[v().conn]}><i />{CONN_LABEL[v().conn]}</span>}</Show>
       </span>
     </li>
+  );
+}
+
+function ShareTile(props: { p: Person; isMe: boolean; inCall: boolean; view?: PeerView; stream?: MediaStream; onToggle: () => void; onFullscreen: () => void }) {
+  let video: HTMLVideoElement | undefined;
+  // Mirror the stream into the element; never read state off the media object in JSX (spec §2.1).
+  createEffect(() => props.stream, (stream) => { if (video && video.srcObject !== (stream ?? null)) video.srcObject = stream ?? null; });
+  const state = () => {
+    if (props.isMe) return 'own';
+    if (!props.inCall) return 'locked';
+    if (!props.view?.watching) return 'closed';
+    if (props.view.conn === 'unreachable') return 'unreachable';
+    return props.view.shareLive ? 'live' : 'opening';
+  };
+  const goFullscreen = (e: MouseEvent) => {
+    e.stopPropagation();
+    props.onFullscreen();
+    video?.requestFullscreen().catch(() => {});
+  };
+  return (
+    <div class={`share share-${state()}`} onClick={() => { if (!props.isMe && props.inCall) props.onToggle(); }}>
+      <div class="share-head">
+        <span>{props.isMe ? 'Your screen' : `${props.p.name}'s screen`}</span>
+        <Show when={props.isMe ? undefined : props.view}>{(v) => <span class={`conn conn-${v().conn}`}><i />{CONN_LABEL[v().conn]}</span>}</Show>
+        <Show when={state() === 'live' || state() === 'own'}><button class="fs" title="Fullscreen" onClick={goFullscreen}>⛶</button></Show>
+      </div>
+      <video ref={video} autoplay playsinline muted hidden={state() !== 'live' && state() !== 'own'} />
+      <Switch>
+        <Match when={state() === 'locked'}><div class="share-note">Join to watch</div></Match>
+        <Match when={state() === 'closed'}><div class="share-note">Click to watch</div></Match>
+        <Match when={state() === 'opening'}><div class="share-note"><span class="spinner" /> Opening…</div></Match>
+        <Match when={state() === 'unreachable'}><div class="share-note">No connection to {props.p.name}</div></Match>
+        <Match when={state() === 'live' && props.view}>{(v) => <div class="share-caption">{v().shareKbps} kbps · {CONN_LABEL[v().conn]}</div>}</Match>
+        <Match when={state() === 'own'}><div class="share-caption">you are sharing</div></Match>
+      </Switch>
+    </div>
   );
 }
 
