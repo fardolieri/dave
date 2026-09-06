@@ -6,6 +6,7 @@ import { createRoom, type ChatLine, type ServerStatus } from './room';
 import { createCall, type ConnState, type PeerView } from './call';
 import { isKnown, markKnown } from './seenKeys';
 import { MAX_TEXT_LENGTH, normaliseName, type Person } from '../core/protocol';
+import { LOW_LATENCY_MS, processingIsDefault, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 
 export default function App() {
   takeSecretFromInviteLink();
@@ -83,6 +84,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
     return { self, others, lost };
   });
   const viewOf = (key: string): PeerView | undefined => call.views().find((v) => v.publicKey === key);
+  const [panel, setPanel] = createSignal<'audio' | 'share' | null>(null);
   const callExists = () => inCallList().others.length > 0 || inCallList().self !== undefined;
   // Sharers, from presence (tiles render from signaling state, never from track events).
   const sharers = createMemo(() => room.people().filter((p) => p.role === 'participant' && p.sharing));
@@ -109,10 +111,18 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
           <div class="actions">
             <Show when={!call.inCall()} fallback={
               <>
-                <button class={call.muted() ? 'on' : ''} onClick={() => call.setMuted(!call.muted())}>{call.muted() ? 'Unmute' : 'Mute'}</button>
+                <div class="row">
+                  <button class={call.muted() ? 'on' : ''} onClick={() => call.setMuted(!call.muted())}>{call.muted() ? 'Unmute' : 'Mute'}</button>
+                  <button class={`gear ${panel() === 'audio' ? 'on' : ''}`} title="Audio settings" onClick={() => { setPanel(panel() === 'audio' ? null : 'audio'); void call.refreshDevices(); }}>⚙</button>
+                </div>
+                <Show when={panel() === 'audio'}><AudioPanel call={call} /></Show>
                 <Show when={canShare} fallback={<div class="hint">Screen sharing is not available on this device</div>}>
-                  <button class={call.sharing() ? 'on' : ''} onClick={() => void (call.sharing() ? call.stopShare() : call.startShare())}>{call.sharing() ? 'Stop sharing' : 'Share screen'}</button>
+                  <div class="row">
+                    <button class={call.sharing() ? 'on' : ''} onClick={() => void (call.sharing() ? call.stopShare() : call.startShare())}>{call.sharing() ? 'Stop sharing' : 'Share screen'}</button>
+                    <button class={`gear ${panel() === 'share' ? 'on' : ''}`} title="Share settings" onClick={() => setPanel(panel() === 'share' ? null : 'share')}>⚙</button>
+                  </div>
                 </Show>
+                <Show when={panel() === 'share'}><SharePanel call={call} /></Show>
                 <button class="leave" onClick={call.leave}>Leave</button>
               </>
             }>
@@ -161,6 +171,50 @@ function PersonRow(props: { p: Person; isMe: boolean }) {
         <Show when={!known()}><b class="new">new</b></Show>
       </span>
     </li>
+  );
+}
+
+type Call = ReturnType<typeof createCall>;
+
+function SharePanel(props: { call: Call }) {
+  const s = () => props.call.shareSettings();
+  const mbps = (bps: number) => (bps / 1_000_000).toFixed(1);
+  return (
+    <div class="panel">
+      <div class="row presets">
+        <button class={s().preset === 'detail' ? 'on' : ''} onClick={() => props.call.setPreset('detail')} title="Browsers and documents: native resolution, sharp text">Detail</button>
+        <button class={s().preset === 'motion' ? 'on' : ''} onClick={() => props.call.setPreset('motion')} title="Games and video: 60 fps, reduced resolution">Motion</button>
+      </div>
+      <label>Frame rate <select class="picker" value={String(s().frameRate)} onChange={(e) => props.call.changeShare({ frameRate: Number(e.currentTarget.value) as FrameRate })}>
+        <option value="15">15 fps</option><option value="30">30 fps</option><option value="60">60 fps</option></select></label>
+      <label>Resolution <select class="picker" value={String(s().maxHeight)} onChange={(e) => props.call.changeShare({ maxHeight: Number(e.currentTarget.value) as MaxHeight })}>
+        <option value="0">native</option><option value="1080">up to 1080p</option><option value="720">up to 720p</option></select></label>
+      <label>Under pressure keep <select class="picker" value={s().degradation} onChange={(e) => props.call.changeShare({ degradation: e.currentTarget.value as Degradation })}>
+        <option value="maintain-resolution">resolution</option><option value="maintain-framerate">frame rate</option><option value="balanced">a balance</option></select></label>
+      <label>Upload budget <input type="number" min="1" max="50" step="0.5" value={mbps(s().budgetBps)} onChange={(e) => props.call.changeShare({ budgetBps: Math.round(Number(e.currentTarget.value) * 1_000_000) })} /> Mbps total</label>
+      <label>Per viewer up to <input type="number" min="0.5" max="20" step="0.5" value={mbps(s().ceilingBps)} onChange={(e) => props.call.changeShare({ ceilingBps: Math.round(Number(e.currentTarget.value) * 1_000_000) })} /> Mbps</label>
+      <label class="check"><input type="checkbox" checked={props.call.viewerSettings().jitterBufferTargetMs > 0} onChange={(e) => props.call.setViewerSettings({ jitterBufferTargetMs: e.currentTarget.checked ? LOW_LATENCY_MS : 0 })} /> Low latency when watching others</label>
+    </div>
+  );
+}
+
+function AudioPanel(props: { call: Call }) {
+  const a = () => props.call.audioSettings();
+  const set = (change: Partial<typeof a extends () => infer T ? T : never>) => void props.call.setAudioSettings({ ...a(), ...change });
+  const label = (d: MediaDeviceInfo, i: number) => d.label || `${d.kind === 'audioinput' ? 'Microphone' : 'Speaker'} ${i + 1}`;
+  return (
+    <div class="panel">
+      <label>Microphone <select class="picker" value={a().microphoneId} onChange={(e) => set({ microphoneId: e.currentTarget.value })}>
+        <option value="">Default</option><For each={props.call.devices().microphones}>{(d, i) => <option value={d.deviceId}>{label(d, i())}</option>}</For></select></label>
+      <Show when={props.call.canPickSpeaker}>
+        <label>Speaker <select class="picker" value={a().speakerId} onChange={(e) => set({ speakerId: e.currentTarget.value })}>
+          <option value="">Default</option><For each={props.call.devices().speakers}>{(d, i) => <option value={d.deviceId}>{label(d, i())}</option>}</For></select></label>
+      </Show>
+      <Show when={!processingIsDefault(a())}><div class="warn">Changing audio processing usually makes you sound worse to others. Turn everything back on if friends complain.</div></Show>
+      <label class="check"><input type="checkbox" checked={a().echoCancellation} onChange={(e) => set({ echoCancellation: e.currentTarget.checked })} /> Echo cancellation</label>
+      <label class="check"><input type="checkbox" checked={a().noiseSuppression} onChange={(e) => set({ noiseSuppression: e.currentTarget.checked })} /> Noise suppression</label>
+      <label class="check"><input type="checkbox" checked={a().autoGainControl} onChange={(e) => set({ autoGainControl: e.currentTarget.checked })} /> Automatic gain</label>
+    </div>
   );
 }
 

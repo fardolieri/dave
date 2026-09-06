@@ -89,6 +89,20 @@ try {
       console.log(`[${viewer.name}] tile now: ${await viewer.text('.share')}`);
       for (const b of rest) console.log(`[${b.name}] tile (never subscribed): ${await b.text('.share')}`);
       console.log(`[${sharer.name}] mesh after: ${JSON.stringify(await sharer.eval(`window.__dave?.peers().map(p => ({ name: p.name, subscribedToMe: p.subscribedToMe }))`))}`);
+      await sharer.eval(`document.querySelector('.actions .gear')?.click(); 'audio gear'`);
+      await sleep(600);
+      console.log(`[${sharer.name}] audio panel: ${await sharer.text('.panel')}`);
+      await sharer.eval(`[...document.querySelectorAll('.panel input[type=checkbox]')][1]?.click(); 'toggle noise suppression'`);
+      await sleep(600);
+      console.log(`[${sharer.name}] after toggling noise suppression: ${(await sharer.text('.panel .warn')) || '(no warning)'} | ${JSON.stringify(await sharer.eval(`window.__dave?.audio()`))}`);
+      await sharer.eval(`document.querySelector('.actions .gear')?.click(); 'close audio'`);
+      await sleep(300);
+      // Settings: flip the sharer to the Motion preset and read back what reached the track and the senders.
+      await sharer.eval(`[...document.querySelectorAll('.actions .gear')].pop()?.click(); 'gear'`);
+      await sleep(300);
+      await sharer.eval(`[...document.querySelectorAll('.panel .presets button')].find(b => b.textContent === 'Motion')?.click(); 'motion'`);
+      await sleep(2500);
+      console.log(`[${sharer.name}] share after Motion preset: ${JSON.stringify(await sharer.eval(`window.__dave?.share()`))}`);
       if (rest[0]) {
         // Second sharer: the viewer shares too; the third browser watches both, then drops one.
         const third = rest[0];

@@ -164,7 +164,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     case 'subscribe': {
       if (state.person.role !== 'participant') return notInCall('subscribe');
       if (!participantByKey(msg.to)) return { state: next, replies: [{ t: 'error', reason: 'that participant is not in the call', ref: 'subscribe' }] };
-      return { state: next, replies: [], relay: { to: msg.to, message: { t: 'subscribe', from: state.person.publicKey, on: msg.on } } };
+      return { state: next, replies: [], relay: { to: msg.to, message: { t: 'subscribe', from: state.person.publicKey, on: msg.on, ...(msg.scale ? { scale: msg.scale } : {}) } } };
     }
     case 'signal': {
       if (state.person.role !== 'participant') return notInCall('signal');

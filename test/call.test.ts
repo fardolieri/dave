@@ -139,7 +139,9 @@ describe('shares', () => {
     send(a, { t: 'share', on: true });
     const snap = await b.next((m) => m.t === 'presence' && inCall(m).some((p) => p.name === 'Alice' && p.sharing));
     expect(inCall(snap).find((p) => p.name === 'Alice')!.sharing).toBe(true);
-    send(b, { t: 'subscribe', to: a.you.publicKey, on: true });
+    send(b, { t: 'subscribe', to: a.you.publicKey, on: true, scale: 2 });
+    expect(await a.next((m) => m.t === 'subscribe')).toEqual({ t: 'subscribe', from: b.you.publicKey, on: true, scale: 2 });
+    send(b, { t: 'subscribe', to: a.you.publicKey, on: true, scale: 99 }); // out of range: dropped, not rejected
     expect(await a.next((m) => m.t === 'subscribe')).toEqual({ t: 'subscribe', from: b.you.publicKey, on: true });
     send(a, { t: 'share', on: false });
     await b.next((m) => m.t === 'presence' && inCall(m).some((p) => p.name === 'Alice' && !p.sharing));

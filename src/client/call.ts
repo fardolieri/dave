@@ -3,6 +3,10 @@ import {
   ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite, perViewerBitrate,
 } from '../core/mesh';
 import type { IceServer, Person, ServerMessage, SignalData } from '../core/protocol';
+import {
+  DEFAULT_AUDIO, DEFAULT_SHARE, DEFAULT_VIEWER, applyPreset, contentHint, parseSettings, shareEncoding, trackConstraints, withChange,
+  type AudioSettings, type ShareSettings, type ViewerSettings,
+} from '../core/settings';
 import type { createRoom } from './room';
 import { local } from './storage';
 
@@ -39,6 +43,8 @@ type Peer = {
   videoBytesAt: number;
   /** Serialises setParameters calls on this connection so a late subscribe cannot collide with an earlier one. */
   encodingChain: Promise<void>;
+  /** Downscale this Viewer asked for (small screen), 1 = none. */
+  viewerScale: number;
 };
 
 const SPEAK_THRESHOLD = 0.02;
@@ -63,7 +69,15 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   let shareAudio: MediaStreamTrack | null = null;
   let stoppingShare = false;
   /** Subscribe requests that arrived before the connection to that participant existed. */
-  const earlyViewers = new Set<string>();
+  const earlyViewers = new Map<string, number>();
+
+  // ---- settings (spec §6.1, §6.3), remembered per browser
+  const [shareSettings, setShareSettingsSignal] = createSignal<ShareSettings>(parseSettings(DEFAULT_SHARE, local.get('shareSettings')));
+  const [audioSettings, setAudioSettingsSignal] = createSignal<AudioSettings>(parseSettings(DEFAULT_AUDIO, local.get('audioSettings')));
+  const [viewerSettings, setViewerSettingsSignal] = createSignal<ViewerSettings>(parseSettings(DEFAULT_VIEWER, local.get('viewerSettings')));
+  const [devices, setDevices] = createSignal<{ microphones: MediaDeviceInfo[]; speakers: MediaDeviceInfo[] }>({ microphones: [], speakers: [] });
+  const canPickSpeaker = typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype;
+  const smallScreen = () => typeof matchMedia !== 'undefined' && matchMedia('(max-width: 700px)').matches;
 
   const peers = new Map<string, Peer>();
   let localStream: MediaStream | null = null;
@@ -89,13 +103,82 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   const setView = (p: Peer, patch: Partial<PeerView>) => { Object.assign(p.view, patch); publish(); };
 
   // ---- media
+  function microphoneConstraints(): MediaTrackConstraints {
+    const a = audioSettings();
+    const c: MediaTrackConstraints = { echoCancellation: a.echoCancellation, noiseSuppression: a.noiseSuppression, autoGainControl: a.autoGainControl };
+    if (a.microphoneId) c.deviceId = { exact: a.microphoneId };
+    return c;
+  }
   async function openMicrophone(): Promise<void> {
     if (voiceTrack) return;
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: microphoneConstraints() });
     voiceTrack = localStream.getAudioTracks()[0] ?? null;
     if (voiceTrack) voiceTrack.enabled = !muted();
     audioCtx ??= new AudioContext();
     localAnalyser = analyserFor('me', localStream);
+    void refreshDevices();
+  }
+  async function refreshDevices(): Promise<void> {
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices();
+      setDevices({ microphones: all.filter((d) => d.kind === 'audioinput'), speakers: all.filter((d) => d.kind === 'audiooutput') });
+    } catch { /* enumeration unavailable */ }
+  }
+  navigator.mediaDevices?.addEventListener?.('devicechange', () => void refreshDevices());
+
+  async function applySink(el: HTMLMediaElement): Promise<void> {
+    const id = audioSettings().speakerId;
+    if (!canPickSpeaker) return;
+    try { await (el as HTMLMediaElement & { setSinkId(id: string): Promise<void> }).setSinkId(id); } catch { /* device gone: browser default */ }
+  }
+  function applyJitterTarget(receiver: RTCRtpReceiver): void {
+    const ms = viewerSettings().jitterBufferTargetMs;
+    try { (receiver as RTCRtpReceiver & { jitterBufferTarget: number | null }).jitterBufferTarget = ms > 0 ? ms : null; } catch { /* unsupported */ }
+  }
+
+  /** Change audio settings live: processing via constraints, a new microphone via re-capture and replaceTrack, speaker via setSinkId. */
+  async function setAudioSettings(next: AudioSettings): Promise<void> {
+    const prev = audioSettings();
+    setAudioSettingsSignal(next);
+    local.set('audioSettings', JSON.stringify(next));
+    if (voiceTrack && next.microphoneId !== prev.microphoneId) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: microphoneConstraints() });
+        const track = stream.getAudioTracks()[0];
+        if (track) {
+          track.enabled = !muted();
+          for (const p of peers.values()) void p.tx[SLOT_INDEX.voice]?.sender.replaceTrack(track);
+          voiceTrack.stop();
+          voiceTrack = track;
+          localStream = stream;
+          localAnalyser = analyserFor('me', stream);
+        }
+      } catch (e) {
+        console.warn('microphone switch failed', e);
+      }
+    } else if (voiceTrack) {
+      voiceTrack.applyConstraints(microphoneConstraints()).catch((e) => console.warn('applyConstraints audio', e));
+    }
+    if (next.speakerId !== prev.speakerId) for (const p of peers.values()) { void applySink(p.audio); void applySink(p.shareAudio); }
+  }
+
+  /** Change share settings live: track constraints and content hint on the capture, encodings per Viewer. */
+  function setShareSettings(next: ShareSettings): void {
+    setShareSettingsSignal(next);
+    local.set('shareSettings', JSON.stringify(next));
+    if (shareVideo) {
+      shareVideo.applyConstraints(trackConstraints(next)).catch((e) => console.warn('applyConstraints share', e));
+      shareVideo.contentHint = contentHint(next);
+    }
+    reapplyShareEncodings();
+  }
+  const setPreset = (preset: 'detail' | 'motion') => setShareSettings(applyPreset(shareSettings(), preset));
+  const changeShare = (change: Partial<Omit<ShareSettings, 'preset'>>) => setShareSettings(withChange(shareSettings(), change));
+
+  function setViewerSettings(next: ViewerSettings): void {
+    setViewerSettingsSignal(next);
+    local.set('viewerSettings', JSON.stringify(next));
+    for (const p of peers.values()) for (const slot of [SLOT_INDEX.shareVideo, SLOT_INDEX.shareAudio]) { const r = p.tx[slot]?.receiver; if (r) applyJitterTarget(r); }
   }
   function analyserFor(key: string, stream: MediaStream): AnalyserNode {
     const ctx = audioCtx!;
@@ -139,9 +222,12 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     const peer: Peer = {
       key, name, pc, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, restarts: 0,
       view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0 },
-      viewsMyShare: earlyViewers.delete(key), remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, encodingChain: Promise.resolve(),
+      viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, encodingChain: Promise.resolve(),
     };
+    earlyViewers.delete(key);
     peer.shareAudio.autoplay = true;
+    void applySink(peer.audio);
+    void applySink(peer.shareAudio);
     setShareStreams((m) => new Map(m).set(key, peer.remoteShare));
     if (initiator) {
       // Only the offering side pre-adds transceivers (ADR 0001, spike finding).
@@ -174,6 +260,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
         // Share tracks exist from join time, muted and empty until the sharer sends. "Live" follows the
         // unmute/mute events, which is how a viewer knows frames are actually arriving (spec §6.5).
         peer.remoteShare.addTrack(track);
+        applyJitterTarget(transceiver.receiver);
         if (slot === SLOT_INDEX.shareVideo) {
           track.onunmute = () => setView(peer, { shareLive: true });
           track.onmute = () => setView(peer, { shareLive: false, shareKbps: 0 });
@@ -213,6 +300,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   async function applyShareEncodingNow(peer: Peer): Promise<void> {
     if (!shareVideo || peer.pc.connectionState === 'closed') return;
     const viewers = [...peers.values()].filter((p) => p.viewsMyShare).length;
+    const enc = shareEncoding(shareSettings(), viewers, peer.viewerScale);
     for (const slot of [SLOT_INDEX.shareVideo, SLOT_INDEX.shareAudio]) {
       const sender = peer.tx[slot]?.sender;
       if (!sender?.track) continue;
@@ -222,7 +310,10 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
         return;
       }
       params.encodings[0]!.active = peer.viewsMyShare;
-      if (slot === SLOT_INDEX.shareVideo) params.encodings[0]!.maxBitrate = perViewerBitrate(viewers);
+      if (slot === SLOT_INDEX.shareVideo) {
+        Object.assign(params.encodings[0]!, { maxBitrate: enc.maxBitrate, maxFramerate: enc.maxFramerate, scaleResolutionDownBy: enc.scaleResolutionDownBy });
+        (params as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference = enc.degradationPreference;
+      }
       await sender.setParameters(params);
     }
   }
@@ -421,8 +512,9 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       case 'left': closePeer(m.publicKey); return;
       case 'subscribe': {
         const peer = peers.get(m.from);
-        if (!peer) { if (m.on) earlyViewers.add(m.from); else earlyViewers.delete(m.from); return; }
+        if (!peer) { if (m.on) earlyViewers.set(m.from, m.scale ?? 1); else earlyViewers.delete(m.from); return; }
         peer.viewsMyShare = m.on;
+        peer.viewerScale = m.scale ?? 1;
         reapplyShareEncodings();
         if (!m.on) void applyShareEncoding(peer); // the one leaving must be deactivated too
         return;
@@ -436,8 +528,9 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     setShareError(null);
     let stream: MediaStream;
     try {
+      const fps = shareSettings().frameRate;
       const constraints: DisplayMediaStreamOptions & Record<string, unknown> = {
-        video: { frameRate: { ideal: 30, max: 30 } },
+        video: { frameRate: { ideal: fps, max: fps } },
         audio: true,
         systemAudio: 'include',
         selfBrowserSurface: 'exclude',
@@ -451,7 +544,8 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     shareVideo = stream.getVideoTracks()[0] ?? null;
     shareAudio = stream.getAudioTracks()[0] ?? null;
     if (!shareVideo) return;
-    shareVideo.contentHint = 'detail';
+    shareVideo.contentHint = contentHint(shareSettings());
+    shareVideo.applyConstraints(trackConstraints(shareSettings())).catch(() => {});
     shareVideo.onended = () => void stopShare(); // the browser's own "stop sharing" control
     for (const peer of peers.values()) attachLocalTracks(peer);
     setSharing(stream);
@@ -485,7 +579,8 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     const peer = peers.get(key);
     if (!peer || peer.view.watching === on) return;
     setView(peer, { watching: on, shareKbps: 0 });
-    room.send({ t: 'subscribe', to: key, on });
+    // A small screen asks the sharer for a downscaled encoding for this connection only (spec §6.4).
+    room.send(smallScreen() ? { t: 'subscribe', to: key, on, scale: 2 } : { t: 'subscribe', to: key, on });
   }
 
   /** Fullscreen on one share unsubscribes every other (spec §6.5); leaving fullscreen does nothing. */
@@ -551,8 +646,18 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     // Dev aid for scripts/drive.mjs: inspect the mesh from the DevTools protocol. Absent in production builds.
     (window as unknown as { __dave?: unknown }).__dave = {
       peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, audioBytesIn: p.view.audioBytesIn, videoBytesIn: p.videoBytesIn, watching: p.view.watching, shareLive: p.view.shareLive, subscribedToMe: p.viewsMyShare, transceivers: p.pc.getTransceivers().length })),
+      share: () => ({
+        settings: shareSettings(),
+        track: shareVideo ? { ...shareVideo.getSettings(), contentHint: shareVideo.contentHint } : null,
+        senders: [...peers.values()].map((p) => { const params = p.tx[SLOT_INDEX.shareVideo]?.sender.getParameters(); const e = params?.encodings?.[0]; return { name: p.name, active: e?.active, maxBitrate: e?.maxBitrate, maxFramerate: e?.maxFramerate, scale: e?.scaleResolutionDownBy, degradation: (params as { degradationPreference?: string } | undefined)?.degradationPreference }; }),
+      }),
+      audio: () => ({ settings: audioSettings(), track: voiceTrack?.getSettings() ?? null }),
     };
   }
 
-  return { inCall, muted, views, speakingSelf, joinError, join, leave, setMuted, myJoinSeq: () => myJoinSeq, sharing, shareError, startShare, stopShare, watch, watchOnly, shareStreamOf };
+  return {
+    inCall, muted, views, speakingSelf, joinError, join, leave, setMuted, myJoinSeq: () => myJoinSeq,
+    sharing, shareError, startShare, stopShare, watch, watchOnly, shareStreamOf,
+    shareSettings, setPreset, changeShare, audioSettings, setAudioSettings, viewerSettings, setViewerSettings, devices, refreshDevices, canPickSpeaker,
+  };
 }

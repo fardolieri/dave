@@ -41,8 +41,8 @@ export type ClientMessage =
   | { t: 'ice' }
   /** Announce that my share started or stopped; everyone learns through the presence flag. */
   | { t: 'share'; on: boolean }
-  /** Ask a sharer to start or stop sending me their share. */
-  | { t: 'subscribe'; to: string; on: boolean };
+  /** Ask a sharer to start or stop sending me their share; `scale` asks for a downscaled encoding (small screens). */
+  | { t: 'subscribe'; to: string; on: boolean; scale?: number };
 
 export type ServerMessage =
   | { t: 'challenge'; nonce: string }
@@ -54,7 +54,7 @@ export type ServerMessage =
   /** A participant left on purpose; peers close that connection at once. A vanished socket only drops out of presence. */
   | { t: 'left'; publicKey: string }
   | { t: 'signal'; from: string; data: SignalData }
-  | { t: 'subscribe'; from: string; on: boolean }
+  | { t: 'subscribe'; from: string; on: boolean; scale?: number }
   | { t: 'ice'; iceServers: IceServer[]; issuedAt: number }
   | { t: 'pong' }
   /** `ref` names the client message type that was rejected, when known, so the client can attribute it. */
@@ -115,8 +115,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | Invalid {
       return { t: 'ice' };
     case 'share':
       return typeof m.on === 'boolean' ? { t: 'share', on: m.on } : invalid('unrecognised message');
-    case 'subscribe':
-      return b64(m.to) && typeof m.on === 'boolean' ? { t: 'subscribe', to: m.to, on: m.on } : invalid('unrecognised message');
+    case 'subscribe': {
+      if (!b64(m.to) || typeof m.on !== 'boolean') return invalid('unrecognised message');
+      const scale = typeof m.scale === 'number' && m.scale >= 1 && m.scale <= 4 ? m.scale : undefined;
+      return scale ? { t: 'subscribe', to: m.to, on: m.on, scale } : { t: 'subscribe', to: m.to, on: m.on };
+    }
     case 'signal': {
       if (!b64(m.to) || typeof m.data !== 'object' || m.data === null) return invalid('unrecognised message');
       const d = m.data as Record<string, unknown>;

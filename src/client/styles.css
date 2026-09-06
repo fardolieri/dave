@@ -90,3 +90,20 @@ button.leave { background: var(--bad); color: #fff; border-color: transparent; }
   .shares { grid-template-columns: 1fr !important; flex: none; }
   .shares .share { min-height: 180px; }
 }
+
+/* settings panels */
+.actions .row { display: flex; gap: 6px; }
+.actions .row button:first-child { flex: 1; }
+.actions .gear { width: 38px; flex: none; }
+.panel { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); font-size: 13px; }
+.panel label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.panel label.check { justify-content: flex-start; }
+.panel .presets button { flex: 1; }
+.panel input[type=number] { width: 4.5em; padding: 4px 6px; }
+/* Customizable select where supported (Chrome 135, Safari 27): radio-style items. Firefox falls back to the native picker. */
+select.picker, select.picker::picker(select) { appearance: base-select; }
+select.picker { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font: inherit; }
+select.picker::picker(select) { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 4px; }
+select.picker option { padding: 6px 10px; border-radius: 6px; }
+select.picker option:checked { background: var(--acc); color: #fff; }
+select.picker option::checkmark { order: 1; margin-left: auto; }
