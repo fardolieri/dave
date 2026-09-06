@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "dave",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2026-09-06",
+  "observability": { "enabled": true },
+  "vars": {
+    // TURN key ID is not secret (it only identifies the key). The API token is a Worker secret.
+    "TURN_KEY_ID": "d3d456166c56302f67957272a1ff9ba5"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "ROOM", "class_name": "Room" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  "assets": {
+    // directory is filled in by @cloudflare/vite-plugin at build time.
+    // Assets are served before the Worker runs, so they never count against the request budget.
+    "not_found_handling": "single-page-application"
+  }
+}

@@ -1,1 +1,4 @@
 .claude/worktrees/
+node_modules/
+dist/
+.wrangler/
