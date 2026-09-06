@@ -7,5 +7,6 @@ import { cloudflare } from '@cloudflare/vite-plugin';
 // and dist/dave, plus the deploy redirect that `wrangler deploy` follows.
 export default defineConfig({
   plugins: [solid(), cloudflare()],
-  build: { target: 'esnext' },
+  // Source maps ship to production on purpose: this is a friends app and a readable stack in a friend's console is worth more than hiding code.
+  build: { target: 'esnext', sourcemap: true },
 });

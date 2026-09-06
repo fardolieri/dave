@@ -39,7 +39,8 @@ class Browser {
     this.ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
       if (m.id && this.pending.has(m.id)) { this.pending.get(m.id)(m); this.pending.delete(m.id); }
-      if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'warning') {
+      if (m.method === 'Runtime.exceptionThrown') { const d = m.params.exceptionDetails; const key = `EXCEPTION ${d.exception?.description?.split('\n').slice(0, 3).join(' | ').slice(0, 300)}`; this.warnings.set(key, (this.warnings.get(key) ?? 0) + 1); }
+      if (m.method === 'Runtime.consoleAPICalled' && (m.params.type === 'warning' || m.params.type === 'error')) {
         const text = m.params.args.map((a) => a.value ?? a.description ?? '').join(' ').slice(0, 90);
         const frames = (m.params.stackTrace?.callFrames ?? []).filter((f) => f.url.includes('/src/')).slice(0, 2).map((f) => `${f.url.split('/src/')[1]}:${f.lineNumber + 1} ${f.functionName}`);
         const key = `${text} @ ${frames.join(' < ')}`;
@@ -146,6 +147,12 @@ try {
       for (const b of browsers) await b.screenshot(`${shotDir}/${b.name}.png`, narrowLast && b === browsers[browsers.length - 1] ? 390 : undefined);
       console.log(`screenshots in ${shotDir}`);
     }
+    // Chatter while in the call: messages from both sides, interleaved.
+    for (let i = 0; i < 3; i++) {
+      for (const b of browsers) { await b.say(`${b.name} in-call message ${i}`); await sleep(250); }
+    }
+    await sleep(800);
+    for (const b of browsers) console.log(`[${b.name}] in-call chat lines: ${await b.eval(`document.querySelectorAll('.chat-log .msg').length`)}`);
     const last = browsers[browsers.length - 1];
     if (browsers.length > 1) {
       await last.eval(`document.querySelector('button.leave')?.click(); 'left'`);
@@ -155,6 +162,10 @@ try {
     }
   }
   await browsers[0].say(`hello from ${browsers[0].name} https://example.com`);
+  await sleep(800);
+  await browsers[0].say('second message');
+  await sleep(500);
+  await browsers[0].say('third one, no link');
   await sleep(800);
   for (const b of browsers) console.log(`[${b.name}] chat: ${await b.text('.chat-log .msg, .chat-log .msg-sys')}`);
   const warn = await browsers[0].text('.warn');
