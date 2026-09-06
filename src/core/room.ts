@@ -63,7 +63,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
   const msg = parseClientMessage(raw);
 
   if (state.stage === 'challenge') {
-    if (!msg) return strike(state, 'unrecognised message');
+    if (msg.t === 'invalid') return strike(state, msg.reason);
     if (msg.t !== 'auth') return strike(state, 'unauthenticated');
     const publicKeyRaw = fromBase64Url(msg.publicKey);
     const nonce = fromBase64Url(state.nonce);
@@ -92,9 +92,10 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
   const taken = takeToken(state.bucket, ctx.now);
   const next: SocketState = { ...state, bucket: taken.bucket };
   if (!taken.ok) return { state: next, replies: [{ t: 'error', reason: 'rate limited' }] };
-  if (!msg) return { state: next, replies: [{ t: 'error', reason: 'unrecognised message' }] };
 
   switch (msg.t) {
+    case 'invalid':
+      return { state: next, replies: [{ t: 'error', reason: msg.reason }] };
     case 'auth':
       return { state: next, replies: [{ t: 'error', reason: 'already authenticated' }] };
     case 'ping':

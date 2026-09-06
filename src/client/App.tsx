@@ -1,4 +1,4 @@
-import { createSignal, Switch, Match, createMemo, For, Show, untrack } from 'solid-js';
+import { createSignal, Switch, Match, createMemo, createEffect, For, Show, untrack } from 'solid-js';
 import './styles.css';
 import { loadIdentity, type LocalIdentity } from './identity';
 import { getName, getSecret, setName, takeSecretFromInviteLink } from './invite';
@@ -70,7 +70,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
   const online = createMemo(() => {
     const others = room.people().filter((p) => p.role === 'visitor' && p.publicKey !== me()).sort((a, b) => a.name.localeCompare(b.name));
     const self = room.people().find((p) => p.publicKey === me());
-    return self ? [...others, self] : others; // the user is listed last in Online (spec §7.1)
+    return self ? [...others, self] : others; // you are listed last in Online (spec §7.1)
   });
   const clash = createMemo(() => room.people().some((p) => p.publicKey !== me() && p.name === props.name));
   const connected = () => room.status().kind === 'connected';
@@ -79,7 +79,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
     <div class="app">
       <Banner status={room.status()} />
       <div class="cols">
-        <aside class="side">
+        <aside class={`side ${connected() ? '' : 'frozen'}`}>
           <h2>Online</h2>
           <ul class="plist">
             <For each={online()}>{(p) => <PersonRow p={p} isMe={p.publicKey === me()} />}</For>
@@ -132,11 +132,10 @@ function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: str
     props.onSend(text);
     setDraft('');
   };
-  // keep the newest line in view
-  const scrolled = createMemo(() => { props.lines.length; queueMicrotask(() => log?.scrollTo({ top: log.scrollHeight })); return null; });
+  // keep the newest line in view: compute phase tracks the length, apply phase touches the DOM
+  createEffect(() => props.lines.length, () => log?.scrollTo({ top: log.scrollHeight }));
   return (
     <div class="chat">
-      {scrolled()}
       <div class="chat-log" ref={log}>
         <For each={props.lines}>
           {(l) => (

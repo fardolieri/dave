@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 Invite link and identity gate.
 
-**Status:** in-progress (branch `build/03-presence-text`, under review)
+**Status:** done (2026-09-06), awaiting deploy
 
 - [x] Per-socket attachment holds public key, display name, role, join sequence, sharing flag, muted flag; presence is rebuilt from attachments after the object wakes from hibernation (test by simulating eviction).
 - [x] Full presence snapshot broadcast on every change; sidebar shows Online first with avatar initial, name, fingerprint, and a "new" badge for keys not in the local seen-keys list; the user is listed last in Online.
@@ -20,3 +20,4 @@
 - Outage test against `vite preview` (no dev client to reload the page): server killed 19 s, browsers showed the reconnecting banner within a second, reconnected within a few seconds of the server returning, showed "Reconnected. You may have missed messages.", and presence came back from attachments. The 30 s "unavailable" escalation was not reached in that window.
 - Eviction: the Room class has no instance fields (asserted by a test that inspects the live instance), so eviction cannot lose anything; presence is a pure function of attachments.
 - Learned: touching Worker sources hot-reloads workerd without dropping hibernated sockets, and the Vite dev client reloads the page when its own connection returns, so reconnection must be tested against the preview build.
+- Code review (two-axis) addressed: post-welcome error frames now surface as "Not sent: <reason>" lines instead of being swallowed; the 30 s unavailable escalation runs on its own timer; the sidebar dims while the socket is down; auto-scroll is an effect, not a memo; the parser reports distinct reasons (empty, too long, invalid name) and the frame cap is 16 KB so escaped 2,000-character texts pass; one fan-out helper in the Room; eviction test constructs a fresh Room over the same state and compares presence; the ping test asserts the platform auto-response timestamp; the rate-limit test asserts nothing vanished silently; test helper renamed attach. 33 tests.

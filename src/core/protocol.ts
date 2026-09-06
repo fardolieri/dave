@@ -39,7 +39,8 @@ export const PING_FRAME = '{"t":"ping"}';
 export const PONG_FRAME = '{"t":"pong"}';
 export const PING_INTERVAL_MS = 30_000;
 
-export const MAX_MESSAGE_BYTES = 4096;
+/** Frame cap in UTF-16 units. Generous so a 2,000-character text survives JSON escaping. */
+export const MAX_MESSAGE_BYTES = 16384;
 export const MAX_NAME_LENGTH = 32;
 export const MAX_TEXT_LENGTH = 2000;
 
@@ -56,30 +57,36 @@ export function normaliseName(raw: string): string | null {
   return name.length >= 1 && name.length <= MAX_NAME_LENGTH ? name : null;
 }
 
-export function parseClientMessage(raw: unknown): ClientMessage | null {
-  if (typeof raw !== 'string' || raw.length > MAX_MESSAGE_BYTES) return null;
+/** Not a wire message: the parser's way of saying why a frame was rejected. */
+export type Invalid = { t: 'invalid'; reason: string };
+const invalid = (reason: string): Invalid => ({ t: 'invalid', reason });
+
+export function parseClientMessage(raw: unknown): ClientMessage | Invalid {
+  if (typeof raw !== 'string' || raw.length > MAX_MESSAGE_BYTES) return invalid('unrecognised message');
   let value: unknown;
   try {
     value = JSON.parse(raw);
   } catch {
-    return null;
+    return invalid('unrecognised message');
   }
-  if (typeof value !== 'object' || value === null || !('t' in value)) return null;
+  if (typeof value !== 'object' || value === null || !('t' in value)) return invalid('unrecognised message');
   const m = value as Record<string, unknown>;
   switch (m.t) {
     case 'auth': {
-      if (!b64(m.publicKey) || !b64(m.hmac) || !b64(m.signature) || !str(m.name, 256)) return null;
+      if (!b64(m.publicKey) || !b64(m.hmac) || !b64(m.signature) || !str(m.name, 256)) return invalid('unrecognised message');
       const name = normaliseName(m.name);
-      return name ? { t: 'auth', publicKey: m.publicKey, name, hmac: m.hmac, signature: m.signature } : null;
+      return name ? { t: 'auth', publicKey: m.publicKey, name, hmac: m.hmac, signature: m.signature } : invalid('invalid name');
     }
     case 'ping':
       return { t: 'ping' };
     case 'text': {
-      if (typeof m.text !== 'string') return null;
+      if (typeof m.text !== 'string') return invalid('unrecognised message');
       const text = m.text.trim();
-      return text.length >= 1 && text.length <= MAX_TEXT_LENGTH ? { t: 'text', text } : null;
+      if (text.length === 0) return invalid('empty message');
+      if (text.length > MAX_TEXT_LENGTH) return invalid(`message longer than ${MAX_TEXT_LENGTH} characters`);
+      return { t: 'text', text };
     }
     default:
-      return null;
+      return invalid('unrecognised message');
   }
 }

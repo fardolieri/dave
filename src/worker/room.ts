@@ -70,17 +70,24 @@ export class Room extends DurableObject<Env> {
     if (outcome.close) ws.close(outcome.close.code, outcome.close.reason);
   }
 
+  /** The presence snapshot as computed right now from attachments alone. Public so tests can compare a fresh instance's view. */
+  currentPresence(leaving?: WebSocket): ServerMessage {
+    const sockets = this.ctx.getWebSockets().filter((s) => s !== leaving);
+    return presenceSnapshot(sockets.map((s) => s.deserializeAttachment() as SocketState | null));
+  }
+
   /** Full snapshot to every attached socket. `leaving` is excluded because it may still be listed while closing. */
   private broadcastPresence(leaving?: WebSocket): void {
-    const sockets = this.ctx.getWebSockets().filter((s) => s !== leaving);
-    const snapshot = presenceSnapshot(sockets.map((s) => s.deserializeAttachment() as SocketState | null));
-    const frame = JSON.stringify(snapshot);
-    for (const s of sockets) if (this.isAttached(s)) this.trySend(s, frame);
+    this.fanOut(this.currentPresence(leaving), leaving);
   }
 
   private broadcast(m: ServerMessage): void {
+    this.fanOut(m);
+  }
+
+  private fanOut(m: ServerMessage, exclude?: WebSocket): void {
     const frame = JSON.stringify(m);
-    for (const s of this.ctx.getWebSockets()) if (this.isAttached(s)) this.trySend(s, frame);
+    for (const s of this.ctx.getWebSockets()) if (s !== exclude && this.isAttached(s)) this.trySend(s, frame);
   }
 
   private isAttached(ws: WebSocket): boolean {

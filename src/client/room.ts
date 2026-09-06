@@ -41,6 +41,7 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
   let stopped = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let pingTimer: ReturnType<typeof setInterval> | undefined;
+  let unavailableTimer: ReturnType<typeof setTimeout> | undefined;
 
   const send = (m: ClientMessage) => {
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m));
@@ -71,6 +72,7 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
           if (everConnected) push({ kind: 'system', text: 'Reconnected. You may have missed messages.', at: Date.now() });
           everConnected = true;
           downSince = null;
+          clearTimeout(unavailableTimer);
           return;
         case 'presence':
           setPeople(m.people);
@@ -79,7 +81,10 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
           push({ kind: 'text', from: m.from, text: m.text, at: m.at });
           return;
         case 'error':
-          if (!you() && status().kind !== 'refused') {
+          if (you()) {
+            // After the welcome an error means a frame of ours was dropped (rate limit, too long). Say so.
+            push({ kind: 'system', text: `Not sent: ${m.reason}.`, at: Date.now() });
+          } else if (status().kind !== 'refused') {
             // A wrong answer during the handshake: our stored secret is wrong. Retrying cannot help.
             setStatus({ kind: 'refused', reason: m.reason });
             stopped = true;
@@ -101,7 +106,12 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
         setStatus({ kind: 'refused', reason: e.code === CLOSE_AUTH_FAILED ? 'the invite link is wrong or has been rotated' : 'the server has no room secret configured' });
         return;
       }
-      downSince ??= Date.now();
+      if (downSince === null) {
+        downSince = Date.now();
+        const since = downSince;
+        // Escalate on a clock of its own, not only when a further attempt fails (spec §7.2).
+        unavailableTimer = setTimeout(() => { if (downSince === since && !stopped) setStatus({ kind: 'unavailable', since }); }, UNAVAILABLE_AFTER_MS);
+      }
       const down = Date.now() - downSince;
       setStatus(down >= UNAVAILABLE_AFTER_MS ? { kind: 'unavailable', since: downSince } : { kind: 'reconnecting', since: downSince });
       const delay = Math.min(BACKOFF_MAX_MS, 1000 * 2 ** attempt) * (0.5 + Math.random() / 2);
@@ -114,6 +124,7 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
   onCleanup(() => {
     stopped = true;
     clearTimeout(reconnectTimer);
+    clearTimeout(unavailableTimer);
     clearInterval(pingTimer);
     ws?.close(1000, 'bye');
   });

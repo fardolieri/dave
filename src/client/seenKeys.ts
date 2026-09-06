@@ -1,7 +1,7 @@
 import { local } from './storage';
 
 // Keys this browser has seen before, with the name they used. A key not in the
-// list shows a "new" badge until the user acknowledges it (spec §3).
+// list shows a "new" badge until you acknowledge it (spec §3).
 type Seen = Record<string, { name: string; since: number }>;
 
 function read(): Seen {

@@ -1,5 +1,6 @@
 import { env, exports } from 'cloudflare:workers';
 import { runInDurableObject } from 'cloudflare:test';
+import { Room } from '../src/worker/room';
 import { describe, expect, it } from 'vitest';
 import { buildAuthMessage, exportPublicKey, generateIdentityKeyPair, toBase64Url } from '../src/core/identity';
 import { MAX_TEXT_LENGTH, PING_FRAME, PONG_FRAME, type Person, type ServerMessage } from '../src/core/protocol';
@@ -9,8 +10,8 @@ const SECRET = 'test-secret';
 
 type Client = { ws: WebSocket; you: Person; inbox: ServerMessage[]; next: (pred?: (m: ServerMessage) => boolean) => Promise<ServerMessage> };
 
-/** Opens, authenticates, and returns a client whose inbox records everything after the welcome. */
-async function join(name: string): Promise<Client> {
+/** Opens and authenticates a visitor (attaches a socket), returning a client whose inbox records everything after the welcome. */
+async function attach(name: string): Promise<Client> {
   const res = await exports.default.fetch(new Request('https://dave.test/ws', { headers: { Upgrade: 'websocket' } }));
   const ws = res.webSocket!;
   ws.accept();
@@ -40,11 +41,11 @@ const names = (m: ServerMessage) => (m as { people: Person[] }).people.map((p) =
 
 describe('presence', () => {
   it('welcomes as a visitor and broadcasts a full snapshot on every join and leave', async () => {
-    const a = await join('Alice');
+    const a = await attach('Alice');
     expect(a.you).toMatchObject({ name: 'Alice', role: 'visitor', joinSeq: null, sharing: false, muted: false });
-    expect(names(await a.next((m) => m.t === 'presence'))).toEqual(['Alice']);
+    expect(names(await a.next((m) => m.t === 'presence'))).toContain('Alice');
 
-    const b = await join('Bob');
+    const b = await attach('Bob');
     expect(names(await a.next((m) => m.t === 'presence'))).toEqual(['Alice', 'Bob']);
     expect(names(await b.next((m) => m.t === 'presence'))).toEqual(['Alice', 'Bob']);
 
@@ -55,27 +56,30 @@ describe('presence', () => {
     a.ws.close(1000, 'bye');
   });
 
-  it('keeps no state in the Room instance: presence is rebuilt from attachments alone', async () => {
-    const a = await join('Alice');
-    await a.next((m) => m.t === 'presence');
+  it('survives eviction: a brand-new Room instance over the same state sees the same presence', async () => {
+    const a = await attach('Alice');
+    const seenByClient = names(await a.next((m) => m.t === 'presence'));
     const stub = env.ROOM.get(env.ROOM.idFromName('the-room'));
-    const { ownKeys, fromAttachments } = await runInDurableObject(stub, (instance: object, state) => {
-      const sockets = state.getWebSockets();
+    const { ownKeys, fromLiveInstance, fromFreshInstance } = await runInDurableObject(stub, (instance: Room, state) => {
+      // Eviction destroys the instance and re-creates it from (state, env). Simulate exactly that.
+      const fresh = new Room(state, env);
       return {
         ownKeys: Object.keys(instance).filter((k) => k !== 'ctx' && k !== 'env'),
-        fromAttachments: sockets.map((s) => (s.deserializeAttachment() as { person?: Person }).person?.name).filter(Boolean),
+        fromLiveInstance: names(instance.currentPresence()),
+        fromFreshInstance: names(fresh.currentPresence()),
       };
     });
     expect(ownKeys).toEqual([]);
-    expect(fromAttachments).toContain('Alice'); // sockets from earlier tests may still be draining
+    expect(fromFreshInstance).toEqual(fromLiveInstance);
+    expect(fromFreshInstance).toEqual(expect.arrayContaining(seenByClient));
     a.ws.close(1000, 'bye');
   });
 });
 
 describe('text', () => {
   it('relays text to everyone, tagged by the server with the sender identity', async () => {
-    const a = await join('Alice');
-    const b = await join('Bob');
+    const a = await attach('Alice');
+    const b = await attach('Bob');
     b.ws.send(JSON.stringify({ t: 'text', text: '  hello all  ' }));
     const seenByA = (await a.next((m) => m.t === 'text')) as unknown as { from: Person; text: string; at: number };
     const seenByB = (await b.next((m) => m.t === 'text')) as unknown as { from: Person; text: string };
@@ -88,29 +92,46 @@ describe('text', () => {
   });
 
   it('rejects empty and over-long text', async () => {
-    const a = await join('Alice');
+    const a = await attach('Alice');
     a.ws.send(JSON.stringify({ t: 'text', text: '   ' }));
-    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'unrecognised message' });
+    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'empty message' });
     a.ws.send(JSON.stringify({ t: 'text', text: 'x'.repeat(MAX_TEXT_LENGTH + 1) }));
-    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'unrecognised message' });
+    expect((await a.next((m) => m.t === 'error')) as { reason: string }).toMatchObject({ reason: expect.stringContaining('longer than') });
     a.ws.close(1000, 'bye');
   });
 
-  it('drops messages beyond the burst with a rate-limited error', async () => {
-    const a = await join('Alice');
-    for (let i = 0; i < BURST + 5; i++) a.ws.send(JSON.stringify({ t: 'text', text: `m${i}` }));
+  it('relays the burst and drops the excess with a rate-limited error', async () => {
+    const a = await attach('Alice');
+    const extra = 5;
+    for (let i = 0; i < BURST + extra; i++) a.ws.send(JSON.stringify({ t: 'text', text: `m${i}` }));
     const err = await a.next((m) => m.t === 'error');
     expect(err).toEqual({ t: 'error', reason: 'rate limited' });
+    await new Promise((r) => setTimeout(r, 100));
+    const relayed = a.inbox.filter((m) => m.t === 'text').length;
+    const errors = a.inbox.filter((m) => m.t === 'error').length + 1;
+    expect(relayed).toBeGreaterThanOrEqual(BURST); // the burst went through (refill may let a few more pass)
+    expect(relayed + errors).toBe(BURST + extra); // nothing vanished silently
+    a.ws.close(1000, 'bye');
+  });
+
+  it('names the reason for an over-long message', async () => {
+    const a = await attach('Alice');
+    a.ws.send(JSON.stringify({ t: 'text', text: 'x'.repeat(MAX_TEXT_LENGTH + 1) }));
+    expect((await a.next((m) => m.t === 'error')) as { reason: string }).toMatchObject({ reason: `message longer than ${MAX_TEXT_LENGTH} characters` });
     a.ws.close(1000, 'bye');
   });
 });
 
 describe('ping', () => {
-  it('answers the exact ping frame with the exact pong frame', async () => {
-    const a = await join('Alice');
+  it('answers the exact ping frame at the edge, recorded by the auto-response timestamp', async () => {
+    const a = await attach('Alice');
     a.ws.send(PING_FRAME);
     const pong = await a.next((m) => m.t === 'pong');
     expect(JSON.stringify(pong)).toBe(PONG_FRAME);
+    const stub = env.ROOM.get(env.ROOM.idFromName('the-room'));
+    const stamped = await runInDurableObject(stub, (_i, state) =>
+      state.getWebSockets().some((s) => state.getWebSocketAutoResponseTimestamp(s) !== null));
+    expect(stamped).toBe(true); // the platform answered; a woken webSocketMessage would not set this
     a.ws.close(1000, 'bye');
   });
 });
