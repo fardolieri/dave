@@ -23,6 +23,8 @@ const evaluate = async (expression) => (await cdp('Runtime.evaluate', { expressi
 const type = async (text) => { for (const ch of text) { await cdp('Input.dispatchKeyEvent', { type: 'keyDown', text: ch, key: ch }); await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: ch }); } };
 const enter = async () => { await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' }); await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 }); };
 await cdp('Runtime.enable');
+await cdp('Page.enable');
+if (process.env.PATCH_SCROLL) await cdp('Page.addScriptToEvaluateOnNewDocument', { source: 'Element.prototype.scrollTo = function () { return true; };' }); // simulate a scroll-hooking extension
 try {
   await cdp('Page.navigate', { url: `${url}#${encodeURIComponent(secret)}` }); await sleep(1500);
   console.log('step 1 (fragment consumed):', await evaluate('location.hash + " | " + document.body.innerText.replace(/\\s+/g," ").slice(0,80)'));

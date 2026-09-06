@@ -496,7 +496,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       }
     }
   }
-  createEffect(() => room.people(), (people) => reconcile(people));
+  createEffect(() => room.people(), (people) => { reconcile(people); }); // block body: never return a value from an effect callback
 
   // Re-declare after our own server reconnect (spec §8.1): peer connections stay, join sequence is fresh.
   createEffect(() => room.status().kind, (kind, prev) => {

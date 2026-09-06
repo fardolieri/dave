@@ -298,8 +298,10 @@ function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: str
     props.onSend(text);
     setDraft('');
   };
-  // keep the newest line in view: compute phase tracks the length, apply phase touches the DOM
-  createEffect(() => props.lines.length, () => log?.scrollTo({ top: log.scrollHeight }));
+  // keep the newest line in view: compute phase tracks the length, apply phase touches the DOM.
+  // Block body on purpose: an effect callback's return value is taken as a cleanup, and browser
+  // extensions that hook scrolling make scrollTo return a value, which halted the whole page once.
+  createEffect(() => props.lines.length, () => { log?.scrollTo({ top: log.scrollHeight }); });
   return (
     <div class="chat">
       <div class="chat-log" ref={log}>
