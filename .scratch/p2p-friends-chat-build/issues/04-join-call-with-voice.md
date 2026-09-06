@@ -4,12 +4,21 @@
 
 **Blocked by:** 03 Presence and text for visitors.
 
-**Status:** ready-for-agent
+**Status:** in-progress (branch `build/04-voice`, under review)
 
-- [ ] Join assigns a join sequence and returns TURN `iceServers` minted server-side from Cloudflare with a 12-hour TTL; credentials revoked on leave; STUN shipped to visitors.
-- [ ] Newcomer creates the connection and first offer to each existing participant; the offerer pre-adds the three fixed transceivers (voice audio, share video, share audio); the answerer adopts the created ones, sets them to sendrecv, attaches tracks, then answers. Verified in tests that both sides end with exactly three transceivers and one negotiation round.
-- [ ] Perfect negotiation with polite side = lower public key string; a test forces simultaneous offers and asserts both sides converge.
-- [ ] Voice track attached via `replaceTrack`; join unmuted with last mute state remembered; mute disables the track and broadcasts the flag; speaking rings from a local analyser on own mic and received tracks.
-- [ ] Per-peer stats every 2 s drive the badge: selected candidate pair type gives direct or relayed; ICE disconnected shows reconnecting and restarts ICE after 5 s; failed shows unreachable and retries with backoff; nobody is removed from the call by media failure.
-- [ ] Server reconnect keeps peer connections alive and re-declares role, sharing, and muted; a Room alarm every 60 s while any socket is attached drops sockets silent for 90 s (amended from "while a call exists" on 2026-09-06, agreed by the owner, to clear ghost visitors).
-- [ ] Leave closes connections on both sides and the server announces it; the Call list shows the user first and others in join order.
+- [x] Join assigns a join sequence and returns TURN `iceServers` minted server-side from Cloudflare with a 12-hour TTL; credentials revoked on leave; STUN shipped to visitors.
+- [x] Newcomer creates the connection and first offer to each existing participant; the offerer pre-adds the three fixed transceivers (voice audio, share video, share audio); the answerer adopts the created ones, sets them to sendrecv, attaches tracks, then answers. Verified in tests that both sides end with exactly three transceivers and one negotiation round.
+- [x] Perfect negotiation with polite side = lower public key string; a test forces simultaneous offers and asserts both sides converge.
+- [x] Voice track attached via `replaceTrack`; join unmuted with last mute state remembered; mute disables the track and broadcasts the flag; speaking rings from a local analyser on own mic and received tracks.
+- [x] Per-peer stats every 2 s drive the badge: selected candidate pair type gives direct or relayed; ICE disconnected shows reconnecting and restarts ICE after 5 s; failed shows unreachable and retries with backoff; nobody is removed from the call by media failure.
+- [x] Server reconnect keeps peer connections alive and re-declares role, sharing, and muted; a Room alarm every 60 s while any socket is attached drops sockets silent for 90 s (amended from "while a call exists" on 2026-09-06, agreed by the owner, to clear ghost visitors).
+- [x] Leave closes connections on both sides and the server announces it; the Call list shows the user first and others in join order.
+
+## Notes
+
+- 2026-09-06: built on branch `build/04-voice`. 45 tests in workerd cover join sequencing, ICE reply, leave broadcast, mute propagation, point-to-point signaling limited to participants, the sweep alarm, mesh rules, and TURN request construction and reply parsing.
+- Verified with three real headless Chromium profiles via `scripts/drive.mjs --join` (fake microphones): every browser lists itself first in Call and the other two as "direct"; speaking rings light; Bob's mute shows as "muted" for everyone within a second; Carol's Leave returns her to Online and removes her from the others' Call list.
+- Design settled while building: the server broadcasts an explicit `left` for a deliberate leave, while a vanished socket only drops out of the presence snapshot. Peers close the media connection at once on `left`, but hold it for a 60 s grace period when a participant merely vanished, showing "connection to server lost", so a friend's server reconnect does not interrupt voice (spec §8.1). Becoming a visitor without `left` is treated as a leave.
+- TURN minting falls back to STUN only when the token is missing or the request fails, so local dev and tests need no network. Cloudflare's endpoint cannot be exercised locally; the first live join will show whether credentials arrive (badge "via relay" only appears when a relay is actually used).
+- Not exercised: a participant's own server reconnect keeping media alive, and ICE restart paths. Both are code-reviewed, not observed.
+- Learned: killed headless Chromes leave live processes behind unless the whole process group is killed; the "ghost visitors" seen earlier were those, not stale server sockets. The sweep-while-attached amendment stays because real network loss produces exactly that shape.
