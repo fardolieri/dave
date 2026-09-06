@@ -44,6 +44,14 @@ _Avoid_: Proxied, tunnelled
 The single invite passphrase or link that gates entry to the room. Everyone who holds it is a friend.
 _Avoid_: Password, token, invite code
 
+**Fingerprint**:
+A short, human-comparable code derived from an identity's public key, shown beside the display name so friends can tell two identities with the same name apart.
+_Avoid_: Hash, ID, key ID
+
+**Invite link**:
+The URL a friend receives to enter the room. Carries the shared secret in its fragment, which never reaches the server.
+_Avoid_: Join link, room URL
+
 **Identity**:
 A per-browser keypair that makes a friend's display name stable and unforgeable across sessions.
 _Avoid_: Account, login, profile

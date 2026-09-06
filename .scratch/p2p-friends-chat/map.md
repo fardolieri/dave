@@ -35,6 +35,7 @@ A spec, ready to hand to an implementer, for a single-room web app where up to f
 - [Hosting platform, server runtime, and TURN provider decision](issues/08-hosting-and-runtime.md): Cloudflare Workers + Durable Objects for hub and SPA, Cloudflare Realtime TURN for relay, all on one free account with a card allowed but zero spend. Node plus wrangler toolchain, Bun dropped. Hibernation means server state is derived from attached sockets only. GitHub Actions deploys. ADR 0002.
 - [Provision the Cloudflare account, TURN key, and deploy secrets](issues/15-provision-cloudflare.md): done. Free plan, TURN key created with no plan change, three GitHub secrets in place, $1 budget alert, app URL dave.danielmittereder.workers.dev created by first deploy.
 - [Presence and ephemeral text transport model](issues/09-presence-and-text-transport.md): server relays text with no buffer; presence and call membership derived from attached sockets and broadcast as full snapshots; ping auto-response plus a 60 s alarm during calls sweeps dead sockets; server presence wins over media failure; polite role now by identity key so reconnects need no state; speaking indicators stay local; 20 msg/s rate limit.
+- [Access gating and stable identity](issues/10-access-and-identity.md): HMAC challenge-response over a nonce bound to the client public key, secret never on the wire, delivered via invite-link fragment. Non-extractable ECDSA P-256 in IndexedDB. Server tags attribution, clients trust it. Name plus six-char fingerprint, "new" badge for unseen keys, duplicates allowed, no key recovery. ADR 0003.
 
 ## Not yet specified
 
@@ -50,4 +51,5 @@ A spec, ready to hand to an implementer, for a single-room web app where up to f
 - Persistent text history, encrypted or not. Ruled out on 2026-09-05 in favour of ephemeral text.
 - Accounts, allowlists, or third-party sign-in. The shared secret is the boundary.
 - Visitor visibility with an invisible mode (seeing who is online but not in the call). Deferred to a later effort; noted so a privacy toggle is designed in when it comes.
+- Identity recovery or key linking across browsers. Non-extractable keys were chosen deliberately; a linking flow (new browser shows a code, old browser signs it) is a later effort. Ruled out 2026-09-06 in the access and identity decision.
 - Selective forwarding unit or any server that handles media. Contradicts the privacy constraint and the participant ceiling makes it unnecessary.
