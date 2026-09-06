@@ -50,7 +50,8 @@ class Browser {
   close() { try { this.ws?.close(); } catch {} this.proc?.kill(); rmSync(this.dir, { recursive: true, force: true }); }
 }
 
-const browsers = names.map((n, i) => new Browser(n, 9300 + i));
+const portBase = Number(process.env.PORT_BASE ?? 9300);
+const browsers = names.map((n, i) => new Browser(n, portBase + i));
 try {
   for (const b of browsers) { await b.launch(); await b.seed(); }
   await sleep(1500);

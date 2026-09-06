@@ -1,4 +1,4 @@
-import { createSignal, Switch, Match, createMemo, For, Show } from 'solid-js';
+import { createSignal, Switch, Match, createMemo, For, Show, untrack } from 'solid-js';
 import './styles.css';
 import { loadIdentity, type LocalIdentity } from './identity';
 import { getName, getSecret, setName, takeSecretFromInviteLink } from './invite';
@@ -64,7 +64,8 @@ function NameForm(props: { onSubmit: (name: string) => void }) {
 
 // Owns the socket: a component body runs once, so `createRoom` is called exactly once.
 function RoomView(props: { secret: string; name: string; identity: LocalIdentity }) {
-  const room = createRoom(props);
+  // A deliberate one-time snapshot: the socket is created once with the props at mount.
+  const room = createRoom(untrack(() => ({ secret: props.secret, name: props.name, identity: props.identity })));
   const me = () => props.identity.publicKey;
   const online = createMemo(() => {
     const others = room.people().filter((p) => p.role === 'visitor' && p.publicKey !== me()).sort((a, b) => a.name.localeCompare(b.name));
@@ -97,7 +98,8 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
 }
 
 function PersonRow(props: { p: Person; isMe: boolean }) {
-  const [known, setKnown] = createSignal(props.isMe || isKnown(props.p.publicKey));
+  // One-time snapshot on purpose: whether this key was known when the row appeared.
+  const [known, setKnown] = createSignal(untrack(() => props.isMe || isKnown(props.p.publicKey)));
   const acknowledge = () => { if (!known()) { markKnown(props.p.publicKey, props.p.name); setKnown(true); } };
   return (
     <li onClick={acknowledge} title={known() ? undefined : 'First time this key shows up here. Click to acknowledge.'}>
