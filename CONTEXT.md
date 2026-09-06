@@ -28,6 +28,14 @@ _Avoid_: Roster, online list
 One screen or window stream published by a participant. Several participants may share at once; each other participant chooses which shares to view.
 _Avoid_: Screencast, stream (transport term)
 
+**Viewer**:
+A participant who has chosen to watch a particular share. A share has zero or more viewers; a participant may view several shares.
+_Avoid_: Subscriber, watcher, spectator
+
+**Signaling**:
+The exchange, through the server, of the offers, answers, and candidates two participants need to connect directly. Never carries media.
+_Avoid_: Handshake, negotiation (reserve for the WebRTC offer/answer state machine)
+
 **Shared secret**:
 The single invite passphrase or link that gates entry to the room. Everyone who holds it is a friend.
 _Avoid_: Password, token, invite code
