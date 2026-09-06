@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.30.2",
-  "engines": { "node": ">=22.12" },
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
@@ -17,6 +19,7 @@
   "dependencies": {
     "@solidjs/signals": "2.0.0-rc.6",
     "@solidjs/web": "2.0.0-rc.6",
+    "posthog-js": "^1.427.2",
     "solid-js": "2.0.0-rc.6"
   },
   "devDependencies": {

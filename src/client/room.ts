@@ -1,4 +1,5 @@
 import { createSignal, onCleanup } from 'solid-js';
+import posthog from './posthog';
 import { buildAuthMessage } from '../core/identity';
 import {
   CLOSE_AUTH_FAILED, CLOSE_NOT_CONFIGURED, PING_FRAME, PING_INTERVAL_MS,
@@ -70,7 +71,7 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
           attempt = 0;
           setYou(m.you);
           setStatus({ kind: 'connected' });
-          if (everConnected) push({ kind: 'system', text: 'Reconnected. You may have missed messages.', at: Date.now() });
+          if (everConnected) { push({ kind: 'system', text: 'Reconnected. You may have missed messages.', at: Date.now() }); posthog.capture('server_reconnected', { down_ms: downSince ? Date.now() - downSince : 0 }); }
           everConnected = true;
           downSince = null;
           clearTimeout(unavailableTimer);
@@ -85,6 +86,7 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
           if (you()) {
             // After the welcome an error means a frame of ours was dropped. Chat-related ones are said in the chat;
             // signaling ones are a developer concern and would only confuse in the chat.
+            posthog.capture('frame_dropped', { ref: m.ref ?? 'unknown', reason: m.reason });
             if (m.ref === 'signal' || m.ref === 'ice') console.warn('dropped', m.ref, m.reason);
             else push({ kind: 'system', text: `${m.ref === 'text' || !m.ref ? 'Not sent' : 'Dropped'}: ${m.reason}.`, at: Date.now() });
           } else if (status().kind !== 'refused') {
@@ -106,6 +108,7 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
       if (ws === socket) ws = null;
       setYou(null);
       if (stopped) return;
+      posthog.capture('server_socket_closed', { code: e.code, ever_connected: everConnected });
       if (e.code === CLOSE_AUTH_FAILED || e.code === CLOSE_NOT_CONFIGURED) {
         stopped = true;
         setStatus({ kind: 'refused', reason: e.code === CLOSE_AUTH_FAILED ? 'the invite link is wrong or has been rotated' : 'the server has no room secret configured' });
@@ -140,7 +143,7 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
     people,
     lines,
     send,
-    sendText: (text: string) => send({ t: 'text', text }),
+    sendText: (text: string) => { send({ t: 'text', text }); posthog.capture('message_sent'); },
     /** Messages the room store does not handle itself (call, left, signal, ice) go to subscribers. */
     subscribe: (l: (m: ServerMessage) => void) => { listeners.add(l); return () => listeners.delete(l); },
   };

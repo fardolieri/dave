@@ -1,5 +1,6 @@
 import { createSignal, Switch, Match, createMemo, createEffect, For, Show, untrack } from 'solid-js';
 import './styles.css';
+import posthog from './posthog';
 import { loadIdentity, type LocalIdentity } from './identity';
 import { getName, getSecret, setName, takeSecretFromInviteLink } from './invite';
 import { createRoom, type ChatLine, type ServerStatus } from './room';
@@ -55,7 +56,7 @@ function NameForm(props: { onSubmit: (name: string) => void }) {
   return (
     <main class="notice">
       <h1>dave</h1>
-      <form onSubmit={(e) => { e.preventDefault(); const n = normaliseName(draft()); if (n) props.onSubmit(n); }}>
+      <form onSubmit={(e) => { e.preventDefault(); const n = normaliseName(draft()); if (n) { posthog.capture('name_set'); props.onSubmit(n); } }}>
         <p>What should your friends call you?</p>
         <input value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} maxlength={32} autofocus placeholder="Your name" />
         <button disabled={!valid()}>Continue</button>
@@ -67,6 +68,9 @@ function NameForm(props: { onSubmit: (name: string) => void }) {
 
 // Owns the socket: a component body runs once, so `createRoom` is called exactly once.
 function RoomView(props: { secret: string; name: string; identity: LocalIdentity }) {
+  // Pseudonymous identity for analytics: the public key, nothing personal. One-time read on purpose.
+  posthog.identify(untrack(() => props.identity.publicKey));
+  posthog.capture('room_entered');
   // A deliberate one-time snapshot: the socket is created once with the props at mount.
   const room = createRoom(untrack(() => ({ secret: props.secret, name: props.name, identity: props.identity })));
   const me = () => props.identity.publicKey;
@@ -165,7 +169,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
 function PersonRow(props: { p: Person; isMe: boolean }) {
   // One-time snapshot on purpose: whether this key was known when the row appeared.
   const [known, setKnown] = createSignal(untrack(() => props.isMe || isKnown(props.p.publicKey)));
-  const acknowledge = () => { if (!known()) { markKnown(props.p.publicKey, props.p.name); setKnown(true); } };
+  const acknowledge = () => { if (!known()) { markKnown(props.p.publicKey, props.p.name); setKnown(true); posthog.capture('new_key_acknowledged'); } };
   return (
     <li onClick={acknowledge} title={known() ? undefined : 'First time this key shows up here. Click to acknowledge.'}>
       <span class="avatar">{props.p.name[0]}</span>

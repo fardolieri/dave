@@ -1,10 +1,12 @@
 import { render } from '@solidjs/web';
 import App from './App';
+import posthog from './posthog';
 
 // If the reactive system halts (an uncaught error inside an effect), the page silently stops updating.
 // Say so, loudly, with a reload, and keep the error visible in the console.
 function showCrash(reason: unknown): void {
   if (document.getElementById('crash')) return;
+  posthog.capture('reactivity_halted', { message: reason instanceof Error ? reason.message : String(reason) });
   const bar = document.createElement('div');
   bar.id = 'crash';
   bar.setAttribute('style', 'position:fixed;left:0;right:0;top:0;z-index:1000;background:#7a1f1f;color:#fff;padding:10px 14px;font:14px system-ui;display:flex;gap:12px;align-items:center');

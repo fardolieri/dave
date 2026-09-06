@@ -1,0 +1,28 @@
+/**
+ * PostHog analytics singleton. Import `posthog` from here so the SDK is initialised exactly once.
+ *
+ * The project key is a public client token (safe in the repo, see .env); without it, in production,
+ * every capture is a no-op. This is a private friends room: session replay is on for debugging but
+ * masks all text and inputs, and no event ever carries message text or names.
+ */
+import posthogJs from 'posthog-js';
+
+const key = import.meta.env['VITE_POSTHOG_KEY'] as string | undefined;
+const host = import.meta.env['VITE_POSTHOG_HOST'] as string | undefined;
+
+if (!key || !host) {
+  if (import.meta.env.DEV) console.warn('PostHog is not configured (VITE_POSTHOG_KEY / VITE_POSTHOG_HOST); events are dropped.');
+} else {
+  posthogJs.init(key, {
+    api_host: host,
+    defaults: '2026-05-30',
+    capture_exceptions: true,
+    person_profiles: 'identified_only',
+    session_recording: {
+      maskAllInputs: true,
+      maskTextSelector: '*', // chat, names, fingerprints: never in a recording
+    },
+  });
+}
+
+export default posthogJs;

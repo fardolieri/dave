@@ -1,4 +1,5 @@
 import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
+import posthog from './posthog';
 import {
   ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
 } from '../core/mesh';
@@ -113,7 +114,11 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
 
   const me = (): Person | null => room.people().find((p) => p.publicKey === myKey) ?? null;
   const publish = () => setViews([...peers.values()].map((p) => ({ ...p.view })));
-  const setView = (p: Peer, patch: Partial<PeerView>) => { Object.assign(p.view, patch); publish(); };
+  const setView = (p: Peer, patch: Partial<PeerView>) => {
+    if (patch.conn && patch.conn !== p.view.conn) posthog.capture('peer_connection_state', { state: patch.conn, previous: p.view.conn, peers: peers.size });
+    Object.assign(p.view, patch);
+    publish();
+  };
 
   // ---- media
   function microphoneConstraints(): MediaTrackConstraints {
@@ -356,6 +361,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     peer.candidateTimer = undefined;
     if (!peer.outgoingCandidates.length) return;
     const candidates = peer.outgoingCandidates.splice(0, 64);
+    if (candidates.some((c) => typeof (c as { candidate?: string } | null)?.candidate === 'string' && (c as { candidate: string }).candidate.includes(' relay '))) posthog.capture('relay_candidate_gathered');
     room.send({ t: 'signal', to: peer.key, data: { candidates } });
     if (peer.outgoingCandidates.length) peer.candidateTimer = setTimeout(() => flushCandidates(peer), 0);
   }
@@ -443,6 +449,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
 
   async function restartIce(peer: Peer): Promise<void> {
     if (peer.pc.connectionState === 'closed') return;
+    posthog.capture('ice_restart', { attempt: peer.restarts, ice_state: peer.pc.iceConnectionState });
     if (Date.now() - iceIssuedAt > ICE_REFRESH_AFTER_MS) {
       const fresh = await requestIce();
       if (fresh) { iceServers = fresh.iceServers; iceIssuedAt = fresh.issuedAt; peer.pc.setConfiguration({ iceServers }); }
@@ -526,6 +533,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       // Vanished, or reappeared as a visitor while their rejoin is still in flight: their server socket dropped.
       // A deliberate leave arrives as an explicit `left` and closes at once; here we keep media for a grace period.
       if (!peer.view.serverLost) {
+        posthog.capture('peer_server_lost');
         setView(peer, { serverLost: true });
         peer.graceTimer = setTimeout(() => closePeer(peer.key), PEER_GRACE_MS);
       }
@@ -602,6 +610,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     for (const peer of peers.values()) attachLocalTracks(peer);
     setSharing(stream);
     room.send({ t: 'share', on: true });
+    posthog.capture('screen_share_started');
   }
 
   /** Stop sharing. `announce` is false when leaving, where the server clears the flag itself. */
@@ -621,6 +630,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       }
       setSharing(null);
       if (announce) room.send({ t: 'share', on: false });
+      posthog.capture('screen_share_stopped');
     } finally {
       stoppingShare = false;
     }
@@ -631,6 +641,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     const peer = peers.get(key);
     if (!peer || peer.view.watching === on) return;
     setView(peer, { watching: on, shareKbps: 0 });
+    posthog.capture('screen_watch_toggled', { watching: on });
     // A small screen asks the sharer for a downscaled encoding for this connection only (spec §6.4).
     room.send(smallScreen() ? { t: 'subscribe', to: key, on, scale: 2 } : { t: 'subscribe', to: key, on });
   }
@@ -653,12 +664,15 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       try {
         await openMicrophone();
       } catch (e) {
-        setJoinError(e instanceof Error && e.name === 'NotAllowedError' ? 'Microphone access was denied.' : `Could not open the microphone: ${e instanceof Error ? e.message : String(e)}`);
+        const joinErrMsg = e instanceof Error && e.name === 'NotAllowedError' ? 'Microphone access was denied.' : `Could not open the microphone: ${e instanceof Error ? e.message : String(e)}`;
+        setJoinError(joinErrMsg);
+        posthog.capture('join_error', { reason: 'microphone_denied' });
         return;
       }
       const reply = await declareJoin();
-      if (!reply) { setJoinError('The server did not answer the join request.'); return; }
+      if (!reply) { setJoinError('The server did not answer the join request.'); posthog.capture('join_error', { reason: 'server_no_answer' }); return; }
       setInCall(true);
+      posthog.capture('call_joined');
       reconcile(untrack(room.people));
     } finally {
       joining = false;
@@ -667,6 +681,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
 
   function leave(): void {
     if (!joined) return;
+    posthog.capture('call_left');
     void stopShare(false); // the server clears the sharing flag on leave
     room.send({ t: 'leave' });
     for (const key of [...peers.keys()]) closePeer(key);
@@ -684,6 +699,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     local.set('muted', String(m));
     if (voiceTrack) voiceTrack.enabled = !m;
     if (joined) room.send({ t: 'mute', muted: m });
+    posthog.capture('mute_toggled', { muted: m });
   }
 
   onCleanup(() => {
