@@ -5,7 +5,7 @@ import {
 } from '../core/mesh';
 import type { IceServer, Person, ServerMessage, SignalData } from '../core/protocol';
 import {
-  SMALL_SCREEN_QUERY, applyPreset, contentHint, parseAudioSettings, parseShareSettings, parseViewerSettings, shareEncoding, trackConstraints, withChange,
+  SMALL_SCREEN_QUERY, applyPreset, clampVolume, contentHint, parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes, shareEncoding, trackConstraints, withChange,
   type AudioSettings, type PresetName, type ShareSettings, type ViewerSettings,
 } from '../core/settings';
 import type { createRoom } from './room';
@@ -18,6 +18,8 @@ export type PeerView = {
   publicKey: string; name: string; conn: ConnState; speaking: boolean; serverLost: boolean; audioBytesIn: number;
   /** Their share as I see it: whether I asked for it, whether frames have arrived, and the inbound rate. */
   watching: boolean; shareLive: boolean; shareKbps: number;
+  /** How loud this participant is for me, 0 to 1. Local only. */
+  volume: number;
 };
 
 type Peer = {
@@ -87,6 +89,8 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     return [get, (next) => { set(() => next); local.set(key, JSON.stringify(next)); }];
   }
   const [shareSettings, storeShareSettings] = persisted('shareSettings', parseShareSettings);
+  /** Local volume per participant public key, remembered per browser. */
+  const [volumes, storeVolumes] = persisted('volumes', parseVolumes);
   const [audioSettings, storeAudioSettings] = persisted('audioSettings', parseAudioSettings);
   const [viewerSettings, storeViewerSettings] = persisted('viewerSettings', parseViewerSettings);
   const [devices, setDevices] = createSignal<{ microphones: MediaDeviceInfo[]; speakers: MediaDeviceInfo[] }>({ microphones: [], speakers: [] });
@@ -206,6 +210,20 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   const setPreset = (preset: PresetName) => setShareSettings(applyPreset(shareSettings(), preset));
   const changeShare = (change: Partial<Omit<ShareSettings, 'preset'>>) => setShareSettings(withChange(shareSettings(), change));
 
+  /** Set how loud one participant is for me: their voice and share audio, nothing sent anywhere (ticket 08). */
+  function setVolume(key: string, value: number): void {
+    const v = clampVolume(value);
+    const peer = peers.get(key);
+    if (peer) {
+      peer.audio.volume = v;
+      peer.shareAudio.volume = v;
+      setView(peer, { volume: v });
+    }
+    const next = { ...untrack(volumes) };
+    if (v === 1) delete next[key]; else next[key] = v;
+    storeVolumes(next);
+  }
+
   function setViewerSettings(next: ViewerSettings): void {
     storeViewerSettings(next);
     for (const p of peers.values()) for (const slot of [SLOT_INDEX.shareVideo, SLOT_INDEX.shareAudio]) { const r = p.tx[slot]?.receiver; if (r) applyJitterTarget(r); }
@@ -251,12 +269,14 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     audio.autoplay = true;
     const peer: Peer = {
       key, name, pc, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, restarts: 0,
-      view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0 },
+      view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, volume: untrack(volumes)[key] ?? 1 },
       viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
     };
     earlyViewers.delete(key);
     peer.shareAudio.autoplay = true;
+    peer.audio.volume = peer.view.volume;
+    peer.shareAudio.volume = peer.view.volume;
     void applySink(peer.audio);
     void applySink(peer.shareAudio);
     setShareStreams((m) => new Map(m).set(key, peer.remoteShare));
@@ -720,6 +740,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
         senders: [...peers.values()].map((p) => { const params = p.tx[SLOT_INDEX.shareVideo]?.sender.getParameters(); const e = params?.encodings?.[0]; return { name: p.name, active: e?.active, maxBitrate: e?.maxBitrate, maxFramerate: e?.maxFramerate, scale: e?.scaleResolutionDownBy, degradation: (params as { degradationPreference?: string } | undefined)?.degradationPreference }; }),
       }),
       audio: () => ({ settings: audioSettings(), track: voiceTrack?.getSettings() ?? null }),
+      volumes: () => [...peers.values()].map((p) => ({ name: p.name, voice: p.audio.volume, share: p.shareAudio.volume, view: p.view.volume })),
       state: () => ({ inCall: joined, joining, joinError: untrack(joinError), myJoinSeq, role: untrack(me)?.role ?? null, participants: untrack(room.people).filter((p) => p.role === 'participant').map((p) => `${p.name}#${p.joinSeq}`) }),
     };
   }
@@ -728,5 +749,6 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     inCall, muted, views, speakingSelf, joinError, join, leave, setMuted, myJoinSeq: () => myJoinSeq,
     sharing, shareError, startShare, stopShare, watch, watchOnly, shareStreamOf,
     shareSettings, setPreset, changeShare, audioSettings, changeAudio, viewerSettings, setViewerSettings, devices, refreshDevices, canPickSpeaker,
+    setVolume,
   };
 }

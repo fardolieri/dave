@@ -133,3 +133,23 @@ export function mbpsToBps(input: string, previousBps: number, minMbps: number, m
 
 /** Shared with the CSS breakpoint in styles.css (700px): phones ask for downscaled shares and stack the layout. */
 export const SMALL_SCREEN_QUERY = '(max-width: 700px)';
+
+/** Local per-participant volume (spec §6.1 addition): 0 to 1, default 1. Clamps anything else. */
+export function clampVolume(v: unknown): number {
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(1, Math.max(0, n));
+}
+
+/** Parse the stored volume map (public key to volume), dropping junk. */
+export function parseVolumes(raw: string | null): Record<string, number> {
+  if (!raw) return {};
+  try {
+    const v = JSON.parse(raw) as Record<string, unknown>;
+    const out: Record<string, number> = {};
+    if (typeof v === 'object' && v !== null) for (const [k, val] of Object.entries(v)) if (typeof val === 'number') out[k] = clampVolume(val);
+    return out;
+  } catch {
+    return {};
+  }
+}

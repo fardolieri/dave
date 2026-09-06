@@ -33,3 +33,15 @@ describe('share settings', () => {
     expect(mbpsToBps('0.1', 8_000_000, 1, 50)).toBe(1_000_000);
   });
 });
+
+describe('local volume', () => {
+  it('clamps and parses stored volumes', async () => {
+    const { clampVolume, parseVolumes } = await import('../src/core/settings');
+    expect(clampVolume(0.5)).toBe(0.5);
+    expect(clampVolume(7)).toBe(1);
+    expect(clampVolume(-1)).toBe(0);
+    expect(clampVolume('x')).toBe(1);
+    expect(parseVolumes('{"k1":0.3,"k2":"loud","k3":5}')).toEqual({ k1: 0.3, k3: 1 });
+    expect(parseVolumes('nope')).toEqual({});
+  });
+});

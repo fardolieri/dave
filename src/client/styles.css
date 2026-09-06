@@ -112,3 +112,9 @@ select.picker::picker(select) { background: var(--panel); color: var(--fg); bord
 select.picker option { padding: 6px 10px; border-radius: 6px; }
 select.picker option:checked { background: var(--acc); color: #fff; }
 select.picker option::checkmark { order: 1; margin-left: auto; }
+
+/* local volume per participant */
+.vol { padding: 2px 6px; font-size: 12px; display: inline-flex; gap: 4px; align-items: center; }
+.vol small { font-size: 10px; }
+.volrow { flex-basis: 100%; display: flex; align-items: center; gap: 8px; padding-left: 36px; }
+.volrow input[type=range] { flex: 1; accent-color: var(--acc); }

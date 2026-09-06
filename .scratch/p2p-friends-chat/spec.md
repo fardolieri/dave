@@ -91,6 +91,7 @@ From [Voice and share behaviour](issues/12-voice-and-share-behaviour.md) and [Mu
 - Join unmuted; last mute state remembered per browser. Mute sets the local track `enabled = false` (no renegotiation) and broadcasts `mute`.
 - Echo cancellation, noise suppression, and automatic gain default on. A settings popover exposes the three toggles behind a small warning that changing them usually makes you sound worse to others, plus microphone selection and speaker selection where the browser supports output devices. Pickers use the customizable select (`appearance: base-select`, Chrome 135, Safari 27) with a plain `<select>` fallback (Firefox has it behind flags as of 149). Choices remembered per browser.
 - Speaking indicators: a local audio analyser on the own mic and every received voice track lights a ring on the avatar past a threshold with a short hold.
+- Local volume per participant (added 2026-09-07, ticket 08): a speaker button on each other participant's row reveals a 0 to 100 percent slider that scales that person's voice and share audio for you only. Nothing is signalled. Remembered per browser keyed by the participant's public key; the row shows the percentage when it is not 100.
 
 ### 6.2 Starting and stopping a share
 - The Share screen button calls `getDisplayMedia` with video at the configured frame rate, `audio: true`, `systemAudio: 'include'`, `selfBrowserSurface: 'exclude'`, `surfaceSwitching: 'include'`. Share audio is Chromium-only and best effort; Firefox and Safari shares are silent.

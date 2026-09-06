@@ -158,6 +158,17 @@ try {
       for (const b of browsers) await b.screenshot(`${shotDir}/${b.name}.png`, narrowLast && b === browsers[browsers.length - 1] ? 390 : undefined);
       console.log(`screenshots in ${shotDir}`);
     }
+    if (process.env.VOLUME_CHECK && browsers[1]) {
+      const [a, b] = browsers;
+      await a.eval(`[...document.querySelectorAll('.prow')].find(li => li.textContent.includes(${JSON.stringify(b.name)}))?.querySelector('button.vol')?.click(); 'open'`);
+      await sleep(300);
+      await a.eval(`(() => { const r = document.querySelector('.volrow input[type=range]'); r.value = '30'; r.dispatchEvent(new Event('input', { bubbles: true })); return 'set'; })()`);
+      await sleep(500);
+      console.log(`[${a.name}] volumes after slider: ${JSON.stringify(await a.eval(`window.__dave?.volumes()`))} | row: ${await a.text('.prow button.vol')}`);
+      await a.goto(url); await sleep(1500);
+      await a.eval(`document.querySelector('button.join')?.click(); 'rejoin'`); await sleep(4000);
+      console.log(`[${a.name}] volumes after reload and rejoin: ${JSON.stringify(await a.eval(`window.__dave?.volumes()`))} | row: ${await a.text('.prow button.vol')}`);
+    }
     // Chatter while in the call: messages from both sides, interleaved.
     for (let i = 0; i < 3; i++) {
       for (const b of browsers) { await b.say(`${b.name} in-call message ${i}`); await sleep(250); }

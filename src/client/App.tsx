@@ -111,7 +111,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
           <h2>Call <Show when={!callExists()}><small class="dim">nobody in the call</small></Show></h2>
           <ul class="plist">
             <Show when={inCallList().self}>{(s) => <ParticipantRow p={s()} isMe speaking={call.speakingSelf()} />}</Show>
-            <For each={inCallList().others}>{(p) => <ParticipantRow p={p} isMe={false} view={call.inCall() ? viewOf(p.publicKey) : undefined} speaking={viewOf(p.publicKey)?.speaking ?? false} />}</For>
+            <For each={inCallList().others}>{(p) => <ParticipantRow p={p} isMe={false} view={call.inCall() ? viewOf(p.publicKey) : undefined} speaking={viewOf(p.publicKey)?.speaking ?? false} onVolume={call.inCall() ? (v) => call.setVolume(p.publicKey, v) : undefined} />}</For>
             <For each={inCallList().lost}>{(v) => <li class="lost"><span class="avatar">{v.name[0]}</span><span class="pname">{v.name} <em>connection to server lost</em></span></li>}</For>
           </ul>
           <div class="actions">
@@ -229,16 +229,30 @@ function AudioPanel(props: { call: Call }) {
 
 const CONN_LABEL: Record<ConnState, string> = { connecting: 'connecting…', direct: 'direct', relayed: 'via relay', reconnecting: 'reconnecting…', unreachable: 'unreachable' };
 
-function ParticipantRow(props: { p: Person; isMe: boolean; view?: PeerView; speaking: boolean }) {
+function ParticipantRow(props: { p: Person; isMe: boolean; view?: PeerView; speaking: boolean; onVolume?: (v: number) => void }) {
+  const [sliderOpen, setSliderOpen] = createSignal(false);
+  const volume = () => props.view?.volume ?? 1;
+  const percent = () => Math.round(volume() * 100);
   return (
-    <li>
+    <li class="prow">
       <span class={`avatar ${props.speaking ? 'speaking' : ''}`}>{props.p.name[0]}</span>
       <span class="pname">{props.p.name}{props.isMe ? ' (you)' : ''} <code class="fp">{props.p.fingerprint}</code></span>
       <span class="pflags">
         <Show when={props.p.muted}><em>muted</em></Show>
         <Show when={props.p.sharing}><em>sharing</em></Show>
         <Show when={props.view}>{(v) => <span class={`conn conn-${v().conn}`} title={CONN_LABEL[v().conn]}><i />{CONN_LABEL[v().conn]}</span>}</Show>
+        <Show when={props.onVolume && props.view}>
+          <button class={`vol ${percent() !== 100 ? 'on' : ''}`} title={`Volume for you: ${percent()}%`} onClick={() => setSliderOpen(!sliderOpen())}>
+            {percent() === 0 ? '🔇' : '🔊'}<Show when={percent() !== 100}><small>{percent()}%</small></Show>
+          </button>
+        </Show>
       </span>
+      <Show when={sliderOpen() && props.onVolume}>
+        <label class="volrow">
+          <input type="range" min="0" max="100" step="1" value={percent()} onInput={(e) => props.onVolume?.(Number(e.currentTarget.value) / 100)} />
+          <span class="dim">{percent()}%</span>
+        </label>
+      </Show>
     </li>
   );
 }
