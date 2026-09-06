@@ -32,6 +32,7 @@ A spec, ready to hand to an implementer, for a single-room web app where up to f
 - [Solid 2 release-candidate status and fit](issues/05-solid-2-status.md): rc.6 as of 2026-09-02, API frozen, weekly fixes, one open P1 store bug. Usable if all packages are pinned in lockstep; skip the router entirely. MediaStream objects are never proxied by stores, so WebRTC state must be mirrored into signals.
 - [Signaling and media stack decision](issues/07-signaling-and-media-stack.md): raw WebRTC mesh over our own WebSocket server, fixed transceivers per connection so only join and leave renegotiate, one share per participant, shares flow to nobody until a viewer subscribes, all control over the WebSocket, TURN credentials minted at join, runtime-neutral signaling core. ADR 0001.
 - [Hosting platform, server runtime, and TURN provider decision](issues/08-hosting-and-runtime.md): Cloudflare Workers + Durable Objects for hub and SPA, Cloudflare Realtime TURN for relay, all on one free account with a card allowed but zero spend. Node plus wrangler toolchain, Bun dropped. Hibernation means server state is derived from attached sockets only. GitHub Actions deploys. ADR 0002.
+- [Provision the Cloudflare account, TURN key, and deploy secrets](issues/15-provision-cloudflare.md): done. Free plan, TURN key created with no plan change, three GitHub secrets in place, $1 budget alert, app URL dave.danielmittereder.workers.dev created by first deploy.
 
 ## Not yet specified
 

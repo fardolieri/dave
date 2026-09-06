@@ -1,7 +1,7 @@
 # Presence and ephemeral text transport model
 
 Type: grilling
-Status: open
+Status: claimed
 Blocked by: 07
 
 ## Question

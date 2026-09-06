@@ -1,7 +1,7 @@
 # Provision the Cloudflare account, TURN key, and deploy secrets
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: none
 
 ## Question
@@ -15,6 +15,15 @@ Human-in-the-loop task. Nothing to decide, but the spec must record facts, not a
 5. Set a zero-spend notification if the dashboard offers one.
 
 Resolve by recording: subdomain name, TURN key ID, secret names, whether the card was required, and whether TURN needed a paid plan. If it did, switch the TURN decision to Metered Open Relay and record the quota the dashboard shows.
+
+## Answer
+
+Done 2026-09-06. Facts for the spec:
+
+- Cloudflare account on the Workers Free plan, Realtime enabled, payment method on file, $1 budget alert set. Creating the TURN key required no plan change.
+- TURN key ID `d3d456166c56302f67957272a1ff9ba5`, to be set as the plain variable `TURN_KEY_ID` in `wrangler.toml`. The key's API token exists only as the GitHub repository secret `TURN_KEY_API_TOKEN`; the deploy workflow pushes it into the Worker as a secret.
+- GitHub repository secrets on `fardolieri/dave`: `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (from the "Edit Cloudflare Workers" template), `TURN_KEY_API_TOKEN`.
+- App URL: `https://dave.danielmittereder.workers.dev`. Worker name `dave`; account subdomain already fixed and not recorded in the repo. The Worker is created by the first `wrangler deploy` from GitHub Actions; no dashboard step.
 
 ## Comments
 
