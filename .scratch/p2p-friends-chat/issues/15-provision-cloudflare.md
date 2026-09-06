@@ -22,3 +22,6 @@ Resolve by recording: subdomain name, TURN key ID, secret names, whether the car
 - Payment method added to the Cloudflare account. Account confirmed on the Workers Free plan with Realtime enabled (via Cloudflare's dashboard assistant).
 - TURN key created without a plan change. Key ID `d3d456166c56302f67957272a1ff9ba5` (not secret; goes in `wrangler.toml` as `TURN_KEY_ID`). API token held by the owner, to be stored only as the GitHub secret `TURN_KEY_API_TOKEN`.
 - Still open: `workers.dev` subdomain name; the three GitHub repository secrets; $1 budget alert.
+- GitHub repository secrets verified present by name on 2026-09-06: `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `TURN_KEY_API_TOKEN`.
+- $1 budget alert set.
+- Subdomain: candidates proposed `dwaves` (preferred), `davewaves`, `dwave`; Worker name `dave` unless the owner prefers `chat`. Awaiting which name was available.
