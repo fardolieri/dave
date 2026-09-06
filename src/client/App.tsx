@@ -4,6 +4,7 @@ import { loadIdentity, type LocalIdentity } from './identity';
 import { getName, getSecret, setName, takeSecretFromInviteLink } from './invite';
 import { createRoom, type ChatLine, type ServerStatus } from './room';
 import { createCall, type ConnState, type PeerView } from './call';
+import { createAttention } from './attention';
 import { isKnown, markKnown } from './seenKeys';
 import { MAX_TEXT_LENGTH, normaliseName, type Person } from '../core/protocol';
 import { LOW_LATENCY_MS, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
@@ -70,6 +71,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
   const room = createRoom(untrack(() => ({ secret: props.secret, name: props.name, identity: props.identity })));
   const me = () => props.identity.publicKey;
   const call = createCall(room, untrack(me));
+  createAttention(room, call, untrack(me));
   const online = createMemo(() => {
     const others = room.people().filter((p) => p.role === 'visitor' && p.publicKey !== me()).sort((a, b) => a.name.localeCompare(b.name));
     const self = room.people().find((p) => p.publicKey === me());

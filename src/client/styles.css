@@ -40,11 +40,15 @@ code.fp { font-size: 11px; color: var(--dim); }
 .chat-input { display: flex; gap: 6px; padding-top: 8px; }
 .chat-input input { flex: 1; }
 
+/* Phone width (spec §7.3): one column, the whole page scrolls, presence never clips, shares stack above the chat. */
 @media (max-width: 700px) {
-  .app { height: auto; min-height: 100%; }
-  .cols { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-  .side { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
-  .chat { min-height: 60vh; }
+  html, body, #app { height: auto; min-height: 100%; }
+  .app { height: auto; min-height: 100vh; }
+  .cols { grid-template-columns: 1fr; grid-template-rows: auto auto; }
+  .side { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; max-height: none; }
+  .main { min-height: 70vh; }
+  .chat { min-height: 50vh; }
+  .chat-log { max-height: 60vh; }
 }
 
 /* call */

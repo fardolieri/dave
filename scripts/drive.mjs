@@ -14,6 +14,9 @@ const args = process.argv.slice(2);
 const holdArg = args.find((a) => a.startsWith('--hold='));
 const joinAll = args.includes('--join');
 const shareToo = args.includes('--share');
+const narrowLast = args.includes('--narrow-last');
+const shotArg = args.find((a) => a.startsWith('--shot='));
+const shotDir = shotArg ? shotArg.slice(7) : null;
 const hold = holdArg ? Number(holdArg.slice(7)) : 0;
 const [url, secret, ...names] = args.filter((a) => !a.startsWith('--'));
 if (!url || !secret || names.length === 0) { console.error('usage: drive.mjs <url> <secret> <name> [name2 ...]'); process.exit(2); }
@@ -21,9 +24,9 @@ if (!url || !secret || names.length === 0) { console.error('usage: drive.mjs <ur
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 class Browser {
-  constructor(name, port) { this.name = name; this.port = port; this.dir = mkdtempSync(join(tmpdir(), `dave-${name}-`)); }
+  constructor(name, port, size = '1200,800') { this.name = name; this.port = port; this.size = size; this.dir = mkdtempSync(join(tmpdir(), `dave-${name}-`)); }
   async launch() {
-    this.proc = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-sandbox', `--user-data-dir=${this.dir}`, `--remote-debugging-port=${this.port}`,
+    this.proc = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-sandbox', `--window-size=${this.size}`, `--user-data-dir=${this.dir}`, `--remote-debugging-port=${this.port}`,
       '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required', 'about:blank'], { stdio: 'ignore', detached: true });
     for (let i = 0; i < 50; i++) {
       try { const r = await fetch(`http://127.0.0.1:${this.port}/json/list`); const tabs = await r.json(); if (tabs.length) { this.tab = tabs[0]; break; } } catch {}
@@ -42,6 +45,14 @@ class Browser {
     await this.goto(new URL('/', url).href);
     await this.eval(`localStorage.setItem('dave.secret', ${JSON.stringify(secret)}); localStorage.setItem('dave.name', ${JSON.stringify(this.name)}); 'ok'`);
     await this.goto(url);
+  }
+  async screenshot(path, width) {
+    // Emulate a phone viewport regardless of the headless window minimum.
+    if (width) await this.cdp('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: true });
+    await sleep(300);
+    const r = await this.cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(path, Buffer.from(r.result.data, 'base64'));
   }
   text(sel) { return this.eval(`Array.from(document.querySelectorAll(${JSON.stringify(sel)})).map(e => e.innerText.replace(/\\s+/g,' ').trim()).join(' | ')`); }
   async say(text) {
@@ -120,6 +131,12 @@ try {
         console.log(`[${third.name}] bytes at unwatch of ${sharer.name}: ${JSON.stringify(b1)} -> ${JSON.stringify(b2)} -> ${JSON.stringify(b3)} (first should stop growing, second keeps growing)`);
         console.log(`[${third.name}] tiles after unwatch: ${await third.text('.share')}`);
       }
+    }
+    if (shotDir) {
+      const { mkdirSync } = await import('node:fs');
+      mkdirSync(shotDir, { recursive: true });
+      for (const b of browsers) await b.screenshot(`${shotDir}/${b.name}.png`, narrowLast && b === browsers[browsers.length - 1] ? 390 : undefined);
+      console.log(`screenshots in ${shotDir}`);
     }
     const last = browsers[browsers.length - 1];
     if (browsers.length > 1) {
