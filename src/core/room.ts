@@ -4,7 +4,7 @@
 // No Cloudflare, Node, or DOM imports; scripts/check-core-isolation.mjs enforces that.
 import { fromBase64Url, fingerprint, randomNonce, toBase64Url, verifyAnswer } from './identity';
 import { CLOSE_AUTH_FAILED, parseClientMessage, type ClientMessage, type IceServer, type Person, type ServerMessage } from './protocol';
-import { newBucket, takeToken, type Bucket } from './ratelimit';
+import { SIGNAL_BURST, SIGNAL_RATE_PER_SECOND, newBucket, takeToken, type Bucket } from './ratelimit';
 import { nextJoinSeq } from './mesh';
 
 export const MAX_AUTH_ATTEMPTS = 3;
@@ -13,7 +13,7 @@ export const CHALLENGE_TIMEOUT_MS = 10_000;
 
 export type SocketState =
   | { stage: 'challenge'; nonce: string; attempts: number; since: number }
-  | { stage: 'attached'; person: Person; bucket: Bucket; attachedAt: number; turnUser?: string };
+  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; attachedAt: number; turnUser?: string };
 
 export type Outcome = {
   state: SocketState;
@@ -103,10 +103,17 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     return { state, replies: [{ t: 'error', reason: 'invalid socket state' }], close: { code: CLOSE_AUTH_FAILED, reason: 'invalid socket state' } };
   }
 
-  // Rate limit every authenticated frame, parseable or not.
-  const taken = takeToken(state.bucket, ctx.now);
-  const next: SocketState = { ...state, bucket: taken.bucket };
-  if (!taken.ok) return { state: next, replies: [{ t: 'error', reason: 'rate limited', ref: msg.t === 'invalid' ? undefined : msg.t }] };
+  // Rate limit every authenticated frame, parseable or not. Signaling has its own generous bucket (see ratelimit.ts).
+  let next: SocketState;
+  if (msg.t === 'signal') {
+    const taken = takeToken(state.signalBucket ?? newBucket(ctx.now, SIGNAL_BURST), ctx.now, SIGNAL_RATE_PER_SECOND, SIGNAL_BURST);
+    next = { ...state, signalBucket: taken.bucket };
+    if (!taken.ok) return { state: next, replies: [{ t: 'error', reason: 'rate limited', ref: 'signal' }] };
+  } else {
+    const taken = takeToken(state.bucket, ctx.now);
+    next = { ...state, bucket: taken.bucket };
+    if (!taken.ok) return { state: next, replies: [{ t: 'error', reason: 'rate limited', ref: msg.t === 'invalid' ? undefined : msg.t }] };
+  }
   const notInCall = (ref: ClientMessage['t']): Outcome => ({ state: next, replies: [{ t: 'error', reason: 'not in the call', ref }] });
   const participantByKey = (key: string): Person | undefined => {
     for (const p of ctx.others) if (p.publicKey === key) return p.role === 'participant' ? p : undefined;

@@ -24,8 +24,9 @@ export type Person = Identity & {
 /** An entry for RTCPeerConnection's iceServers. */
 export type IceServer = { urls: string | string[]; username?: string; credential?: string };
 
-/** Opaque WebRTC signaling payload, relayed untouched between two participants. */
-export type SignalData = { description?: unknown; candidate?: unknown };
+/** Opaque WebRTC signaling payload, relayed untouched between two participants. Candidates travel batched. */
+export type SignalData = { description?: unknown; candidates?: unknown[] };
+export const MAX_CANDIDATES_PER_MESSAGE = 64;
 
 export type ClientMessage =
   | { t: 'auth'; publicKey: string; name: string; hmac: string; signature: string }
@@ -125,7 +126,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | Invalid {
       const d = m.data as Record<string, unknown>;
       const data: SignalData = {};
       if ('description' in d) data.description = d.description;
-      if ('candidate' in d) data.candidate = d.candidate;
+      if ('candidates' in d) {
+        if (!Array.isArray(d.candidates) || d.candidates.length > MAX_CANDIDATES_PER_MESSAGE) return invalid('unrecognised message');
+        data.candidates = d.candidates;
+      }
+      if (!('description' in data) && !('candidates' in data)) return invalid('unrecognised message');
       return { t: 'signal', to: m.to, data };
     }
     case 'text': {

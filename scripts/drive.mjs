@@ -26,7 +26,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class Browser {
   constructor(name, port, size = '1200,800') { this.name = name; this.port = port; this.size = size; this.dir = mkdtempSync(join(tmpdir(), `dave-${name}-`)); }
   async launch() {
-    this.proc = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-sandbox', `--window-size=${this.size}`, `--user-data-dir=${this.dir}`, `--remote-debugging-port=${this.port}`,
+    const extra = (process.env.CHROME_FLAGS ?? '').split(' ').filter(Boolean); // e.g. --force-webrtc-ip-handling-policy=disable_non_proxied_udp to force TURN
+    this.proc = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-sandbox', ...extra, `--window-size=${this.size}`, `--user-data-dir=${this.dir}`, `--remote-debugging-port=${this.port}`,
       '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required', 'about:blank'], { stdio: 'ignore', detached: true });
     for (let i = 0; i < 50; i++) {
       try { const r = await fetch(`http://127.0.0.1:${this.port}/json/list`); const tabs = await r.json(); if (tabs.length) { this.tab = tabs[0]; break; } } catch {}
@@ -81,7 +82,17 @@ try {
   for (const b of browsers) console.log(`[${b.name}] banner: ${await b.text('.banner') || '(none)'}\n[${b.name}] online: ${await b.text('.plist li')}`);
   if (joinAll) {
     for (const b of browsers) { await b.eval(`document.querySelector('button.join')?.click(); 'clicked'`); await sleep(400); }
-    await sleep(8000); // mesh formation plus stats ticks
+    // Watch the connection badges settle, up to 30 s, reporting when each browser first shows direct or relayed.
+    const t0 = Date.now(); const settled = new Map();
+    while (Date.now() - t0 < 30000 && settled.size < browsers.length) {
+      await sleep(1000);
+      if (process.env.TRACE_ICE) { const last = browsers[browsers.length - 1]; console.log(`t+${((Date.now() - t0) / 1000).toFixed(0)}s [${last.name}] peers=${JSON.stringify(await last.eval(`window.__dave?.peers().map(p => p.name + ':' + p.ice) ?? 'no hook'`))} state=${JSON.stringify(await last.eval(`window.__dave?.state()`))}`); }
+      for (const b of browsers) if (!settled.has(b.name)) {
+        const badges = await b.eval(`[...document.querySelectorAll('.side ul:nth-of-type(2) .conn')].map(c => c.textContent.trim())`);
+        if (badges.length === browsers.length - 1 && badges.every((x) => x === 'direct' || x === 'via relay')) { settled.set(b.name, badges); console.log(`[${b.name}] badges settled after ${((Date.now() - t0) / 1000).toFixed(1)}s: ${badges.join(', ')}`); }
+      }
+    }
+    for (const b of browsers) if (!settled.has(b.name)) console.log(`[${b.name}] badges NOT settled after 30s: ${await b.eval(`[...document.querySelectorAll('.side ul:nth-of-type(2) .conn')].map(c => c.textContent.trim()).join(', ')`) || '(none)'}`);
     for (const b of browsers) console.log(`[${b.name}] call: ${await b.text('.side ul:nth-of-type(2) li') || '(empty)'}\n[${b.name}] actions: ${await b.text('.actions button')} | speaking rings: ${await b.eval(`document.querySelectorAll('.avatar.speaking').length`)} (on others: ${await b.eval(`document.querySelectorAll('.side ul:nth-of-type(2) li:not(:first-child) .avatar.speaking').length`)})`);
     if (browsers[1]) {
       await browsers[1].eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Mute')?.click(); 'muted'`);

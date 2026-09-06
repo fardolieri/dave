@@ -45,7 +45,11 @@ type Peer = {
   encodingChain: Promise<void>;
   /** Downscale this Viewer asked for (small screen), 1 = none. */
   viewerScale: number;
+  /** Outgoing ICE candidates are batched for a moment to cut message count (each is a relay request). */
+  outgoingCandidates: unknown[];
+  candidateTimer?: ReturnType<typeof setTimeout>;
 };
+const CANDIDATE_BATCH_MS = 60;
 
 const SPEAK_THRESHOLD = 0.02;
 const SPEAK_HOLD_MS = 300;
@@ -56,7 +60,11 @@ const SPEAK_HOLD_MS = 300;
  * newcomer initiates, all control over the room socket. Voice and one Share per participant.
  */
 export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
-  const [inCall, setInCall] = createSignal(false);
+  const [inCall, setInCallSignal] = createSignal(false);
+  // Solid 2 stages signal writes to a microtask, so code that runs right after a write still reads the old
+  // value. Internal logic therefore uses this plain mirror; the signal is for rendering only.
+  let joined = false;
+  const setInCall = (v: boolean) => { joined = v; setInCallSignal(v); };
   const [muted, setMutedSignal] = createSignal(local.get('muted') === 'true');
   const [views, setViews] = createSignal<PeerView[]>([]);
   const [speakingSelf, setSpeakingSelf] = createSignal(false);
@@ -240,6 +248,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       key, name, pc, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, restarts: 0,
       view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0 },
       viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, encodingChain: Promise.resolve(),
+      outgoingCandidates: [],
     };
     earlyViewers.delete(key);
     peer.shareAudio.autoplay = true;
@@ -262,7 +271,10 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
         peer.makingOffer = false;
       }
     };
-    pc.onicecandidate = ({ candidate }) => room.send({ t: 'signal', to: key, data: { candidate } });
+    pc.onicecandidate = ({ candidate }) => {
+      peer.outgoingCandidates.push(candidate ? candidate.toJSON() : null);
+      peer.candidateTimer ??= setTimeout(() => flushCandidates(peer), CANDIDATE_BATCH_MS);
+    };
     pc.oniceconnectionstatechange = () => onIceState(peer);
     pc.ontrack = ({ track, transceiver }) => {
       // Fires inside setRemoteDescription, before the answerer has recorded its transceivers,
@@ -340,8 +352,27 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     for (const p of peers.values()) if (p.viewsMyShare) void applyShareEncoding(p);
   }
 
-  async function onSignal(from: string, data: SignalData): Promise<void> {
-    if (!inCall()) return;
+  function flushCandidates(peer: Peer): void {
+    peer.candidateTimer = undefined;
+    if (!peer.outgoingCandidates.length) return;
+    const candidates = peer.outgoingCandidates.splice(0, 64);
+    room.send({ t: 'signal', to: peer.key, data: { candidates } });
+    if (peer.outgoingCandidates.length) peer.candidateTimer = setTimeout(() => flushCandidates(peer), 0);
+  }
+
+  /**
+   * Signals from one participant are applied in arrival order, one at a time, keyed by identity rather
+   * than by connection object: the very first offer creates the connection while awaiting
+   * setRemoteDescription, and the candidates behind it must wait for that, not race past it.
+   */
+  const signalChains = new Map<string, Promise<void>>();
+  function onSignal(from: string, data: SignalData): void {
+    const chain = (signalChains.get(from) ?? Promise.resolve()).then(() => onSignalNow(from, data)).catch((e) => console.warn('signal handling failed', e));
+    signalChains.set(from, chain);
+  }
+
+  async function onSignalNow(from: string, data: SignalData): Promise<void> {
+    if (!joined) return;
     let peer = peers.get(from);
     const isOffer = (data.description as RTCSessionDescriptionInit | undefined)?.type === 'offer';
     if (peer && isOffer && (peer.view.serverLost || peer.pc.iceConnectionState === 'failed' || peer.pc.connectionState === 'closed')) {
@@ -374,11 +405,14 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
           await pc.setLocalDescription();
           room.send({ t: 'signal', to: from, data: { description: pc.localDescription } });
         }
-      } else if (data.candidate !== undefined) {
-        try {
-          await pc.addIceCandidate((data.candidate as RTCIceCandidateInit | null) ?? undefined);
-        } catch (e) {
-          if (!peer.ignoreOffer) throw e;
+      }
+      if (data.candidates) {
+        for (const c of data.candidates) {
+          try {
+            await pc.addIceCandidate((c as RTCIceCandidateInit | null) ?? undefined);
+          } catch (e) {
+            if (!peer.ignoreOffer) throw e;
+          }
         }
       }
     } catch (e) {
@@ -457,13 +491,14 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   function closePeer(key: string): void {
     const peer = peers.get(key);
     if (!peer) return;
-    clearTimeout(peer.disconnectTimer); clearTimeout(peer.restartTimer); clearTimeout(peer.graceTimer);
+    clearTimeout(peer.disconnectTimer); clearTimeout(peer.restartTimer); clearTimeout(peer.graceTimer); clearTimeout(peer.candidateTimer);
     peer.pc.close();
     peer.audio.srcObject = null;
     peer.shareAudio.srcObject = null;
     sources.get(key)?.disconnect();
     sources.delete(key);
     peers.delete(key);
+    signalChains.delete(key);
     lastLoud.delete(key);
     setShareStreams((m) => { const n = new Map(m); n.delete(key); return n; });
     publish();
@@ -473,7 +508,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   /** Server presence is authoritative for membership; media follows it (spec §8.2). */
   function reconcile(people: Person[]): void {
     const self = people.find((p) => p.publicKey === myKey);
-    if (!untrack(inCall) || !self || self.role !== 'participant') return; // membership drives this, not the inCall flag
+    if (!joined || !self || self.role !== 'participant') return;
     for (const p of people) {
       if (p.publicKey === myKey || p.role !== 'participant') continue;
       const existing = peers.get(p.publicKey);
@@ -500,7 +535,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
 
   // Re-declare after our own server reconnect (spec §8.1): peer connections stay, join sequence is fresh.
   createEffect(() => room.status().kind, (kind, prev) => {
-    if (kind === 'connected' && prev !== undefined && prev !== 'connected' && untrack(inCall)) void rejoinAfterReconnect();
+    if (kind === 'connected' && prev !== undefined && prev !== 'connected' && joined) void rejoinAfterReconnect();
   });
 
   async function rejoinAfterReconnect(): Promise<void> {
@@ -525,7 +560,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     switch (m.t) {
       case 'call': pending.get('call')?.(m); return;
       case 'ice': pending.get('ice')?.(m); return;
-      case 'signal': void onSignal(m.from, m.data); return;
+      case 'signal': onSignal(m.from, m.data); return;
       case 'left': closePeer(m.publicKey); return;
       case 'subscribe': {
         const peer = peers.get(m.from);
@@ -541,7 +576,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
 
   // ---- shares (spec §6.2, §6.5)
   async function startShare(): Promise<void> {
-    if (!inCall() || shareVideo || stoppingShare) return;
+    if (!joined || shareVideo || stoppingShare) return;
     setShareError(null);
     let stream: MediaStream;
     try {
@@ -611,7 +646,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   // ---- actions
   let joining = false;
   async function join(): Promise<void> {
-    if (inCall() || joining) return;
+    if (joined || joining) return;
     joining = true;
     setJoinError(null);
     try {
@@ -624,14 +659,14 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       const reply = await declareJoin();
       if (!reply) { setJoinError('The server did not answer the join request.'); return; }
       setInCall(true);
-      reconcile(room.people());
+      reconcile(untrack(room.people));
     } finally {
       joining = false;
     }
   }
 
   function leave(): void {
-    if (!inCall()) return;
+    if (!joined) return;
     void stopShare(false); // the server clears the sharing flag on leave
     room.send({ t: 'leave' });
     for (const key of [...peers.keys()]) closePeer(key);
@@ -648,7 +683,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     setMutedSignal(m);
     local.set('muted', String(m));
     if (voiceTrack) voiceTrack.enabled = !m;
-    if (inCall()) room.send({ t: 'mute', muted: m });
+    if (joined) room.send({ t: 'mute', muted: m });
   }
 
   onCleanup(() => {
@@ -669,6 +704,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
         senders: [...peers.values()].map((p) => { const params = p.tx[SLOT_INDEX.shareVideo]?.sender.getParameters(); const e = params?.encodings?.[0]; return { name: p.name, active: e?.active, maxBitrate: e?.maxBitrate, maxFramerate: e?.maxFramerate, scale: e?.scaleResolutionDownBy, degradation: (params as { degradationPreference?: string } | undefined)?.degradationPreference }; }),
       }),
       audio: () => ({ settings: audioSettings(), track: voiceTrack?.getSettings() ?? null }),
+      state: () => ({ inCall: joined, joining, joinError: untrack(joinError), myJoinSeq, role: untrack(me)?.role ?? null, participants: untrack(room.people).filter((p) => p.role === 'participant').map((p) => `${p.name}#${p.joinSeq}`) }),
     };
   }
 

@@ -69,7 +69,7 @@ From [Presence and ephemeral text transport model](issues/09-presence-and-text-t
 - **Propagation**: a full presence snapshot is broadcast to every socket on every change. No deltas.
 - **Stale sockets**: the client pings every 30 s; the hibernation auto-response answers without waking the object. While any socket is attached, a Durable Object alarm runs every 60 s and drops sockets whose last ping is older than 90 s, then broadcasts a snapshot. (Amended 2026-09-06 during ticket 03: originally only while a Call existed, but killed browsers were observed lingering as ghost visitors for minutes, and 1,440 brief wakes a day are negligible against the budget.) With no sockets at all the object hibernates fully.
 - **Text**: pure relay to every attached socket, visitors and participants alike. No buffer in memory or storage. Plain text, 2,000 characters max, URLs auto-linked client side, no uploads. A client that reconnects shows "reconnected, you may have missed messages".
-- **Rate limit**: 20 messages per second per socket, burst 40; excess dropped with an error frame. This is what protects the daily request budget (§9).
+- **Rate limit**: 20 messages per second per socket, burst 40, for everything except signaling; signaling (offers, answers, batched ICE candidates) has its own bucket of 100 per second, burst 400. Excess is dropped with an error frame. (Amended 2026-09-06: the single bucket dropped ICE candidates on real joins against Cloudflare TURN and stalled connections for tens of seconds.) Clients batch candidates per peer within about 60 ms. This is what protects the daily request budget (§9).
 
 ## 5. Wire protocol
 

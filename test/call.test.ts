@@ -95,9 +95,11 @@ describe('signaling relay', () => {
     send(a, { t: 'signal', to: b.you.publicKey, data: { description: { type: 'offer', sdp: 'v=0' } } });
     const got = await b.next((m) => m.t === 'signal');
     expect(got).toEqual({ t: 'signal', from: a.you.publicKey, data: { description: { type: 'offer', sdp: 'v=0' } } });
-    send(a, { t: 'signal', to: v.you.publicKey, data: { candidate: null } });
+    send(a, { t: 'signal', to: b.you.publicKey, data: { candidates: [{ candidate: 'x' }, null] } });
+    expect(await b.next((m) => m.t === 'signal')).toEqual({ t: 'signal', from: a.you.publicKey, data: { candidates: [{ candidate: 'x' }, null] } });
+    send(a, { t: 'signal', to: v.you.publicKey, data: { candidates: [null] } });
     expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'that participant is not in the call', ref: 'signal' });
-    send(v, { t: 'signal', to: a.you.publicKey, data: { candidate: null } });
+    send(v, { t: 'signal', to: a.you.publicKey, data: { candidates: [null] } });
     expect(await v.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'not in the call', ref: 'signal' });
     a.ws.close(1000); b.ws.close(1000); v.ws.close(1000);
   });
@@ -167,5 +169,23 @@ describe('shares', () => {
     send(v, { t: 'subscribe', to: v.you.publicKey, on: true });
     expect(await v.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'not in the call', ref: 'subscribe' });
     v.ws.close(1000);
+  });
+});
+
+describe('signaling rate limit', () => {
+  it('lets a burst of a few hundred signals through while text stays on the small bucket', async () => {
+    const a = await attach('Alice');
+    const b = await attach('Bob');
+    send(a, { t: 'join', muted: false }); await a.next((m) => m.t === 'call');
+    send(b, { t: 'join', muted: false }); await b.next((m) => m.t === 'call');
+    const n = 200;
+    for (let i = 0; i < n; i++) send(a, { t: 'signal', to: b.you.publicKey, data: { candidates: [{ i }] } });
+    let received = 0;
+    for (let i = 0; i < n; i++) { await b.next((m) => m.t === 'signal'); received++; }
+    expect(received).toBe(n);
+    // the general bucket is untouched by signaling: 45 texts still trip it
+    for (let i = 0; i < 45; i++) send(a, { t: 'text', text: `t${i}` });
+    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'rate limited', ref: 'text' });
+    a.ws.close(1000); b.ws.close(1000);
   });
 });
