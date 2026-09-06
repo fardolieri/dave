@@ -25,3 +25,5 @@ Resolve by recording: subdomain name, TURN key ID, secret names, whether the car
 - GitHub repository secrets verified present by name on 2026-09-06: `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `TURN_KEY_API_TOKEN`.
 - $1 budget alert set.
 - Subdomain: candidates proposed `dwaves` (preferred), `davewaves`, `dwave`; Worker name `dave` unless the owner prefers `chat`. Awaiting which name was available.
+- Subdomain already fixed on the account: `danielmittereder.workers.dev`. Worker name `dave`, so the app URL is `https://dave.danielmittereder.workers.dev`. No dashboard "Create application" step; the Worker is created by the first `wrangler deploy` from GitHub Actions. The subdomain is not recorded in the repo, only the Worker name.
+- All checklist items are done. Ready to resolve in the next session (this session already resolved one ticket).
