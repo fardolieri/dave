@@ -11,5 +11,5 @@
 - [ ] Perfect negotiation with polite side = lower public key string; a test forces simultaneous offers and asserts both sides converge.
 - [ ] Voice track attached via `replaceTrack`; join unmuted with last mute state remembered; mute disables the track and broadcasts the flag; speaking rings from a local analyser on own mic and received tracks.
 - [ ] Per-peer stats every 2 s drive the badge: selected candidate pair type gives direct or relayed; ICE disconnected shows reconnecting and restarts ICE after 5 s; failed shows unreachable and retries with backoff; nobody is removed from the call by media failure.
-- [ ] Server reconnect keeps peer connections alive and re-declares role, sharing, and muted; a Room alarm every 60 s while a call exists drops sockets silent for 90 s.
+- [ ] Server reconnect keeps peer connections alive and re-declares role, sharing, and muted; a Room alarm every 60 s while any socket is attached drops sockets silent for 90 s (amended from "while a call exists" on 2026-09-06, agreed by the owner, to clear ghost visitors).
 - [ ] Leave closes connections on both sides and the server announces it; the Call list shows the user first and others in join order.
