@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 Join a call with voice.
 
-**Status:** done (2026-09-06), awaiting deploy
+**Status:** done (2026-09-06)
 
 - [x] Share screen calls the display picker with audio requested, system audio included where offered, own tab excluded, surface switching allowed; the track's end (button or browser control) stops the share and announces it.
 - [x] Start is `replaceTrack(track)` on the share transceivers of every connection, stop is `replaceTrack(null)`; no offer/answer during a call; one share per participant.
@@ -25,3 +25,4 @@
 - Share audio: requested with `systemAudio: 'include'`; attached to the third transceiver when the browser provides a track. Not exercised headlessly.
 - Tests in this repo do not exercise WebRTC itself; the mesh spike and the browser driver do.
 - Code review (two-axis) addressed: the deactivation retry no longer gives up (it keeps trying every 100 ms while the share and connection live) and waits for both share replaceTrack calls; a viewer's subscription resets when the sharer's presence flag drops, so a restarted share shows "click to watch" instead of a stuck spinner; the budget re-splits when a viewer's connection closes; share audio plays through its own element; the leave path stops sharing without announcing (the server clears the flag); stop and start cannot interleave; setParameters calls are serialised per connection; a subscribe arriving before the connection exists is remembered; remote share streams are held in a signal so rebuilt connections refresh the tile; unreachable dims a tile whether or not you were watching; fullscreen is available on any openable tile and subscribes first; kbps is rated over at least 500 ms; the core shares one participant lookup. Driver rerun: identical results.
+- 2026-09-06: deployed and verified live: Bob's tile read "click to watch" until clicked, then "306 kbps · direct".
