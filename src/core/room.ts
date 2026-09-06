@@ -13,7 +13,7 @@ export const CHALLENGE_TIMEOUT_MS = 10_000;
 
 export type SocketState =
   | { stage: 'challenge'; nonce: string; attempts: number; since: number }
-  | { stage: 'attached'; person: Person; bucket: Bucket; attachedAt: number };
+  | { stage: 'attached'; person: Person; bucket: Bucket; attachedAt: number; turnUser?: string };
 
 export type Outcome = {
   state: SocketState;
@@ -25,6 +25,14 @@ export type Outcome = {
   presenceChanged?: boolean;
   /** Deliver to the one attached participant with this public key. */
   relay?: { to: string; message: ServerMessage };
+  /**
+   * Replies that need I/O (TURN minting). The adapter stores `state` first, then awaits this and
+   * sends what it returns, so a second join arriving mid-fetch already sees the new join sequence.
+   * The returned state patch is merged into the attachment afterwards.
+   */
+  after?: () => Promise<{ replies: ServerMessage[]; patch?: Partial<Extract<SocketState, { stage: 'attached' }>> }>;
+  /** A TURN credential to revoke (participant left). */
+  revokeTurn?: string;
   close?: { code: number; reason: string };
 };
 
@@ -36,7 +44,7 @@ export type RoomContext = {
   /** Everyone else currently attached (this socket excluded). Join sequences derive from it. */
   others: Iterable<Person>;
   /** Mints ICE servers (TURN credentials) for a participant. Provided by the adapter. */
-  mintIce: () => Promise<IceServer[]>;
+  mintIce: () => Promise<{ iceServers: IceServer[]; turnUser: string | null }>;
 };
 
 /** A socket has just been accepted: challenge it. */
@@ -98,13 +106,14 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
   // Rate limit every authenticated frame, parseable or not.
   const taken = takeToken(state.bucket, ctx.now);
   const next: SocketState = { ...state, bucket: taken.bucket };
-  if (!taken.ok) return { state: next, replies: [{ t: 'error', reason: 'rate limited' }] };
+  if (!taken.ok) return { state: next, replies: [{ t: 'error', reason: 'rate limited', ref: msg.t === 'invalid' ? undefined : msg.t }] };
+  const notInCall = (ref: 'ice' | 'signal'): Outcome => ({ state: next, replies: [{ t: 'error', reason: 'not in the call', ref }] });
 
   switch (msg.t) {
     case 'invalid':
       return { state: next, replies: [{ t: 'error', reason: msg.reason }] };
     case 'auth':
-      return { state: next, replies: [{ t: 'error', reason: 'already authenticated' }] };
+      return { state: next, replies: [{ t: 'error', reason: 'already authenticated', ref: 'auth' }] };
     case 'ping':
       // Normally answered by the hibernation auto-response before reaching here.
       return { state: next, replies: [{ t: 'pong' }] };
@@ -114,29 +123,40 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     }
     case 'join': {
       // Joining twice (after a server reconnect) is fine: a fresh join sequence, same identity.
+      // The sequence is fixed and stored before the TURN fetch so concurrent joins cannot collide.
       const joinSeq = nextJoinSeq([...ctx.others, state.person]);
       const person: Person = { ...state.person, role: 'participant', joinSeq, muted: msg.muted, sharing: false };
-      const iceServers = await ctx.mintIce();
-      return { state: { ...next, person }, replies: [{ t: 'call', joinSeq, iceServers, issuedAt: ctx.now }], presenceChanged: true };
+      const now = ctx.now;
+      return {
+        state: { ...next, person },
+        replies: [],
+        presenceChanged: true,
+        after: async () => {
+          const { iceServers, turnUser } = await ctx.mintIce();
+          return { replies: [{ t: 'call', joinSeq, iceServers, issuedAt: now }], patch: turnUser ? { turnUser } : {} };
+        },
+      };
     }
     case 'leave': {
       if (state.person.role !== 'participant') return { state: next, replies: [] };
       const person: Person = { ...state.person, role: 'visitor', joinSeq: null, sharing: false, muted: false };
-      return { state: { ...next, person }, replies: [], broadcast: [{ t: 'left', publicKey: person.publicKey }], presenceChanged: true };
+      const { turnUser, ...rest } = next;
+      return { state: { ...rest, person }, replies: [], broadcast: [{ t: 'left', publicKey: person.publicKey }], presenceChanged: true, revokeTurn: turnUser };
     }
     case 'mute': {
       if (state.person.role !== 'participant' || state.person.muted === msg.muted) return { state: next, replies: [] };
       return { state: { ...next, person: { ...state.person, muted: msg.muted } }, replies: [], presenceChanged: true };
     }
     case 'ice': {
-      if (state.person.role !== 'participant') return { state: next, replies: [{ t: 'error', reason: 'not in the call' }] };
-      return { state: next, replies: [{ t: 'ice', iceServers: await ctx.mintIce(), issuedAt: ctx.now }] };
+      if (state.person.role !== 'participant') return notInCall('ice');
+      const now = ctx.now;
+      return { state: next, replies: [], after: async () => { const { iceServers, turnUser } = await ctx.mintIce(); return { replies: [{ t: 'ice', iceServers, issuedAt: now }], patch: turnUser ? { turnUser } : {} }; } };
     }
     case 'signal': {
-      if (state.person.role !== 'participant') return { state: next, replies: [{ t: 'error', reason: 'not in the call' }] };
+      if (state.person.role !== 'participant') return notInCall('signal');
       let target: Person | undefined;
       for (const p of ctx.others) if (p.publicKey === msg.to) { target = p; break; }
-      if (!target || target.role !== 'participant') return { state: next, replies: [{ t: 'error', reason: 'peer not in the call' }] };
+      if (!target || target.role !== 'participant') return { state: next, replies: [{ t: 'error', reason: 'that participant is not in the call', ref: 'signal' }] };
       return { state: next, replies: [], relay: { to: msg.to, message: { t: 'signal', from: state.person.publicKey, data: msg.data } } };
     }
   }

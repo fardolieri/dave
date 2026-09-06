@@ -52,7 +52,8 @@ export type ServerMessage =
   | { t: 'signal'; from: string; data: SignalData }
   | { t: 'ice'; iceServers: IceServer[]; issuedAt: number }
   | { t: 'pong' }
-  | { t: 'error'; reason: string };
+  /** `ref` names the client message type that was rejected, when known, so the client can attribute it. */
+  | { t: 'error'; reason: string; ref?: ClientMessage['t'] };
 
 /** The exact frames the hibernation auto-response matches, so pings never wake the Room. */
 export const PING_FRAME = '{"t":"ping"}';
@@ -100,7 +101,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | Invalid {
     case 'ping':
       return { t: 'ping' };
     case 'join':
-      return { t: 'join', muted: m.muted === true };
+      return typeof m.muted === 'boolean' ? { t: 'join', muted: m.muted } : invalid('unrecognised message');
     case 'leave':
       return { t: 'leave' };
     case 'mute':

@@ -83,8 +83,10 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
           return;
         case 'error':
           if (you()) {
-            // After the welcome an error means a frame of ours was dropped (rate limit, too long). Say so.
-            push({ kind: 'system', text: `Not sent: ${m.reason}.`, at: Date.now() });
+            // After the welcome an error means a frame of ours was dropped. Chat-related ones are said in the chat;
+            // signaling ones are a developer concern and would only confuse in the chat.
+            if (m.ref === 'signal' || m.ref === 'ice') console.warn('dropped', m.ref, m.reason);
+            else push({ kind: 'system', text: `${m.ref === 'text' || !m.ref ? 'Not sent' : 'Dropped'}: ${m.reason}.`, at: Date.now() });
           } else if (status().kind !== 'refused') {
             // A wrong answer during the handshake: our stored secret is wrong. Retrying cannot help.
             setStatus({ kind: 'refused', reason: m.reason });

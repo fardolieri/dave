@@ -107,7 +107,7 @@ describe('text', () => {
     const extra = 5;
     for (let i = 0; i < BURST + extra; i++) a.ws.send(JSON.stringify({ t: 'text', text: `m${i}` }));
     const err = await a.next((m) => m.t === 'error');
-    expect(err).toEqual({ t: 'error', reason: 'rate limited' });
+    expect(err).toEqual({ t: 'error', reason: 'rate limited', ref: 'text' });
     await new Promise((r) => setTimeout(r, 100));
     const relayed = a.inbox.filter((m) => m.t === 'text').length;
     const errors = a.inbox.filter((m) => m.t === 'error').length + 1;

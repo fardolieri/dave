@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { CHALLENGE_TIMEOUT_MS, challengeExpired, onMessage, openSocket, presenceSnapshot, type Outcome, type SocketState } from '../core/room';
 import { CLOSE_AUTH_FAILED, CLOSE_NOT_CONFIGURED, PING_FRAME, PONG_FRAME, type Person, type ServerMessage } from '../core/protocol';
-import { mintIceServers } from './turn';
+import { mintIceServers, revokeIce } from './turn';
 
 /** A socket whose last sign of life is older than this is dropped by the sweep (spec §4). */
 export const SILENT_TIMEOUT_MS = 90_000;
@@ -30,7 +30,7 @@ export class Room extends DurableObject<Env> {
       server.close(CLOSE_NOT_CONFIGURED, 'room secret not configured');
       return new Response(null, { status: 101, webSocket: client });
     }
-    this.apply(server, openSocket(Date.now()));
+    await this.apply(server, openSocket(Date.now()));
     await this.scheduleSweep(CHALLENGE_TIMEOUT_MS);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -44,13 +44,15 @@ export class Room extends DurableObject<Env> {
       others: others.flatMap((s) => (s && s.stage === 'attached' ? [s.person] : [])),
       mintIce: () => mintIceServers(this.env),
     });
-    this.apply(ws, outcome);
+    await this.apply(ws, outcome);
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
     // 1005/1006 mean "no status" and may not be passed back into close().
     const valid = code === 1000 || (code >= 3000 && code <= 4999);
     ws.close(valid ? code : 1000, reason);
+    const state = ws.deserializeAttachment() as SocketState | null;
+    if (state?.stage === 'attached' && state.turnUser) this.ctx.waitUntil(revokeIce(this.env, state.turnUser));
     this.broadcastPresence(ws);
   }
 
@@ -66,23 +68,26 @@ export class Room extends DurableObject<Env> {
   async alarm(): Promise<void> {
     const now = Date.now();
     let dropped = false;
-    let remaining = 0;
+    let attachedLeft = 0;
+    let challengesLeft = 0;
     for (const ws of this.ctx.getWebSockets()) {
       const state = ws.deserializeAttachment() as SocketState | null;
       if (!state) continue;
       if (state.stage === 'challenge') {
         if (challengeExpired(state, now)) ws.close(CLOSE_AUTH_FAILED, 'challenge timed out');
-        else remaining++;
+        else challengesLeft++;
         continue;
       }
       const lastPing = this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? state.attachedAt;
       if (now - lastPing >= SILENT_TIMEOUT_MS) {
         ws.close(CLOSE_SILENT, 'no sign of life');
         dropped = true;
-      } else remaining++;
+      } else attachedLeft++;
     }
     if (dropped) this.broadcastPresence();
-    if (remaining > 0) await this.scheduleSweep(SWEEP_INTERVAL_MS);
+    // Pending challenges need the short interval; attached sockets only the long one.
+    if (challengesLeft > 0) await this.scheduleSweep(CHALLENGE_TIMEOUT_MS);
+    else if (attachedLeft > 0) await this.scheduleSweep(SWEEP_INTERVAL_MS);
   }
 
   private async scheduleSweep(inMs: number): Promise<void> {
@@ -91,13 +96,21 @@ export class Room extends DurableObject<Env> {
     if (current === null || current > wanted) await this.ctx.storage.setAlarm(wanted);
   }
 
-  private apply(ws: WebSocket, outcome: Outcome): void {
+  private async apply(ws: WebSocket, outcome: Outcome): Promise<void> {
     ws.serializeAttachment(outcome.state);
     for (const reply of outcome.replies) ws.send(JSON.stringify(reply));
     if (outcome.broadcast) for (const m of outcome.broadcast) this.fanOut(m);
     if (outcome.relay) this.deliver(outcome.relay.to, outcome.relay.message);
     if (outcome.presenceChanged) this.broadcastPresence();
+    if (outcome.revokeTurn) this.ctx.waitUntil(revokeIce(this.env, outcome.revokeTurn));
     if (outcome.close) ws.close(outcome.close.code, outcome.close.reason);
+    if (outcome.after) {
+      // State is already stored; other messages may interleave with this I/O safely.
+      const { replies, patch } = await outcome.after();
+      const current = ws.deserializeAttachment() as SocketState | null;
+      if (patch && current?.stage === 'attached') ws.serializeAttachment({ ...current, ...patch });
+      for (const reply of replies) this.trySend(ws, JSON.stringify(reply));
+    }
   }
 
   /** The presence snapshot as computed right now from attachments alone. Public so tests can compare a fresh instance's view. */

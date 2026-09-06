@@ -60,12 +60,19 @@ try {
   if (joinAll) {
     for (const b of browsers) { await b.eval(`document.querySelector('button.join')?.click(); 'clicked'`); await sleep(400); }
     await sleep(8000); // mesh formation plus stats ticks
-    for (const b of browsers) console.log(`[${b.name}] call: ${await b.text('.side ul:nth-of-type(2) li') || '(empty)'}\n[${b.name}] actions: ${await b.text('.actions button')} | speaking rings: ${await b.eval(`document.querySelectorAll('.avatar.speaking').length`)}`);
+    for (const b of browsers) console.log(`[${b.name}] call: ${await b.text('.side ul:nth-of-type(2) li') || '(empty)'}\n[${b.name}] actions: ${await b.text('.actions button')} | speaking rings: ${await b.eval(`document.querySelectorAll('.avatar.speaking').length`)} (on others: ${await b.eval(`document.querySelectorAll('.side ul:nth-of-type(2) li:not(:first-child) .avatar.speaking').length`)})`);
     if (browsers[1]) {
       await browsers[1].eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Mute')?.click(); 'muted'`);
       await sleep(1500);
       console.log(`[${browsers[1].name}] own actions after mute click: ${await browsers[1].text('.actions button')}`);
-      for (const b of browsers) console.log(`[${b.name}] call after mute: ${await b.text('.side ul:nth-of-type(2) li')}`);
+      // Fake microphones beep intermittently, so sample over time: which other participants rang at least once?
+      const seen = new Map(browsers.map((b) => [b.name, new Set()]));
+      for (let i = 0; i < 30; i++) {
+        await sleep(100);
+        for (const b of browsers) for (const n of await b.eval(`[...document.querySelectorAll('.side ul:nth-of-type(2) li:not(:first-child)')].filter(li => li.querySelector('.avatar.speaking')).map(li => li.querySelector('.pname').firstChild.textContent.trim())`)) seen.get(b.name).add(n);
+      }
+      for (const b of browsers) console.log(`[${b.name}] call after mute: ${await b.text('.side ul:nth-of-type(2) li')} | heard ringing: ${[...seen.get(b.name)].join(', ') || 'nobody'}`);
+      for (const b of browsers) console.log(`[${b.name}] mesh: ${JSON.stringify(await b.eval(`window.__dave?.peers() ?? 'no debug hook'`))}`);
     }
     const last = browsers[browsers.length - 1];
     if (browsers.length > 1) {

@@ -9,7 +9,7 @@ import { local } from './storage';
 export type ConnState = 'connecting' | 'direct' | 'relayed' | 'reconnecting' | 'unreachable';
 
 /** What the UI shows per remote participant. Plain data mirrored from WebRTC events (spec §2.1). */
-export type PeerView = { publicKey: string; name: string; conn: ConnState; speaking: boolean; serverLost: boolean };
+export type PeerView = { publicKey: string; name: string; conn: ConnState; speaking: boolean; serverLost: boolean; audioBytesIn: number };
 
 type Peer = {
   key: string;
@@ -52,8 +52,16 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   let myJoinSeq: number | null = null;
   let audioCtx: AudioContext | null = null;
   let localAnalyser: AnalyserNode | null = null;
-  let pendingCall: ((m: Extract<ServerMessage, { t: 'call' }>) => void) | null = null;
-  let pendingIce: ((m: Extract<ServerMessage, { t: 'ice' }>) => void) | null = null;
+  const pending = new Map<'call' | 'ice', (m: ServerMessage) => void>();
+  /** Send a request and wait for the one reply type that answers it, or null on timeout. */
+  function awaitReply<K extends 'call' | 'ice'>(kind: K, request: () => void, timeoutMs: number): Promise<Extract<ServerMessage, { t: K }> | null> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { pending.delete(kind); resolve(null); }, timeoutMs);
+      pending.set(kind, (m) => { clearTimeout(timer); pending.delete(kind); resolve(m as Extract<ServerMessage, { t: K }>); });
+      request();
+    });
+  }
+  const sources = new Map<string, MediaStreamAudioSourceNode>();
 
   const me = (): Person | null => room.people().find((p) => p.publicKey === myKey) ?? null;
   const publish = () => setViews([...peers.values()].map((p) => ({ ...p.view })));
@@ -66,11 +74,13 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     voiceTrack = localStream.getAudioTracks()[0] ?? null;
     if (voiceTrack) voiceTrack.enabled = !muted();
     audioCtx ??= new AudioContext();
-    localAnalyser = analyserFor(localStream);
+    localAnalyser = analyserFor('me', localStream);
   }
-  function analyserFor(stream: MediaStream): AnalyserNode {
+  function analyserFor(key: string, stream: MediaStream): AnalyserNode {
     const ctx = audioCtx!;
+    sources.get(key)?.disconnect();
     const src = ctx.createMediaStreamSource(stream);
+    sources.set(key, src);
     const an = ctx.createAnalyser();
     an.fftSize = 512;
     src.connect(an);
@@ -107,7 +117,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     audio.autoplay = true;
     const peer: Peer = {
       key, name, pc, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, restarts: 0,
-      view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false },
+      view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0 },
     };
     if (initiator) {
       // Only the offering side pre-adds transceivers (ADR 0001, spike finding).
@@ -128,11 +138,14 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     pc.onicecandidate = ({ candidate }) => room.send({ t: 'signal', to: key, data: { candidate } });
     pc.oniceconnectionstatechange = () => onIceState(peer);
     pc.ontrack = ({ track, transceiver }) => {
-      if (track.kind === 'audio' && transceiver.mid === peer.tx[SLOT_INDEX.voice]?.mid) {
+      // Fires inside setRemoteDescription, before the answerer has recorded its transceivers,
+      // so identify the slot by position in the connection's transceiver list, not via peer.tx.
+      const slot = pc.getTransceivers().indexOf(transceiver);
+      if (track.kind === 'audio' && slot === SLOT_INDEX.voice) {
         const stream = new MediaStream([track]);
         audio.srcObject = stream;
         audio.play().catch(() => { /* needs a gesture on some browsers; the join click normally suffices */ });
-        if (audioCtx) peer.analyser = analyserFor(stream);
+        if (audioCtx) peer.analyser = analyserFor(key, stream);
       }
     };
     peers.set(key, peer);
@@ -148,6 +161,12 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   async function onSignal(from: string, data: SignalData): Promise<void> {
     if (!inCall()) return;
     let peer = peers.get(from);
+    const isOffer = (data.description as RTCSessionDescriptionInit | undefined)?.type === 'offer';
+    if (peer && isOffer && (peer.view.serverLost || peer.pc.iceConnectionState === 'failed' || peer.pc.connectionState === 'closed')) {
+      // A fresh offer from a peer whose old connection is dead or who vanished and came back: start over.
+      closePeer(from);
+      peer = undefined;
+    }
     if (!peer) {
       const person = room.people().find((p) => p.publicKey === from);
       if (!person || person.role !== 'participant') return;
@@ -215,17 +234,14 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     peer.pc.restartIce();
   }
 
-  function requestIce(): Promise<Extract<ServerMessage, { t: 'ice' }> | null> {
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => { pendingIce = null; resolve(null); }, 5000);
-      pendingIce = (m) => { clearTimeout(timer); pendingIce = null; resolve(m); };
-      room.send({ t: 'ice' });
-    });
-  }
+  const requestIce = () => awaitReply('ice', () => room.send({ t: 'ice' }), 5000);
 
   async function refreshStats(peer: Peer): Promise<void> {
     if (peer.pc.connectionState === 'closed') return;
     const st = await peer.pc.getStats();
+    let audioBytesIn = 0;
+    st.forEach((r) => { if (r.type === 'inbound-rtp' && (r as RTCInboundRtpStreamStats).kind === 'audio') audioBytesIn += (r as RTCInboundRtpStreamStats).bytesReceived ?? 0; });
+    if (audioBytesIn !== peer.view.audioBytesIn) peer.view.audioBytesIn = audioBytesIn;
     let pair: RTCIceCandidatePairStats | undefined;
     st.forEach((r) => { if (r.type === 'transport' && (r as RTCTransportStats).selectedCandidatePairId) pair = st.get((r as RTCTransportStats).selectedCandidatePairId!) as RTCIceCandidatePairStats; });
     if (!pair) st.forEach((r) => { if (r.type === 'candidate-pair' && (r as RTCIceCandidatePairStats).state === 'succeeded' && (r as RTCIceCandidatePairStats & { selected?: boolean }).selected) pair = r as RTCIceCandidatePairStats; });
@@ -245,6 +261,8 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     clearTimeout(peer.disconnectTimer); clearTimeout(peer.restartTimer); clearTimeout(peer.graceTimer);
     peer.pc.close();
     peer.audio.srcObject = null;
+    sources.get(key)?.disconnect();
+    sources.delete(key);
     peers.delete(key);
     lastLoud.delete(key);
     publish();
@@ -266,9 +284,9 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     for (const peer of peers.values()) {
       const person = people.find((p) => p.publicKey === peer.key);
       if (person && person.role === 'participant') continue;
-      if (person) { closePeer(peer.key); continue; } // became a visitor without a "left": treat as left
+      // Vanished, or reappeared as a visitor while their rejoin is still in flight: their server socket dropped.
+      // A deliberate leave arrives as an explicit `left` and closes at once; here we keep media for a grace period.
       if (!peer.view.serverLost) {
-        // Vanished from presence without saying "leave": their server socket dropped. Keep media for a grace period.
         setView(peer, { serverLost: true });
         peer.graceTimer = setTimeout(() => closePeer(peer.key), PEER_GRACE_MS);
       }
@@ -278,44 +296,56 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
 
   // Re-declare after our own server reconnect (spec §8.1): peer connections stay, join sequence is fresh.
   createEffect(() => room.status().kind, (kind, prev) => {
-    if (kind === 'connected' && prev !== undefined && prev !== 'connected' && inCall()) void declareJoin();
+    if (kind === 'connected' && prev !== undefined && prev !== 'connected' && inCall()) void rejoinAfterReconnect();
   });
 
-  function declareJoin(): Promise<Extract<ServerMessage, { t: 'call' }> | null> {
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => { pendingCall = null; resolve(null); }, 8000);
-      pendingCall = (m) => {
-        clearTimeout(timer); pendingCall = null;
-        myJoinSeq = m.joinSeq; iceServers = m.iceServers; iceIssuedAt = m.issuedAt;
-        resolve(m);
-      };
-      room.send({ t: 'join', muted: muted() });
-    });
+  async function rejoinAfterReconnect(): Promise<void> {
+    const reply = await declareJoin();
+    if (!reply) return;
+    // Peers that kept their connection to us stay. Any connection that died while we were away is
+    // rebuilt: we now hold the highest join sequence, so dropping it makes reconcile re-initiate.
+    for (const peer of [...peers.values()]) {
+      const s = peer.pc.iceConnectionState;
+      if (s === 'failed' || s === 'disconnected' || s === 'closed') closePeer(peer.key);
+    }
+    reconcile(room.people());
+  }
+
+  async function declareJoin(): Promise<Extract<ServerMessage, { t: 'call' }> | null> {
+    const m = await awaitReply('call', () => room.send({ t: 'join', muted: muted() }), 8000);
+    if (m) { myJoinSeq = m.joinSeq; iceServers = m.iceServers; iceIssuedAt = m.issuedAt; }
+    return m;
   }
 
   const unsubscribe = room.subscribe((m) => {
     switch (m.t) {
-      case 'call': pendingCall?.(m); return;
-      case 'ice': pendingIce?.(m); return;
+      case 'call': pending.get('call')?.(m); return;
+      case 'ice': pending.get('ice')?.(m); return;
       case 'signal': void onSignal(m.from, m.data); return;
       case 'left': closePeer(m.publicKey); return;
     }
   });
 
   // ---- actions
+  let joining = false;
   async function join(): Promise<void> {
-    if (inCall()) return;
+    if (inCall() || joining) return;
+    joining = true;
     setJoinError(null);
     try {
-      await openMicrophone();
-    } catch (e) {
-      setJoinError(e instanceof Error && e.name === 'NotAllowedError' ? 'Microphone access was denied.' : `Could not open the microphone: ${e instanceof Error ? e.message : String(e)}`);
-      return;
+      try {
+        await openMicrophone();
+      } catch (e) {
+        setJoinError(e instanceof Error && e.name === 'NotAllowedError' ? 'Microphone access was denied.' : `Could not open the microphone: ${e instanceof Error ? e.message : String(e)}`);
+        return;
+      }
+      const reply = await declareJoin();
+      if (!reply) { setJoinError('The server did not answer the join request.'); return; }
+      setInCall(true);
+      reconcile(room.people());
+    } finally {
+      joining = false;
     }
-    const reply = await declareJoin();
-    if (!reply) { setJoinError('The server did not answer the join request.'); return; }
-    setInCall(true);
-    reconcile(room.people());
   }
 
   function leave(): void {
@@ -326,6 +356,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     myJoinSeq = null;
     voiceTrack?.stop();
     localStream?.getTracks().forEach((t) => t.stop());
+    sources.get('me')?.disconnect(); sources.delete('me');
     voiceTrack = null; localStream = null; localAnalyser = null;
     setSpeakingSelf(false);
   }
@@ -344,6 +375,13 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     leave();
     audioCtx?.close();
   });
+
+  if (import.meta.env.DEV) {
+    // Dev aid for scripts/drive.mjs: inspect the mesh from the DevTools protocol. Absent in production builds.
+    (window as unknown as { __dave?: unknown }).__dave = {
+      peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, audioBytesIn: p.view.audioBytesIn, transceivers: p.pc.getTransceivers().length })),
+    };
+  }
 
   return { inCall, muted, views, speakingSelf, joinError, join, leave, setMuted, myJoinSeq: () => myJoinSeq };
 }

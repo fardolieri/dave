@@ -53,7 +53,7 @@ code.fp { font-size: 11px; color: var(--dim); }
 .plist .pflags { display: flex; gap: 6px; align-items: center; }
 .plist li.lost { opacity: .5; }
 .avatar.speaking { box-shadow: 0 0 0 2px var(--ok); }
-em { font-style: normal; font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.plist em { font-style: normal; font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 .conn { font-size: 11px; display: inline-flex; align-items: center; gap: 4px; }
 .conn i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: currentColor; }
 .conn-connecting { color: var(--dim); } .conn-connecting i { animation: pulse 1s infinite; }

@@ -74,10 +74,11 @@ From [Presence and ephemeral text transport model](issues/09-presence-and-text-t
 ## 5. Wire protocol
 
 Everything is JSON over the one WebSocket. Message set (§4 and §2.2):
-- Server to all: `presence` (full snapshot).
-- Client to server, relayed to all: `text`, `share` (started or stopped), `mute` (changed).
-- Client to server: `join` (reply carries join sequence and `iceServers`), `leave`, `ping`.
+- Server to all: `presence` (full snapshot; mute and sharing flags travel here rather than as separate relayed messages), `left` (a participant left on purpose; a vanished socket only drops out of the snapshot), `text`.
+- Client to server: `text` (relayed to all), `join` with the muted flag (reply `call` carries join sequence and `iceServers`), `leave`, `mute`, `ice` (fresh TURN credentials, reply `ice`), `ping`.
 - Point to point between participants, relayed by the server by target public key: `signal` (description or candidate), `subscribe`, `unsubscribe`.
+- Errors carry `reason` and, when known, `ref`, the client message type that was rejected.
+(Amended 2026-09-06 while building ticket 04.)
 - Not over the socket, ever: speaking indicators (computed locally from received audio, §6.1) and typing indicators (do not exist).
 Every relayed message is tagged by the server with the sender's public key (§3). Signaling messages are delivered only to participants.
 

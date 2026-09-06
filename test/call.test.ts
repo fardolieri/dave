@@ -80,7 +80,7 @@ describe('joining and leaving the call', () => {
   it('visitors cannot signal or fetch ICE', async () => {
     const a = await attach('Alice');
     send(a, { t: 'ice' });
-    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'not in the call' });
+    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'not in the call', ref: 'ice' });
     a.ws.close(1000);
   });
 });
@@ -96,9 +96,9 @@ describe('signaling relay', () => {
     const got = await b.next((m) => m.t === 'signal');
     expect(got).toEqual({ t: 'signal', from: a.you.publicKey, data: { description: { type: 'offer', sdp: 'v=0' } } });
     send(a, { t: 'signal', to: v.you.publicKey, data: { candidate: null } });
-    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'peer not in the call' });
+    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'that participant is not in the call', ref: 'signal' });
     send(v, { t: 'signal', to: a.you.publicKey, data: { candidate: null } });
-    expect(await v.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'not in the call' });
+    expect(await v.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'not in the call', ref: 'signal' });
     a.ws.close(1000); b.ws.close(1000); v.ws.close(1000);
   });
 });

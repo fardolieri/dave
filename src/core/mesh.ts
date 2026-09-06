@@ -1,10 +1,8 @@
 // Mesh rules shared by both ends (ADR 0001). Pure functions, no imports.
 import type { Person } from './protocol';
 
-/** Fixed transceiver order on every peer connection. */
-export const TRANSCEIVERS = ['voice', 'shareVideo', 'shareAudio'] as const;
-export type TransceiverSlot = (typeof TRANSCEIVERS)[number];
-export const SLOT_INDEX: Record<TransceiverSlot, number> = { voice: 0, shareVideo: 1, shareAudio: 2 };
+/** Fixed transceiver order on every peer connection: voice audio, share video, share audio. */
+export const SLOT_INDEX = { voice: 0, shareVideo: 1, shareAudio: 2 } as const;
 
 /** Perfect negotiation: the side whose public key compares lower is polite and rolls back on glare. Survives reconnects. */
 export function isPolite(myKey: string, theirKey: string): boolean {

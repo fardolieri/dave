@@ -35,3 +35,16 @@ describe('turn credentials', () => {
     expect(STUN_ONLY[0]!.urls).toMatch(/^stun:/);
   });
 });
+
+describe('turn helpers', () => {
+  it('orders turns entries last and finds the minted username', async () => {
+    const { orderIceServers, turnUsername, turnRevokeRequest } = await import('../src/core/turn');
+    const servers = [
+      { urls: 'turns:turn.cloudflare.com:443?transport=tcp', username: 'u1', credential: 'c' },
+      { urls: ['turn:turn.cloudflare.com:3478?transport=udp'], username: 'u1', credential: 'c' },
+    ];
+    expect(orderIceServers(servers).map((s) => String(s.urls))).toEqual(['turn:turn.cloudflare.com:3478?transport=udp', 'turns:turn.cloudflare.com:443?transport=tcp']);
+    expect(turnUsername(servers)).toBe('u1');
+    expect(turnRevokeRequest('k', 't', 'a b').url).toBe('https://rtc.live.cloudflare.com/v1/turn/keys/k/credentials/a%20b/revoke');
+  });
+});

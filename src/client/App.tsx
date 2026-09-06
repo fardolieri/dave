@@ -74,7 +74,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
     const self = room.people().find((p) => p.publicKey === me());
     return self && self.role === 'visitor' ? [...others, self] : others; // you are listed last in Online (spec §7.1)
   });
-  // Call list: you first, then by join order. Peers whose server socket dropped stay listed, dimmed, for the grace period.
+  // Call list: you first, then by join order. Participants whose server socket dropped stay listed, dimmed, for the grace period.
   const inCallList = createMemo(() => {
     const participants = room.people().filter((p) => p.role === 'participant');
     const self = participants.find((p) => p.publicKey === me());

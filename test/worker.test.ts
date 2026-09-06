@@ -155,7 +155,7 @@ describe('gate', () => {
     await nextMessage(ws);
     reply = nextMessage(ws);
     ws.send(JSON.stringify(auth));
-    expect(await reply).toEqual({ t: 'error', reason: 'already authenticated' });
+    expect(await reply).toEqual({ t: 'error', reason: 'already authenticated', ref: 'auth' });
     ws.close();
   });
 });

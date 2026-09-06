@@ -32,3 +32,23 @@ export function parseIceServers(json: unknown): IceServer[] | null {
   }
   return out;
 }
+
+/** UDP first: entries with `turns:` (TLS over TCP) go last so browsers try them only when needed (spec §2.4). */
+export function orderIceServers(servers: IceServer[]): IceServer[] {
+  const isTurns = (s: IceServer) => (Array.isArray(s.urls) ? s.urls : [s.urls]).every((u) => u.startsWith('turns:'));
+  return [...servers.filter((s) => !isTurns(s)), ...servers.filter(isTurns)];
+}
+
+/** The TURN username Cloudflare minted, needed to revoke the credential on leave. */
+export function turnUsername(servers: IceServer[]): string | null {
+  return servers.find((s) => s.username)?.username ?? null;
+}
+
+export function turnRevokeRequest(keyId: string, apiToken: string, username: string): CredentialRequest {
+  return {
+    url: `https://rtc.live.cloudflare.com/v1/turn/keys/${keyId}/credentials/${encodeURIComponent(username)}/revoke`,
+    method: 'POST',
+    headers: { authorization: `Bearer ${apiToken}` },
+    body: '',
+  };
+}
