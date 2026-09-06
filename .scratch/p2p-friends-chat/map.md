@@ -16,7 +16,7 @@ A spec, ready to hand to an implementer, for a single-room web app where up to f
   - Media (voice, shares) must never be decrypted by a server. A TURN relay that forwards encrypted bytes is acceptable.
   - Design for 5 participants in a call, tolerate 8. No SFU.
   - Text chat is ephemeral: live relay only, nothing stored.
-  - Stack preference: TypeScript end to end, Solid 2 (release candidate) for the SPA, Node or Bun on the server. Plain WebSocket signaling is acceptable if evidence favours it.
+  - Stack: TypeScript end to end, Solid 2 (release candidate) for the SPA, Node plus wrangler toolchain, workerd in production (decided 2026-09-06, was "Node or Bun").
   - Targets: desktop Chromium and Firefox fully. Mobile browsers for voice, text, and viewing shares as a stretch.
 - Plan, don't do: this map produces decisions and a spec, not code. The one exception is the prototype ticket, which produces throwaway UI.
 
@@ -31,12 +31,12 @@ A spec, ready to hand to an implementer, for a single-room web app where up to f
 - [Multiple simultaneous screen shares in a WebRTC mesh](issues/06-multistream-screenshare.md): works if viewers opt in per share and sharers pause encoding for non-watchers via setParameters or replaceTrack, no renegotiation needed. Sharer upload is 2.5 Mbps per watching peer. Publishing is desktop-only; share audio is Chromium-only; mobile can view with a wake lock.
 - [Solid 2 release-candidate status and fit](issues/05-solid-2-status.md): rc.6 as of 2026-09-02, API frozen, weekly fixes, one open P1 store bug. Usable if all packages are pinned in lockstep; skip the router entirely. MediaStream objects are never proxied by stores, so WebRTC state must be mirrored into signals.
 - [Signaling and media stack decision](issues/07-signaling-and-media-stack.md): raw WebRTC mesh over our own WebSocket server, fixed transceivers per connection so only join and leave renegotiate, one share per participant, shares flow to nobody until a viewer subscribes, all control over the WebSocket, TURN credentials minted at join, runtime-neutral signaling core. ADR 0001.
+- [Hosting platform, server runtime, and TURN provider decision](issues/08-hosting-and-runtime.md): Cloudflare Workers + Durable Objects for hub and SPA, Cloudflare Realtime TURN for relay, all on one free account with a card allowed but zero spend. Node plus wrangler toolchain, Bun dropped. Hibernation means server state is derived from attached sockets only. GitHub Actions deploys. ADR 0002.
 
 ## Not yet specified
 
 - Reconnection and failure behaviour: what a participant sees when the server restarts, when a peer drops, when their own network flaps. ICE restart with refreshed TURN credentials is settled; the rest sharpens once the presence and transport model is decided.
 - Exact mobile scope: publishing a share does not exist on mobile (settled by research); what remains is how the UI hides it and whether voice and viewing shares are actually reliable on iOS Safari and Android Chrome. Depends on the UI prototype and the voice and share behaviour ticket.
-- Provisioning: signing up for the chosen hosting platform and TURN provider, generating credentials, wiring short-lived TURN credentials through the server. Becomes a task ticket once hosting and TURN are decided.
 - Background notification when a friend starts or joins a call while the tab is unfocused, and whether that is in the spec at all.
 - Voice controls: mute, push-to-talk, device selection, noise suppression. Sharpens in the voice and share behaviour ticket, may spill into its own.
 - Shape and level of detail of the final spec document, and where it lives in the repo.
