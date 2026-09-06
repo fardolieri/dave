@@ -21,7 +21,7 @@ Resolved 2026-09-06. The owner reviewed variants A (Sidebar), B (Stage), C (Chat
 **Layout decisions**
 
 1. Two columns on desktop: a fixed-width presence sidebar on the left, one main column on the right. No third column.
-2. Sidebar order: **Online** (visitors) first, **Call** (participants) below it. Each entry shows avatar initial, display name, six-character fingerprint, "new" badge for unseen keys, and for participants the muted and sharing flags plus the connection badge (direct, via relay, reconnecting, unreachable) when I am in the call.
+2. Sidebar order: **Online** (visitors) first, **Call** (participants) below it. Within Online the user is listed last; within Call the user is listed **first**, so joining moves their own entry by one slot and the rest of the sidebar barely shifts (added 2026-09-06). Each entry shows avatar initial, display name, six-character fingerprint, "new" badge for unseen keys, and for participants the muted and sharing flags plus the connection badge (direct, via relay, reconnecting, unreachable) when I am in the call.
 3. Sidebar actions sit under the Call list, each on its own row, full width: **Join** for a visitor; **Mute**, **Share screen**, **Leave** for a participant. The Share screen button is replaced by a "not available on this device" hint where `getDisplayMedia` is missing.
 4. Main column: **chat fills it entirely while nobody is sharing**. This is the default state and it must not look like an empty video stage.
 5. When at least one share exists the main column splits horizontally: shares on top, side by side in one row, chat below. Shares take roughly the upper half.
