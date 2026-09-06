@@ -39,10 +39,11 @@ A spec, ready to hand to an implementer, for a single-room web app where up to f
 - [Room UI prototype: visitor and participant views](issues/11-room-ui-prototype.md): two columns, presence sidebar with Online above Call and stacked full-width actions, chat fills the main column until someone shares, then shares split in above the chat side by side. Chat always visible. Phone width is one scrolling column. Prototype on branch prototype/room-ui, variant D.
 - [Voice and share behaviour](issues/12-voice-and-share-behaviour.md): voice activity plus mute, processing toggles behind a warning, device pickers via customizable select with fallback. Share settings are tunable: Motion and Detail presets, 15/30/60 fps, resolution, degradation preference, configurable upload budget (default 8 Mbps, 2.5 per viewer). Fullscreen unsubscribes other shares. Connection badges from stats every 2 s. Mobile best effort. Title badge and chimes.
 - [Mesh negotiation spike across Firefox and Chromium](issues/14-mesh-negotiation-spike.md): the pre-negotiated model survives both browsers. 114 forced offer collisions resolved with zero errors; share start, stop, restart, subscribe toggles, live constraint changes, and jitter-buffer target all work. Two mechanics corrected: only the initiator pre-adds transceivers, and share deactivation waits for the answer. Prototype on branch prototype/mesh-spike.
+- [Assemble the spec](issues/13-assemble-spec.md): the spec is written at [spec.md](spec.md), eleven sections, every one linking its ticket or ADR. **The map is complete.**
 
 ## Not yet specified
 
-- Shape and level of detail of the final spec document, and where it lives in the repo.
+<!-- nothing left: the frontier reached the destination on 2026-09-06 -->
 
 ## Out of scope
 

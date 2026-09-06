@@ -1,0 +1,167 @@
+# Spec: P2P friends chat
+
+Status: ready for implementation. Assembled 2026-09-06 from the wayfinder map at [map.md](map.md); every section links the ticket that holds the reasoning. Vocabulary is defined in [CONTEXT.md](../../CONTEXT.md) (Room, Call, Participant, Visitor, Presence, Share, Viewer, Signaling, Relayed, Shared secret, Identity, Fingerprint, Invite link) and is used here without redefinition. Architecture decisions that are hard to reverse are recorded as ADRs in [docs/adr/](../../docs/adr/).
+
+## 1. Overview
+
+A single-room web app where up to five friends (tolerate eight) share text, voice, and screen. Media flows peer to peer over a WebRTC mesh and never passes through a server we can read. A small server brokers connections, publishes presence, and relays ephemeral text. Entry is gated by one shared secret. Anyone with the page open sees who is in the call before deciding to join.
+
+Standing constraints (from the map's Notes):
+- Hosting and relay cost nothing. Workers and Durable Objects fail on overage; TURN is the one billable product and is accepted (see §9).
+- Media is never decrypted by a server. A TURN relay forwarding encrypted bytes is acceptable.
+- Text is ephemeral: live relay only, nothing stored anywhere.
+- Desktop Chromium and Firefox are the targets. Mobile is best effort (§7.5).
+- The UI always shows the real connection state; nothing hides behind a generic spinner.
+
+## 2. Architecture
+
+### 2.1 Stack
+
+TypeScript end to end. SPA in Solid 2 (release candidate), server on Cloudflare Workers with one Durable Object per Room. No router: the app is one page. From [Solid 2 release-candidate status and fit](issues/05-solid-2-status.md):
+- Pin exact versions of `solid-js`, `@solidjs/web`, `@solidjs/signals`, `@solidjs/vite-plugin`; commit the lockfile; upgrade deliberately. rc.6 as of 2026-09-02; one open P1 store bug (#3284) affects derived stores, which this design avoids.
+- WebRTC objects (`RTCPeerConnection`, `MediaStream`, `MediaStreamTrack`) are platform objects and are never proxied by Solid stores. Hold them in signals or a shallow store keyed by peer, and mirror every state you render (track ended, muted, ICE state) into plain signals from WebRTC events. Never read state off a media object in JSX.
+- Plain Vite SPA shape: `index.html` plus a `render()` entry from `@solidjs/web`. The prototype used this shape successfully; the plugin's "start" mode was not needed.
+- Toolchain: Node 20.19+ or 22.12+, wrangler, `@cloudflare/vitest-pool-workers` for tests inside workerd. Bun is not used.
+
+### 2.2 Media and signaling (ADR 0001)
+
+From [Signaling and media stack decision](issues/07-signaling-and-media-stack.md), verified by [Mesh negotiation spike across Firefox and Chromium](issues/14-mesh-negotiation-spike.md):
+- One `RTCPeerConnection` per remote participant. Full mesh, no SFU, no data channels.
+- Signaling rides the same WebSocket that carries presence, text, and in-call control (§5).
+- **Fixed transceivers per connection**: voice audio, share video, share audio. The offering side pre-adds them with `addTransceiver(kind, { direction: 'sendrecv' })`. The answering side must **not** pre-add: it lets `setRemoteDescription` create the three, sets each `direction = 'sendrecv'`, attaches its tracks with `replaceTrack`, then answers. (JSEP only associates offered lines with `addTrack`-created transceivers; pre-adding on both sides yields six transceivers and two rounds.)
+- Offer/answer happens only when a participant joins or leaves. Starting a share is `replaceTrack(track)`, stopping is `replaceTrack(null)`. One share per participant at a time.
+- **Perfect negotiation** (W3C pattern) on every connection. Polite side is the participant whose identity public key compares lower as a string. This survives server reconnects. Verified under 114 forced simultaneous offer collisions with zero errors on Chromium and Firefox.
+- **Mesh formation**: the server assigns each participant a join sequence. The newcomer (higher sequence) creates the connection and first offer to each existing participant. On leave the server announces it and each remaining participant closes that connection.
+- **Share subscription**: a new share flows to nobody. A viewer sends `subscribe`/`unsubscribe` for a sharer; the sharer sets `encodings[0].active` on its share video and share audio senders for that one connection. Deactivating for a peer that has just joined must wait until the answer is applied (the sender has no encodings before that; retry every 100 ms). The UI renders share tiles from signaling state, not from `track` events, because remote tracks exist muted from join time.
+- **TURN credentials** are returned by the server in the reply to `join` (§6.4) and refreshed on rejoin. Before an ICE restart with expired credentials the client requests fresh ones and applies them with `setConfiguration`.
+- The signaling core is written against Web-standard WebSocket and Request/Response APIs with a thin adapter per runtime. The Durable Object is the production adapter; tests run inside workerd.
+
+### 2.3 Hosting (ADR 0002)
+
+From [Hosting platform, server runtime, and TURN provider decision](issues/08-hosting-and-runtime.md) and [Provision the Cloudflare account, TURN key, and deploy secrets](issues/15-provision-cloudflare.md):
+- Cloudflare Workers Free plan. One Worker named `dave` serving the SPA as static assets (never routed through the Worker script, so requests are free and unlimited) and handling exactly two dynamic paths: the WebSocket upgrade and nothing else; TURN minting happens inside the room object as part of `join`.
+- One Durable Object per Room (SQLite-backed, storage unused) using the **WebSocket Hibernation API**. The object holds no state that cannot be rebuilt from attached sockets and their per-socket attachments (16 KB cap each).
+- App URL `https://dave.danielmittereder.workers.dev`. The account subdomain is not recorded in the repo; a custom domain later is a config change.
+- Deploys: GitHub Actions on push to `master` running `cloudflare/wrangler-action@v3` with repository secrets `CLOUDFLARE_API_TOKEN` (from the "Edit Cloudflare Workers" template) and `CLOUDFLARE_ACCOUNT_ID`. The Worker is created by the first deploy; no dashboard step.
+- Secrets: `TURN_KEY_API_TOKEN` and the shared secret live as Worker secrets, pushed from GitHub repository secrets by the deploy workflow's `secrets` input. The TURN key ID `d3d456166c56302f67957272a1ff9ba5` is not secret and lives in `wrangler.toml` as `TURN_KEY_ID`. The repo `fardolieri/dave` is public.
+- All friends are in one region; Durable Object placement near the first requester is fine.
+
+### 2.4 TURN
+
+Cloudflare Realtime TURN. STUN `stun:stun.cloudflare.com:3478` is free and may be shipped to visitors. Credentials are minted server-side per participant on `join` via `POST https://rtc.live.cloudflare.com/v1/turn/keys/$TURN_KEY_ID/credentials/generate-ice-servers` with `{"ttl": 43200}` (12 hours; provider maximum 48 hours) and `Authorization: Bearer $TURN_KEY_API_TOKEN`; the returned `iceServers` array is forwarded as is. Revoke on leave with `POST .../credentials/$USERNAME/revoke`. Include `turns:turn.cloudflare.com:443?transport=tcp` last so UDP is tried first. Fallback provider if Cloudflare TURN ever requires a paid plan: Metered Open Relay, quota to be confirmed in its dashboard. Sources: [Free TURN relay options](issues/04-free-turn-providers.md).
+
+## 3. Access and identity (ADR 0003)
+
+From [Access gating and stable identity](issues/10-access-and-identity.md).
+
+- **Invite link**: the shared secret travels in the URL fragment, which browsers never send to the server. On first load the client stores it locally and strips it from the address bar immediately (a friend screensharing their browser must not leak it). Rotation is manual: change the Worker secret, send a new link.
+- **Identity**: an ECDSA P-256 keypair from WebCrypto, private key `extractable: false`, stored as a `CryptoKeyPair` in IndexedDB. Generated on first visit. Losing site data means a new identity; there is no recovery or export.
+- **Connect handshake**: the server sends a 32-byte random nonce. The client replies with `HMAC-SHA256(secret, nonce || publicKey)` and an ECDSA signature over the nonce. The server recomputes the HMAC from its Worker secret, verifies the signature against the public key, and only then attaches the socket with the identity in its attachment. The secret never crosses the wire; a transcript cannot replay; the proof is bound to the identity.
+- **Attribution**: the server tags every relayed message and presence entry with the sender's verified public key. Clients trust the tag. No per-message signatures. This trust in our own server is deliberate and recorded in ADR 0003.
+- **Names**: self-declared display name plus a six-character fingerprint derived from the public key hash. Duplicates allowed; the UI warns "someone else in the room is also called X" and shows your own fingerprint. Each client keeps a local seen-keys list (key, last name) and shows a "new" badge on a never-seen key until the user has interacted with it once.
+- **Abuse**: three wrong challenge answers close the connection. The Worker in front of the room object rate-limits upgrade attempts per IP with the platform rate limiter so failed attempts never wake the object.
+
+## 4. Presence and text
+
+From [Presence and ephemeral text transport model](issues/09-presence-and-text-transport.md).
+
+- **Authority**: the server is authoritative for presence and call membership, derived entirely from attached sockets. Each socket's attachment holds: public key, display name, role (visitor or participant), join sequence if participant, sharing flag, muted flag. A Call exists exactly when at least one attached socket has role participant.
+- **Propagation**: a full presence snapshot is broadcast to every socket on every change. No deltas.
+- **Stale sockets**: the client pings every 30 s; the hibernation auto-response answers without waking the object. While a Call exists, a Durable Object alarm runs every 60 s and drops sockets whose last ping is older than 90 s, then broadcasts a snapshot. With no Call the object hibernates fully and relies on platform close events.
+- **Text**: pure relay to every attached socket, visitors and participants alike. No buffer in memory or storage. Plain text, 2,000 characters max, URLs auto-linked client side, no uploads. A client that reconnects shows "reconnected, you may have missed messages".
+- **Rate limit**: 20 messages per second per socket, burst 40; excess dropped with an error frame. This is what protects the daily request budget (§9).
+
+## 5. Wire protocol
+
+Everything is JSON over the one WebSocket. Message set (§4 and §2.2):
+- Server to all: `presence` (full snapshot).
+- Client to server, relayed to all: `text`, `share` (started or stopped), `mute` (changed).
+- Client to server: `join` (reply carries join sequence and `iceServers`), `leave`, `ping`.
+- Point to point between participants, relayed by the server by target public key: `signal` (description or candidate), `subscribe`, `unsubscribe`.
+- Not over the socket, ever: speaking indicators (computed locally from received audio, §6.1) and typing indicators (do not exist).
+Every relayed message is tagged by the server with the sender's public key (§3). Signaling messages are delivered only to participants.
+
+## 6. Voice and shares
+
+From [Voice and share behaviour](issues/12-voice-and-share-behaviour.md) and [Multiple simultaneous screen shares in a WebRTC mesh](issues/06-multistream-screenshare.md).
+
+### 6.1 Voice
+- Always on with voice activity, plus Mute. No push-to-talk.
+- Join unmuted; last mute state remembered per browser. Mute sets the local track `enabled = false` (no renegotiation) and broadcasts `mute`.
+- Echo cancellation, noise suppression, and automatic gain default on. A settings popover exposes the three toggles behind a small warning that changing them usually makes you sound worse to others, plus microphone selection and speaker selection where the browser supports output devices. Pickers use the customizable select (`appearance: base-select`, Chrome 135, Safari 27) with a plain `<select>` fallback (Firefox has it behind flags as of 149). Choices remembered per browser.
+- Speaking indicators: a local audio analyser on the own mic and every received voice track lights a ring on the avatar past a threshold with a short hold.
+
+### 6.2 Starting and stopping a share
+- The Share screen button calls `getDisplayMedia` with video at the configured frame rate, `audio: true`, `systemAudio: 'include'`, `selfBrowserSurface: 'exclude'`, `surfaceSwitching: 'include'`. Share audio is Chromium-only and best effort; Firefox and Safari shares are silent.
+- Stopping is the button or the browser's own stop control, both detected by the track ending, then announced with `share`.
+- Publishing is desktop-only: `getDisplayMedia` does not exist on iOS Safari, Android Chrome, or Android Firefox. Hide the button where it is undefined.
+
+### 6.3 Share settings (tunable, first class)
+A gear next to Share screen opens share settings, applied live without renegotiation and remembered per browser:
+- Presets: **Motion** (60 fps, scaled to about 720p, `contentHint = 'motion'`, `degradationPreference = 'maintain-framerate'`) for game streams; **Detail** (15 to 30 fps, native resolution, `contentHint = 'detail'`, `degradationPreference = 'maintain-resolution'`) for browsers and documents. Default: Detail at 30 fps.
+- Advanced: frame rate (15, 30, 60), resolution (native, 1080p, 720p), degradation preference (framerate, resolution, balanced), upload budget and per-viewer ceiling (§6.4). Frame rate and resolution apply with `applyConstraints` on the share track (verified live on Chromium and Firefox); encoding limits with `setParameters` per peer.
+- Viewer-side "low latency" toggle sets `jitterBufferTarget` on the receivers (Chrome 124, Firefox 115, Safari 27).
+
+### 6.4 Bandwidth rule
+The sharer's upload is the bottleneck: one encode per watching peer, 2.5 Mbps per stream by default. Default upload budget 8 Mbps per share, divided equally among active viewers, per-viewer ceiling 2.5 Mbps, floor 1 Mbps, applied as `maxBitrate` on each viewer's connection as subscriptions change. Budget and ceiling are user-configurable. A viewer on a small screen requests half resolution, applied for that peer only with `scaleResolutionDownBy`. Relayed pairs push the same bytes through TURN: about 1.1 GB per hour per 2.5 Mbps stream.
+
+### 6.5 Viewing
+- Any number of shares may be watched at once. Click a tile to subscribe, click again to unsubscribe. Each tile has a fullscreen button. Entering fullscreen on one share unsubscribes every other share; leaving fullscreen does nothing automatic.
+- Tile states: not watching shows "click to watch" (no preview, no frames flow); subscribing shows a spinner until the first frame; live shows video with a caption of bitrate and direct or relayed; the sharer's own tile shows "you are sharing"; unreachable dims the tile with "no connection to X".
+- Mobile viewing: `<video autoplay playsinline muted>` fed by the received track; voice on a separate audio element with `play()` awaited and a play button on `NotAllowedError`; take a Screen Wake Lock while watching.
+
+## 7. User interface
+
+From [Room UI prototype: visitor and participant views](issues/11-room-ui-prototype.md). Reference implementation of the layout: branch `prototype/room-ui`, variant D (throwaway; rewrite properly).
+
+### 7.1 Layout
+- Two columns on desktop: a fixed-width presence sidebar on the left, one main column on the right.
+- Sidebar: **Online** (visitors) first, then **Call** (participants). The user is listed last in Online and first in Call, so joining moves their own entry one slot. Entries show avatar initial, name, fingerprint, "new" badge, and for participants the muted and sharing flags plus the connection badge.
+- Sidebar actions under the Call list, each full width on its own row: Join for a visitor; Mute, Share screen, Leave for a participant. Share screen becomes a "not available on this device" hint where `getDisplayMedia` is missing. A name-clash warning sits under the actions.
+- Main column: chat fills it entirely while nobody shares. When at least one share exists it splits horizontally: shares side by side in one equal-width row on top (about the upper half), chat below. Chat is always visible, never a drawer.
+- Visitors see share tiles marked "join to watch".
+
+### 7.2 State shown, always
+- Per-peer connection badge: direct, via relay, reconnecting, unreachable (§8.2). Never hidden.
+- Server socket state as a full-width banner above everything when not connected: "Reconnecting to server… voice and shares continue, chat is paused", then after 30 s "Server unavailable, retrying".
+- Chat input disabled with a reason while disconnected; a line notes possibly missed messages after reconnect.
+
+### 7.3 Phone width
+One column, the whole page scrolls, the presence list has no max height and never clips, shares stack vertically above the chat. No tabs.
+
+### 7.4 Attention cues
+Title badge such as "(3 in call)" while the tab is unfocused, short join and leave chimes. No system notifications.
+
+### 7.5 Mobile promise
+Best effort: "works on recent iOS Safari and Android Chrome, not a supported target". Voice, text, and viewing shares; no publishing.
+
+## 8. Failure and reconnection
+
+### 8.1 Server socket
+Client keeps peer connections alive, reconnects with exponential backoff capped at 30 s, redoes the challenge, and re-declares role, sharing, and muted. The server treats it as a fresh socket; the polite role does not depend on anything that changed (§2.2). Presence is frozen and dimmed meanwhile; text is disabled.
+
+### 8.2 Peer connections
+Per connection, read `getStats` every 2 s. The selected candidate pair's type gives direct versus relayed. ICE state maps to the badge: connected or completed is direct or relayed; disconnected is "reconnecting" and triggers an ICE restart after 5 s; failed is "unreachable" and retries ICE restart with backoff. **Server presence wins**: a failed peer link never removes anyone from the Call; only an explicit leave or a dead socket does.
+
+### 8.3 Object eviction and restart
+The room object may be evicted at any quiet moment. Everything is rebuilt from attached sockets and attachments on wake; there is nothing else to lose. Text typed while a client was disconnected is gone by design.
+
+## 9. Free-tier limits and consequences
+
+From [Free hosting for an always-on WebSocket hub and static SPA](issues/03-free-hosting-websocket-hub.md) and the hosting decision.
+- Workers: 100,000 requests/day, 10 ms CPU per invocation. Static asset requests are free and unlimited when not routed through the script.
+- Durable Objects: 100,000 requests/day, 13,000 GB-s/day duration, incoming WebSocket messages counted 20:1, outgoing free, hibernating objects accrue no duration. One never-hibernating object costs 10,800 GB-s/day, so even a 24-hour call fits. Exceeding a limit makes operations fail with an error, no bill; the room is dead until the daily reset. The per-socket rate limit (§4) and the ban on speaking indicators over the socket are what keep a broken client from taking the room down.
+- TURN: 1,000 GB/month egress free, then $0.05/GB with no hard cap. Accepted: that is roughly 900 hours of one fully relayed screenshare a month. A $1 budget alert is set (informational only). Credentials are revoked on leave and expire after 12 hours.
+- Card: a payment method sits on the Cloudflare account. Workers and Durable Objects cannot bill on Free; TURN can.
+
+## 10. Out of scope
+
+Deliberately not part of this effort (see the map's Out of scope section for reasons): multiple rooms or channels; camera video; persistent text history in any form; accounts, allowlists, or third-party sign-in; visitor visibility with an invisible mode; any server that handles media; identity recovery or key linking across browsers; push-to-talk; system notifications; first-frame preview thumbnails on share tiles.
+
+## 11. Implementation notes and order
+
+- Build the runtime-neutral signaling core first with tests in workerd; the mesh spike on branch `prototype/mesh-spike` is a working reference for negotiation, transceiver adoption, subscription toggles, and the settings calls.
+- Then the SPA shell with presence and text (a visitor can chat before any WebRTC exists).
+- Then voice, then shares, then share settings and connection badges.
+- Rewrite both prototypes rather than promoting them; they were written under prototype constraints.
+- Research findings with sources live on the `research/*` branches under `docs/research/`, linked from tickets 01 to 06.
