@@ -149,8 +149,10 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   }
   async function refreshDevices(): Promise<void> {
     try {
-      const all = await navigator.mediaDevices.enumerateDevices();
-      setDevices({ microphones: all.filter((d) => d.kind === 'audioinput'), speakers: all.filter((d) => d.kind === 'audiooutput') });
+      // Chrome lists pseudo-devices "default" (and "communications" on Windows) that mirror a real entry;
+      // the panel's own "Default" option already means the browser default, so drop them.
+      const real = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.deviceId !== 'default' && d.deviceId !== 'communications');
+      setDevices({ microphones: real.filter((d) => d.kind === 'audioinput'), speakers: real.filter((d) => d.kind === 'audiooutput') });
     } catch { /* enumeration unavailable */ }
   }
   navigator.mediaDevices?.addEventListener?.('devicechange', () => void refreshDevices());
