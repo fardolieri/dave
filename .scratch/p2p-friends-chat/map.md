@@ -37,12 +37,10 @@ A spec, ready to hand to an implementer, for a single-room web app where up to f
 - [Presence and ephemeral text transport model](issues/09-presence-and-text-transport.md): server relays text with no buffer; presence and call membership derived from attached sockets and broadcast as full snapshots; ping auto-response plus a 60 s alarm during calls sweeps dead sockets; server presence wins over media failure; polite role now by identity key so reconnects need no state; speaking indicators stay local; 20 msg/s rate limit.
 - [Access gating and stable identity](issues/10-access-and-identity.md): HMAC challenge-response over a nonce bound to the client public key, secret never on the wire, delivered via invite-link fragment. Non-extractable ECDSA P-256 in IndexedDB. Server tags attribution, clients trust it. Name plus six-char fingerprint, "new" badge for unseen keys, duplicates allowed, no key recovery. ADR 0003.
 - [Room UI prototype: visitor and participant views](issues/11-room-ui-prototype.md): two columns, presence sidebar with Online above Call and stacked full-width actions, chat fills the main column until someone shares, then shares split in above the chat side by side. Chat always visible. Phone width is one scrolling column. Prototype on branch prototype/room-ui, variant D.
+- [Voice and share behaviour](issues/12-voice-and-share-behaviour.md): voice activity plus mute, processing toggles behind a warning, device pickers via customizable select with fallback. Share settings are tunable: Motion and Detail presets, 15/30/60 fps, resolution, degradation preference, configurable upload budget (default 8 Mbps, 2.5 per viewer). Fullscreen unsubscribes other shares. Connection badges from stats every 2 s. Mobile best effort. Title badge and chimes.
 
 ## Not yet specified
 
-- Mobile reliability: layout is settled by the UI prototype and share publishing is desktop-only by research; what remains is whether voice and viewing shares actually work reliably on iOS Safari and Android Chrome, and what the spec promises there. Sharpens in the voice and share behaviour ticket or the mesh spike.
-- Background notification when a friend starts or joins a call while the tab is unfocused, and whether that is in the spec at all.
-- Voice controls: mute, push-to-talk, device selection, noise suppression. Sharpens in the voice and share behaviour ticket, may spill into its own.
 - Shape and level of detail of the final spec document, and where it lives in the repo.
 
 ## Out of scope
@@ -53,4 +51,7 @@ A spec, ready to hand to an implementer, for a single-room web app where up to f
 - Accounts, allowlists, or third-party sign-in. The shared secret is the boundary.
 - Visitor visibility with an invisible mode (seeing who is online but not in the call). Deferred to a later effort; noted so a privacy toggle is designed in when it comes.
 - Identity recovery or key linking across browsers. Non-extractable keys were chosen deliberately; a linking flow (new browser shows a code, old browser signs it) is a later effort. Ruled out 2026-09-06 in the access and identity decision.
+- Push-to-talk. Needs a keybinding UI and a global key listener; voice activity plus mute covers the group. Ruled out 2026-09-06.
+- System notifications via the Notification API. Title badge and chimes are in; OS-level notifications are not worth the permission prompt. Ruled out 2026-09-06.
+- Low-resolution first-frame preview thumbnails on share tiles for non-watchers. Liked, deliberately deferred to a later effort; tiles say "click to watch" for now. Ruled out 2026-09-06.
 - Selective forwarding unit or any server that handles media. Contradicts the privacy constraint and the participant ceiling makes it unnecessary.
