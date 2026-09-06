@@ -5,7 +5,7 @@ date: 2026-09-06
 
 # Cloudflare Workers and Durable Objects host the hub, SPA, and TURN
 
-The hub (presence, signaling, ephemeral text relay, TURN credential minting) must stay always-on at zero cost. Only three platforms do that without an expiring trial: Cloudflare Workers with Durable Objects, an Oracle Always Free VM, and a Google e2-micro. We chose Cloudflare, giving up the earlier Node-or-Bun preference for production, because it is the only option with no operations burden, no idle-reclamation rule, TLS and a domain included, static assets served free and unlimited from the same Worker, and a TURN relay (Cloudflare Realtime TURN, 1,000 GB/month) on the same account. A card may sit on the account because Cloudflare's free tier fails on overage rather than billing.
+The hub (presence, signaling, ephemeral text relay, TURN credential minting) must stay always-on at zero cost. Only three platforms do that without an expiring trial: Cloudflare Workers with Durable Objects, an Oracle Always Free VM, and a Google e2-micro. We chose Cloudflare, giving up the earlier Node-or-Bun preference for production, because it is the only option with no operations burden, no idle-reclamation rule, TLS and a domain included, static assets served free and unlimited from the same Worker, and a TURN relay (Cloudflare Realtime TURN, 1,000 GB/month) on the same account. A card sits on the account. Workers and Durable Objects on Free fail on overage rather than billing; TURN is the one product that bills past its free tier ($0.05/GB after 1,000 GB, no hard cap), accepted because 1,000 GB is roughly 900 hours of one fully relayed screenshare a month.
 
 ## Considered options
 
@@ -20,6 +20,7 @@ The hub (presence, signaling, ephemeral text relay, TURN credential minting) mus
 - The room's Durable Object must use the WebSocket Hibernation API to fit the daily duration budget. The server therefore holds no state that cannot be rebuilt from attached sockets and their per-socket attachments (16 KB each).
 - Per-socket rate limiting is required so one broken client cannot exhaust the daily request budget and take the room down until reset.
 - SPA assets are served directly by the platform, never routed through the Worker script, so they stay free and unlimited.
-- The TURN key token and access-gating material live as Worker secrets. The repo is public.
+- The TURN key API token and access-gating material live as Worker secrets, pushed from GitHub repository secrets on each deploy. The TURN key ID is a plain variable. The repo is public.
+- TURN credentials use `credentials/generate-ice-servers` (not the legacy `generate`), TTL 12 hours within the 48-hour maximum, and are revoked when a participant leaves. A $1 budget alert is the only spend signal Cloudflare offers.
 - Deploys run from GitHub Actions on push to master using a Cloudflare API token held as a repository secret.
 - The app lives on a `workers.dev` subdomain until a custom domain is wanted; moving is a config change.
