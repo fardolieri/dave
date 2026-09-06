@@ -4,7 +4,7 @@
 
 **Blocked by:** 05 Screen share with subscriptions. Can run alongside 06.
 
-**Status:** in-progress (branch `build/07-cues-and-phone`, under review)
+**Status:** done (2026-09-06), awaiting deploy; the manual phone check remains the owner's
 
 - [x] Title badge such as "(3 in call)" while unfocused; cleared on focus.
 - [x] Join and leave chimes, short and quiet, only for others' joins and leaves.
@@ -19,3 +19,4 @@
 - Phone layout verified with a 390px emulated viewport in headless Chromium (`scripts/drive.mjs --narrow-last --shot=<dir>`): one column, Online then Call with full lists, stacked actions, two share tiles stacked above the chat, input at the bottom, the page scrolling as a whole.
 - The Share screen hint for devices without `getDisplayMedia` shipped with ticket 05.
 - Last criterion (manual check on iOS Safari and Android Chrome) is the owner's; best effort per spec §7.5.
+- Code review (two-axis) addressed: focus and visibility are mirrored into one signal (badge shows for a visible but unfocused window too); chimes baseline on the first snapshot that includes you, and a friend held through a server blip is neither a leave nor a rejoin (rule in core, tested); the wake lock is serialised and re-checked after the request; every listener is removed and the audio context closed on cleanup; DOM library types used for the wake lock; the phone-width chat log keeps a deliberate 60vh inner scroll so the input stays reachable, documented in the stylesheet.

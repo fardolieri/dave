@@ -40,12 +40,13 @@ code.fp { font-size: 11px; color: var(--dim); }
 .chat-input { display: flex; gap: 6px; padding-top: 8px; }
 .chat-input input { flex: 1; }
 
-/* Phone width (spec §7.3): one column, the whole page scrolls, presence never clips, shares stack above the chat. */
+/* Phone width (spec §7.3): one column, the page scrolls as a whole, presence never clips, shares stack above the chat.
+   The chat log keeps its own scroll capped at 60vh on purpose: otherwise a long conversation pushes the input off screen. */
 @media (max-width: 700px) {
-  html, body, #app { height: auto; min-height: 100%; }
+  html, body, #app { height: auto; }
   .app { height: auto; min-height: 100vh; }
   .cols { grid-template-columns: 1fr; grid-template-rows: auto auto; }
-  .side { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; max-height: none; }
+  .side { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
   .main { min-height: 70vh; }
   .chat { min-height: 50vh; }
   .chat-log { max-height: 60vh; }

@@ -5,7 +5,7 @@
 // lands straight in the Room. Prints each browser's sidebar and chat, then sends one
 // message from the first browser and shows what the others received.
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -51,7 +51,6 @@ class Browser {
     if (width) await this.cdp('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: true });
     await sleep(300);
     const r = await this.cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
-    const { writeFileSync } = await import('node:fs');
     writeFileSync(path, Buffer.from(r.result.data, 'base64'));
   }
   text(sel) { return this.eval(`Array.from(document.querySelectorAll(${JSON.stringify(sel)})).map(e => e.innerText.replace(/\\s+/g,' ').trim()).join(' | ')`); }
@@ -133,7 +132,6 @@ try {
       }
     }
     if (shotDir) {
-      const { mkdirSync } = await import('node:fs');
       mkdirSync(shotDir, { recursive: true });
       for (const b of browsers) await b.screenshot(`${shotDir}/${b.name}.png`, narrowLast && b === browsers[browsers.length - 1] ? 390 : undefined);
       console.log(`screenshots in ${shotDir}`);

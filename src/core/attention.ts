@@ -3,14 +3,18 @@
 export const APP_TITLE = 'dave';
 
 /** Title shown while the tab is unfocused: a badge with how many friends are in the Call. */
-export function titleFor(participantsInCall: number, hidden: boolean): string {
-  return hidden && participantsInCall > 0 ? `(${participantsInCall} in call) ${APP_TITLE}` : APP_TITLE;
+export function titleFor(participantsInCall: number, unfocused: boolean): string {
+  return unfocused && participantsInCall > 0 ? `(${participantsInCall} in call) ${APP_TITLE}` : APP_TITLE;
 }
 
-/** Which keys joined and which left between two presence snapshots of participants, ignoring yourself. */
-export function callDiff(before: Set<string>, after: Set<string>, me: string): { joined: string[]; left: string[] } {
-  const joined = [...after].filter((k) => k !== me && !before.has(k));
-  const left = [...before].filter((k) => k !== me && !after.has(k));
+/**
+ * Who joined and who left between two views of the Call, ignoring yourself. `stillHeld` are participants
+ * whose server socket dropped but whose media is kept for the grace period (spec §8.1): a socket blip is
+ * neither a leave nor, on return, a join.
+ */
+export function callDiff(before: Set<string>, after: Set<string>, me: string, stillHeld: Set<string> = new Set()): { joined: string[]; left: string[] } {
+  const joined = [...after].filter((k) => k !== me && !before.has(k) && !stillHeld.has(k));
+  const left = [...before].filter((k) => k !== me && !after.has(k) && !stillHeld.has(k));
   return { joined, left };
 }
 

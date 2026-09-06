@@ -12,4 +12,9 @@ describe('attention cues', () => {
     expect(d).toEqual({ joined: ['b'], left: ['a'] });
     expect(callDiff(new Set(['a']), new Set(['a', 'me']), 'me')).toEqual({ joined: [], left: [] });
   });
+  it('treats a friend held through a server blip as neither left nor rejoined', () => {
+    const held = new Set(['a']);
+    expect(callDiff(new Set(['a', 'b']), new Set(['b']), 'me', held)).toEqual({ joined: [], left: [] });
+    expect(callDiff(new Set(['b']), new Set(['a', 'b']), 'me', held)).toEqual({ joined: [], left: [] });
+  });
 });
