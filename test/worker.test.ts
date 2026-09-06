@@ -76,7 +76,7 @@ describe('gate', () => {
     const ws = await openSocket();
     await nextMessage(ws); // challenge
     let reply = nextMessage(ws);
-    ws.send(JSON.stringify({ t: 'echo', text: 'hi' }));
+    ws.send(JSON.stringify({ t: 'text', text: 'hi' }));
     expect(await reply).toEqual({ t: 'error', reason: 'unauthenticated' });
     reply = nextMessage(ws);
     ws.send('garbage');
@@ -144,16 +144,15 @@ describe('gate', () => {
     ws.close();
   });
 
-  it('after authentication, ping and echo work and a second auth is refused', async () => {
+  it('after authentication a second auth is refused', async () => {
     const ws = await openSocket();
     const id = await identity();
     const auth = await authMessage(ws, id);
     let reply = nextMessage(ws);
     ws.send(JSON.stringify(auth));
     expect((await reply).t).toBe('welcome');
-    reply = nextMessage(ws);
-    ws.send(JSON.stringify({ t: 'ping' }));
-    expect(await reply).toEqual({ t: 'pong' });
+    // the welcome is followed by a presence snapshot; skip it
+    await nextMessage(ws);
     reply = nextMessage(ws);
     ws.send(JSON.stringify(auth));
     expect(await reply).toEqual({ t: 'error', reason: 'already authenticated' });

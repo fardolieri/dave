@@ -10,20 +10,38 @@ export type Identity = {
   name: string;
 };
 
+export type Role = 'visitor' | 'participant';
+
+/** One attached socket as everyone sees it. This is exactly what the server keeps in the socket attachment. */
+export type Person = Identity & {
+  role: Role;
+  /** Order of joining the Call; null for visitors. */
+  joinSeq: number | null;
+  sharing: boolean;
+  muted: boolean;
+};
+
 export type ClientMessage =
   | { t: 'auth'; publicKey: string; name: string; hmac: string; signature: string }
   | { t: 'ping' }
-  | { t: 'echo'; text: string };
+  | { t: 'text'; text: string };
 
 export type ServerMessage =
   | { t: 'challenge'; nonce: string }
-  | { t: 'welcome'; you: Identity }
+  | { t: 'welcome'; you: Person }
+  | { t: 'presence'; people: Person[] }
+  | { t: 'text'; from: Identity; text: string; at: number }
   | { t: 'pong' }
-  | { t: 'echo'; text: string }
   | { t: 'error'; reason: string };
+
+/** The exact frames the hibernation auto-response matches, so pings never wake the Room. */
+export const PING_FRAME = '{"t":"ping"}';
+export const PONG_FRAME = '{"t":"pong"}';
+export const PING_INTERVAL_MS = 30_000;
 
 export const MAX_MESSAGE_BYTES = 4096;
 export const MAX_NAME_LENGTH = 32;
+export const MAX_TEXT_LENGTH = 2000;
 
 /** Close codes the server uses. 4000 to 4999 are application-defined. */
 export const CLOSE_AUTH_FAILED = 4001;
@@ -56,8 +74,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case 'ping':
       return { t: 'ping' };
-    case 'echo':
-      return typeof m.text === 'string' ? { t: 'echo', text: m.text } : null;
+    case 'text': {
+      if (typeof m.text !== 'string') return null;
+      const text = m.text.trim();
+      return text.length >= 1 && text.length <= MAX_TEXT_LENGTH ? { t: 'text', text } : null;
+    }
     default:
       return null;
   }

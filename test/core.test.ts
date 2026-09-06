@@ -4,8 +4,8 @@ import { normaliseName, parseClientMessage, MAX_MESSAGE_BYTES } from '../src/cor
 describe('protocol', () => {
   it('parses known messages and rejects the rest', () => {
     expect(parseClientMessage(JSON.stringify({ t: 'ping' }))).toEqual({ t: 'ping' });
-    expect(parseClientMessage(JSON.stringify({ t: 'echo', text: 'x' }))).toEqual({ t: 'echo', text: 'x' });
-    expect(parseClientMessage(JSON.stringify({ t: 'echo' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'text', text: ' x ' }))).toEqual({ t: 'text', text: 'x' });
+    expect(parseClientMessage(JSON.stringify({ t: 'text' }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ t: 'nope' }))).toBeNull();
     expect(parseClientMessage('{')).toBeNull();
     expect(parseClientMessage(new ArrayBuffer(4))).toBeNull();
