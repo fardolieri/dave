@@ -1,9 +1,10 @@
 import { DurableObject } from 'cloudflare:workers';
-import { handleClientMessage } from '../core/room';
+import { onMessage, openSocket, type Outcome, type SocketState } from '../core/room';
+import { CLOSE_NOT_CONFIGURED } from '../core/protocol';
 
 // One Room per app. Uses the WebSocket Hibernation API so the object can be
-// evicted while sockets stay attached; anything worth keeping lives in the
-// per-socket attachment (16 KB cap), never in instance fields.
+// evicted while sockets stay attached; the per-socket state machine lives in
+// the attachment (16 KB cap), never in instance fields.
 export class Room extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
     if (request.headers.get('Upgrade') !== 'websocket') {
@@ -12,18 +13,28 @@ export class Room extends DurableObject<Env> {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ connectedAt: Date.now() });
+    if (!this.env.ROOM_SECRET) {
+      server.close(CLOSE_NOT_CONFIGURED, 'room secret not configured');
+      return new Response(null, { status: 101, webSocket: client });
+    }
+    this.apply(server, openSocket());
     return new Response(null, { status: 101, webSocket: client });
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    const reply = handleClientMessage(message);
-    ws.send(JSON.stringify(reply));
+    const state = ws.deserializeAttachment() as SocketState;
+    this.apply(ws, await onMessage(state, message, { secret: this.env.ROOM_SECRET }));
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
     // 1005/1006 mean "no status" and may not be passed back into close().
     const valid = code === 1000 || (code >= 3000 && code <= 4999);
     ws.close(valid ? code : 1000, reason);
+  }
+
+  private apply(ws: WebSocket, outcome: Outcome): void {
+    ws.serializeAttachment(outcome.state);
+    for (const reply of outcome.replies) ws.send(JSON.stringify(reply));
+    if (outcome.close) ws.close(outcome.close.code, outcome.close.reason);
   }
 }

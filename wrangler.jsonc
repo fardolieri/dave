@@ -12,6 +12,10 @@
     "bindings": [{ "name": "ROOM", "class_name": "Room" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  "ratelimits": [
+    // Upgrade attempts per client IP. Failed handshakes never reach the Room past this.
+    { "name": "UPGRADE_LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }
+  ],
   "assets": {
     // directory is filled in by @cloudflare/vite-plugin at build time.
     // Assets are served before the Worker runs, so they never count against the request budget.
