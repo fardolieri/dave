@@ -162,7 +162,7 @@ try {
       const [a, b] = browsers;
       await a.eval(`[...document.querySelectorAll('.prow')].find(li => li.textContent.includes(${JSON.stringify(b.name)}))?.querySelector('button.vol')?.click(); 'open'`);
       await sleep(300);
-      await a.eval(`(() => { const r = document.querySelector('.volrow input[type=range]'); r.value = '30'; r.dispatchEvent(new Event('input', { bubbles: true })); return 'set'; })()`);
+      await a.eval(`(() => { const r = document.querySelector('.volrow input[type=range]'); r.value = '150'; r.dispatchEvent(new Event('input', { bubbles: true })); return 'set'; })()`);
       await sleep(500);
       console.log(`[${a.name}] volumes after slider: ${JSON.stringify(await a.eval(`window.__dave?.volumes()`))} | row: ${await a.text('.prow button.vol')}`);
       await a.goto(url); await sleep(1500);

@@ -8,7 +8,7 @@ import { createCall, type ConnState, type PeerView } from './call';
 import { createAttention } from './attention';
 import { isKnown, markKnown } from './seenKeys';
 import { MAX_TEXT_LENGTH, normaliseName, type Person } from '../core/protocol';
-import { LOW_LATENCY_MS, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
+import { LOW_LATENCY_MS, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 
 export default function App() {
   takeSecretFromInviteLink();
@@ -213,9 +213,17 @@ function AudioPanel(props: { call: Call }) {
       <label>Microphone <select class="picker" value={a().microphoneId} onChange={(e) => set({ microphoneId: e.currentTarget.value })}>
         <option value="">Default</option><For each={props.call.devices().microphones}>{(d, i) => <option value={d.deviceId}>{label(d, i())}</option>}</For></select></label>
       <Show when={props.call.canPickSpeaker}>
-        <label>Speaker <select class="picker" value={a().speakerId} onChange={(e) => set({ speakerId: e.currentTarget.value })}>
-          <option value="">Default</option><For each={props.call.devices().speakers}>{(d, i) => <option value={d.deviceId}>{label(d, i())}</option>}</For></select></label>
+        <label>Speaker
+          <Show when={props.call.devices().speakers.length > 0 || !props.call.canPickSpeakerDialog} fallback={<span class="dim">{a().speakerId ? 'chosen' : 'Default'}</span>}>
+            <select class="picker" value={a().speakerId} onChange={(e) => set({ speakerId: e.currentTarget.value })}>
+              <option value="">Default</option><For each={props.call.devices().speakers}>{(d, i) => <option value={d.deviceId}>{label(d, i())}</option>}</For></select>
+          </Show>
+        </label>
+        <Show when={props.call.canPickSpeakerDialog}>
+          <button onClick={() => void props.call.pickSpeaker()}>Choose speaker…</button>
+        </Show>
       </Show>
+      <Show when={!props.call.canPickSpeaker}><div class="hint">This browser cannot choose an output device; it uses the system default.</div></Show>
       <div class={processingIsDefault(a()) ? 'hint' : 'warn'}>
         {processingIsDefault(a()) ? 'Turning these off usually makes you sound worse to others.' : 'Audio processing is off. Turn everything back on if friends complain.'}
       </div>
@@ -249,7 +257,7 @@ function ParticipantRow(props: { p: Person; isMe: boolean; view?: PeerView; spea
       </span>
       <Show when={sliderOpen() && props.onVolume}>
         <label class="volrow">
-          <input type="range" min="0" max="100" step="1" value={percent()} onInput={(e) => props.onVolume?.(Number(e.currentTarget.value) / 100)} />
+          <input type="range" min="0" max={MAX_VOLUME * 100} step="5" value={percent()} onInput={(e) => props.onVolume?.(Number(e.currentTarget.value) / 100)} title="Double-click to reset" onDblClick={() => props.onVolume?.(1)} />
           <span class="dim">{percent()}%</span>
         </label>
       </Show>

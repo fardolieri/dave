@@ -38,10 +38,11 @@ describe('local volume', () => {
   it('clamps and parses stored volumes', async () => {
     const { clampVolume, parseVolumes } = await import('../src/core/settings');
     expect(clampVolume(0.5)).toBe(0.5);
-    expect(clampVolume(7)).toBe(1);
+    expect(clampVolume(7)).toBe(2); // 200 percent is the ceiling
+    expect(clampVolume(1.5)).toBe(1.5);
     expect(clampVolume(-1)).toBe(0);
     expect(clampVolume('x')).toBe(1);
-    expect(parseVolumes('{"k1":0.3,"k2":"loud","k3":5}')).toEqual({ k1: 0.3, k3: 1 });
+    expect(parseVolumes('{"k1":0.3,"k2":"loud","k3":5}')).toEqual({ k1: 0.3, k3: 2 });
     expect(parseVolumes('nope')).toEqual({});
   });
 });

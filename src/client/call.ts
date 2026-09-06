@@ -31,8 +31,14 @@ type Peer = {
   makingOffer: boolean;
   ignoreOffer: boolean;
   srdAnswerPending: boolean;
+  /** Plays the gain-adjusted voice; sink-selectable. */
   audio: HTMLAudioElement;
+  /** Chrome only feeds a remote track into WebAudio while some media element plays it, so the raw track stays attached here, muted. */
+  keepAlive: HTMLAudioElement;
   analyser?: AnalyserNode;
+  voiceGain?: GainNode;
+  shareGain?: GainNode;
+  audioNodes: AudioNode[];
   disconnectTimer?: ReturnType<typeof setTimeout>;
   restartTimer?: ReturnType<typeof setTimeout>;
   restarts: number;
@@ -154,6 +160,18 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     if (!canPickSpeaker) return;
     try { await (el as HTMLMediaElement & { setSinkId(id: string): Promise<void> }).setSinkId(id); } catch { /* device gone: browser default */ }
   }
+  /** Firefox exposes output devices through a picker rather than enumeration. Chrome lists them instead. */
+  const canPickSpeakerDialog = typeof navigator !== 'undefined' && typeof (navigator.mediaDevices as MediaDevices & { selectAudioOutput?: unknown })?.selectAudioOutput === 'function';
+  async function pickSpeaker(): Promise<void> {
+    const md = navigator.mediaDevices as MediaDevices & { selectAudioOutput?: () => Promise<MediaDeviceInfo> };
+    if (!md.selectAudioOutput) return;
+    try {
+      const device = await md.selectAudioOutput();
+      await changeAudio({ speakerId: device.deviceId });
+      void refreshDevices();
+    } catch { /* dismissed */ }
+  }
+
   function applyJitterTarget(receiver: RTCRtpReceiver): void {
     const ms = untrack(viewerSettings).jitterBufferTargetMs; // a snapshot: receivers are re-applied explicitly on change
     try { (receiver as RTCRtpReceiver & { jitterBufferTarget: number | null }).jitterBufferTarget = ms > 0 ? ms : null; } catch { /* unsupported */ }
@@ -215,8 +233,8 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     const v = clampVolume(value);
     const peer = peers.get(key);
     if (peer) {
-      peer.audio.volume = v;
-      peer.shareAudio.volume = v;
+      if (peer.voiceGain) peer.voiceGain.gain.value = v;
+      if (peer.shareGain) peer.shareGain.gain.value = v;
       setView(peer, { volume: v });
     }
     const next = { ...untrack(volumes) };
@@ -267,16 +285,17 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     const pc = new RTCPeerConnection({ iceServers });
     const audio = new Audio();
     audio.autoplay = true;
+    const keepAlive = new Audio();
+    keepAlive.autoplay = true;
+    keepAlive.muted = true;
     const peer: Peer = {
-      key, name, pc, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, restarts: 0,
+      key, name, pc, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, keepAlive, audioNodes: [], restarts: 0,
       view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, volume: untrack(volumes)[key] ?? 1 },
       viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
     };
     earlyViewers.delete(key);
     peer.shareAudio.autoplay = true;
-    peer.audio.volume = peer.view.volume;
-    peer.shareAudio.volume = peer.view.volume;
     void applySink(peer.audio);
     void applySink(peer.shareAudio);
     setShareStreams((m) => new Map(m).set(key, peer.remoteShare));
@@ -306,10 +325,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       // so identify the slot by position in the connection's transceiver list, not via peer.tx.
       const slot = pc.getTransceivers().indexOf(transceiver);
       if (track.kind === 'audio' && slot === SLOT_INDEX.voice) {
-        const stream = new MediaStream([track]);
-        audio.srcObject = stream;
-        audio.play().catch(() => { /* needs a gesture on some browsers; the join click normally suffices */ });
-        if (audioCtx) peer.analyser = analyserFor(key, stream);
+        wireRemoteAudio(peer, 'voice', new MediaStream([track]));
       } else if (slot === SLOT_INDEX.shareVideo || slot === SLOT_INDEX.shareAudio) {
         // Share tracks exist from join time, muted and empty until the sharer sends. "Live" follows the
         // unmute/mute events, which is how a viewer knows frames are actually arriving (spec §6.5).
@@ -319,15 +335,44 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
           track.onunmute = () => setView(peer, { shareLive: true });
           track.onmute = () => setView(peer, { shareLive: false, shareKbps: 0 });
         } else {
-          // The tile's video element is muted (autoplay), so share audio plays through its own element.
-          peer.shareAudio.srcObject = new MediaStream([track]);
-          peer.shareAudio.play().catch(() => {});
+          // The tile's video element is muted (autoplay), so share audio plays through its own element, gain-adjusted.
+          wireRemoteAudio(peer, 'share', new MediaStream([track]));
         }
       }
     };
     peers.set(key, peer);
     publish();
     return peer;
+  }
+
+  /**
+   * Remote audio path (ticket 08): raw track -> gain (0 to 200 percent, local only) -> a MediaStream that a
+   * normal audio element plays, so speaker selection via setSinkId keeps working. The raw track also stays
+   * attached to a muted element, which Chrome requires before it feeds remote audio into WebAudio at all.
+   */
+  function wireRemoteAudio(peer: Peer, kind: 'voice' | 'share', stream: MediaStream): void {
+    const out = kind === 'voice' ? peer.audio : peer.shareAudio;
+    audioCtx ??= new AudioContext();
+    const ctx = audioCtx;
+    if (kind === 'voice') { peer.keepAlive.srcObject = stream; peer.keepAlive.play().catch(() => {}); }
+    const source = ctx.createMediaStreamSource(stream);
+    const gain = ctx.createGain();
+    gain.gain.value = peer.view.volume;
+    const dest = ctx.createMediaStreamDestination();
+    source.connect(gain).connect(dest);
+    peer.audioNodes.push(source, gain, dest);
+    if (kind === 'voice') {
+      peer.voiceGain = gain;
+      const an = ctx.createAnalyser();
+      an.fftSize = 512;
+      source.connect(an); // speaking detection measures the friend's real level, before your local gain
+      peer.analyser = an;
+      peer.audioNodes.push(an);
+    } else {
+      peer.shareGain = gain;
+    }
+    out.srcObject = dest.stream;
+    out.play().catch(() => { /* needs a gesture on some browsers; the join click normally suffices */ });
   }
 
   function attachLocalTracks(peer: Peer): void {
@@ -522,6 +567,8 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     peer.pc.close();
     peer.audio.srcObject = null;
     peer.shareAudio.srcObject = null;
+    peer.keepAlive.srcObject = null;
+    for (const n of peer.audioNodes) n.disconnect();
     sources.get(key)?.disconnect();
     sources.delete(key);
     peers.delete(key);
@@ -740,7 +787,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
         senders: [...peers.values()].map((p) => { const params = p.tx[SLOT_INDEX.shareVideo]?.sender.getParameters(); const e = params?.encodings?.[0]; return { name: p.name, active: e?.active, maxBitrate: e?.maxBitrate, maxFramerate: e?.maxFramerate, scale: e?.scaleResolutionDownBy, degradation: (params as { degradationPreference?: string } | undefined)?.degradationPreference }; }),
       }),
       audio: () => ({ settings: audioSettings(), track: voiceTrack?.getSettings() ?? null }),
-      volumes: () => [...peers.values()].map((p) => ({ name: p.name, voice: p.audio.volume, share: p.shareAudio.volume, view: p.view.volume })),
+      volumes: () => [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })),
       state: () => ({ inCall: joined, joining, joinError: untrack(joinError), myJoinSeq, role: untrack(me)?.role ?? null, participants: untrack(room.people).filter((p) => p.role === 'participant').map((p) => `${p.name}#${p.joinSeq}`) }),
     };
   }
@@ -749,6 +796,6 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     inCall, muted, views, speakingSelf, joinError, join, leave, setMuted, myJoinSeq: () => myJoinSeq,
     sharing, shareError, startShare, stopShare, watch, watchOnly, shareStreamOf,
     shareSettings, setPreset, changeShare, audioSettings, changeAudio, viewerSettings, setViewerSettings, devices, refreshDevices, canPickSpeaker,
-    setVolume,
+    setVolume, canPickSpeakerDialog, pickSpeaker,
   };
 }
