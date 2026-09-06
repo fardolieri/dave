@@ -183,9 +183,15 @@ describe('signaling rate limit', () => {
     let received = 0;
     for (let i = 0; i < n; i++) { await b.next((m) => m.t === 'signal'); received++; }
     expect(received).toBe(n);
-    // the general bucket is untouched by signaling: 45 texts still trip it
-    for (let i = 0; i < 45; i++) send(a, { t: 'text', text: `t${i}` });
-    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'rate limited', ref: 'text' });
+    // the general bucket is untouched by signaling: 45 texts still trip it. The clock is frozen so a slow
+    // runner cannot refill the bucket while the room object works through the burst.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      for (let i = 0; i < 45; i++) send(a, { t: 'text', text: `t${i}` });
+      expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'rate limited', ref: 'text' });
+    } finally {
+      vi.useRealTimers();
+    }
     a.ws.close(1000); b.ws.close(1000);
   });
 });

@@ -1,7 +1,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { runInDurableObject } from 'cloudflare:test';
 import { Room } from '../src/worker/room';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { buildAuthMessage, exportPublicKey, generateIdentityKeyPair, toBase64Url } from '../src/core/identity';
 import { MAX_TEXT_LENGTH, PING_FRAME, PONG_FRAME, type Person, type ServerMessage } from '../src/core/protocol';
 import { BURST } from '../src/core/ratelimit';
@@ -105,8 +105,14 @@ describe('text', () => {
   it('relays the burst and drops the excess with a rate-limited error', async () => {
     const a = await attach('Alice');
     const extra = 5;
-    for (let i = 0; i < BURST + extra; i++) a.ws.send(JSON.stringify({ t: 'text', text: `m${i}` }));
-    const err = await a.next((m) => m.t === 'error');
+    vi.useFakeTimers({ toFake: ['Date'] }); // frozen clock: no refill while the burst is processed, even on a slow runner
+    let err: ServerMessage;
+    try {
+      for (let i = 0; i < BURST + extra; i++) a.ws.send(JSON.stringify({ t: 'text', text: `m${i}` }));
+      err = await a.next((m) => m.t === 'error');
+    } finally {
+      vi.useRealTimers();
+    }
     expect(err).toEqual({ t: 'error', reason: 'rate limited', ref: 'text' });
     await new Promise((r) => setTimeout(r, 100));
     const relayed = a.inbox.filter((m) => m.t === 'text').length;
