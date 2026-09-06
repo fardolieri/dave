@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup } from 'solid-js';
+import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
 import {
   ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
 } from '../core/mesh';
@@ -133,12 +133,12 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   navigator.mediaDevices?.addEventListener?.('devicechange', () => void refreshDevices());
 
   async function applySink(el: HTMLMediaElement): Promise<void> {
-    const id = audioSettings().speakerId;
+    const id = untrack(audioSettings).speakerId; // a snapshot: sinks are re-applied explicitly when the setting changes
     if (!canPickSpeaker) return;
     try { await (el as HTMLMediaElement & { setSinkId(id: string): Promise<void> }).setSinkId(id); } catch { /* device gone: browser default */ }
   }
   function applyJitterTarget(receiver: RTCRtpReceiver): void {
-    const ms = viewerSettings().jitterBufferTargetMs;
+    const ms = untrack(viewerSettings).jitterBufferTargetMs; // a snapshot: receivers are re-applied explicitly on change
     try { (receiver as RTCRtpReceiver & { jitterBufferTarget: number | null }).jitterBufferTarget = ms > 0 ? ms : null; } catch { /* unsupported */ }
   }
 
@@ -473,7 +473,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   /** Server presence is authoritative for membership; media follows it (spec §8.2). */
   function reconcile(people: Person[]): void {
     const self = people.find((p) => p.publicKey === myKey);
-    if (!inCall() || !self || self.role !== 'participant') return;
+    if (!untrack(inCall) || !self || self.role !== 'participant') return; // membership drives this, not the inCall flag
     for (const p of people) {
       if (p.publicKey === myKey || p.role !== 'participant') continue;
       const existing = peers.get(p.publicKey);
@@ -500,7 +500,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
 
   // Re-declare after our own server reconnect (spec §8.1): peer connections stay, join sequence is fresh.
   createEffect(() => room.status().kind, (kind, prev) => {
-    if (kind === 'connected' && prev !== undefined && prev !== 'connected' && inCall()) void rejoinAfterReconnect();
+    if (kind === 'connected' && prev !== undefined && prev !== 'connected' && untrack(inCall)) void rejoinAfterReconnect();
   });
 
   async function rejoinAfterReconnect(): Promise<void> {

@@ -35,7 +35,17 @@ class Browser {
     this.ws = new WebSocket(this.tab.webSocketDebuggerUrl);
     await new Promise((r) => (this.ws.onopen = r));
     this.id = 0; this.pending = new Map();
-    this.ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && this.pending.has(m.id)) { this.pending.get(m.id)(m); this.pending.delete(m.id); } };
+    this.warnings = new Map();
+    this.ws.onmessage = (e) => {
+      const m = JSON.parse(e.data);
+      if (m.id && this.pending.has(m.id)) { this.pending.get(m.id)(m); this.pending.delete(m.id); }
+      if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'warning') {
+        const text = m.params.args.map((a) => a.value ?? a.description ?? '').join(' ').slice(0, 90);
+        const frames = (m.params.stackTrace?.callFrames ?? []).filter((f) => f.url.includes('/src/')).slice(0, 2).map((f) => `${f.url.split('/src/')[1]}:${f.lineNumber + 1} ${f.functionName}`);
+        const key = `${text} @ ${frames.join(' < ')}`;
+        this.warnings.set(key, (this.warnings.get(key) ?? 0) + 1);
+      }
+    };
     await this.cdp('Runtime.enable');
   }
   cdp(method, params = {}) { const id = ++this.id; this.ws.send(JSON.stringify({ id, method, params })); return new Promise((r) => this.pending.set(id, r)); }
@@ -158,5 +168,6 @@ try {
     for (const b of browsers) console.log(`[${b.name}] final banner: ${await b.text('.banner') || '(none)'}\n[${b.name}] final chat: ${await b.text('.chat-log .msg, .chat-log .msg-sys')}\n[${b.name}] final online: ${await b.text('.plist li')}`);
   }
 } finally {
+  for (const b of browsers) for (const [k, n] of b.warnings ?? []) console.log(`[${b.name}] console.warn x${n}: ${k}`);
   for (const b of browsers) b.close();
 }
