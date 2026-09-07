@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 import posthog from './posthog';
 import {
   ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
@@ -62,6 +62,8 @@ const CANDIDATE_BATCH_MS = 60;
 
 const SPEAK_THRESHOLD = 0.02;
 const SPEAK_HOLD_MS = 300;
+/** How long the first peer connection may take before the controls warn that the wait is normal. */
+const SLOW_CONNECT_MS = 5000;
 
 /**
  * The Call from this browser's point of view (ADR 0001): one RTCPeerConnection per other
@@ -87,6 +89,18 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   let stoppingShare = false;
   /** Subscribe requests that arrived before the connection to that participant existed. */
   const earlyViewers = new Map<string, number>();
+
+  // ---- connection progress: the join-to-connected wait used to give no sign the call was working.
+  /** True while joined and at least one peer is still making its first connection. Memoised: the slow-timer effect and the controls both read it, and views() republishes often. */
+  const connecting = createMemo(() => inCall() && views().some((v) => v.conn === 'connecting'));
+  /** True once that first connection has dragged on long enough to reassure the user it is normal. */
+  const [slowConnect, setSlowConnect] = createSignal(false);
+  let slowTimer: ReturnType<typeof setTimeout> | undefined;
+  createEffect(() => connecting(), (isConnecting) => {
+    clearTimeout(slowTimer);
+    setSlowConnect(false);
+    if (isConnecting) slowTimer = setTimeout(() => setSlowConnect(true), SLOW_CONNECT_MS);
+  });
 
   // ---- settings (spec §6.1, §6.3), remembered per browser
   /** A setting signal that also persists: [read, write]. */
@@ -733,10 +747,10 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       try {
         await openMicrophone();
       } catch (e) {
-        const joinErrMsg = e instanceof Error && e.name === 'NotAllowedError' ? 'Microphone access was denied.' : `Could not open the microphone: ${e instanceof Error ? e.message : String(e)}`;
-        setJoinError(joinErrMsg);
-        posthog.capture('join_error', { reason: 'microphone_denied' });
-        return;
+        // A missing or denied microphone must not lock you out of listening: warn, then join anyway.
+        const denied = e instanceof Error && e.name === 'NotAllowedError';
+        setJoinError(denied ? 'Microphone access was denied. You can still listen. Rejoin to talk.' : 'No microphone is available. You can still listen. Rejoin to talk.');
+        posthog.capture('join_error', { reason: denied ? 'microphone_denied' : 'microphone_unavailable' });
       }
       const reply = await declareJoin();
       if (!reply) { setJoinError('The server did not answer the join request.'); posthog.capture('join_error', { reason: 'server_no_answer' }); return; }
@@ -751,6 +765,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   function leave(): void {
     if (!joined) return;
     posthog.capture('call_left');
+    setJoinError(null);
     void stopShare(false); // the server clears the sharing flag on leave
     room.send({ t: 'leave' });
     for (const key of [...peers.keys()]) closePeer(key);
@@ -775,6 +790,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     unsubscribe();
     clearInterval(statsTimer);
     clearInterval(speakingTimer);
+    clearTimeout(slowTimer);
     leave();
     audioCtx?.close();
   });
@@ -795,7 +811,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   }
 
   return {
-    inCall, muted, views, speakingSelf, joinError, join, leave, setMuted, myJoinSeq: () => myJoinSeq,
+    inCall, muted, views, speakingSelf, joinError, connecting, slowConnect, join, leave, setMuted, myJoinSeq: () => myJoinSeq,
     sharing, shareError, startShare, stopShare, watch, watchOnly, shareStreamOf,
     shareSettings, setPreset, changeShare, audioSettings, changeAudio, viewerSettings, setViewerSettings, devices, refreshDevices, canPickSpeaker,
     setVolume, canPickSpeakerDialog, pickSpeaker,
