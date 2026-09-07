@@ -49,6 +49,14 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m));
   };
 
+  // Texts typed before the welcome frame, or during a reconnect, wait here and go out once connected.
+  let outbox: string[] = [];
+  const flushOutbox = () => {
+    const pending = outbox;
+    outbox = [];
+    for (const text of pending) { send({ t: 'text', text }); posthog.capture('message_sent', { buffered: true }); }
+  };
+
   function open() {
     if (stopped) return;
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -71,6 +79,7 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
           attempt = 0;
           setYou(m.you);
           setStatus({ kind: 'connected' });
+          flushOutbox();
           if (everConnected) { push({ kind: 'system', text: 'Reconnected. You may have missed messages.', at: Date.now() }); posthog.capture('server_reconnected', { down_ms: downSince ? Date.now() - downSince : 0 }); }
           everConnected = true;
           downSince = null;
@@ -143,7 +152,10 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
     people,
     lines,
     send,
-    sendText: (text: string) => { send({ t: 'text', text }); posthog.capture('message_sent'); },
+    sendText: (text: string) => {
+      if (status().kind === 'connected') { send({ t: 'text', text }); posthog.capture('message_sent'); }
+      else if (!stopped) { outbox.push(text); posthog.capture('message_buffered'); }
+    },
     /** Messages the room store does not handle itself (call, left, signal, ice) go to subscribers. */
     subscribe: (l: (m: ServerMessage) => void) => { listeners.add(l); return () => listeners.delete(l); },
   };

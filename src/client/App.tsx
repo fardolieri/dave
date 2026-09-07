@@ -8,6 +8,7 @@ import { createCall, type ConnState, type PeerView } from './call';
 import { createAttention } from './attention';
 import { isKnown, markKnown } from './seenKeys';
 import { MAX_TEXT_LENGTH, normaliseName, type Person } from '../core/protocol';
+import { chatInputState } from '../core/chat';
 import { LOW_LATENCY_MS, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 
 export default function App() {
@@ -159,7 +160,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
               </For>
             </section>
           </Show>
-          <Chat lines={room.lines()} connected={connected()} onSend={room.sendText} />
+          <Chat lines={room.lines()} status={room.status()} onSend={room.sendText} />
         </main>
       </div>
     </div>
@@ -314,13 +315,14 @@ function Banner(props: { status: ServerStatus }) {
   );
 }
 
-function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: string) => void }) {
+function Chat(props: { lines: ChatLine[]; status: ServerStatus; onSend: (text: string) => void }) {
   const [draft, setDraft] = createSignal('');
+  const input = createMemo(() => chatInputState(props.status.kind));
   let log: HTMLDivElement | undefined;
   const submit = (e: Event) => {
     e.preventDefault();
     const text = draft().trim();
-    if (!text || !props.connected) return;
+    if (!text || !input().editable) return;
     props.onSend(text);
     setDraft('');
   };
@@ -349,9 +351,9 @@ function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: str
         </For>
       </div>
       <form class="chat-input" onSubmit={submit}>
-        <input value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!props.connected} maxlength={MAX_TEXT_LENGTH}
-               placeholder={props.connected ? 'Message the room' : "Can't send while disconnected"} />
-        <button disabled={!props.connected || !draft().trim()}>Send</button>
+        <input value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!input().editable} maxlength={MAX_TEXT_LENGTH}
+               placeholder={input().placeholder} />
+        <button disabled={!input().editable || !draft().trim()}>Send</button>
       </form>
     </div>
   );
