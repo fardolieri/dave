@@ -71,7 +71,8 @@ class Browser {
     // Emulate a phone viewport regardless of the headless window minimum.
     if (width) await this.cdp('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: true });
     await sleep(300);
-    const r = await this.cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
+    // Phone shots show exactly the viewport (fixed elements sit at its bottom); desktop shots include the full page.
+    const r = await this.cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: !width });
     writeFileSync(path, Buffer.from(r.result.data, 'base64'));
   }
   text(sel) { return this.eval(`Array.from(document.querySelectorAll(${JSON.stringify(sel)})).map(e => e.innerText.replace(/\\s+/g,' ').trim()).join(' | ')`); }
