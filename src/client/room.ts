@@ -6,6 +6,7 @@ import {
   type ClientMessage, type Identity, type Person, type ServerMessage,
 } from '../core/protocol';
 import type { LocalIdentity } from './identity';
+import { appendHistory, clearHistory, loadHistory, textKey } from './history';
 
 export type ServerStatus =
   | { kind: 'connecting' }
@@ -15,8 +16,8 @@ export type ServerStatus =
   | { kind: 'refused'; reason: string };
 
 export type ChatLine =
-  | { kind: 'text'; id: number; from: Identity; text: string; at: number }
-  | { kind: 'system'; id: number; text: string; at: number };
+  | { kind: 'text'; id: string; from: Identity; text: string; at: number }
+  | { kind: 'system'; id: string; text: string; at: number };
 
 const UNAVAILABLE_AFTER_MS = 30_000;
 const BACKOFF_MAX_MS = 30_000;
@@ -32,10 +33,13 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
   const [people, setPeople] = createSignal<Person[]>([]);
   const [lines, setLines] = createSignal<ChatLine[]>([]);
   const listeners = new Set<(m: ServerMessage) => void>();
+  const textListeners = new Set<(m: Extract<ServerMessage, { t: 'text' }>) => void>();
   let nextId = 1;
-  type NewLine = { kind: 'text'; from: Identity; text: string; at: number } | { kind: 'system'; text: string; at: number };
-  const push = (line: NewLine) => setLines((l) => [...l, { ...line, id: nextId++ }]);
-
+  // Recent history from this browser, loaded once; live lines append after it.
+  void loadHistory().then((stored) => setLines((l) => [...stored.map((m) => ({ kind: 'text' as const, id: textKey(m), ...m })), ...l]));
+  const push = (line: { kind: 'text'; id: string; from: Identity; text: string; at: number } | { kind: 'system'; text: string; at: number }) =>
+    setLines((l) => [...l, 'id' in line ? (line as ChatLine) : ({ ...line, id: `sys-${nextId++}` } as ChatLine)]);
+  
   let ws: WebSocket | null = null;
   let attempt = 0;
   let downSince: number | null = null;
@@ -79,9 +83,12 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
         case 'presence':
           setPeople(m.people);
           return;
-        case 'text':
-          push({ kind: 'text', from: m.from, text: m.text, at: m.at });
+        case 'text': {
+          push({ kind: 'text', id: textKey(m), from: m.from, text: m.text, at: m.at });
+          void appendHistory({ from: m.from, text: m.text, at: m.at });
+          if (m.from.publicKey !== opts.identity.publicKey) for (const l of textListeners) l(m);
           return;
+        }
         case 'error':
           if (you()) {
             // After the welcome an error means a frame of ours was dropped. Chat-related ones are said in the chat;
@@ -144,6 +151,10 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
     lines,
     send,
     sendText: (text: string) => { send({ t: 'text', text }); posthog.capture('message_sent'); },
+    /** Empties the local history; the server never had it. */
+    clearHistory: async () => { await clearHistory(); setLines((l) => l.filter((x) => x.kind !== 'text')); },
+    /** Fires for texts from other people (for the message cue). */
+    onText: (l: (m: Extract<ServerMessage, { t: 'text' }>) => void) => { textListeners.add(l); return () => textListeners.delete(l); },
     /** Messages the room store does not handle itself (call, left, signal, ice) go to subscribers. */
     subscribe: (l: (m: ServerMessage) => void) => { listeners.add(l); return () => listeners.delete(l); },
   };

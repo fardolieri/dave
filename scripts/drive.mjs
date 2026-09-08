@@ -195,6 +195,15 @@ try {
   await sleep(500);
   await browsers[0].say('third one, no link');
   await sleep(800);
+  if (process.env.HISTORY_CHECK && browsers[1]) {
+    const [a, b] = browsers;
+    console.log(`[${b.name}] cues heard: ${await b.eval('window.__daveCues?.() ?? "no hook"')} | [${a.name}] cues heard (own messages): ${await a.eval('window.__daveCues?.() ?? "no hook"')}`);
+    const before = await b.eval(`document.querySelectorAll('.chat-log .msg').length`);
+    await b.goto(url); await sleep(2500);
+    console.log(`[${b.name}] messages before reload: ${before}, after reload: ${await b.eval(`document.querySelectorAll('.chat-log .msg').length`)} | tools: ${await b.text('.chat-tools')}`);
+    await b.eval(`document.querySelector('.chat-tools button')?.click(); 'cleared'`); await sleep(500);
+    console.log(`[${b.name}] after clear: ${await b.eval(`document.querySelectorAll('.chat-log .msg').length`)} messages`);
+  }
   for (const b of browsers) console.log(`[${b.name}] chat: ${await b.text('.chat-log .msg, .chat-log .msg-sys')}`);
   const warn = await browsers[0].text('.warn');
   if (warn) console.log(`[${browsers[0].name}] warning: ${warn}`);

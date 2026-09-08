@@ -159,7 +159,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
               </For>
             </section>
           </Show>
-          <Chat lines={room.lines()} connected={connected()} onSend={room.sendText} />
+          <Chat lines={room.lines()} connected={connected()} onSend={room.sendText} onClear={() => void room.clearHistory()} />
         </main>
       </div>
     </div>
@@ -314,7 +314,7 @@ function Banner(props: { status: ServerStatus }) {
   );
 }
 
-function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: string) => void }) {
+function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: string) => void; onClear: () => void }) {
   const [draft, setDraft] = createSignal('');
   let log: HTMLDivElement | undefined;
   const submit = (e: Event) => {
@@ -339,7 +339,7 @@ function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: str
                 {(m) => (
                   <div class="msg">
                     <span class="msg-from">{m().from.name} <code class="fp">{m().from.fingerprint}</code></span>
-                    <span class="msg-at">{new Date(m().at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span class="msg-at">{new Date(m().at).toLocaleString([], { hour: '2-digit', minute: '2-digit', ...(Date.now() - m().at > 20 * 3600 * 1000 ? { day: '2-digit', month: 'short' } : {}) })}</span>
                     <div class="msg-text"><Linkified text={m().text} /></div>
                   </div>
                 )}
@@ -348,6 +348,9 @@ function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: str
           )}
         </For>
       </div>
+      <Show when={props.lines.some((l) => l.kind === 'text')}>
+        <div class="chat-tools"><button class="link" onClick={props.onClear} title="Only this browser's copy; nothing is stored on the server">clear history</button></div>
+      </Show>
       <form class="chat-input" onSubmit={submit}>
         <input value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!props.connected} maxlength={MAX_TEXT_LENGTH}
                placeholder={props.connected ? 'Message the room' : "Can't send while disconnected"} />

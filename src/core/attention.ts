@@ -18,5 +18,5 @@ export function callDiff(before: Set<string>, after: Set<string>, me: string, st
   return { joined, left };
 }
 
-/** Two short notes: rising for a join, falling for a leave. Frequencies in Hz, duration per note in seconds. */
-export const CHIME = { join: [523.25, 659.25], leave: [659.25, 523.25], noteSeconds: 0.09, gain: 0.08 } as const;
+/** Two short notes: rising for a join, falling for a leave; one soft high note for a message. Frequencies in Hz, duration per note in seconds. */
+export const CHIME = { join: [523.25, 659.25], leave: [659.25, 523.25], message: [880], noteSeconds: 0.09, gain: 0.08, messageGain: 0.05 } as const;

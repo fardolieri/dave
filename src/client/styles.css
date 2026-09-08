@@ -131,3 +131,7 @@ select.picker option::checkmark { order: 1; margin-left: auto; }
 /* Firefox keeps a range input at its intrinsic width unless told it may shrink. */
 .volrow input[type=range] { flex: 1 1 0; min-width: 0; width: 0; accent-color: var(--acc); }
 .volrow .dim { flex: none; min-width: 3.5em; text-align: right; }
+
+/* history tools */
+.chat-tools { display: flex; justify-content: flex-end; }
+button.link { background: none; border: 0; color: var(--dim); font-size: 11px; padding: 2px 4px; text-decoration: underline; }

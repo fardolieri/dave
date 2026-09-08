@@ -28,7 +28,7 @@ export function createAttention(room: ReturnType<typeof createRoom>, call: Retur
   const unlock = () => { ctx ??= new AudioContext(); void ctx.resume(); };
   window.addEventListener('pointerdown', unlock, { passive: true });
   window.addEventListener('keydown', unlock, { passive: true });
-  function chime(notes: readonly number[]): void {
+  function chime(notes: readonly number[], gainLevel: number = CHIME.gain): void {
     const c = ctx;
     if (!c || c.state !== 'running') return;
     const t0 = c.currentTime;
@@ -39,7 +39,7 @@ export function createAttention(room: ReturnType<typeof createRoom>, call: Retur
       osc.frequency.value = freq;
       const start = t0 + i * CHIME.noteSeconds;
       gain.gain.setValueAtTime(0, start);
-      gain.gain.linearRampToValueAtTime(CHIME.gain, start + 0.01);
+      gain.gain.linearRampToValueAtTime(gainLevel, start + 0.01);
       gain.gain.linearRampToValueAtTime(0, start + CHIME.noteSeconds);
       osc.connect(gain).connect(c.destination);
       osc.start(start);
@@ -57,6 +57,11 @@ export function createAttention(room: ReturnType<typeof createRoom>, call: Retur
       else if (left.length) chime(CHIME.leave);
     },
   );
+
+  // ---- incoming text: a soft tick for other people's messages, never your own or restored history (ticket 09)
+  let cues = 0;
+  const stopText = room.onText(() => { cues++; chime(CHIME.message, CHIME.messageGain); });
+  if (import.meta.env.DEV) (window as unknown as { __daveCues?: () => number }).__daveCues = () => cues;
 
   // ---- wake lock while watching at least one live share, serialised so overlapping triggers cannot double-request
   let sentinel: WakeLockSentinel | null = null;
@@ -84,6 +89,7 @@ export function createAttention(room: ReturnType<typeof createRoom>, call: Retur
   document.addEventListener('visibilitychange', syncWakeLock);
 
   onCleanup(() => {
+    stopText();
     document.removeEventListener('visibilitychange', syncFocus);
     window.removeEventListener('focus', syncFocus);
     window.removeEventListener('blur', syncFocus);
