@@ -257,6 +257,9 @@ try {
       }
     }
     if (shotDir) {
+      // LONG_CHAT=<n>: a long conversation before the screenshots.
+      for (let i = 0; i < Number(process.env.LONG_CHAT ?? 0); i++) { await browsers[i % browsers.length].say(`filler line ${i}: the quick brown fox jumps over the lazy dog`); await sleep(90); }
+      if (process.env.LONG_CHAT) await sleep(800);
       if (process.env.OPEN_PANELS) {
         const a = browsers[0];
         await a.eval(`document.querySelector('.actions .gear')?.click(); 'audio gear'`);

@@ -156,18 +156,18 @@ dialog.report .row { display: flex; gap: 6px; margin-top: 12px; }
 dialog.report .row button:first-child { flex: 1; }
 
 /* Phone rules come last so they override every desktop placement above. */
-/* Phone width (spec §7.3): one column, the page scrolls as a whole, presence never clips, shares stack above the
-   chat. The composer is pinned to the bottom of the screen; the app leaves room for it. The chat log keeps its own
-   scroll capped at 60vh so a long conversation does not make the page endless. */
+/* Phone width (spec §7.3): one column, presence never clips, shares stack above the chat. The composer is pinned to
+   the bottom of the screen and the app leaves room for it. The app is exactly one screen tall so the chat row gets
+   whatever is left below the lists and shares: the newest lines sit right above the composer without any scrolling
+   and older lines scroll inside the log. Only when the lists above are taller than the screen does the whole app
+   scroll (the height is definite so the chat row can be sized; an auto-height grid would grow with the log). */
 @media (max-width: 700px) {
-  html, body, #app { height: auto; }
-  .app { --side-w: 0px; height: auto; min-height: 100vh; grid-template-columns: 1fr; grid-template-rows: auto auto auto; padding-bottom: 64px; }
-  .app.split { grid-template-rows: auto auto auto; }
+  .app { --side-w: 0px; box-sizing: border-box; height: 100dvh; overflow: auto; grid-template-columns: 1fr; grid-template-rows: auto auto minmax(0, 1fr); padding-bottom: 64px; }
+  .app.split { grid-template-rows: auto auto minmax(0, 1fr); }
   .side { grid-column: 1; grid-row: 1; border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
   .shares { grid-column: 1; grid-row: 2; grid-template-columns: 1fr !important; }
   .shares .share { min-height: 180px; }
-  .chat { grid-column: 1; grid-row: 3; min-height: 50vh; }
-  .chat-log { max-height: 60vh; }
+  .chat { grid-column: 1; grid-row: 3; min-height: 180px; }
   .chat-input { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; grid-area: auto; background: var(--bg); border-top: 1px solid var(--line); padding: 8px 14px calc(8px + env(safe-area-inset-bottom)); }
   .banner { position: fixed; }
 }
