@@ -106,6 +106,9 @@ button.leave { background: var(--bad); color: #fff; border-color: transparent; }
 .share.share-fs .share-head { position: absolute; top: 0; left: 0; right: 0; z-index: 1; background: rgba(0,0,0,.55); }
 .share.share-fs .share-bar { position: absolute; bottom: 0; left: 0; right: 0; z-index: 1; background: rgba(0,0,0,.55); font-size: 13px; padding: 8px 12px; }
 .share.share-fs video { width: 100%; height: 100%; }
+.share.share-fs .share-head, .share.share-fs .share-bar { transition: opacity .3s; }
+.share.share-fs.share-idle { cursor: none; }
+.share.share-fs.share-idle .share-head, .share.share-fs.share-idle .share-bar { opacity: 0; pointer-events: none; }
 .spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--dim); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .hint { font-size: 12px; color: var(--dim); }

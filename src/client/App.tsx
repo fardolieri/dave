@@ -309,7 +309,17 @@ function ShareTile(props: ShareTileProps) {
   const showsVideo = () => state() === 'live' || state() === 'own';
   // Whether this tile is the fullscreen element, mirrored from the document event.
   const [fullscreen, setFullscreen] = createSignal(false);
-  const onFsChange = () => { setFullscreen(root !== undefined && fullscreenElement() === root); };
+  // In fullscreen the overlays fade after a moment without pointer movement, so the picture is all
+  // there is; any movement brings them back, and they stay while the pointer rests on the controls.
+  const [idle, setIdle] = createSignal(false);
+  const [onControls, setOnControls] = createSignal(false);
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  const wake = () => { setIdle(false); clearTimeout(idleTimer); idleTimer = setTimeout(() => { setIdle(true); }, OVERLAY_HIDE_MS); };
+  const onFsChange = () => {
+    const on = root !== undefined && fullscreenElement() === root;
+    setFullscreen(on);
+    if (on) wake(); else { clearTimeout(idleTimer); setIdle(false); }
+  };
   document.addEventListener('fullscreenchange', onFsChange);
   document.addEventListener('webkitfullscreenchange', onFsChange);
   const holdsFullscreen = () => root !== undefined && fullscreenElement() === root;
@@ -317,6 +327,7 @@ function ShareTile(props: ShareTileProps) {
   // unreachable, I left the call, tile gone); the page must never stay stuck black.
   createEffect(() => running(), (on) => { if (!on && holdsFullscreen()) exitFullscreenSafely(); });
   onCleanup(() => {
+    clearTimeout(idleTimer);
     document.removeEventListener('fullscreenchange', onFsChange);
     document.removeEventListener('webkitfullscreenchange', onFsChange);
     if (holdsFullscreen()) exitFullscreenSafely();
@@ -346,8 +357,9 @@ function ShareTile(props: ShareTileProps) {
     return [formatBitrate(v.shareKbps), ...(v.shareFormat ? [formatVideo(v.shareFormat)] : []), CONN_LABEL[v.conn]].join(' · ');
   };
   return (
-    <div class={`share share-${state()} ${fullscreen() ? 'share-fs' : ''}`} ref={root} onClick={onTileClick}>
-      <div class="share-head">
+    <div class={`share share-${state()} ${fullscreen() ? 'share-fs' : ''} ${fullscreen() && idle() && !onControls() ? 'share-idle' : ''}`} ref={root} onClick={onTileClick}
+      onPointerMove={() => { if (fullscreen()) wake(); }} onPointerDown={() => { if (fullscreen()) wake(); }}>
+      <div class="share-head" onPointerEnter={() => setOnControls(true)} onPointerLeave={() => setOnControls(false)}>
         <span>{props.isMe ? 'Your screen' : `${props.p.name}'s screen`}</span>
         <Show when={!props.isMe && props.view ? props.view : undefined}>{(v) => <span class={`conn conn-${v().conn}`}><i />{CONN_LABEL[v().conn]}</span>}</Show>
         <Show when={!props.isMe && (state() === 'live' || state() === 'opening')}><button class="stop" title="Stop receiving this share" onClick={stopWatching}>Stop watching</button></Show>
@@ -360,7 +372,7 @@ function ShareTile(props: ShareTileProps) {
         <Match when={state() === 'unreachable'}><div class="share-note">No connection to {props.p.name}</div></Match>
       </Switch>
       <Show when={running()}>
-        <div class="share-bar" onClick={(e) => e.stopPropagation()}>
+        <div class="share-bar" onClick={(e) => e.stopPropagation()} onPointerEnter={() => setOnControls(true)} onPointerLeave={() => setOnControls(false)}>
           <span class="share-stats">{stats()}</span>
           <Show when={fullscreen() && props.onVolume}>
             <label class="share-vol" title="Volume for you, double-click to reset">
@@ -386,6 +398,9 @@ function Banner(props: { status: ServerStatus }) {
     </Switch>
   );
 }
+
+/** Fullscreen overlays hide this long after the pointer last moved. */
+const OVERLAY_HIDE_MS = 2500;
 
 /** Clock time; older than a day also says which day. */
 const when = (at: number): string => new Date(at).toLocaleString([], { hour: '2-digit', minute: '2-digit', ...(Date.now() - at > 20 * 3600 * 1000 ? { day: '2-digit', month: 'short' } : {}) });

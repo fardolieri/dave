@@ -172,6 +172,11 @@ try {
         await viewer.gesture(`${tile}?.click(); 'tile'`); await sleep(800);
         console.log(`[${viewer.name}] after clicking the running tile (expect fullscreen=share): ${await fsState(viewer)} | bar: ${await viewer.text('.share-fs .share-bar')}`);
         if (shotDir) { mkdirSync(shotDir, { recursive: true }); await viewer.screenshot(`${shotDir}/${viewer.name}-fullscreen.png`); }
+        await sleep(3000);
+        console.log(`[${viewer.name}] overlays after 3 s without movement (expect hidden): ${await viewer.eval(`document.fullscreenElement?.classList.contains('share-idle')`)} | bar opacity: ${await viewer.eval(`getComputedStyle(document.querySelector('.share-fs .share-bar')).opacity`)}`);
+        if (shotDir) await viewer.screenshot(`${shotDir}/${viewer.name}-fullscreen-idle.png`);
+        await viewer.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 400, y: 300 }); await sleep(400);
+        console.log(`[${viewer.name}] after moving the mouse (expect shown): ${await viewer.eval(`document.fullscreenElement?.classList.contains('share-idle')`)} | bar opacity: ${await viewer.eval(`getComputedStyle(document.querySelector('.share-fs .share-bar')).opacity`)}`);
         await viewer.gesture(`document.fullscreenElement?.click(); 'click again'`); await sleep(500);
         console.log(`[${viewer.name}] after clicking again (expect fullscreen=null, still watching): ${await fsState(viewer)}`);
         await viewer.eval(`document.querySelector('.share .stop')?.click(); 'stop watching'`); await sleep(800);
