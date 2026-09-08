@@ -123,8 +123,24 @@ try {
     }
     if (shareToo && browsers.length > 1) {
       const [sharer, viewer, ...rest] = browsers;
+      const gap = (b) => b.eval(`(() => { const l = document.querySelector('.chat-log'); return l.scrollHeight - l.scrollTop - l.clientHeight; })()`);
+      if (process.env.SCROLL_CHECK) {
+        // A short viewport and many lines make the log overflow; the share strip then halves it. The newest line must stay in view.
+        await viewer.cdp('Emulation.setDeviceMetricsOverride', { width: 1000, height: 420, deviceScaleFactor: 1, mobile: false });
+        for (let i = 0; i < 14; i++) { await sharer.say(`filler line ${i}`); await sleep(120); }
+        await sleep(800);
+        console.log(`[${viewer.name}] gap to bottom before share (expect 0): ${await gap(viewer)}`);
+      }
       await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Share screen')?.click(); 'share'`);
       await sleep(3000);
+      if (process.env.SCROLL_CHECK) {
+        console.log(`[${viewer.name}] gap to bottom after the share strip appeared (expect 0): ${await gap(viewer)}`);
+        await viewer.eval(`document.querySelector('.chat-log').scrollTo({ top: 0 }); 'scroll up'`); await sleep(300);
+        await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Stop sharing')?.click(); 'stop'`); await sleep(1500);
+        console.log(`[${viewer.name}] scrolled up on purpose, then the strip went away: scrollTop (expect 0, position kept): ${await viewer.eval(`document.querySelector('.chat-log').scrollTop`)}`);
+        await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Share screen')?.click(); 'share again'`); await sleep(3000);
+        await viewer.cdp('Emulation.clearDeviceMetricsOverride');
+      }
       for (const b of browsers) console.log(`[${b.name}] tiles: ${await b.text('.share') || '(none)'}`);
       console.log(`[${sharer.name}] mesh before anyone watches: ${JSON.stringify(await sharer.eval(`window.__dave?.peers().map(p => ({ name: p.name, subscribedToMe: p.subscribedToMe }))`))}`);
       const bytesBefore = Object.fromEntries(await Promise.all(browsers.slice(1).map(async (b) => [b.name, (await b.eval(`window.__dave?.peers().find(p => p.name === ${JSON.stringify(sharer.name)})?.videoBytesIn ?? -1`))])));

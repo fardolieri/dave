@@ -416,13 +416,21 @@ function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: str
     props.onSend(text);
     setDraft('');
   };
-  // keep the newest line in view: compute phase tracks the length, apply phase touches the DOM.
-  // Block body on purpose: an effect callback's return value is taken as a cleanup, and browser
+  // Keep the newest line in view: on every new line, and whenever the log changes size (a share
+  // strip appearing halves it) as long as the reader had not scrolled up on purpose.
+  // Block bodies on purpose: an effect callback's return value is taken as a cleanup, and browser
   // extensions that hook scrolling make scrollTo return a value, which halted the whole page once.
-  createEffect(() => props.lines.length, () => { log?.scrollTo({ top: log.scrollHeight }); });
+  let pinned = true;
+  const toBottom = () => { log?.scrollTo({ top: log.scrollHeight }); };
+  const onScroll = () => { if (log) pinned = log.scrollHeight - log.scrollTop - log.clientHeight < 40; };
+  createEffect(() => props.lines.length, () => { toBottom(); pinned = true; });
+  // Created here, inside the component's owner, so the cleanup is actually run; the ref only attaches it.
+  const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(() => { if (pinned) toBottom(); });
+  onCleanup(() => resize?.disconnect());
+  const observeLog = (el: HTMLDivElement) => { log = el; resize?.observe(el); };
   return (
     <div class="chat">
-      <div class="chat-log" ref={log}>
+      <div class="chat-log" ref={observeLog} onScroll={onScroll}>
         <For each={props.lines}>
           {(l) => (
             <Switch>
