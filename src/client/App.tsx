@@ -99,9 +99,12 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
   const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
   const clash = createMemo(() => room.people().some((p) => p.publicKey !== me() && p.name === props.name));
   const connected = () => room.status().kind === 'connected';
+  // Bumped when I send: the log jumps to the newest line (the composer and the log are separate grid items).
+  const [jumpToken, setJumpToken] = createSignal(0);
 
   return (
     <div class={`app ${sharers().length > 0 ? 'split' : ''}`}>
+      <div class="scroll">
         <aside class={`side ${connected() ? '' : 'frozen'}`}>
           <h2>Online</h2>
           <ul class="plist">
@@ -166,7 +169,9 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
               </For>
             </section>
           </Show>
-          <Chat lines={room.lines()} connected={connected()} onSend={room.sendText} />
+          <ChatLog lines={room.lines()} jumpToken={jumpToken()} />
+      </div>
+      <Composer connected={connected()} onSend={(text) => { room.sendText(text); setJumpToken((n) => n + 1); }} />
     </div>
   );
 }
@@ -469,18 +474,28 @@ const OVERLAY_HIDE_MS = 2500;
 /** Clock time on a 24-hour clock; older than a day also says which day. */
 const when = (at: number): string => new Date(at).toLocaleString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(Date.now() - at > 20 * 3600 * 1000 ? { day: '2-digit', month: 'short' } : {}) });
 
-/** The log (with the new-messages pill) and the composer are siblings in the app grid, so the composer can be placed independently (pinned on phones). */
-function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: string) => void }) {
+/** The message input. A separate grid item from the log so phones can keep it as the bottom row of the screen. */
+function Composer(props: { connected: boolean; onSend: (text: string) => void }) {
   const [draft, setDraft] = createSignal('');
-  let log: HTMLDivElement | undefined;
   const submit = (e: Event) => {
     e.preventDefault();
     const text = draft().trim();
     if (!text || !props.connected) return;
     props.onSend(text);
     setDraft('');
-    jump(); // your own message always brings you back to the newest line
   };
+  return (
+    <form class="chat-input" onSubmit={submit}>
+      <input value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!props.connected} maxlength={MAX_TEXT_LENGTH}
+             placeholder={props.connected ? 'Message the room' : "Can't send while disconnected"} />
+      <button disabled={!props.connected || !draft().trim()}>Send</button>
+    </form>
+  );
+}
+
+/** The log with the new-messages pill. `jumpToken` changes when I send, which brings me back to the newest line. */
+function ChatLog(props: { lines: ChatLine[]; jumpToken: number }) {
+  let log: HTMLDivElement | undefined;
   // The log is a reversed flex column (newest line first in the DOM, drawn at the bottom), so the
   // scroll origin is the bottom edge: position 0 is "at the newest line" and the browser keeps that
   // offset when lines arrive or the log changes size. The browser's own scroll anchoring is off (CSS):
@@ -503,8 +518,8 @@ function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: str
     }
     contentHeight = log.scrollHeight;
   });
+  createEffect(() => props.jumpToken, (t, prev) => { if (prev !== undefined && t !== prev) jump(); });
   return (
-    <>
     <div class="chat">
       <div class="chat-log" ref={log} onScroll={onScroll}>
         <For each={newestFirst()}>
@@ -526,12 +541,6 @@ function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: str
       </div>
       <Show when={unseen()}><button class="chat-new" onClick={jump} title="Scroll to the newest message">new messages ↓</button></Show>
     </div>
-    <form class="chat-input" onSubmit={submit}>
-      <input value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!props.connected} maxlength={MAX_TEXT_LENGTH}
-             placeholder={props.connected ? 'Message the room' : "Can't send while disconnected"} />
-      <button disabled={!props.connected || !draft().trim()}>Send</button>
-    </form>
-    </>
   );
 }
 

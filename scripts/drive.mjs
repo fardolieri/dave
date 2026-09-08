@@ -69,7 +69,7 @@ class Browser {
   }
   async screenshot(path, width) {
     // Emulate a phone viewport regardless of the headless window minimum.
-    if (width) await this.cdp('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: true });
+    if (width) await this.cdp('Emulation.setDeviceMetricsOverride', { width, height: Number(process.env.PHONE_HEIGHT ?? 900), deviceScaleFactor: 1, mobile: true }); // PHONE_HEIGHT: e.g. 480 for a short screen
     await sleep(300);
     // Phone shots show exactly the viewport (fixed elements sit at its bottom); desktop shots include the full page.
     const r = await this.cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: !width });
