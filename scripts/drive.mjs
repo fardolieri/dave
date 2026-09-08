@@ -135,9 +135,10 @@ try {
       await sleep(3000);
       if (process.env.SCROLL_CHECK) {
         console.log(`[${viewer.name}] gap to bottom after the share strip appeared (expect 0): ${await gap(viewer)}`);
-        await viewer.eval(`document.querySelector('.chat-log').scrollTo({ top: 0 }); 'scroll up'`); await sleep(300);
+        await viewer.eval(`(() => { const l = document.querySelector('.chat-log'); l.scrollTop = l.scrollHeight - l.clientHeight - 100; })(); 'scroll up 100px'`); await sleep(300);
+        console.log(`[${viewer.name}] scrolled up a bit: gap ${await gap(viewer)}`);
         await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Stop sharing')?.click(); 'stop'`); await sleep(1500);
-        console.log(`[${viewer.name}] scrolled up on purpose, then the strip went away: scrollTop (expect 0, position kept): ${await viewer.eval(`document.querySelector('.chat-log').scrollTop`)}`);
+        console.log(`[${viewer.name}] strip went away, log grew: gap (expect 100, bottom edge anchored): ${await gap(viewer)}`);
         await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Share screen')?.click(); 'share again'`); await sleep(3000);
         await viewer.cdp('Emulation.clearDeviceMetricsOverride');
       }

@@ -416,16 +416,17 @@ function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: str
     props.onSend(text);
     setDraft('');
   };
-  // Keep the newest line in view: on every new line, and whenever the log changes size (a share
-  // strip appearing halves it) as long as the reader had not scrolled up on purpose.
+  // New lines scroll to the bottom. When the log changes size (a share strip appearing halves it),
+  // the bottom edge stays anchored: whatever distance the reader was from the bottom is kept, so the
+  // same lines remain in view and nothing jumps, whether at the bottom or scrolled up a bit.
   // Block bodies on purpose: an effect callback's return value is taken as a cleanup, and browser
   // extensions that hook scrolling make scrollTo return a value, which halted the whole page once.
-  let pinned = true;
+  let gap = 0; // px between the viewport's bottom edge and the end of the log
   const toBottom = () => { log?.scrollTo({ top: log.scrollHeight }); };
-  const onScroll = () => { if (log) pinned = log.scrollHeight - log.scrollTop - log.clientHeight < 40; };
-  createEffect(() => props.lines.length, () => { toBottom(); pinned = true; });
+  const onScroll = () => { if (log) gap = log.scrollHeight - log.scrollTop - log.clientHeight; };
+  createEffect(() => props.lines.length, () => { toBottom(); gap = 0; });
   // Created here, inside the component's owner, so the cleanup is actually run; the ref only attaches it.
-  const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(() => { if (pinned) toBottom(); });
+  const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(() => { if (log) log.scrollTop = log.scrollHeight - log.clientHeight - gap; });
   onCleanup(() => resize?.disconnect());
   const observeLog = (el: HTMLDivElement) => { log = el; resize?.observe(el); };
   return (
