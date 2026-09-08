@@ -117,6 +117,11 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
           <div class="actions">
             <Show when={!call.inCall()} fallback={
               <>
+                <Show when={call.connecting()}>
+                  <div class={call.slowConnect() ? 'warn' : 'hint'}>
+                    {call.slowConnect() ? 'Still connecting. The first join can take a few seconds.' : 'Connecting…'}
+                  </div>
+                </Show>
                 <div class="row">
                   <button class={call.muted() ? 'on' : ''} onClick={() => call.setMuted(!call.muted())}>{call.muted() ? 'Unmute' : 'Mute'}</button>
                   <button class={`gear ${panel() === 'audio' ? 'on' : ''}`} title="Audio settings" onClick={() => { setPanel(panel() === 'audio' ? null : 'audio'); void call.refreshDevices(); }}>⚙</button>
