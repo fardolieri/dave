@@ -221,9 +221,14 @@ try {
   if (process.env.HISTORY_CHECK && browsers[1]) {
     const [a, b] = browsers;
     console.log(`[${b.name}] cues heard: ${await b.eval('window.__daveCues?.() ?? "no hook"')} | [${a.name}] cues heard (own messages): ${await a.eval('window.__daveCues?.() ?? "no hook"')}`);
-    const before = await b.eval(`document.querySelectorAll('.chat-log .msg').length`);
+    // Two socket drops in a row leave one dated note (same gap); it survives a reload like the messages.
+    await b.eval(`window.__dave?.dropSocket(); 'drop'`); await sleep(3000);
+    await b.eval(`window.__dave?.dropSocket(); 'drop again'`); await sleep(3000);
+    console.log(`[${b.name}] notes after two socket drops (expect one): ${await b.text('.chat-log .msg-sys') || '(none)'}`);
+    if (shotDir) { mkdirSync(shotDir, { recursive: true }); await b.screenshot(`${shotDir}/${b.name}-history.png`); }
+    const before = await b.eval(`document.querySelectorAll('.chat-log .msg:not(.msg-sys)').length`);
     await b.goto(url); await sleep(2500);
-    console.log(`[${b.name}] messages before reload: ${before}, after reload: ${await b.eval(`document.querySelectorAll('.chat-log .msg').length`)} | tools: ${await b.text('.chat-tools')}`);
+    console.log(`[${b.name}] messages before reload: ${before}, after reload: ${await b.eval(`document.querySelectorAll('.chat-log .msg:not(.msg-sys)').length`)} | notes after reload: ${await b.text('.chat-log .msg-sys') || '(none)'} | tools: ${await b.text('.chat-tools')}`);
     await b.eval(`document.querySelector('.chat-tools button')?.click(); 'cleared'`); await sleep(500);
     console.log(`[${b.name}] after clear: ${await b.eval(`document.querySelectorAll('.chat-log .msg').length`)} messages`);
   }

@@ -790,6 +790,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       }),
       audio: () => ({ settings: audioSettings(), track: voiceTrack?.getSettings() ?? null }),
       volumes: () => [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })),
+      dropSocket: () => room.dropSocket(),
       state: () => ({ inCall: joined, joining, joinError: untrack(joinError), myJoinSeq, role: untrack(me)?.role ?? null, participants: untrack(room.people).filter((p) => p.role === 'participant').map((p) => `${p.name}#${p.joinSeq}`) }),
     };
   }

@@ -6,7 +6,7 @@ import {
   type ClientMessage, type Identity, type Person, type ServerMessage,
 } from '../core/protocol';
 import type { LocalIdentity } from './identity';
-import { appendHistory, clearHistory, loadHistory, textKey } from './history';
+import { appendHistory, clearHistory, isNote, lineKey, loadHistory, textKey, type StoredLine } from './history';
 
 export type ServerStatus =
   | { kind: 'connecting' }
@@ -36,9 +36,20 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
   const textListeners = new Set<(m: Extract<ServerMessage, { t: 'text' }>) => void>();
   let nextId = 1;
   // Recent history from this browser, loaded once; live lines append after it.
-  void loadHistory().then((stored) => setLines((l) => [...stored.map((m) => ({ kind: 'text' as const, id: textKey(m), ...m })), ...l]));
+  const fromStored = (m: StoredLine): ChatLine => (isNote(m) ? { kind: 'system', id: lineKey(m), text: m.note, at: m.at } : { kind: 'text', id: textKey(m), ...m });
+  void loadHistory().then((stored) => setLines((l) => [...stored.map(fromStored), ...l]));
   const push = (line: { kind: 'text'; id: string; from: Identity; text: string; at: number } | { kind: 'system'; text: string; at: number }) =>
     setLines((l) => [...l, 'id' in line ? (line as ChatLine) : ({ ...line, id: `sys-${nextId++}` } as ChatLine)]);
+  /**
+   * A dated line about this browser's own connection, kept in the local history so a gap where
+   * messages may be missing stays visible later. Back-to-back identical notes collapse into one.
+   */
+  const note = (text: string) => {
+    const at = Date.now();
+    const line: ChatLine = { kind: 'system', id: lineKey({ note: text, at }), text, at };
+    setLines((l) => { const last = l[l.length - 1]; return last?.kind === 'system' && last.text === text ? [...l.slice(0, -1), line] : [...l, line]; });
+    void appendHistory({ note: text, at });
+  };
   
   let ws: WebSocket | null = null;
   let attempt = 0;
@@ -75,7 +86,7 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
           attempt = 0;
           setYou(m.you);
           setStatus({ kind: 'connected' });
-          if (everConnected) { push({ kind: 'system', text: 'Reconnected. You may have missed messages.', at: Date.now() }); posthog.capture('server_reconnected', { down_ms: downSince ? Date.now() - downSince : 0 }); }
+          if (everConnected) { note('Reconnected. You may have missed messages.'); posthog.capture('server_reconnected', { down_ms: downSince ? Date.now() - downSince : 0 }); }
           everConnected = true;
           downSince = null;
           clearTimeout(unavailableTimer);
@@ -152,7 +163,9 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
     send,
     sendText: (text: string) => { send({ t: 'text', text }); posthog.capture('message_sent'); },
     /** Empties the local history; the server never had it. */
-    clearHistory: async () => { await clearHistory(); setLines((l) => l.filter((x) => x.kind !== 'text')); },
+    clearHistory: async () => { await clearHistory(); setLines([]); },
+    /** Dev aid for scripts/drive.mjs: drops the socket so the reconnect path runs. */
+    dropSocket: () => ws?.close(),
     /** Fires for texts from other people (for the message cue). */
     onText: (l: (m: Extract<ServerMessage, { t: 'text' }>) => void) => { textListeners.add(l); return () => textListeners.delete(l); },
     /** Messages the room store does not handle itself (call, left, signal, ice) go to subscribers. */

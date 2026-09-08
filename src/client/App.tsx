@@ -331,6 +331,9 @@ function Banner(props: { status: ServerStatus }) {
   );
 }
 
+/** Clock time; older than a day also says which day. */
+const when = (at: number): string => new Date(at).toLocaleString([], { hour: '2-digit', minute: '2-digit', ...(Date.now() - at > 20 * 3600 * 1000 ? { day: '2-digit', month: 'short' } : {}) });
+
 function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: string) => void; onClear: () => void }) {
   const [draft, setDraft] = createSignal('');
   let log: HTMLDivElement | undefined;
@@ -351,12 +354,12 @@ function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: str
         <For each={props.lines}>
           {(l) => (
             <Switch>
-              <Match when={l.kind === 'system' && l}>{(s) => <div class="msg-sys">{s().text}</div>}</Match>
+              <Match when={l.kind === 'system' && l}>{(s) => <div class="msg msg-sys"><span class="msg-text">{s().text}</span><span class="msg-at">{when(s().at)}</span></div>}</Match>
               <Match when={l.kind === 'text' && l}>
                 {(m) => (
                   <div class="msg">
                     <span class="msg-from">{m().from.name} <code class="fp">{m().from.fingerprint}</code></span>
-                    <span class="msg-at">{new Date(m().at).toLocaleString([], { hour: '2-digit', minute: '2-digit', ...(Date.now() - m().at > 20 * 3600 * 1000 ? { day: '2-digit', month: 'short' } : {}) })}</span>
+                    <span class="msg-at">{when(m().at)}</span>
                     <div class="msg-text"><Linkified text={m().text} /></div>
                   </div>
                 )}
@@ -365,7 +368,7 @@ function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: str
           )}
         </For>
       </div>
-      <Show when={props.lines.some((l) => l.kind === 'text')}>
+      <Show when={props.lines.length > 0}>
         <div class="chat-tools"><button class="link" onClick={props.onClear} title="Only this browser's copy; nothing is stored on the server">clear history</button></div>
       </Show>
       <form class="chat-input" onSubmit={submit}>
