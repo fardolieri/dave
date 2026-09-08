@@ -57,7 +57,8 @@ class Browser {
   async goto(u) { await this.cdp('Page.navigate', { url: u }); await sleep(800); }
   async seed() {
     await this.goto(new URL('/', url).href);
-    await this.eval(`localStorage.setItem('dave.secret', ${JSON.stringify(secret)}); localStorage.setItem('dave.name', ${JSON.stringify(this.name)}); 'ok'`);
+    // SEED_MUTED=1: join with the microphone muted (for runs against the live room; pair with CHROME_FLAGS=--use-file-for-fake-audio-capture=<silent.wav> so nothing hums either way).
+    await this.eval(`localStorage.setItem('dave.secret', ${JSON.stringify(secret)}); localStorage.setItem('dave.name', ${JSON.stringify(this.name)}); ${process.env.SEED_MUTED ? "localStorage.setItem('dave.muted', 'true');" : ''} 'ok'`);
     await this.goto(url);
   }
   async screenshot(path, width) {
