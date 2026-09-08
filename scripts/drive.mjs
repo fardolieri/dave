@@ -49,6 +49,12 @@ class Browser {
       }
     };
     await this.cdp('Runtime.enable');
+    // UA_OVERRIDE=1: look like a normal Chrome. posthog-js drops every event from a "HeadlessChrome" user agent
+    // client-side, so a run that must reach PostHog (e.g. REPORT_CHECK) needs this; leave it off otherwise.
+    if (process.env.UA_OVERRIDE) {
+      const ua = (await this.eval('navigator.userAgent')).replace('HeadlessChrome', 'Chrome');
+      await this.cdp('Emulation.setUserAgentOverride', { userAgent: ua });
+    }
   }
   cdp(method, params = {}) { const id = ++this.id; this.ws.send(JSON.stringify({ id, method, params })); return new Promise((r) => this.pending.set(id, r)); }
   async eval(expression) { const r = await this.cdp('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value; }
@@ -198,6 +204,16 @@ try {
         const b3 = await third.eval(`Object.fromEntries(window.__dave.peers().map(p => [p.name, p.videoBytesIn]))`);
         console.log(`[${third.name}] bytes at unwatch of ${sharer.name}: ${JSON.stringify(b1)} -> ${JSON.stringify(b2)} -> ${JSON.stringify(b3)} (first should stop growing, second keeps growing)`);
         console.log(`[${third.name}] tiles after unwatch: ${await third.text('.share')}`);
+      }
+      if (process.env.REPORT_CHECK) {
+        // The viewer files a problem report while watching; the dialog must confirm, and the event carries a snapshot.
+        await viewer.eval(`document.querySelector('.report-link button')?.click(); 'open'`); await sleep(300);
+        await viewer.eval(`(() => { const t = document.querySelector('dialog.report textarea'); t.value = 'automated test report from the driver, please ignore'; t.dispatchEvent(new Event('input', { bubbles: true })); return 'typed'; })()`); await sleep(200);
+        await viewer.eval(`[...document.querySelectorAll('dialog.report .row button')].find(b => b.textContent === 'Send')?.click(); 'send'`); await sleep(2500);
+        console.log(`[${viewer.name}] report dialog says: ${await viewer.text('dialog.report .ok, dialog.report .warn') || '(nothing yet)'} | dialog open: ${await viewer.eval(`document.querySelector('dialog.report').open`)}`);
+        if (shotDir) { mkdirSync(shotDir, { recursive: true }); await viewer.screenshot(`${shotDir}/${viewer.name}-report.png`); }
+        await viewer.eval(`[...document.querySelectorAll('dialog.report .row button')].find(b => b.textContent === 'Close')?.click(); 'close'`); await sleep(200);
+        console.log(`[${viewer.name}] diagnostics sample: ${JSON.stringify(await viewer.eval(`(async () => { const d = await window.__dave?.diagnostics?.(); return d ? { inCall: d.inCall, peers: d.peers.map(p => ({ conn: p.view.conn, watching: p.view.watching, live: p.view.shareLive, decoded: p.inboundVideo?.framesDecoded, key: p.inboundVideo?.keyFramesDecoded, codec: p.inboundVideo?.codec, pair: p.pair })) } : 'no hook'; })()`))}`);
       }
       if (process.env.LEAVE_CHECK) {
         // Leave while sharing, then rejoin: nothing may still claim I am sharing.

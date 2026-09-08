@@ -139,6 +139,9 @@ Title badge such as "(3 in call)" while the tab is unfocused, short join and lea
 ### 7.5 Mobile promise
 Best effort: "works on recent iOS Safari and Android Chrome, not a supported target". Voice, text, and viewing shares; no publishing.
 
+### 7.5 Problem reports (2026-09-08, ticket 12)
+A "Report a problem" link at the bottom of the sidebar opens a dialog: a description, then Send or Copy. Send captures one PostHog event `bug_report` carrying the text and a technical snapshot of the tab: server status, people counts, the caller's own fingerprint, per peer the connection, ICE, signaling and gathering states, the selected candidate pair type, the share track state, inbound video counters (frames received, decoded, dropped, key frames, PLI/FIR/NACK, freezes, decoder, codec) and outbound video counters for the sharer, the share tiles' video elements (ready state, size, paused, frames shown), and the last 40 console warnings. Never message texts or names. The event sits next to the tab's masked session replay. Copy puts the same as text on the clipboard for browsers that block PostHog (Brave Shields, strict tracking protection). A tile that has been live for 4 s without showing a frame files `share_black` automatically with the same per-peer snapshot, re-attaches the element's source and re-subscribes so the sharer restarts the encoding with a fresh key frame; at most two rounds per subscription.
+
 ## 8. Failure and reconnection
 
 ### 8.1 Server socket

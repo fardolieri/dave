@@ -17,6 +17,22 @@ export type ConnState = 'connecting' | 'direct' | 'relayed' | 'reconnecting' | '
 
 /** My own share as the sharer sees it: total upload, the distinct encoded formats, how many watch. */
 export type OutgoingShare = { kbps: number; formats: VideoFormat[]; viewers: number };
+
+/** Snapshot for problem reports (ticket 12): states and counters, no names, no message texts. */
+export type PeerDiagnostics = {
+  fingerprint: string | null; polite: boolean; restarts: number; viewsMyShare: boolean; viewerScale: number;
+  view: Pick<PeerView, 'conn' | 'watching' | 'shareLive' | 'shareKbps' | 'shareFormat' | 'serverLost' | 'volume'>;
+  pc: { connection: RTCPeerConnectionState; ice: RTCIceConnectionState; signaling: RTCSignalingState; gathering: RTCIceGatheringState; transceivers: number };
+  shareTrack: { readyState: string; muted: boolean } | null;
+  inboundVideo: Record<string, unknown> | null;
+  outboundVideo: Record<string, unknown> | null;
+  pair: { local: string; remote: string; state: string } | null;
+};
+export type CallDiagnostics = {
+  inCall: boolean; muted: boolean; joinSeq: number | null; sharing: Record<string, unknown> | null; outgoing: OutgoingShare | null;
+  shareSettings: unknown; viewerSettings: unknown; audioProcessing: unknown; ice: { servers: number; turn: boolean; ageMinutes: number | null };
+  peers: PeerDiagnostics[];
+};
 const sameFormat = (a: VideoFormat | null, b: VideoFormat | null): boolean => a === b || (!!a && !!b && a.width === b.width && a.height === b.height && Math.round(a.fps) === Math.round(b.fps));
 
 /** What the UI shows per remote participant. Plain data mirrored from WebRTC events (spec §2.1). */
@@ -537,6 +553,71 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     }
   }
 
+  const pick = (r: Record<string, unknown>, keys: string[]): Record<string, unknown> => Object.fromEntries(keys.filter((k) => r[k] !== undefined).map((k) => [k, r[k]]));
+
+  /** One peer as a problem report sees it: states, the share track, decoder and encoder counters, the selected pair (ticket 12). */
+  async function peerDiag(peer: Peer): Promise<PeerDiagnostics> {
+    let inboundVideo: Record<string, unknown> | null = null;
+    let outboundVideo: Record<string, unknown> | null = null;
+    let pair: PeerDiagnostics['pair'] = null;
+    try {
+      const st = await peer.pc.getStats();
+      st.forEach((r) => {
+        const rec = r as unknown as Record<string, unknown>;
+        if (r.type === 'inbound-rtp' && rec['kind'] === 'video') {
+          inboundVideo = pick(rec, ['bytesReceived', 'packetsReceived', 'packetsLost', 'framesReceived', 'framesDecoded', 'framesDropped', 'keyFramesDecoded', 'framesPerSecond', 'frameWidth', 'frameHeight', 'pliCount', 'firCount', 'nackCount', 'freezeCount', 'totalFreezesDuration', 'pauseCount', 'jitterBufferDelay', 'jitterBufferEmittedCount', 'decoderImplementation', 'powerEfficientDecoder', 'lastPacketReceivedTimestamp']);
+          const codec = rec['codecId'] ? (st.get(rec['codecId'] as string) as unknown as Record<string, unknown> | undefined) : undefined;
+          if (codec) inboundVideo['codec'] = codec['mimeType'];
+        } else if (r.type === 'outbound-rtp' && rec['kind'] === 'video') {
+          outboundVideo = pick(rec, ['bytesSent', 'packetsSent', 'framesEncoded', 'keyFramesEncoded', 'framesSent', 'framesPerSecond', 'frameWidth', 'frameHeight', 'qualityLimitationReason', 'qualityLimitationDurations', 'encoderImplementation', 'targetBitrate', 'pliCount', 'firCount', 'nackCount', 'active']);
+        } else if (r.type === 'transport' && (r as RTCTransportStats).selectedCandidatePairId) {
+          const cp = st.get((r as RTCTransportStats).selectedCandidatePairId!) as RTCIceCandidatePairStats | undefined;
+          if (cp) {
+            const local = st.get(cp.localCandidateId) as unknown as Record<string, unknown> | undefined;
+            const remote = st.get(cp.remoteCandidateId) as unknown as Record<string, unknown> | undefined;
+            pair = { local: String(local?.['candidateType'] ?? '?'), remote: String(remote?.['candidateType'] ?? '?'), state: cp.state };
+          }
+        }
+      });
+    } catch { /* connection closed meanwhile */ }
+    const track = peer.remoteShare.getVideoTracks()[0];
+    const { conn, watching, shareLive, shareKbps, shareFormat, serverLost, volume } = peer.view;
+    return {
+      fingerprint: untrack(room.people).find((p) => p.publicKey === peer.key)?.fingerprint ?? null, polite: peer.polite, restarts: peer.restarts, viewsMyShare: peer.viewsMyShare, viewerScale: peer.viewerScale,
+      view: { conn, watching, shareLive, shareKbps, shareFormat, serverLost, volume },
+      pc: { connection: peer.pc.connectionState, ice: peer.pc.iceConnectionState, signaling: peer.pc.signalingState, gathering: peer.pc.iceGatheringState, transceivers: peer.pc.getTransceivers().length },
+      shareTrack: track ? { readyState: track.readyState, muted: track.muted } : null,
+      inboundVideo, outboundVideo, pair,
+    };
+  }
+
+  /** Everything a problem report wants to know about the call (ticket 12). */
+  async function diagnostics(): Promise<CallDiagnostics> {
+    const { echoCancellation, noiseSuppression, autoGainControl } = untrack(audioSettings);
+    return {
+      inCall: joined, muted: untrack(muted), joinSeq: myJoinSeq,
+      sharing: shareVideo ? { ...shareVideo.getSettings(), readyState: shareVideo.readyState, contentHint: shareVideo.contentHint } : null,
+      outgoing: untrack(outgoing), shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl },
+      ice: { servers: iceServers.length, turn: iceServers.some((s) => [s.urls].flat().some((u) => String(u).startsWith('turn'))), ageMinutes: iceIssuedAt ? Math.round((Date.now() - iceIssuedAt) / 60000) : null },
+      peers: await Promise.all([...peers.values()].map(peerDiag)),
+    };
+  }
+
+  /**
+   * A watched share whose tile shows nothing after a few seconds although bytes arrive (reported by
+   * friends). Record what the decoder and the element say, then ask for the share again: the sharer
+   * deactivates and reactivates the encoding, which starts it with a fresh key frame.
+   */
+  async function reportBlackShare(key: string, element: Record<string, unknown>): Promise<void> {
+    const peer = peers.get(key);
+    if (!peer || !peer.view.watching) return;
+    const diag = await peerDiag(peer);
+    posthog.capture('share_black', { element: JSON.stringify(element), peer: JSON.stringify(diag), attempt: element['attempt'] });
+    if (!peers.has(key) || !peer.view.watching) return;
+    watch(key, false);
+    watch(key, true);
+  }
+
   /**
    * Stuck-connecting watchdog (spec §8.2). A connection that never left "connecting" gets reported
    * with everything the browser knows, then torn down and offered again by whoever noticed: perfect
@@ -881,6 +962,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       audio: () => ({ settings: audioSettings(), track: voiceTrack?.getSettings() ?? null }),
       volumes: () => [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })),
       dropSocket: () => room.dropSocket(),
+      diagnostics,
       state: () => ({ inCall: joined, joining, joinError: untrack(joinError), myJoinSeq, role: untrack(me)?.role ?? null, participants: untrack(room.people).filter((p) => p.role === 'participant').map((p) => `${p.name}#${p.joinSeq}`) }),
     };
   }
@@ -890,5 +972,6 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     sharing, shareError, outgoing, startShare, stopShare, watch, watchOnly, shareStreamOf,
     shareSettings, setPreset, changeShare, audioSettings, changeAudio, viewerSettings, setViewerSettings, devices, refreshDevices, canPickSpeaker,
     setVolume, canPickSpeakerDialog, pickSpeaker,
+    diagnostics, reportBlackShare,
   };
 }

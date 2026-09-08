@@ -10,6 +10,7 @@ import { isKnown, markKnown } from './seenKeys';
 import { MAX_TEXT_LENGTH, normaliseName, type Person } from '../core/protocol';
 import { LOW_LATENCY_MS, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatVideo } from '../core/format';
+import { collectReport, formatReport, sendReport, type Report } from './diagnostics';
 
 export default function App() {
   takeSecretFromInviteLink();
@@ -141,6 +142,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
           <Show when={clash()}>
             <div class="warn">Someone else here is also called {props.name}. Your fingerprint <code>{props.identity.fingerprint}</code> tells you apart.</div>
           </Show>
+          <ReportDialog collect={() => collectReport({ status: () => room.status().kind, people: room.people, me: () => me(), call: call.diagnostics })} />
         </aside>
         <main class={`main ${sharers().length > 0 ? 'split' : ''}`}>
           <Show when={sharers().length > 0}>
@@ -157,6 +159,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
                     onWatch={(on) => call.watch(p.publicKey, on)}
                     onFullscreen={() => call.watchOnly(p.publicKey)}
                     onVolume={call.inCall() ? (v) => call.setVolume(p.publicKey, v) : undefined}
+                    onBlack={(element) => void call.reportBlackShare(p.publicKey, element)}
                   />
                 )}
               </For>
@@ -286,7 +289,12 @@ const requestFullscreenSafely = (el: FullscreenEl, video?: HTMLVideoElement & { 
 type ShareTileProps = {
   p: Person; isMe: boolean; inCall: boolean; view?: PeerView; stream?: MediaStream; outgoing?: OutgoingShare | null;
   onWatch: (on: boolean) => void; onFullscreen: () => void; onVolume?: (v: number) => void;
+  /** The tile has been live for a while and still shows no frame (ticket 12). */
+  onBlack?: (element: Record<string, unknown>) => void;
 };
+
+/** A live tile must have shown a frame this long after going live, or it is reported as black. */
+const BLACK_CHECK_MS = 4000;
 
 /**
  * One share. Click: closed → watch, running → fullscreen, fullscreen → back. The tile itself goes
@@ -307,6 +315,26 @@ function ShareTile(props: ShareTileProps) {
   };
   const running = () => state() === 'live' || state() === 'opening' || state() === 'own';
   const showsVideo = () => state() === 'live' || state() === 'own';
+  // Black-tile check: bytes arrive (the tile is live) but nothing shows. Report it with what the
+  // element says, nudge the element (re-attach the source, play), and let the call re-subscribe.
+  // At most two rounds per subscription so a genuinely broken share does not loop forever.
+  let blackTimer: ReturnType<typeof setTimeout> | undefined;
+  let blackChecks = 0;
+  createEffect(() => state() === 'live' && !props.isMe, (live) => {
+    clearTimeout(blackTimer);
+    if (!live) return;
+    blackTimer = setTimeout(() => {
+      if (!video || untrack(state) !== 'live' || blackChecks >= 2) return;
+      const q = typeof video.getVideoPlaybackQuality === 'function' ? video.getVideoPlaybackQuality() : null;
+      const shows = video.videoWidth > 0 && (q === null || q.totalVideoFrames > 0) && !video.paused;
+      if (shows) { blackChecks = 0; return; }
+      const element = { readyState: video.readyState, width: video.videoWidth, height: video.videoHeight, paused: video.paused, frames: q?.totalVideoFrames ?? null, error: video.error?.code ?? null, attempt: blackChecks };
+      blackChecks++;
+      const source = video.srcObject; video.srcObject = null; video.srcObject = source; void video.play().catch(() => {});
+      props.onBlack?.(element);
+    }, BLACK_CHECK_MS);
+  });
+  onCleanup(() => clearTimeout(blackTimer));
   // Whether this tile is the fullscreen element, mirrored from the document event.
   const [fullscreen, setFullscreen] = createSignal(false);
   // In fullscreen the overlays fade after a moment without pointer movement, so the picture is all
@@ -397,6 +425,42 @@ function Banner(props: { status: ServerStatus; onTakeOver: () => void }) {
       <Match when={props.status.kind === 'unavailable'}><div class="banner banner-bad">Server unavailable, retrying. Voice and shares continue.</div></Match>
       <Match when={props.status.kind === 'refused' && props.status}>{(s) => <div class="banner banner-bad">Refused: {s().reason}. Ask for a fresh invite link.</div>}</Match>
     </Switch>
+  );
+}
+
+/**
+ * "Report a problem" (ticket 12): a description plus a technical snapshot go to the room's error log
+ * (PostHog), next to this tab's masked session replay. Copy is the fallback for browsers that block it.
+ */
+function ReportDialog(props: { collect: () => Promise<Report> }) {
+  let dialog: HTMLDialogElement | undefined;
+  const [text, setText] = createSignal('');
+  const [phase, setPhase] = createSignal<'idle' | 'sending' | 'sent' | 'copied' | 'copy_failed'>('idle');
+  const open = () => { setPhase('idle'); dialog?.showModal(); };
+  const send = async () => { setPhase('sending'); sendReport(text(), await props.collect()); setPhase('sent'); };
+  const copy = async () => {
+    const body = formatReport(text(), await props.collect());
+    try { await navigator.clipboard.writeText(body); setPhase('copied'); } catch { setPhase('copy_failed'); }
+  };
+  return (
+    <>
+      <div class="report-link"><button class="link" onClick={open}>Report a problem</button></div>
+      <dialog class="report" ref={dialog}>
+        <h3>Report a problem</h3>
+        <textarea value={text()} onInput={(e) => setText(e.currentTarget.value)} placeholder="What went wrong, and what did you expect? When did it happen?" rows={4} />
+        <p class="hint">Your description is sent to this room's error log together with a technical snapshot of your connection: states and counters, never message texts or names. The last minutes of this tab are already kept as a masked session replay.</p>
+        <Switch>
+          <Match when={phase() === 'sent'}><p class="ok">Sent, thank you. Brave and strict tracking protection can block this silently: if in doubt, also use Copy and paste it to the person running this room.</p></Match>
+          <Match when={phase() === 'copied'}><p class="ok">Copied. Paste it to the person running this room.</p></Match>
+          <Match when={phase() === 'copy_failed'}><p class="warn">Could not access the clipboard. Try Send instead.</p></Match>
+        </Switch>
+        <div class="row">
+          <button class="on" onClick={() => void send()} disabled={phase() === 'sending' || !text().trim()}>{phase() === 'sending' ? 'Sending…' : 'Send'}</button>
+          <button onClick={() => void copy()} disabled={!text().trim()}>Copy</button>
+          <button onClick={() => dialog?.close()}>Close</button>
+        </div>
+      </dialog>
+    </>
   );
 }
 

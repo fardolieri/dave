@@ -156,3 +156,15 @@ select.picker option::checkmark { order: 1; margin-left: auto; }
 /* history tools */
 .chat-tools { display: flex; justify-content: flex-end; }
 button.link { background: none; border: 0; color: var(--dim); font-size: 11px; padding: 2px 4px; text-decoration: underline; }
+
+/* problem reports */
+.report-link { margin-top: 18px; text-align: center; }
+dialog.report { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: min(480px, 92vw); font-size: 14px; }
+dialog.report::backdrop { background: rgba(0,0,0,.55); }
+dialog.report h3 { margin: 0 0 10px; font-size: 15px; }
+dialog.report textarea { width: 100%; box-sizing: border-box; background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; resize: vertical; }
+dialog.report .hint { margin: 8px 0 0; }
+dialog.report .ok { margin: 10px 0 0; font-size: 13px; color: var(--ok); }
+dialog.report .warn { margin: 10px 0 0; }
+dialog.report .row { display: flex; gap: 6px; margin-top: 12px; }
+dialog.report .row button:first-child { flex: 1; }
