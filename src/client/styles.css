@@ -33,7 +33,7 @@ code.fp { font-size: 11px; color: var(--dim); }
 .banner-bad { background: #4a1a1a; color: var(--bad); }
 
 .chat { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.chat-log { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 10px; min-height: 80px; }
+.chat-log { flex: 1; overflow: auto; overflow-anchor: none; display: flex; flex-direction: column; gap: 10px; min-height: 80px; }
 /* Lines sit at the bottom, next to the composer, when they do not fill the log; so the newest line
    keeps its place on screen whether a share strip has shrunk the log or not. (margin-top:auto on the
    first child, not justify-content, keeps the overflowing start reachable by scrolling.) */

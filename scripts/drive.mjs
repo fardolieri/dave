@@ -137,10 +137,11 @@ try {
       await sleep(3000);
       if (process.env.SCROLL_CHECK) {
         console.log(`[${viewer.name}] gap to bottom after the share strip appeared (expect 0): ${await gap(viewer)} | last line bottom edge (expect unchanged): ${await lastTop(viewer)}`);
-        await viewer.eval(`(() => { const l = document.querySelector('.chat-log'); l.scrollTop = l.scrollHeight - l.clientHeight - 100; })(); 'scroll up 100px'`); await sleep(300);
-        console.log(`[${viewer.name}] scrolled up a bit: gap ${await gap(viewer)}`);
+        // A gap smaller than the growth: the browser must clamp scrollTop when the log grows, the case that used to lose the gap.
+        await viewer.eval(`(() => { const l = document.querySelector('.chat-log'); l.scrollTop = l.scrollHeight - l.clientHeight - 60; })(); 'scroll up 60px'`); await sleep(300);
+        console.log(`[${viewer.name}] scrolled up a bit: gap ${await gap(viewer)} | log height ${await viewer.eval(`document.querySelector('.chat-log').clientHeight`)}`);
         await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Stop sharing')?.click(); 'stop'`); await sleep(1500);
-        console.log(`[${viewer.name}] strip went away, log grew: gap (expect 100, bottom edge anchored): ${await gap(viewer)}`);
+        console.log(`[${viewer.name}] strip went away, log grew: gap (expect 60, bottom edge anchored): ${await gap(viewer)} | log height ${await viewer.eval(`document.querySelector('.chat-log').clientHeight`)}`);
         // Few lines, tall viewport: the log does not overflow once full size; the lines must still sit at the bottom, unmoved.
         await viewer.cdp('Emulation.setDeviceMetricsOverride', { width: 1000, height: 1400, deviceScaleFactor: 1, mobile: false }); await sleep(300);
         await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Share screen')?.click(); 'share'`); await sleep(2500);

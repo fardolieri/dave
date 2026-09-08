@@ -422,11 +422,19 @@ function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: str
   // Block bodies on purpose: an effect callback's return value is taken as a cleanup, and browser
   // extensions that hook scrolling make scrollTo return a value, which halted the whole page once.
   let gap = 0; // px between the viewport's bottom edge and the end of the log
+  let knownHeight = 0; // the log height the gap was measured at
   const toBottom = () => { log?.scrollTo({ top: log.scrollHeight }); };
-  const onScroll = () => { if (log) gap = log.scrollHeight - log.scrollTop - log.clientHeight; };
+  // When the log grows, the browser clamps scrollTop first and fires a scroll event *before* the resize
+  // callback runs; reading the gap from that event would reset it to zero. Only trust scroll events
+  // at the height the last measurement was taken at.
+  const onScroll = () => { if (log && log.clientHeight === knownHeight) gap = log.scrollHeight - log.scrollTop - log.clientHeight; };
   createEffect(() => props.lines.length, () => { toBottom(); gap = 0; });
   // Created here, inside the component's owner, so the cleanup is actually run; the ref only attaches it.
-  const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(() => { if (log) log.scrollTop = log.scrollHeight - log.clientHeight - gap; });
+  const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(() => {
+    if (!log) return;
+    knownHeight = log.clientHeight;
+    log.scrollTop = log.scrollHeight - log.clientHeight - gap;
+  });
   onCleanup(() => resize?.disconnect());
   const observeLog = (el: HTMLDivElement) => { log = el; resize?.observe(el); };
   return (
