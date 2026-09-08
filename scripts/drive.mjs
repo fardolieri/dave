@@ -221,10 +221,10 @@ try {
   if (process.env.HISTORY_CHECK && browsers[1]) {
     const [a, b] = browsers;
     console.log(`[${b.name}] cues heard: ${await b.eval('window.__daveCues?.() ?? "no hook"')} | [${a.name}] cues heard (own messages): ${await a.eval('window.__daveCues?.() ?? "no hook"')}`);
-    // Two socket drops in a row leave one dated note (same gap); it survives a reload like the messages.
+    // Two socket drops leave two dated notes with their downtime; they survive a reload like the messages.
     await b.eval(`window.__dave?.dropSocket(); 'drop'`); await sleep(3000);
     await b.eval(`window.__dave?.dropSocket(); 'drop again'`); await sleep(3000);
-    console.log(`[${b.name}] notes after two socket drops (expect one): ${await b.text('.chat-log .msg-sys') || '(none)'}`);
+    console.log(`[${b.name}] notes after two socket drops (expect two): ${await b.text('.chat-log .msg-sys') || '(none)'}`);
     if (shotDir) { mkdirSync(shotDir, { recursive: true }); await b.screenshot(`${shotDir}/${b.name}-history.png`); }
     const before = await b.eval(`document.querySelectorAll('.chat-log .msg:not(.msg-sys)').length`);
     await b.goto(url); await sleep(2500);

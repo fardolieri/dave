@@ -7,6 +7,7 @@ import {
 } from '../core/protocol';
 import type { LocalIdentity } from './identity';
 import { appendHistory, clearHistory, isNote, lineKey, loadHistory, textKey, type StoredLine } from './history';
+import { formatDuration } from '../core/format';
 
 export type ServerStatus =
   | { kind: 'connecting' }
@@ -42,12 +43,11 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
     setLines((l) => [...l, 'id' in line ? (line as ChatLine) : ({ ...line, id: `sys-${nextId++}` } as ChatLine)]);
   /**
    * A dated line about this browser's own connection, kept in the local history so a gap where
-   * messages may be missing stays visible later. Back-to-back identical notes collapse into one.
+   * messages may be missing stays visible later. Every reconnect gets its own line on purpose.
    */
   const note = (text: string) => {
     const at = Date.now();
-    const line: ChatLine = { kind: 'system', id: lineKey({ note: text, at }), text, at };
-    setLines((l) => { const last = l[l.length - 1]; return last?.kind === 'system' && last.text === text ? [...l.slice(0, -1), line] : [...l, line]; });
+    setLines((l) => [...l, { kind: 'system', id: lineKey({ note: text, at }), text, at }]);
     void appendHistory({ note: text, at });
   };
   
@@ -86,7 +86,12 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
           attempt = 0;
           setYou(m.you);
           setStatus({ kind: 'connected' });
-          if (everConnected) { note('Reconnected. You may have missed messages.'); posthog.capture('server_reconnected', { down_ms: downSince ? Date.now() - downSince : 0 }); }
+          if (everConnected) {
+            // "about": a dead socket is only noticed when a ping goes unanswered, so the real gap can be longer.
+            const downMs = downSince ? Date.now() - downSince : 0;
+            note(`Reconnected after about ${formatDuration(downMs)} offline. Messages sent meanwhile are missing here.`);
+            posthog.capture('server_reconnected', { down_ms: downMs });
+          }
           everConnected = true;
           downSince = null;
           clearTimeout(unavailableTimer);

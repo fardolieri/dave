@@ -23,16 +23,11 @@ export async function loadHistory(): Promise<StoredLine[]> {
 }
 
 let chain: Promise<void> = Promise.resolve();
-/**
- * Appends one line, de-duplicated by key, trimming to the cap. Writes are serialised. Identical notes
- * with no message between them mark the same gap, so the later one replaces the earlier.
- */
+/** Appends one line, de-duplicated by key, trimming to the cap. Writes are serialised. */
 export function appendHistory(m: StoredLine): Promise<void> {
   chain = chain.then(async () => {
     const list = await loadHistory();
-    const last = list[list.length - 1];
-    if (isNote(m) && last && isNote(last) && last.note === m.note) list.pop();
-    else if (list.some((x) => lineKey(x) === lineKey(m))) return;
+    if (list.some((x) => lineKey(x) === lineKey(m))) return;
     list.push(m);
     await idbSet(KEY, list.slice(-MAX_HISTORY));
   }).catch((e) => console.warn('history write failed', e));
