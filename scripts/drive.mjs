@@ -297,6 +297,15 @@ try {
   await sleep(500);
   await browsers[0].say('third one, no link');
   await sleep(800);
+  if (process.env.BANNER_SHOT && shotDir) {
+    // Drop the socket and catch the "Reconnecting…" pill before the reconnect lands.
+    const a = browsers[0];
+    const before = await a.eval(`document.querySelector('.chat-log .msg')?.getBoundingClientRect().top`);
+    await a.eval(`window.__dave?.dropSocket(); 'drop'`); await sleep(120);
+    console.log(`[${a.name}] banner while down: ${await a.text('.banner') || '(none)'} | first message top before/during: ${before} / ${await a.eval(`document.querySelector('.chat-log .msg')?.getBoundingClientRect().top`)} (expect equal: no layout shift)`);
+    mkdirSync(shotDir, { recursive: true }); await a.screenshot(`${shotDir}/${a.name}-banner.png`);
+    await sleep(2500);
+  }
   if (process.env.TABS_CHECK && browsers[1]) {
     // A second tab of the same browser shares the identity: the server keeps one socket per identity,
     // the older tab steps back with a banner, and "Use it here instead" turns the tables.

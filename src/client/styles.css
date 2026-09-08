@@ -20,7 +20,7 @@ code.fp { font-size: 11px; color: var(--dim); }
 .cols > * { min-width: 0; min-height: 0; }
 .side { background: var(--panel); border-right: 1px solid var(--line); padding: 0 14px 14px; overflow: auto; transition: opacity .2s; }
 .side.frozen { opacity: .45; pointer-events: none; } /* presence is stale while the socket is down (spec §8.1) */
-.main { display: flex; flex-direction: column; padding: 14px; min-height: 0; }
+.main { position: relative; display: flex; flex-direction: column; padding: 14px; min-height: 0; }
 
 .plist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .plist li { display: flex; align-items: center; gap: 8px; }
@@ -28,7 +28,10 @@ code.fp { font-size: 11px; color: var(--dim); }
 .new { font-size: 10px; background: var(--warn); color: #000; border-radius: 4px; padding: 0 4px; margin-left: 4px; font-weight: 700; cursor: pointer; }
 .warn { margin-top: 10px; padding: 8px; border-radius: 8px; background: #4a3a12; color: var(--warn); font-size: 13px; }
 
-.banner { padding: 8px 14px; text-align: center; }
+/* Server-state notice: a pill hanging from the top edge of the main area, out of the layout flow so
+   nothing moves when it comes and goes. */
+.banner { position: absolute; top: 0; left: 50%; transform: translateX(-50%); z-index: 20; max-width: calc(100% - 28px); padding: 6px 16px; border-radius: 0 0 12px 12px; font-size: 13px; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+.banner button.link { color: inherit; font-size: inherit; }
 .banner-warn { background: #4a3a12; color: var(--warn); }
 .banner-bad { background: #4a1a1a; color: var(--bad); }
 

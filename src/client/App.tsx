@@ -102,7 +102,6 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
 
   return (
     <div class="app">
-      <Banner status={room.status()} onTakeOver={room.takeOver} />
       <div class="cols">
         <aside class={`side ${connected() ? '' : 'frozen'}`}>
           <h2>Online</h2>
@@ -145,6 +144,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
           <ReportDialog collect={() => collectReport({ status: () => room.status().kind, people: room.people, me: () => me(), call: call.diagnostics })} />
         </aside>
         <main class={`main ${sharers().length > 0 ? 'split' : ''}`}>
+          <Banner status={room.status()} onTakeOver={room.takeOver} />
           <Show when={sharers().length > 0}>
             <section class="shares" style={`grid-template-columns: repeat(${sharers().length}, 1fr)`}>
               <For each={sharers()}>
