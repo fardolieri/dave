@@ -403,8 +403,8 @@ function Banner(props: { status: ServerStatus; onTakeOver: () => void }) {
 /** Fullscreen overlays hide this long after the pointer last moved. */
 const OVERLAY_HIDE_MS = 2500;
 
-/** Clock time; older than a day also says which day. */
-const when = (at: number): string => new Date(at).toLocaleString([], { hour: '2-digit', minute: '2-digit', ...(Date.now() - at > 20 * 3600 * 1000 ? { day: '2-digit', month: 'short' } : {}) });
+/** Clock time on a 24-hour clock; older than a day also says which day. */
+const when = (at: number): string => new Date(at).toLocaleString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(Date.now() - at > 20 * 3600 * 1000 ? { day: '2-digit', month: 'short' } : {}) });
 
 function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: string) => void; onClear: () => void }) {
   const [draft, setDraft] = createSignal('');
