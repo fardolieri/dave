@@ -101,7 +101,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
 
   return (
     <div class="app">
-      <Banner status={room.status()} />
+      <Banner status={room.status()} onTakeOver={room.takeOver} />
       <div class="cols">
         <aside class={`side ${connected() ? '' : 'frozen'}`}>
           <h2>Online</h2>
@@ -388,9 +388,10 @@ function ShareTile(props: ShareTileProps) {
   );
 }
 
-function Banner(props: { status: ServerStatus }) {
+function Banner(props: { status: ServerStatus; onTakeOver: () => void }) {
   return (
     <Switch>
+      <Match when={props.status.kind === 'elsewhere'}><div class="banner banner-warn">This room is open in another tab or window of this browser. <button class="link" onClick={props.onTakeOver}>Use it here instead</button></div></Match>
       <Match when={props.status.kind === 'connecting'}><div class="banner banner-warn">Connecting…</div></Match>
       <Match when={props.status.kind === 'reconnecting'}><div class="banner banner-warn">Reconnecting to server… voice and shares continue, chat is paused</div></Match>
       <Match when={props.status.kind === 'unavailable'}><div class="banner banner-bad">Server unavailable, retrying. Voice and shares continue.</div></Match>

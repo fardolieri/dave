@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { initiatesTo, isPolite, nextJoinSeq } from '../src/core/mesh';
+import { initiatesTo, isPolite, nextJoinSeq, stuckDelay } from '../src/core/mesh';
 import { STUN_ONLY, parseIceServers, turnCredentialRequest } from '../src/core/turn';
 import type { Person } from '../src/core/protocol';
 
@@ -58,5 +58,15 @@ describe('share bandwidth rule', () => {
     expect(perViewerBitrate(4)).toBe(2_000_000);
     expect(perViewerBitrate(7)).toBe(1_142_857);
     expect(perViewerBitrate(20)).toBe(1_000_000);
+  });
+});
+
+describe('stuckDelay', () => {
+  it('lets the offerer act first, staggers the other side, doubles and caps', () => {
+    expect(stuckDelay(0, true)).toBe(15_000);
+    expect(stuckDelay(0, false)).toBe(20_000);
+    expect(stuckDelay(1, true)).toBe(30_000);
+    expect(stuckDelay(5, true)).toBe(60_000);
+    expect(stuckDelay(5, false)).toBe(65_000);
   });
 });

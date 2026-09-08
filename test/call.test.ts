@@ -4,11 +4,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildAuthMessage, exportPublicKey, generateIdentityKeyPair } from '../src/core/identity';
 import type { IceServer, Person, ServerMessage } from '../src/core/protocol';
 import { CLOSE_SILENT, SILENT_TIMEOUT_MS } from '../src/worker/room';
+import { CLOSE_SUPERSEDED } from '../src/core/protocol';
 
 const SECRET = 'test-secret';
 type Client = { ws: WebSocket; you: Person; next: (pred?: (m: ServerMessage) => boolean) => Promise<ServerMessage>; closed: Promise<number> };
 
-async function attach(name: string): Promise<Client> {
+type Keys = Awaited<ReturnType<typeof generateIdentityKeyPair>>;
+async function attach(name: string, existingKeys?: Keys): Promise<Client> {
   // a distinct client address per socket, so the per-IP upgrade limit never trips inside a test file
   const ip = `10.0.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
   const res = await exports.default.fetch(new Request('https://dave.test/ws', { headers: { Upgrade: 'websocket', 'cf-connecting-ip': ip } }));
@@ -30,7 +32,7 @@ async function attach(name: string): Promise<Client> {
       else waiters.push({ pred, resolve });
     });
   const challenge = (await next((m) => m.t === 'challenge')) as { nonce: string };
-  const keys = await generateIdentityKeyPair();
+  const keys = existingKeys ?? await generateIdentityKeyPair();
   ws.send(JSON.stringify(await buildAuthMessage({ secret: SECRET, nonce: challenge.nonce, publicKeyRaw: await exportPublicKey(keys.publicKey), privateKey: keys.privateKey, name })));
   const welcome = (await next((m) => m.t === 'welcome')) as { you: Person };
   return { ws, you: welcome.you, next, closed };
@@ -129,6 +131,26 @@ describe('sweep', () => {
       vi.useRealTimers();
     }
     expect(await a.closed).toBe(CLOSE_SILENT);
+  });
+});
+
+describe('one socket per identity', () => {
+  it('a newer socket for the same identity closes the older one with 4004 and presence lists the person once', async () => {
+    const keys = await generateIdentityKeyPair();
+    const bob = await attach('Bob');
+    const a1 = await attach('Alice', keys);
+    send(a1, { t: 'join', muted: false }); await a1.next((m) => m.t === 'call');
+    await bob.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => p.name === 'Alice' && p.role === 'participant'));
+    const a2 = await attach('Alice', keys); // e.g. a reconnect whose old socket the server never saw die
+    expect(await a1.closed).toBe(CLOSE_SUPERSEDED);
+    const snap = await bob.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.filter((p) => p.name === 'Alice').length === 1 && (m as { people: Person[] }).people.some((p) => p.name === 'Alice' && p.role === 'visitor'));
+    expect((snap as { people: Person[] }).people.filter((p) => p.name === 'Alice')).toHaveLength(1);
+    // the survivor is fully functional: it joins and gets signalled
+    send(a2, { t: 'join', muted: false }); await a2.next((m) => m.t === 'call');
+    send(bob, { t: 'join', muted: false }); await bob.next((m) => m.t === 'call');
+    send(bob, { t: 'signal', to: a2.you.publicKey, data: { description: { type: 'offer', sdp: 'x' } } });
+    expect(await a2.next((m) => m.t === 'signal')).toMatchObject({ t: 'signal', from: bob.you.publicKey });
+    a2.ws.close(1000); bob.ws.close(1000);
   });
 });
 

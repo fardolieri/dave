@@ -1,5 +1,6 @@
 import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
 import { distinctFormats, type VideoFormat } from '../core/format';
+import { stuckDelay } from '../core/mesh';
 import posthog from './posthog';
 import {
   ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
@@ -48,6 +49,8 @@ type Peer = {
   restartTimer?: ReturnType<typeof setTimeout>;
   restarts: number;
   graceTimer?: ReturnType<typeof setTimeout>;
+  /** Fires if the connection never leaves "connecting" (see connectWatchdog). */
+  connectTimer?: ReturnType<typeof setTimeout>;
   view: PeerView;
   /** They asked to receive my share (they are a Viewer of it). */
   viewsMyShare: boolean;
@@ -332,6 +335,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       peer.candidateTimer ??= setTimeout(() => flushCandidates(peer), CANDIDATE_BATCH_MS);
     };
     pc.oniceconnectionstatechange = () => onIceState(peer);
+    armConnectWatchdog(peer, initiator);
     pc.ontrack = ({ track, transceiver }) => {
       // Fires inside setRemoteDescription, before the answerer has recorded its transceivers,
       // so identify the slot by position in the connection's transceiver list, not via peer.tx.
@@ -464,8 +468,9 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       peer = undefined;
     }
     if (!peer) {
-      const person = room.people().find((p) => p.publicKey === from);
-      if (!person || person.role !== 'participant') return;
+      // Match the participant entry: a ghost of the same identity may still be listed as a visitor.
+      const person = room.people().find((p) => p.publicKey === from && p.role === 'participant');
+      if (!person) { posthog.capture('signal_dropped', { reason: 'sender not a participant', offer: isOffer }); return; }
       peer = createPeer(from, person.name, false);
     }
     const { pc } = peer;
@@ -509,12 +514,20 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     if (s === 'connected' || s === 'completed') {
       peer.restarts = 0;
       clearTimeout(peer.restartTimer);
+      clearTimeout(peer.connectTimer);
+      stuckAttempts.delete(peer.key);
       if (peer.view.conn === 'connecting' || peer.view.conn === 'reconnecting' || peer.view.conn === 'unreachable') setView(peer, { conn: 'direct' });
       void refreshStats(peer);
     } else if (s === 'disconnected') {
       setView(peer, { conn: 'reconnecting' });
-      peer.disconnectTimer = setTimeout(() => { if (peer.pc.iceConnectionState === 'disconnected') void restartIce(peer); }, ICE_DISCONNECTED_GRACE_MS);
+      // A peer whose server socket is gone cannot be signalled, so an ICE restart would only produce
+      // "not in the call" errors: once their media fails too, the connection is over. They re-offer on return.
+      peer.disconnectTimer = setTimeout(() => {
+        if (peer.pc.iceConnectionState !== 'disconnected') return;
+        if (peer.view.serverLost) closePeer(peer.key); else void restartIce(peer);
+      }, ICE_DISCONNECTED_GRACE_MS);
     } else if (s === 'failed') {
+      if (peer.view.serverLost) { closePeer(peer.key); return; }
       setView(peer, { conn: 'unreachable' });
       const delay = ICE_RESTART_BACKOFF_MS[Math.min(peer.restarts, ICE_RESTART_BACKOFF_MS.length - 1)]!;
       peer.restarts++;
@@ -522,6 +535,38 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     } else if (s === 'closed') {
       setView(peer, { conn: 'unreachable' });
     }
+  }
+
+  /**
+   * Stuck-connecting watchdog (spec §8.2). A connection that never left "connecting" gets reported
+   * with everything the browser knows, then torn down and offered again by whoever noticed: perfect
+   * negotiation sorts out the collision if both do. This is what a page reload used to achieve by hand.
+   */
+  const stuckAttempts = new Map<string, number>();
+  function armConnectWatchdog(peer: Peer, initiator: boolean): void {
+    const attempt = stuckAttempts.get(peer.key) ?? 0;
+    peer.connectTimer = setTimeout(() => void connectWatchdog(peer, initiator, attempt), stuckDelay(attempt, initiator));
+  }
+  async function connectWatchdog(peer: Peer, initiator: boolean, attempt: number): Promise<void> {
+    const stillStuck = () => peers.get(peer.key) === peer && peer.view.conn === 'connecting' && peer.pc.connectionState !== 'closed';
+    if (!stillStuck()) return;
+    const counts = { candidates_local: 0, candidates_remote: 0, candidates_relay: 0 };
+    try {
+      (await peer.pc.getStats()).forEach((r) => {
+        if (r.type === 'local-candidate') { counts.candidates_local++; if ((r as { candidateType?: string }).candidateType === 'relay') counts.candidates_relay++; }
+        else if (r.type === 'remote-candidate') counts.candidates_remote++;
+      });
+    } catch { /* closed meanwhile */ }
+    posthog.capture('peer_connecting_slow', {
+      attempt, initiator, polite: peer.polite, signaling: peer.pc.signalingState, ice: peer.pc.iceConnectionState, gathering: peer.pc.iceGatheringState,
+      remote_description: peer.pc.remoteDescription !== null, local_description: peer.pc.localDescription !== null, peers: peers.size, ...counts,
+    });
+    if (!stillStuck()) return;
+    const person = untrack(room.people).find((p) => p.publicKey === peer.key && p.role === 'participant');
+    closePeer(peer.key);
+    if (!joined || !person) return;
+    stuckAttempts.set(peer.key, attempt + 1);
+    createPeer(peer.key, person.name, true);
   }
 
   async function restartIce(peer: Peer): Promise<void> {
@@ -602,7 +647,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   function closePeer(key: string): void {
     const peer = peers.get(key);
     if (!peer) return;
-    clearTimeout(peer.disconnectTimer); clearTimeout(peer.restartTimer); clearTimeout(peer.graceTimer); clearTimeout(peer.candidateTimer);
+    clearTimeout(peer.disconnectTimer); clearTimeout(peer.restartTimer); clearTimeout(peer.graceTimer); clearTimeout(peer.candidateTimer); clearTimeout(peer.connectTimer);
     peer.pc.close();
     peer.audio.srcObject = null;
     peer.shareAudio.srcObject = null;
@@ -639,7 +684,9 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       // Vanished, or reappeared as a visitor while their rejoin is still in flight: their server socket dropped.
       // A deliberate leave arrives as an explicit `left` and closes at once; here we keep media for a grace period.
       if (!peer.view.serverLost) {
-        posthog.capture('peer_server_lost');
+        posthog.capture('peer_server_lost', { ice: peer.pc.iceConnectionState });
+        const ice = peer.pc.iceConnectionState;
+        if (ice === 'failed' || ice === 'closed' || ice === 'new') { closePeer(peer.key); continue; } // nothing worth keeping
         setView(peer, { serverLost: true });
         peer.graceTimer = setTimeout(() => closePeer(peer.key), PEER_GRACE_MS);
       }
@@ -650,6 +697,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   // Re-declare after our own server reconnect (spec §8.1): peer connections stay, join sequence is fresh.
   createEffect(() => room.status().kind, (kind, prev) => {
     if (kind === 'connected' && prev !== undefined && prev !== 'connected' && joined) void rejoinAfterReconnect();
+    if (kind === 'elsewhere' && joined) leave(); // another tab took over; this one is no longer in the call
   });
 
   async function rejoinAfterReconnect(): Promise<void> {

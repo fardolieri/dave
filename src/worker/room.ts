@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import { CHALLENGE_TIMEOUT_MS, challengeExpired, onMessage, openSocket, presenceSnapshot, type Outcome, type SocketState } from '../core/room';
-import { CLOSE_AUTH_FAILED, CLOSE_NOT_CONFIGURED, PING_FRAME, PONG_FRAME, type Person, type ServerMessage } from '../core/protocol';
+import { CLOSE_AUTH_FAILED, CLOSE_NOT_CONFIGURED, CLOSE_SUPERSEDED, PING_FRAME, PONG_FRAME, type Person, type ServerMessage } from '../core/protocol';
 import { mintIceServers, revokeIce } from './turn';
 
 /** A socket whose last sign of life is older than this is dropped by the sweep (spec §4). */
@@ -101,7 +101,8 @@ export class Room extends DurableObject<Env> {
     for (const reply of outcome.replies) ws.send(JSON.stringify(reply));
     if (outcome.broadcast) for (const m of outcome.broadcast) this.fanOut(m);
     if (outcome.relay) this.deliver(outcome.relay.to, outcome.relay.message);
-    if (outcome.presenceChanged) this.broadcastPresence();
+    const superseded = outcome.supersede ? this.supersede(ws, outcome.supersede) : [];
+    if (outcome.presenceChanged) this.broadcastPresence(...superseded);
     if (outcome.revokeTurn) this.ctx.waitUntil(revokeIce(this.env, outcome.revokeTurn));
     if (outcome.close) ws.close(outcome.close.code, outcome.close.reason);
     if (outcome.after) {
@@ -113,20 +114,34 @@ export class Room extends DurableObject<Env> {
     }
   }
 
+  /** Close every other socket attached under this identity and return them, so the caller can leave them out of the next snapshot. */
+  private supersede(keeper: WebSocket, publicKey: string): WebSocket[] {
+    const gone: WebSocket[] = [];
+    for (const s of this.ctx.getWebSockets()) {
+      if (s === keeper) continue;
+      const state = s.deserializeAttachment() as SocketState | null;
+      if (state?.stage !== 'attached' || state.person.publicKey !== publicKey) continue;
+      if (state.turnUser) this.ctx.waitUntil(revokeIce(this.env, state.turnUser));
+      try { s.close(CLOSE_SUPERSEDED, 'opened elsewhere'); } catch { /* already gone */ }
+      gone.push(s);
+    }
+    return gone;
+  }
+
   /** The presence snapshot as computed right now from attachments alone. Public so tests can compare a fresh instance's view. */
-  currentPresence(leaving?: WebSocket): ServerMessage {
-    const sockets = this.ctx.getWebSockets().filter((s) => s !== leaving);
+  currentPresence(...leaving: WebSocket[]): ServerMessage {
+    const sockets = this.ctx.getWebSockets().filter((s) => !leaving.includes(s));
     return presenceSnapshot(sockets.map((s) => s.deserializeAttachment() as SocketState | null));
   }
 
-  /** Full snapshot to every attached socket. `leaving` is excluded because it may still be listed while closing. */
-  private broadcastPresence(leaving?: WebSocket): void {
-    this.fanOut(this.currentPresence(leaving), leaving);
+  /** Full snapshot to every attached socket. `leaving` sockets are excluded because they may still be listed while closing. */
+  private broadcastPresence(...leaving: WebSocket[]): void {
+    this.fanOut(this.currentPresence(...leaving), leaving);
   }
 
-  private fanOut(m: ServerMessage, exclude?: WebSocket): void {
+  private fanOut(m: ServerMessage, exclude: WebSocket[] = []): void {
     const frame = JSON.stringify(m);
-    for (const s of this.ctx.getWebSockets()) if (s !== exclude && this.personOf(s)) this.trySend(s, frame);
+    for (const s of this.ctx.getWebSockets()) if (!exclude.includes(s) && this.personOf(s)) this.trySend(s, frame);
   }
 
   private deliver(publicKey: string, m: ServerMessage): void {

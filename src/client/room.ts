@@ -2,7 +2,7 @@ import { createSignal, onCleanup } from 'solid-js';
 import posthog from './posthog';
 import { buildAuthMessage } from '../core/identity';
 import {
-  CLOSE_AUTH_FAILED, CLOSE_NOT_CONFIGURED, PING_FRAME, PING_INTERVAL_MS,
+  CLOSE_AUTH_FAILED, CLOSE_NOT_CONFIGURED, CLOSE_SUPERSEDED, PING_FRAME, PING_INTERVAL_MS,
   type ClientMessage, type Identity, type Person, type ServerMessage,
 } from '../core/protocol';
 import type { LocalIdentity } from './identity';
@@ -14,7 +14,9 @@ export type ServerStatus =
   | { kind: 'connected' }
   | { kind: 'reconnecting'; since: number }
   | { kind: 'unavailable'; since: number }
-  | { kind: 'refused'; reason: string };
+  | { kind: 'refused'; reason: string }
+  /** Another tab or window of this browser opened the room; this one stepped back (close code 4004). */
+  | { kind: 'elsewhere' };
 
 export type ChatLine =
   | { kind: 'text'; id: string; from: Identity; text: string; at: number }
@@ -132,6 +134,11 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
       setYou(null);
       if (stopped) return;
       posthog.capture('server_socket_closed', { code: e.code, ever_connected: everConnected });
+      if (e.code === CLOSE_SUPERSEDED) {
+        stopped = true;
+        setStatus({ kind: 'elsewhere' });
+        return;
+      }
       if (e.code === CLOSE_AUTH_FAILED || e.code === CLOSE_NOT_CONFIGURED) {
         stopped = true;
         setStatus({ kind: 'refused', reason: e.code === CLOSE_AUTH_FAILED ? 'the invite link is wrong or has been rotated' : 'the server has no room secret configured' });
@@ -171,6 +178,8 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
     clearHistory: async () => { await clearHistory(); setLines([]); },
     /** Dev aid for scripts/drive.mjs: drops the socket so the reconnect path runs. */
     dropSocket: () => ws?.close(),
+    /** After stepping back for another tab: reconnect here, which supersedes that tab in turn. */
+    takeOver: () => { if (status().kind !== 'elsewhere') return; stopped = false; attempt = 0; downSince = null; setStatus({ kind: 'connecting' }); open(); },
     /** Fires for texts from other people (for the message cue). */
     onText: (l: (m: Extract<ServerMessage, { t: 'text' }>) => void) => { textListeners.add(l); return () => textListeners.delete(l); },
     /** Messages the room store does not handle itself (call, left, signal, ice) go to subscribers. */

@@ -73,6 +73,18 @@ class Browser {
     await sleep(50);
     await this.eval(`document.querySelector('.chat-input form, form.chat-input').requestSubmit(); 'sent'`);
   }
+  /** Opens a second tab in this profile (same identity) and returns eval/text helpers bound to it. */
+  async secondTab(u) {
+    const before = new Set((await (await fetch(`http://127.0.0.1:${this.port}/json/list`)).json()).map((t) => t.id));
+    await this.cdp('Target.createTarget', { url: u });
+    let tab; for (let i = 0; i < 50 && !tab; i++) { tab = (await (await fetch(`http://127.0.0.1:${this.port}/json/list`)).json()).find((t) => !before.has(t.id) && t.type === 'page'); if (!tab) await sleep(100); }
+    const ws = new WebSocket(tab.webSocketDebuggerUrl); await new Promise((r) => (ws.onopen = r));
+    let id = 0; const pending = new Map();
+    ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+    const cdp = (method, params = {}) => { const i = ++id; ws.send(JSON.stringify({ id: i, method, params })); return new Promise((r) => pending.set(i, r)); };
+    const evaluate = async (expression) => (await cdp('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })).result?.result?.value;
+    return { eval: evaluate, text: (sel) => evaluate(`Array.from(document.querySelectorAll(${JSON.stringify(sel)})).map(e => e.innerText.replace(/\s+/g,' ').trim()).join(' | ')`), close: () => ws.close() };
+  }
   close() { try { this.ws?.close(); } catch {} try { process.kill(-this.proc.pid, 'SIGKILL'); } catch { this.proc?.kill('SIGKILL'); } setTimeout(() => { try { rmSync(this.dir, { recursive: true, force: true }); } catch {} }, 500); }
 }
 
@@ -236,6 +248,20 @@ try {
   await sleep(500);
   await browsers[0].say('third one, no link');
   await sleep(800);
+  if (process.env.TABS_CHECK && browsers[1]) {
+    // A second tab of the same browser shares the identity: the server keeps one socket per identity,
+    // the older tab steps back with a banner, and "Use it here instead" turns the tables.
+    const [a, b] = browsers;
+    const tab2 = await a.secondTab(url); await sleep(2500);
+    console.log(`[${a.name} tab 1] banner: ${await a.text('.banner') || '(none)'} | in call: ${await a.eval(`window.__dave?.state().inCall`)}`);
+    console.log(`[${a.name} tab 2] banner: ${await tab2.text('.banner') || '(none)'} | online: ${await tab2.text('.plist li')}`);
+    console.log(`[${b.name}] sees ${a.name} how many times: ${await b.eval(`[...document.querySelectorAll('.plist li')].filter(li => li.textContent.includes(${JSON.stringify(a.name)})).length`)} | list: ${await b.text('.plist li')}`);
+    await a.eval(`document.querySelector('.banner button')?.click(); 'take over'`); await sleep(2500);
+    console.log(`[${a.name} tab 1] after take-over: ${await a.text('.banner') || '(none)'} | online: ${await a.text('.plist li')}`);
+    console.log(`[${a.name} tab 2] after take-over: ${await tab2.text('.banner') || '(none)'}`);
+    console.log(`[${b.name}] sees ${a.name} how many times: ${await b.eval(`[...document.querySelectorAll('.plist li')].filter(li => li.textContent.includes(${JSON.stringify(a.name)})).length`)}`);
+    tab2.close();
+  }
   if (process.env.HISTORY_CHECK && browsers[1]) {
     const [a, b] = browsers;
     console.log(`[${b.name}] cues heard: ${await b.eval('window.__daveCues?.() ?? "no hook"')} | [${a.name}] cues heard (own messages): ${await a.eval('window.__daveCues?.() ?? "no hook"')}`);

@@ -25,6 +25,8 @@ export type Outcome = {
   presenceChanged?: boolean;
   /** Deliver to the one attached participant with this public key. */
   relay?: { to: string; message: ServerMessage };
+  /** Close every other socket attached under this public key: one live socket per identity (spec §4). */
+  supersede?: string;
   /**
    * Replies that need I/O (TURN minting). The adapter stores `state` first, then awaits this and
    * sends what it returns, so a second join arriving mid-fetch already sees the new join sequence.
@@ -95,7 +97,9 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       sharing: false,
       muted: false,
     };
-    return { state: { stage: 'attached', person, bucket: newBucket(ctx.now), attachedAt: ctx.now }, replies: [{ t: 'welcome', you: person }], presenceChanged: true };
+    // A newer socket for a known identity wins: an older one is either a ghost the server has not
+    // noticed dying (the client already reconnected) or another tab, which is told so.
+    return { state: { stage: 'attached', person, bucket: newBucket(ctx.now), attachedAt: ctx.now }, replies: [{ t: 'welcome', you: person }], presenceChanged: true, supersede: msg.publicKey };
   }
 
   if (state.stage !== 'attached') {
@@ -115,10 +119,8 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     if (!taken.ok) return { state: next, replies: [{ t: 'error', reason: 'rate limited', ref: msg.t === 'invalid' ? undefined : msg.t }] };
   }
   const notInCall = (ref: ClientMessage['t']): Outcome => ({ state: next, replies: [{ t: 'error', reason: 'not in the call', ref }] });
-  const participantByKey = (key: string): Person | undefined => {
-    for (const p of ctx.others) if (p.publicKey === key) return p.role === 'participant' ? p : undefined;
-    return undefined;
-  };
+  // Any participant entry for the key counts, whatever else is listed under it.
+  const participantByKey = (key: string): Person | undefined => { for (const p of ctx.others) if (p.publicKey === key && p.role === 'participant') return p; return undefined; };
 
   switch (msg.t) {
     case 'invalid':

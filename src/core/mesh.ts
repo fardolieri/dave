@@ -41,3 +41,14 @@ export function perViewerBitrate(activeViewers: number, budget = SHARE_BUDGET_BP
   if (activeViewers <= 0) return ceiling;
   return Math.max(floor, Math.min(ceiling, Math.floor(budget / activeViewers)));
 }
+
+/**
+ * Stuck-connecting watchdog: a peer still "connecting" after this long is reported and rebuilt.
+ * The offerer acts first; the other side a little later so both do not rebuild at once. Doubles per attempt.
+ */
+export const STUCK_CONNECTING_MS = 15_000;
+export const STUCK_STAGGER_MS = 5_000;
+export const STUCK_MAX_MS = 60_000;
+export function stuckDelay(attempt: number, initiator: boolean): number {
+  return Math.min(STUCK_MAX_MS, STUCK_CONNECTING_MS * 2 ** attempt) + (initiator ? 0 : STUCK_STAGGER_MS);
+}

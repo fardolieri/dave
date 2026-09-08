@@ -75,6 +75,8 @@ export const MAX_TEXT_LENGTH = 2000;
 /** Close codes the server uses. 4000 to 4999 are application-defined. */
 export const CLOSE_AUTH_FAILED = 4001;
 export const CLOSE_NOT_CONFIGURED = 4002;
+/** This identity opened a newer socket (another tab, or a reconnect whose old socket the server had not noticed). */
+export const CLOSE_SUPERSEDED = 4004;
 
 const B64URL = /^[A-Za-z0-9_-]+$/;
 const str = (v: unknown, max = MAX_MESSAGE_BYTES): v is string => typeof v === 'string' && v.length > 0 && v.length <= max;
