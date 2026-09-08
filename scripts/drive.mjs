@@ -123,14 +123,14 @@ try {
     }
     if (shareToo && browsers.length > 1) {
       const [sharer, viewer, ...rest] = browsers;
-      const gap = (b) => b.eval(`(() => { const l = document.querySelector('.chat-log'); return l.scrollHeight - l.scrollTop - l.clientHeight; })()`);
+      const gap = (b) => b.eval(`(() => { const l = document.querySelector('.chat-log'); return Math.abs(Math.round(l.scrollTop)); })()`);
       if (process.env.SCROLL_CHECK) {
         // A short viewport and many lines make the log overflow; the share strip then halves it. The newest line must stay in view.
         await viewer.cdp('Emulation.setDeviceMetricsOverride', { width: 1000, height: 420, deviceScaleFactor: 1, mobile: false });
         for (let i = 0; i < 14; i++) { await sharer.say(`filler line ${i}`); await sleep(120); }
         await sleep(800);
         console.log(`[${viewer.name}] gap to bottom before share (expect 0): ${await gap(viewer)}`);
-        var lastTop = (b) => b.eval(`(() => { const m = [...document.querySelectorAll('.chat-log .msg')].pop(); return m ? Math.round(m.getBoundingClientRect().bottom) : null; })()`);
+        var lastTop = (b) => b.eval(`(() => { const m = document.querySelector('.chat-log .msg'); return m ? Math.round(m.getBoundingClientRect().bottom) : null; })()`); // newest line is first in the DOM
         console.log(`[${viewer.name}] last line bottom edge on screen before share: ${await lastTop(viewer)}`);
       }
       await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Share screen')?.click(); 'share'`);
@@ -138,10 +138,15 @@ try {
       if (process.env.SCROLL_CHECK) {
         console.log(`[${viewer.name}] gap to bottom after the share strip appeared (expect 0): ${await gap(viewer)} | last line bottom edge (expect unchanged): ${await lastTop(viewer)}`);
         // A gap smaller than the growth: the browser must clamp scrollTop when the log grows, the case that used to lose the gap.
-        await viewer.eval(`(() => { const l = document.querySelector('.chat-log'); l.scrollTop = l.scrollHeight - l.clientHeight - 60; })(); 'scroll up 60px'`); await sleep(300);
-        console.log(`[${viewer.name}] scrolled up a bit: gap ${await gap(viewer)} | log height ${await viewer.eval(`document.querySelector('.chat-log').clientHeight`)}`);
+        await viewer.eval(`(() => { const l = document.querySelector('.chat-log'); l.scrollTop = -60; })(); 'scroll up 60px'`); await sleep(300);
+        console.log(`[${viewer.name}] scrolled up a bit: gap ${await gap(viewer)} | log height ${await viewer.eval(`document.querySelector('.chat-log').clientHeight`)} | hint: ${await viewer.text('.chat-new') || '(none)'}`);
+        await sharer.say('arrives while Bob reads older lines'); await sleep(600);
+        console.log(`[${viewer.name}] a line arrived while scrolled up: gap (expect 108 = 60 + one line, reader not moved) ${await gap(viewer)} | hint (expect shown): ${await viewer.text('.chat-new') || '(none)'}`);
+        if (shotDir) { mkdirSync(shotDir, { recursive: true }); await viewer.screenshot(`${shotDir}/${viewer.name}-new-messages-hint.png`); }
         await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Stop sharing')?.click(); 'stop'`); await sleep(1500);
-        console.log(`[${viewer.name}] strip went away, log grew: gap (expect 60, bottom edge anchored): ${await gap(viewer)} | log height ${await viewer.eval(`document.querySelector('.chat-log').clientHeight`)}`);
+        console.log(`[${viewer.name}] strip went away, log grew: gap (expect 108, unchanged): ${await gap(viewer)} | log height ${await viewer.eval(`document.querySelector('.chat-log').clientHeight`)}`);
+        await viewer.eval(`document.querySelector('.chat-new')?.click(); 'jump'`); await sleep(400);
+        console.log(`[${viewer.name}] after clicking the hint: gap (expect 0) ${await gap(viewer)} | hint (expect gone): ${await viewer.text('.chat-new') || '(none)'}`);
         // Few lines, tall viewport: the log does not overflow once full size; the lines must still sit at the bottom, unmoved.
         await viewer.cdp('Emulation.setDeviceMetricsOverride', { width: 1000, height: 1400, deviceScaleFactor: 1, mobile: false }); await sleep(300);
         await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Share screen')?.click(); 'share'`); await sleep(2500);

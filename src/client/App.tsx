@@ -415,32 +415,34 @@ function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: str
     if (!text || !props.connected) return;
     props.onSend(text);
     setDraft('');
+    jump(); // your own message always brings you back to the newest line
   };
-  // New lines scroll to the bottom. When the log changes size (a share strip appearing halves it),
-  // the bottom edge stays anchored: whatever distance the reader was from the bottom is kept, so the
-  // same lines remain in view and nothing jumps, whether at the bottom or scrolled up a bit.
+  // The log is a reversed flex column (newest line first in the DOM, drawn at the bottom), so the
+  // scroll origin is the bottom edge: position 0 is "at the newest line" and the browser keeps that
+  // offset when lines arrive or the log changes size. The browser's own scroll anchoring is off (CSS):
+  // it measures from the top edge, which is the edge that moves when a share strip comes or goes, and
+  // it snapped a scrolled-up reader to the bottom. The one thing it did for us, holding a scrolled-up
+  // reader in place when a new line pushes everything up, is the two lines in the effect below.
+  const newestFirst = createMemo(() => [...props.lines].reverse());
+  let atBottom = true;
+  let contentHeight = 0; // scrollHeight at the last scroll or line change
+  const [unseen, setUnseen] = createSignal(false);
+  const onScroll = () => { if (!log) return; atBottom = Math.abs(log.scrollTop) < 8; contentHeight = log.scrollHeight; if (atBottom) setUnseen(false); };
   // Block bodies on purpose: an effect callback's return value is taken as a cleanup, and browser
   // extensions that hook scrolling make scrollTo return a value, which halted the whole page once.
-  let gap = 0; // px between the viewport's bottom edge and the end of the log
-  let knownHeight = 0; // the log height the gap was measured at
-  const toBottom = () => { log?.scrollTo({ top: log.scrollHeight }); };
-  // When the log grows, the browser clamps scrollTop first and fires a scroll event *before* the resize
-  // callback runs; reading the gap from that event would reset it to zero. Only trust scroll events
-  // at the height the last measurement was taken at.
-  const onScroll = () => { if (log && log.clientHeight === knownHeight) gap = log.scrollHeight - log.scrollTop - log.clientHeight; };
-  createEffect(() => props.lines.length, () => { toBottom(); gap = 0; });
-  // Created here, inside the component's owner, so the cleanup is actually run; the ref only attaches it.
-  const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(() => {
+  const jump = () => { log?.scrollTo({ top: 0 }); setUnseen(false); };
+  createEffect(() => props.lines.length, (n, prev) => {
     if (!log) return;
-    knownHeight = log.clientHeight;
-    log.scrollTop = log.scrollHeight - log.clientHeight - gap;
+    if (prev !== undefined && n > prev && !atBottom) {
+      log.scrollTop -= log.scrollHeight - contentHeight; // scrollTop is negative here: further up by the added height
+      setUnseen(true);
+    }
+    contentHeight = log.scrollHeight;
   });
-  onCleanup(() => resize?.disconnect());
-  const observeLog = (el: HTMLDivElement) => { log = el; resize?.observe(el); };
   return (
     <div class="chat">
-      <div class="chat-log" ref={observeLog} onScroll={onScroll}>
-        <For each={props.lines}>
+      <div class="chat-log" ref={log} onScroll={onScroll}>
+        <For each={newestFirst()}>
           {(l) => (
             <Switch>
               <Match when={l.kind === 'system' && l}>{(s) => <div class="msg msg-sys"><span class="msg-text">{s().text}</span><span class="msg-at">{when(s().at)}</span></div>}</Match>
@@ -457,6 +459,7 @@ function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: str
           )}
         </For>
       </div>
+      <Show when={unseen()}><button class="chat-new" onClick={jump} title="Scroll to the newest message">new messages ↓</button></Show>
       <Show when={props.lines.length > 0}>
         <div class="chat-tools"><button class="link" onClick={props.onClear} title="Only this browser's copy; nothing is stored on the server">clear history</button></div>
       </Show>

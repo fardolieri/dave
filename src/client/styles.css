@@ -33,11 +33,13 @@ code.fp { font-size: 11px; color: var(--dim); }
 .banner-bad { background: #4a1a1a; color: var(--bad); }
 
 .chat { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.chat-log { flex: 1; overflow: auto; overflow-anchor: none; display: flex; flex-direction: column; gap: 10px; min-height: 80px; }
-/* Lines sit at the bottom, next to the composer, when they do not fill the log; so the newest line
-   keeps its place on screen whether a share strip has shrunk the log or not. (margin-top:auto on the
-   first child, not justify-content, keeps the overflowing start reachable by scrolling.) */
-.chat-log > :first-child { margin-top: auto; }
+.chat { position: relative; }
+/* Reversed column: newest line first in the DOM, drawn at the bottom. The scroll origin is the bottom
+   edge, so staying at the newest line across new lines and size changes is the browser's default. */
+.chat-log { flex: 1; overflow: auto; overflow-anchor: none; display: flex; flex-direction: column-reverse; gap: 10px; min-height: 80px; }
+/* subtle pill over the log's bottom edge while new lines wait below the reader */
+.chat-new { position: absolute; left: 50%; bottom: 66px; transform: translateX(-50%); font-size: 11px; color: var(--dim); background: rgba(34,38,47,.85); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
+.chat-new:hover { color: var(--fg); }
 .msg-from { font-weight: 600; } .msg-at { color: var(--dim); font-size: 11px; margin-left: 6px; }
 .msg-text { white-space: pre-wrap; word-break: break-word; }
 .msg-sys { font-size: 12px; color: var(--dim); font-style: italic; } .msg-sys .msg-text { display: inline; }
