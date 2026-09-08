@@ -52,6 +52,8 @@ class Browser {
   }
   cdp(method, params = {}) { const id = ++this.id; this.ws.send(JSON.stringify({ id, method, params })); return new Promise((r) => this.pending.set(id, r)); }
   async eval(expression) { const r = await this.cdp('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value; }
+  /** Same as eval, but counts as a user gesture so fullscreen and similar APIs are allowed. */
+  async gesture(expression) { const r = await this.cdp('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true, userGesture: true }); return r.result?.result?.value; }
   async goto(u) { await this.cdp('Page.navigate', { url: u }); await sleep(800); }
   async seed() {
     await this.goto(new URL('/', url).href);
@@ -151,6 +153,27 @@ try {
         const b3 = await third.eval(`Object.fromEntries(window.__dave.peers().map(p => [p.name, p.videoBytesIn]))`);
         console.log(`[${third.name}] bytes at unwatch of ${sharer.name}: ${JSON.stringify(b1)} -> ${JSON.stringify(b2)} -> ${JSON.stringify(b3)} (first should stop growing, second keeps growing)`);
         console.log(`[${third.name}] tiles after unwatch: ${await third.text('.share')}`);
+      }
+      if (process.env.FULLSCREEN_CHECK) {
+        // Fullscreen must survive a click into the video, and must end when the share ends or I leave.
+        const fsState = async (b) => `fullscreen=${await b.eval(`document.fullscreenElement?.tagName ?? null`)} watching=${await b.eval(`window.__dave?.peers().find(p => p.name === ${JSON.stringify(sharer.name)})?.watching`)}`;
+        await viewer.gesture(`[...document.querySelectorAll('.share')].find(t => t.textContent.includes(${JSON.stringify(sharer.name)}))?.querySelector('.fs')?.click(); 'fs'`);
+        await sleep(800);
+        console.log(`[${viewer.name}] after fullscreen button: ${await fsState(viewer)}`);
+        await viewer.gesture(`document.fullscreenElement?.click(); 'click video'`);
+        await sleep(500);
+        console.log(`[${viewer.name}] after clicking into the fullscreen video (expect still fullscreen and watching): ${await fsState(viewer)}`);
+        await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Stop sharing')?.click(); 'stop'`);
+        await sleep(1500);
+        console.log(`[${viewer.name}] after sharer stopped (expect fullscreen=null): ${await fsState(viewer)}`);
+        await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Share screen')?.click(); 'share again'`);
+        await sleep(2500);
+        await viewer.gesture(`[...document.querySelectorAll('.share')].find(t => t.textContent.includes(${JSON.stringify(sharer.name)}))?.querySelector('.fs')?.click(); 'fs'`);
+        await sleep(2500);
+        console.log(`[${viewer.name}] fullscreen again: ${await fsState(viewer)}`);
+        await viewer.eval(`document.querySelector('button.leave')?.click(); 'leave'`);
+        await sleep(800);
+        console.log(`[${viewer.name}] after leaving the call (expect fullscreen=null): ${await fsState(viewer)}`);
       }
     }
     if (shotDir) {
