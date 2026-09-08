@@ -130,15 +130,24 @@ try {
         for (let i = 0; i < 14; i++) { await sharer.say(`filler line ${i}`); await sleep(120); }
         await sleep(800);
         console.log(`[${viewer.name}] gap to bottom before share (expect 0): ${await gap(viewer)}`);
+        var lastTop = (b) => b.eval(`(() => { const m = [...document.querySelectorAll('.chat-log .msg')].pop(); return m ? Math.round(m.getBoundingClientRect().bottom) : null; })()`);
+        console.log(`[${viewer.name}] last line bottom edge on screen before share: ${await lastTop(viewer)}`);
       }
       await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Share screen')?.click(); 'share'`);
       await sleep(3000);
       if (process.env.SCROLL_CHECK) {
-        console.log(`[${viewer.name}] gap to bottom after the share strip appeared (expect 0): ${await gap(viewer)}`);
+        console.log(`[${viewer.name}] gap to bottom after the share strip appeared (expect 0): ${await gap(viewer)} | last line bottom edge (expect unchanged): ${await lastTop(viewer)}`);
         await viewer.eval(`(() => { const l = document.querySelector('.chat-log'); l.scrollTop = l.scrollHeight - l.clientHeight - 100; })(); 'scroll up 100px'`); await sleep(300);
         console.log(`[${viewer.name}] scrolled up a bit: gap ${await gap(viewer)}`);
         await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Stop sharing')?.click(); 'stop'`); await sleep(1500);
         console.log(`[${viewer.name}] strip went away, log grew: gap (expect 100, bottom edge anchored): ${await gap(viewer)}`);
+        // Few lines, tall viewport: the log does not overflow once full size; the lines must still sit at the bottom, unmoved.
+        await viewer.cdp('Emulation.setDeviceMetricsOverride', { width: 1000, height: 1400, deviceScaleFactor: 1, mobile: false }); await sleep(300);
+        await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Share screen')?.click(); 'share'`); await sleep(2500);
+        const withStrip = await lastTop(viewer);
+        await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Stop sharing')?.click(); 'stop'`); await sleep(1500);
+        console.log(`[${viewer.name}] tall viewport: last line bottom edge with strip ${withStrip}, after strip went away (expect same): ${await lastTop(viewer)} | overflow now: ${await viewer.eval(`(() => { const l = document.querySelector('.chat-log'); return l.scrollHeight > l.clientHeight; })()`)}`);
+        if (shotDir) { mkdirSync(shotDir, { recursive: true }); await viewer.screenshot(`${shotDir}/${viewer.name}-chat-full.png`); }
         await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Share screen')?.click(); 'share again'`); await sleep(3000);
         await viewer.cdp('Emulation.clearDeviceMetricsOverride');
       }
