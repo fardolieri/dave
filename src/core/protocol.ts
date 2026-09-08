@@ -33,7 +33,8 @@ export type ClientMessage =
   | { t: 'ping' }
   | { t: 'text'; text: string }
   /** Enter the Call (or re-declare after a server reconnect). */
-  | { t: 'join'; muted: boolean }
+  /** `sharing` lets a re-join after a server reconnect keep an ongoing share visible to everyone. */
+  | { t: 'join'; muted: boolean; sharing?: boolean }
   | { t: 'leave' }
   | { t: 'mute'; muted: boolean }
   /** Point-to-point signaling to another participant, by public key. */
@@ -107,7 +108,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | Invalid {
     case 'ping':
       return { t: 'ping' };
     case 'join':
-      return typeof m.muted === 'boolean' ? { t: 'join', muted: m.muted } : invalid('unrecognised message');
+      return typeof m.muted === 'boolean' ? { t: 'join', muted: m.muted, sharing: m.sharing === true } : invalid('unrecognised message');
     case 'leave':
       return { t: 'leave' };
     case 'mute':

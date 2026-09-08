@@ -154,25 +154,38 @@ try {
         console.log(`[${third.name}] bytes at unwatch of ${sharer.name}: ${JSON.stringify(b1)} -> ${JSON.stringify(b2)} -> ${JSON.stringify(b3)} (first should stop growing, second keeps growing)`);
         console.log(`[${third.name}] tiles after unwatch: ${await third.text('.share')}`);
       }
+      if (process.env.LEAVE_CHECK) {
+        // Leave while sharing, then rejoin: nothing may still claim I am sharing.
+        await sharer.eval(`document.querySelector('button.leave')?.click(); 'leave'`); await sleep(1500);
+        console.log(`[${sharer.name}] after leave while sharing: actions=${await sharer.text('.actions button, button.join')} | share=${JSON.stringify(await sharer.eval(`window.__dave?.share()`))} | tiles=${await sharer.text('.share') || '(none)'} | online=${await sharer.text('.plist li')}`);
+        await sharer.eval(`document.querySelector('button.join')?.click(); 'join'`); await sleep(2500);
+        console.log(`[${sharer.name}] after rejoin: actions=${await sharer.text('.actions button')} | share=${JSON.stringify(await sharer.eval(`window.__dave?.share()`))} | tiles=${await sharer.text('.share') || '(none)'} | call=${await sharer.text('.plist li')}`);
+        console.log(`[${viewer.name}] sees: tiles=${await viewer.text('.share') || '(none)'} | call=${await viewer.text('.plist li')}`);
+      }
       if (process.env.FULLSCREEN_CHECK) {
-        // Fullscreen must survive a click into the video, and must end when the share ends or I leave.
-        const fsState = async (b) => `fullscreen=${await b.eval(`document.fullscreenElement?.tagName ?? null`)} watching=${await b.eval(`window.__dave?.peers().find(p => p.name === ${JSON.stringify(sharer.name)})?.watching`)}`;
-        await viewer.gesture(`[...document.querySelectorAll('.share')].find(t => t.textContent.includes(${JSON.stringify(sharer.name)}))?.querySelector('.fs')?.click(); 'fs'`);
-        await sleep(800);
-        console.log(`[${viewer.name}] after fullscreen button: ${await fsState(viewer)}`);
-        await viewer.gesture(`document.fullscreenElement?.click(); 'click video'`);
-        await sleep(500);
-        console.log(`[${viewer.name}] after clicking into the fullscreen video (expect still fullscreen and watching): ${await fsState(viewer)}`);
-        await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Stop sharing')?.click(); 'stop'`);
-        await sleep(1500);
+        // Click a running tile: the tile goes fullscreen. Click again: back. Stop watching has its own button.
+        // Fullscreen ends by itself when the share ends or I leave.
+        const fsState = async (b) => `fullscreen=${await b.eval(`document.fullscreenElement ? document.fullscreenElement.className.split(' ')[0] : null`)} watching=${await b.eval(`window.__dave?.peers().find(p => p.name === ${JSON.stringify(sharer.name)})?.watching`)}`;
+        const tile = `[...document.querySelectorAll('.share')].find(t => t.textContent.includes(${JSON.stringify(sharer.name)}))`;
+        console.log(`[${sharer.name}] own bar: ${await sharer.text('.share-own .share-bar')}`);
+        console.log(`[${viewer.name}] bar: ${await viewer.text('.share .share-bar')}`);
+        await viewer.gesture(`${tile}?.click(); 'tile'`); await sleep(800);
+        console.log(`[${viewer.name}] after clicking the running tile (expect fullscreen=share): ${await fsState(viewer)} | bar: ${await viewer.text('.share-fs .share-bar')}`);
+        if (shotDir) { mkdirSync(shotDir, { recursive: true }); await viewer.screenshot(`${shotDir}/${viewer.name}-fullscreen.png`); }
+        await viewer.gesture(`document.fullscreenElement?.click(); 'click again'`); await sleep(500);
+        console.log(`[${viewer.name}] after clicking again (expect fullscreen=null, still watching): ${await fsState(viewer)}`);
+        await viewer.eval(`document.querySelector('.share .stop')?.click(); 'stop watching'`); await sleep(800);
+        console.log(`[${viewer.name}] after Stop watching (expect watching=false): ${await fsState(viewer)} | tile: ${await viewer.text('.share')}`);
+        await viewer.eval(`${tile}?.click(); 'watch'`); await sleep(3000);
+        await viewer.gesture(`${tile}?.click(); 'fullscreen'`); await sleep(800);
+        console.log(`[${viewer.name}] watching and fullscreen again: ${await fsState(viewer)}`);
+        await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Stop sharing')?.click(); 'stop'`); await sleep(1500);
         console.log(`[${viewer.name}] after sharer stopped (expect fullscreen=null): ${await fsState(viewer)}`);
-        await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Share screen')?.click(); 'share again'`);
-        await sleep(2500);
-        await viewer.gesture(`[...document.querySelectorAll('.share')].find(t => t.textContent.includes(${JSON.stringify(sharer.name)}))?.querySelector('.fs')?.click(); 'fs'`);
-        await sleep(2500);
-        console.log(`[${viewer.name}] fullscreen again: ${await fsState(viewer)}`);
-        await viewer.eval(`document.querySelector('button.leave')?.click(); 'leave'`);
-        await sleep(800);
+        await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Share screen')?.click(); 'share again'`); await sleep(2500);
+        await viewer.eval(`${tile}?.click(); 'watch'`); await sleep(3000);
+        await viewer.gesture(`${tile}?.click(); 'fullscreen'`); await sleep(800);
+        console.log(`[${viewer.name}] fullscreen once more: ${await fsState(viewer)}`);
+        await viewer.eval(`document.querySelector('button.leave')?.click(); 'leave'`); await sleep(800);
         console.log(`[${viewer.name}] after leaving the call (expect fullscreen=null): ${await fsState(viewer)}`);
       }
     }

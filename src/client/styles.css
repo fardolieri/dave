@@ -90,10 +90,22 @@ button.leave { background: var(--bad); color: #fff; border-color: transparent; }
 .share-unreachable { opacity: .6; }
 .share-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 13px; background: rgba(0,0,0,.25); }
 .share-head .conn { margin-left: auto; }
-.share-head .fs { padding: 0 6px; line-height: 1.4; }
+.share-head .stop { padding: 2px 8px; font-size: 12px; }
+.share-head .conn + .stop { margin-left: 0; }
+.share-head .stop:first-of-type:not(.conn + .stop) { margin-left: auto; }
 .share video { flex: 1; width: 100%; min-height: 0; object-fit: contain; background: #000; }
 .share-note { flex: 1; display: grid; place-items: center; color: var(--dim); font-size: 13px; }
-.share-caption { position: absolute; right: 8px; bottom: 6px; font-family: monospace; font-size: 11px; color: var(--dim); background: rgba(0,0,0,.5); padding: 1px 6px; border-radius: 4px; }
+/* stats bar: rates and formats on the left, fullscreen where players keep it, bottom right */
+.share-bar { display: flex; align-items: center; gap: 10px; padding: 3px 8px; font-family: monospace; font-size: 11px; color: var(--dim); background: rgba(0,0,0,.35); cursor: default; }
+.share-bar .share-stats { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-bar .fs { padding: 0 6px; line-height: 1.4; font-family: system-ui, sans-serif; }
+.share-vol { display: flex; align-items: center; gap: 6px; font-family: system-ui, sans-serif; }
+.share-vol input[type=range] { width: 120px; accent-color: var(--acc); }
+/* the tile itself is the fullscreen element: black stage, header and bar as translucent overlays */
+.share.share-fs { border: 0; border-radius: 0; background: #000; cursor: pointer; }
+.share.share-fs .share-head { position: absolute; top: 0; left: 0; right: 0; z-index: 1; background: rgba(0,0,0,.55); }
+.share.share-fs .share-bar { position: absolute; bottom: 0; left: 0; right: 0; z-index: 1; background: rgba(0,0,0,.55); font-size: 13px; padding: 8px 12px; }
+.share.share-fs video { width: 100%; height: 100%; }
 .spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--dim); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .hint { font-size: 12px; color: var(--dim); }

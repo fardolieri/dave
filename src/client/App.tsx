@@ -4,11 +4,12 @@ import posthog from './posthog';
 import { loadIdentity, type LocalIdentity } from './identity';
 import { getName, getSecret, setName, takeSecretFromInviteLink } from './invite';
 import { createRoom, type ChatLine, type ServerStatus } from './room';
-import { createCall, type ConnState, type PeerView } from './call';
+import { createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
 import { createAttention } from './attention';
 import { isKnown, markKnown } from './seenKeys';
 import { MAX_TEXT_LENGTH, normaliseName, type Person } from '../core/protocol';
 import { LOW_LATENCY_MS, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
+import { formatBitrate, formatVideo } from '../core/format';
 
 export default function App() {
   takeSecretFromInviteLink();
@@ -152,8 +153,10 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
                     inCall={call.inCall()}
                     view={viewOf(p.publicKey)}
                     stream={p.publicKey === me() ? call.sharing() ?? undefined : call.shareStreamOf(p.publicKey)}
-                    onToggle={() => call.watch(p.publicKey, !viewOf(p.publicKey)?.watching)}
+                    outgoing={p.publicKey === me() ? call.outgoing() : undefined}
+                    onWatch={(on) => call.watch(p.publicKey, on)}
                     onFullscreen={() => call.watchOnly(p.publicKey)}
+                    onVolume={call.inCall() ? (v) => call.setVolume(p.publicKey, v) : undefined}
                   />
                 )}
               </For>
@@ -266,13 +269,32 @@ function ParticipantRow(props: { p: Person; isMe: boolean; view?: PeerView; spea
 }
 
 type FullscreenDoc = Document & { webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => Promise<void> | void };
+type FullscreenEl = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
 const fullscreenElement = (): Element | null => { const d = document as FullscreenDoc; return d.fullscreenElement ?? d.webkitFullscreenElement ?? null; };
 const exitFullscreenSafely = (): void => {
   const d = document as FullscreenDoc;
   try { void Promise.resolve(d.exitFullscreen ? d.exitFullscreen() : d.webkitExitFullscreen?.()).catch(() => {}); } catch { /* not in fullscreen anymore */ }
 };
+const requestFullscreenSafely = (el: FullscreenEl, video?: HTMLVideoElement & { webkitEnterFullscreen?: () => void }): void => {
+  try {
+    if (el.requestFullscreen) void el.requestFullscreen().catch(() => {});
+    else if (el.webkitRequestFullscreen) void Promise.resolve(el.webkitRequestFullscreen()).catch(() => {});
+    else video?.webkitEnterFullscreen?.(); // iPhone Safari has no element fullscreen, only the native video player
+  } catch { /* not allowed here */ }
+};
 
-function ShareTile(props: { p: Person; isMe: boolean; inCall: boolean; view?: PeerView; stream?: MediaStream; onToggle: () => void; onFullscreen: () => void }) {
+type ShareTileProps = {
+  p: Person; isMe: boolean; inCall: boolean; view?: PeerView; stream?: MediaStream; outgoing?: OutgoingShare | null;
+  onWatch: (on: boolean) => void; onFullscreen: () => void; onVolume?: (v: number) => void;
+};
+
+/**
+ * One share. Click: closed → watch, running → fullscreen, fullscreen → back. The tile itself goes
+ * fullscreen (not the video), so the header, the stats bar and our own controls stay and the browser's
+ * playback controls, meaningless for a live stream, never appear (spec §6.5).
+ */
+function ShareTile(props: ShareTileProps) {
+  let root: HTMLDivElement | undefined;
   let video: HTMLVideoElement | undefined;
   // Mirror the stream into the element; never read state off the media object in JSX (spec §2.1).
   createEffect(() => props.stream, (stream) => { if (video && video.srcObject !== (stream ?? null)) video.srcObject = stream ?? null; });
@@ -283,29 +305,52 @@ function ShareTile(props: { p: Person; isMe: boolean; inCall: boolean; view?: Pe
     if (!props.view?.watching) return 'closed';
     return props.view.shareLive ? 'live' : 'opening';
   };
+  const running = () => state() === 'live' || state() === 'opening' || state() === 'own';
   const showsVideo = () => state() === 'live' || state() === 'own';
-  // Fullscreen is only ever held by a share that can still show something; the moment it stops
-  // (sharer quit, I unsubscribed, peer unreachable, I left the call, tile gone) the page comes back.
-  const canHoldFullscreen = () => state() === 'live' || state() === 'opening' || state() === 'own';
-  const holdsFullscreen = () => video !== undefined && fullscreenElement() === video;
-  const exitFullscreen = () => { if (holdsFullscreen()) exitFullscreenSafely(); };
-  createEffect(() => canHoldFullscreen(), (can) => { if (!can) exitFullscreen(); });
-  onCleanup(exitFullscreen);
-  const goFullscreen = (e: MouseEvent) => {
-    e.stopPropagation();
-    props.onFullscreen(); // subscribes to this share if needed and drops the others
-    const el = video as (HTMLVideoElement & { webkitRequestFullscreen?: () => Promise<void> }) | undefined;
-    (el?.requestFullscreen?.() ?? el?.webkitRequestFullscreen?.())?.catch(() => {});
+  // Whether this tile is the fullscreen element, mirrored from the document event.
+  const [fullscreen, setFullscreen] = createSignal(false);
+  const onFsChange = () => { setFullscreen(root !== undefined && fullscreenElement() === root); };
+  document.addEventListener('fullscreenchange', onFsChange);
+  document.addEventListener('webkitfullscreenchange', onFsChange);
+  const holdsFullscreen = () => root !== undefined && fullscreenElement() === root;
+  // Fullscreen ends the moment the share can no longer show anything (sharer quit, I stopped, peer
+  // unreachable, I left the call, tile gone); the page must never stay stuck black.
+  createEffect(() => running(), (on) => { if (!on && holdsFullscreen()) exitFullscreenSafely(); });
+  onCleanup(() => {
+    document.removeEventListener('fullscreenchange', onFsChange);
+    document.removeEventListener('webkitfullscreenchange', onFsChange);
+    if (holdsFullscreen()) exitFullscreenSafely();
+  });
+  const enterFullscreen = () => {
+    if (!root) return;
+    if (!props.isMe) props.onFullscreen(); // drops every other share (spec §6.5)
+    requestFullscreenSafely(root, video);
   };
-  // Clicking the tile toggles the subscription, except while it fills the screen: there a click
-  // must never tear down the very stream being watched.
-  const onTileClick = () => { if (!props.isMe && props.inCall && !fullscreenElement()) props.onToggle(); };
+  const onTileClick = () => {
+    if (fullscreen()) exitFullscreenSafely();
+    else if (state() === 'closed') props.onWatch(true);
+    else if (running()) enterFullscreen();
+  };
+  const stopWatching = (e: MouseEvent) => { e.stopPropagation(); props.onWatch(false); };
+  const percent = () => Math.round((props.view?.volume ?? 1) * 100);
+  const stats = () => {
+    if (props.isMe) {
+      const o = props.outgoing;
+      if (!o || o.viewers === 0) return 'you are sharing · nobody watching yet';
+      const who = o.viewers === 1 ? '1 viewer' : `${o.viewers} viewers`;
+      return [who, formatBitrate(o.kbps), ...o.formats.map(formatVideo)].join(' · ');
+    }
+    const v = props.view;
+    if (!v) return '';
+    if (state() !== 'live') return CONN_LABEL[v.conn];
+    return [formatBitrate(v.shareKbps), ...(v.shareFormat ? [formatVideo(v.shareFormat)] : []), CONN_LABEL[v.conn]].join(' · ');
+  };
   return (
-    <div class={`share share-${state()}`} onClick={onTileClick}>
+    <div class={`share share-${state()} ${fullscreen() ? 'share-fs' : ''}`} ref={root} onClick={onTileClick}>
       <div class="share-head">
         <span>{props.isMe ? 'Your screen' : `${props.p.name}'s screen`}</span>
         <Show when={!props.isMe && props.view ? props.view : undefined}>{(v) => <span class={`conn conn-${v().conn}`}><i />{CONN_LABEL[v().conn]}</span>}</Show>
-        <Show when={state() !== 'locked' && state() !== 'unreachable'}><button class="fs" title="Fullscreen" onClick={goFullscreen}>⛶</button></Show>
+        <Show when={!props.isMe && (state() === 'live' || state() === 'opening')}><button class="stop" title="Stop receiving this share" onClick={stopWatching}>Stop watching</button></Show>
       </div>
       <video ref={video} autoplay playsinline muted hidden={!showsVideo()} />
       <Switch>
@@ -313,9 +358,20 @@ function ShareTile(props: { p: Person; isMe: boolean; inCall: boolean; view?: Pe
         <Match when={state() === 'closed'}><div class="share-note">Click to watch</div></Match>
         <Match when={state() === 'opening'}><div class="share-note"><span class="spinner" /> Opening…</div></Match>
         <Match when={state() === 'unreachable'}><div class="share-note">No connection to {props.p.name}</div></Match>
-        <Match when={state() === 'live' && props.view}>{(v) => <div class="share-caption">{v().shareKbps} kbps · {CONN_LABEL[v().conn]}</div>}</Match>
-        <Match when={state() === 'own'}><div class="share-caption">you are sharing</div></Match>
       </Switch>
+      <Show when={running()}>
+        <div class="share-bar" onClick={(e) => e.stopPropagation()}>
+          <span class="share-stats">{stats()}</span>
+          <Show when={fullscreen() && props.onVolume}>
+            <label class="share-vol" title="Volume for you, double-click to reset">
+              <span>{percent() === 0 ? '🔇' : '🔊'}</span>
+              <input type="range" min="0" max={MAX_VOLUME * 100} step="5" value={percent()} onInput={(e) => props.onVolume?.(Number(e.currentTarget.value) / 100)} onDblClick={() => props.onVolume?.(1)} />
+              <span>{percent()}%</span>
+            </label>
+          </Show>
+          <button class="fs" title={fullscreen() ? 'Leave fullscreen' : 'Fullscreen'} onClick={(e) => { e.stopPropagation(); if (fullscreen()) exitFullscreenSafely(); else enterFullscreen(); }}>{fullscreen() ? '⤡' : '⛶'}</button>
+        </div>
+      </Show>
     </div>
   );
 }

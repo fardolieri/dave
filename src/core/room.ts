@@ -136,7 +136,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       // Joining twice (after a server reconnect) is fine: a fresh join sequence, same identity.
       // The sequence is fixed and stored before the TURN fetch so concurrent joins cannot collide.
       const joinSeq = nextJoinSeq([...ctx.others, state.person]);
-      const person: Person = { ...state.person, role: 'participant', joinSeq, muted: msg.muted, sharing: false };
+      const person: Person = { ...state.person, role: 'participant', joinSeq, muted: msg.muted, sharing: msg.sharing === true };
       const now = ctx.now;
       return {
         state: { ...next, person },

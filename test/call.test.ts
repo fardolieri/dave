@@ -150,6 +150,21 @@ describe('shares', () => {
     a.ws.close(1000); b.ws.close(1000);
   });
 
+  it('a re-join can carry the sharing flag, so a share survives the sharer\'s server reconnect', async () => {
+    const a = await attach('Alice');
+    const b = await attach('Bob');
+    send(a, { t: 'join', muted: false }); await a.next((m) => m.t === 'call');
+    send(a, { t: 'share', on: true });
+    await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => p.name === 'Alice' && p.sharing));
+    send(a, { t: 'join', muted: false, sharing: true }); await a.next((m) => m.t === 'call');
+    const snap = await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => p.name === 'Alice' && p.joinSeq === 2));
+    expect((snap as { people: Person[] }).people.find((p) => p.name === 'Alice')!.sharing).toBe(true);
+    send(a, { t: 'join', muted: false }); await a.next((m) => m.t === 'call'); // without the flag it resets, as before
+    const snap2 = await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => p.name === 'Alice' && p.joinSeq === 3));
+    expect((snap2 as { people: Person[] }).people.find((p) => p.name === 'Alice')!.sharing).toBe(false);
+    a.ws.close(1000); b.ws.close(1000);
+  });
+
   it('leaving clears the sharing flag', async () => {
     const a = await attach('Alice');
     const b = await attach('Bob');

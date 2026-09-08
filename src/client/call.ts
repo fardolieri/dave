@@ -1,4 +1,5 @@
 import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
+import { distinctFormats, type VideoFormat } from '../core/format';
 import posthog from './posthog';
 import {
   ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
@@ -13,11 +14,15 @@ import { local } from './storage';
 
 export type ConnState = 'connecting' | 'direct' | 'relayed' | 'reconnecting' | 'unreachable';
 
+/** My own share as the sharer sees it: total upload, the distinct encoded formats, how many watch. */
+export type OutgoingShare = { kbps: number; formats: VideoFormat[]; viewers: number };
+const sameFormat = (a: VideoFormat | null, b: VideoFormat | null): boolean => a === b || (!!a && !!b && a.width === b.width && a.height === b.height && Math.round(a.fps) === Math.round(b.fps));
+
 /** What the UI shows per remote participant. Plain data mirrored from WebRTC events (spec §2.1). */
 export type PeerView = {
   publicKey: string; name: string; conn: ConnState; speaking: boolean; serverLost: boolean; audioBytesIn: number;
-  /** Their share as I see it: whether I asked for it, whether frames have arrived, and the inbound rate. */
-  watching: boolean; shareLive: boolean; shareKbps: number;
+  /** Their share as I see it: whether I asked for it, whether frames have arrived, the inbound rate and format. */
+  watching: boolean; shareLive: boolean; shareKbps: number; shareFormat: VideoFormat | null;
   /** How loud this participant is for me, 0 to 1. Local only. */
   volume: number;
 };
@@ -50,6 +55,10 @@ type Peer = {
   shareAudio: HTMLAudioElement;
   videoBytesIn: number;
   videoBytesAt: number;
+  /** My share as sent to this peer: bytes so far, rate and encoded format from the last stats read. */
+  videoBytesOut: number;
+  outKbps: number;
+  outFormat: VideoFormat | null;
   /** Serialises setParameters calls on this connection so a late subscribe cannot collide with an earlier one. */
   encodingChain: Promise<void>;
   /** Downscale this Viewer asked for (small screen), 1 = none. */
@@ -84,7 +93,8 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   const [shareStreams, setShareStreams] = createSignal<Map<string, MediaStream>>(new Map());
   let shareVideo: MediaStreamTrack | null = null;
   let shareAudio: MediaStreamTrack | null = null;
-  let stoppingShare = false;
+  /** What my share currently costs and looks like across all viewers (spec §6.5); null while not sharing. */
+  const [outgoing, setOutgoing] = createSignal<OutgoingShare | null>(null);
   /** Subscribe requests that arrived before the connection to that participant existed. */
   const earlyViewers = new Map<string, number>();
 
@@ -292,8 +302,8 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     keepAlive.muted = true;
     const peer: Peer = {
       key, name, pc, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, keepAlive, audioNodes: [], restarts: 0,
-      view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, volume: untrack(volumes)[key] ?? 1 },
-      viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, encodingChain: Promise.resolve(),
+      view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1 },
+      viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
     };
     earlyViewers.delete(key);
@@ -335,7 +345,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
         applyJitterTarget(transceiver.receiver);
         if (slot === SLOT_INDEX.shareVideo) {
           track.onunmute = () => setView(peer, { shareLive: true });
-          track.onmute = () => setView(peer, { shareLive: false, shareKbps: 0 });
+          track.onmute = () => setView(peer, { shareLive: false, shareKbps: 0, shareFormat: null });
         } else {
           // The tile's video element is muted (autoplay), so share audio plays through its own element, gain-adjusted.
           wireRemoteAudio(peer, 'share', new MediaStream([track]));
@@ -531,22 +541,36 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     const st = await peer.pc.getStats();
     let audioBytesIn = 0;
     let videoBytesIn = 0;
+    let videoBytesOut = 0;
+    let inFormat: VideoFormat | null = null;
+    let outFormat: VideoFormat | null = null;
+    type VideoRtp = { frameWidth?: number; frameHeight?: number; framesPerSecond?: number };
+    const formatOf = (r: VideoRtp): VideoFormat | null => (r.frameWidth && r.frameHeight ? { width: r.frameWidth, height: r.frameHeight, fps: r.framesPerSecond ?? 0 } : null);
     st.forEach((r) => {
-      if (r.type !== 'inbound-rtp') return;
-      const rtp = r as RTCInboundRtpStreamStats;
-      if (rtp.kind === 'audio') audioBytesIn += rtp.bytesReceived ?? 0;
-      if (rtp.kind === 'video') videoBytesIn += rtp.bytesReceived ?? 0;
+      if (r.type === 'inbound-rtp') {
+        const rtp = r as RTCInboundRtpStreamStats & VideoRtp;
+        if (rtp.kind === 'audio') audioBytesIn += rtp.bytesReceived ?? 0;
+        if (rtp.kind === 'video') { videoBytesIn += rtp.bytesReceived ?? 0; inFormat = formatOf(rtp) ?? inFormat; }
+      } else if (r.type === 'outbound-rtp') {
+        const rtp = r as RTCOutboundRtpStreamStats & VideoRtp;
+        if (rtp.kind === 'video') { videoBytesOut += rtp.bytesSent ?? 0; outFormat = formatOf(rtp) ?? outFormat; }
+      }
     });
     if (audioBytesIn !== peer.view.audioBytesIn) peer.view.audioBytesIn = audioBytesIn;
     const now = Date.now();
     // Only rate over a meaningful window; onIceState and the 2 s timer can call this back to back.
     if (peer.videoBytesAt && now - peer.videoBytesAt >= 500) {
       const kbps = Math.round(((videoBytesIn - peer.videoBytesIn) * 8) / (now - peer.videoBytesAt));
-      if (kbps !== peer.view.shareKbps && peer.view.shareLive) setView(peer, { shareKbps: kbps });
+      if (peer.view.shareLive && (kbps !== peer.view.shareKbps || !sameFormat(inFormat, peer.view.shareFormat))) setView(peer, { shareKbps: kbps, shareFormat: inFormat });
+      peer.outKbps = Math.max(0, Math.round(((videoBytesOut - peer.videoBytesOut) * 8) / (now - peer.videoBytesAt)));
+      peer.outFormat = outFormat;
       peer.videoBytesIn = videoBytesIn;
+      peer.videoBytesOut = videoBytesOut;
       peer.videoBytesAt = now;
+      updateOutgoing();
     } else if (!peer.videoBytesAt) {
       peer.videoBytesIn = videoBytesIn;
+      peer.videoBytesOut = videoBytesOut;
       peer.videoBytesAt = now;
     }
     let pair: RTCIceCandidatePairStats | undefined;
@@ -561,6 +585,19 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     if ((ice === 'connected' || ice === 'completed') && peer.view.conn !== (relayed ? 'relayed' : 'direct')) setView(peer, { conn: relayed ? 'relayed' : 'direct' });
   }
   const statsTimer = setInterval(() => { for (const p of peers.values()) void refreshStats(p); }, 2000);
+
+  /** Sum my share's upload over its viewers and list the encoded formats, largest first (spec §6.5). */
+  function updateOutgoing(): void {
+    if (!shareVideo) { if (untrack(outgoing)) setOutgoing(null); return; }
+    const viewers = [...peers.values()].filter((p) => p.viewsMyShare);
+    const next: OutgoingShare = {
+      kbps: viewers.reduce((sum, p) => sum + p.outKbps, 0),
+      formats: distinctFormats(viewers.map((p) => p.outFormat).filter((f): f is VideoFormat => f !== null)),
+      viewers: viewers.length,
+    };
+    const prev = untrack(outgoing);
+    if (!prev || prev.kbps !== next.kbps || prev.viewers !== next.viewers || JSON.stringify(prev.formats) !== JSON.stringify(next.formats)) setOutgoing(next);
+  }
 
   function closePeer(key: string): void {
     const peer = peers.get(key);
@@ -591,7 +628,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       if (existing) {
         if (existing.view.serverLost) { clearTimeout(existing.graceTimer); setView(existing, { serverLost: false, name: p.name }); }
         // Their share ended: my subscription is void, the tile goes back to "click to watch" (spec §6.5).
-        if (!p.sharing && existing.view.watching) setView(existing, { watching: false, shareLive: false, shareKbps: 0 });
+        if (!p.sharing && existing.view.watching) setView(existing, { watching: false, shareLive: false, shareKbps: 0, shareFormat: null });
         continue;
       }
       if (initiatesTo({ ...self, joinSeq: myJoinSeq }, p)) createPeer(p.publicKey, p.name, true);
@@ -628,7 +665,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   }
 
   async function declareJoin(): Promise<Extract<ServerMessage, { t: 'call' }> | null> {
-    const m = await awaitReply('call', () => room.send({ t: 'join', muted: muted() }), 8000);
+    const m = await awaitReply('call', () => room.send({ t: 'join', muted: muted(), sharing: shareVideo !== null }), 8000);
     if (m) { myJoinSeq = m.joinSeq; iceServers = m.iceServers; iceIssuedAt = m.issuedAt; }
     return m;
   }
@@ -644,6 +681,8 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
         if (!peer) { if (m.on) earlyViewers.set(m.from, m.scale ?? 1); else earlyViewers.delete(m.from); return; }
         peer.viewsMyShare = m.on;
         peer.viewerScale = m.scale ?? 1;
+        if (!m.on) { peer.outKbps = 0; peer.outFormat = null; }
+        updateOutgoing();
         reapplyShareEncodings();
         if (!m.on) void applyShareEncoding(peer); // the one leaving must be deactivated too
         return;
@@ -653,7 +692,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
 
   // ---- shares (spec §6.2, §6.5)
   async function startShare(): Promise<void> {
-    if (!joined || shareVideo || stoppingShare) return;
+    if (!joined || shareVideo) return;
     setShareError(null);
     let stream: MediaStream;
     try {
@@ -675,33 +714,35 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     if (!shareVideo) return;
     shareVideo.contentHint = contentHint(shareSettings());
     shareVideo.applyConstraints(trackConstraints(shareSettings())).catch(() => {});
-    shareVideo.onended = () => void stopShare(); // the browser's own "stop sharing" control
+    shareVideo.onended = () => stopShare(); // the browser's own "stop sharing" control
     for (const peer of peers.values()) attachLocalTracks(peer);
     setSharing(stream);
+    setOutgoing({ kbps: 0, formats: [], viewers: [...peers.values()].filter((p) => p.viewsMyShare).length });
     room.send({ t: 'share', on: true });
     posthog.capture('screen_share_started');
   }
 
-  /** Stop sharing. `announce` is false when leaving, where the server clears the flag itself. */
-  async function stopShare(announce = true): Promise<void> {
-    if (!shareVideo || stoppingShare) return;
-    stoppingShare = true;
-    try {
-      shareVideo.stop();
-      shareAudio?.stop();
-      shareVideo = null;
-      shareAudio = null;
-      earlyViewers.clear();
-      for (const peer of peers.values()) {
-        peer.viewsMyShare = false;
-        await peer.tx[SLOT_INDEX.shareVideo]?.sender.replaceTrack(null).catch(() => {});
-        await peer.tx[SLOT_INDEX.shareAudio]?.sender.replaceTrack(null).catch(() => {});
-      }
-      setSharing(null);
-      if (announce) room.send({ t: 'share', on: false });
-      posthog.capture('screen_share_stopped');
-    } finally {
-      stoppingShare = false;
+  /**
+   * Stop sharing. `announce` is false when leaving, where the server clears the flag itself.
+   * Everything the UI reads changes synchronously; detaching from the senders is not awaited because
+   * Firefox never settles replaceTrack once the connection closes underneath it (leave), which used to
+   * leave the "sharing" state stuck until a reload.
+   */
+  function stopShare(announce = true): void {
+    if (!shareVideo) return;
+    shareVideo.stop();
+    shareAudio?.stop();
+    shareVideo = null;
+    shareAudio = null;
+    earlyViewers.clear();
+    setSharing(null);
+    setOutgoing(null);
+    if (announce) room.send({ t: 'share', on: false });
+    posthog.capture('screen_share_stopped');
+    for (const peer of peers.values()) {
+      peer.viewsMyShare = false;
+      peer.outKbps = 0; peer.outFormat = null;
+      for (const slot of [SLOT_INDEX.shareVideo, SLOT_INDEX.shareAudio]) void peer.tx[slot]?.sender.replaceTrack(null).catch(() => {});
     }
   }
 
@@ -709,7 +750,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   function watch(key: string, on: boolean): void {
     const peer = peers.get(key);
     if (!peer || peer.view.watching === on) return;
-    setView(peer, { watching: on, shareKbps: 0 });
+    setView(peer, { watching: on, shareKbps: 0, shareFormat: null });
     posthog.capture('screen_watch_toggled', { watching: on });
     // A small screen asks the sharer for a downscaled encoding for this connection only (spec §6.4).
     room.send(smallScreen() ? { t: 'subscribe', to: key, on, scale: 2 } : { t: 'subscribe', to: key, on });
@@ -751,7 +792,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
   function leave(): void {
     if (!joined) return;
     posthog.capture('call_left');
-    void stopShare(false); // the server clears the sharing flag on leave
+    stopShare(false); // the server clears the sharing flag on leave
     room.send({ t: 'leave' });
     for (const key of [...peers.keys()]) closePeer(key);
     setInCall(false);
@@ -785,6 +826,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, audioBytesIn: p.view.audioBytesIn, videoBytesIn: p.videoBytesIn, watching: p.view.watching, shareLive: p.view.shareLive, subscribedToMe: p.viewsMyShare, transceivers: p.pc.getTransceivers().length })),
       share: () => ({
         settings: shareSettings(),
+        outgoing: untrack(outgoing),
         track: shareVideo ? { ...shareVideo.getSettings(), contentHint: shareVideo.contentHint } : null,
         senders: [...peers.values()].map((p) => { const params = p.tx[SLOT_INDEX.shareVideo]?.sender.getParameters(); const e = params?.encodings?.[0]; return { name: p.name, active: e?.active, maxBitrate: e?.maxBitrate, maxFramerate: e?.maxFramerate, scale: e?.scaleResolutionDownBy, degradation: (params as { degradationPreference?: string } | undefined)?.degradationPreference }; }),
       }),
@@ -797,7 +839,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
 
   return {
     inCall, muted, views, speakingSelf, joinError, join, leave, setMuted, myJoinSeq: () => myJoinSeq,
-    sharing, shareError, startShare, stopShare, watch, watchOnly, shareStreamOf,
+    sharing, shareError, outgoing, startShare, stopShare, watch, watchOnly, shareStreamOf,
     shareSettings, setPreset, changeShare, audioSettings, changeAudio, viewerSettings, setViewerSettings, devices, refreshDevices, canPickSpeaker,
     setVolume, canPickSpeakerDialog, pickSpeaker,
   };
