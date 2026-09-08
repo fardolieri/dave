@@ -15,12 +15,16 @@ code.fp { font-size: 11px; color: var(--dim); }
 .notice form { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .notice input { width: 100%; }
 
-.app { height: 100%; display: flex; flex-direction: column; }
-.cols { flex: 1; display: grid; grid-template-columns: 260px 1fr; min-height: 0; }
-.cols > * { min-width: 0; min-height: 0; }
-.side { background: var(--panel); border-right: 1px solid var(--line); padding: 0 14px 14px; overflow: auto; transition: opacity .2s; }
+/* One grid for the whole room: the sidebar spans every row on the left; shares, chat log and composer
+   are rows of the right column. The composer being its own grid item is what lets phones pin it. */
+.app { --side-w: 260px; position: relative; height: 100%; display: grid; grid-template-columns: var(--side-w) 1fr; grid-template-rows: 0 minmax(0, 1fr) auto; }
+.app.split { grid-template-rows: 52% minmax(0, 1fr) auto; }
+.app > * { min-width: 0; min-height: 0; }
+.side { grid-column: 1; grid-row: 1 / -1; display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--line); padding: 0 14px 14px; overflow: auto; transition: opacity .2s; }
 .side.frozen { opacity: .45; pointer-events: none; } /* presence is stale while the socket is down (spec §8.1) */
-.main { position: relative; display: flex; flex-direction: column; padding: 14px; min-height: 0; }
+.side > * { flex: none; }
+/* rare actions live at the very bottom of the sidebar, far from anything clicked often */
+.side-foot { margin-top: auto; padding-top: 18px; display: flex; justify-content: center; gap: 14px; }
 
 .plist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .plist li { display: flex; align-items: center; gap: 8px; }
@@ -30,36 +34,23 @@ code.fp { font-size: 11px; color: var(--dim); }
 
 /* Server-state notice: a pill hanging from the top edge of the main area, out of the layout flow so
    nothing moves when it comes and goes. */
-.banner { position: absolute; top: 0; left: 50%; transform: translateX(-50%); z-index: 20; max-width: calc(100% - 28px); padding: 6px 16px; border-radius: 0 0 12px 12px; font-size: 13px; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+.banner { position: absolute; top: 0; left: calc(var(--side-w) + (100% - var(--side-w)) / 2); transform: translateX(-50%); z-index: 20; max-width: calc(100% - 28px); padding: 6px 16px; border-radius: 0 0 12px 12px; font-size: 13px; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
 .banner button.link { color: inherit; font-size: inherit; }
 .banner-warn { background: #4a3a12; color: var(--warn); }
 .banner-bad { background: #4a1a1a; color: var(--bad); }
 
-.chat { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.chat { position: relative; }
+.chat { grid-column: 2; grid-row: 2; position: relative; display: flex; flex-direction: column; min-height: 0; padding: 12px 14px 0; }
 /* Reversed column: newest line first in the DOM, drawn at the bottom. The scroll origin is the bottom
    edge, so staying at the newest line across new lines and size changes is the browser's default. */
 .chat-log { flex: 1; overflow: auto; overflow-anchor: none; display: flex; flex-direction: column-reverse; gap: 10px; min-height: 80px; }
 /* subtle pill over the log's bottom edge while new lines wait below the reader */
-.chat-new { position: absolute; left: 50%; bottom: 66px; transform: translateX(-50%); font-size: 11px; color: var(--dim); background: rgba(34,38,47,.85); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
+.chat-new { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); font-size: 11px; color: var(--dim); background: rgba(34,38,47,.85); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
 .chat-new:hover { color: var(--fg); }
 .msg-from { font-weight: 600; } .msg-at { color: var(--dim); font-size: 11px; margin-left: 6px; }
 .msg-text { white-space: pre-wrap; word-break: break-word; }
 .msg-sys { font-size: 12px; color: var(--dim); font-style: italic; } .msg-sys .msg-text { display: inline; }
-.chat-input { display: flex; gap: 6px; padding-top: 8px; }
+.chat-input { grid-column: 2; grid-row: 3; display: flex; gap: 6px; padding: 8px 14px 14px; }
 .chat-input input { flex: 1; }
-
-/* Phone width (spec §7.3): one column, the page scrolls as a whole, presence never clips, shares stack above the chat.
-   The chat log keeps its own scroll capped at 60vh on purpose: otherwise a long conversation pushes the input off screen. */
-@media (max-width: 700px) {
-  html, body, #app { height: auto; }
-  .app { height: auto; min-height: 100vh; }
-  .cols { grid-template-columns: 1fr; grid-template-rows: auto auto; }
-  .side { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
-  .main { min-height: 70vh; }
-  .chat { min-height: 50vh; }
-  .chat-log { max-height: 60vh; }
-}
 
 /* call */
 .plist li { flex-wrap: nowrap; }
@@ -89,9 +80,7 @@ button.join { background: var(--ok); color: #062; border-color: transparent; fon
 button.leave { background: var(--bad); color: #fff; border-color: transparent; }
 
 /* shares */
-.main { gap: 12px; }
-.main.split .chat { flex: 1; }
-.shares { display: grid; gap: 10px; flex: 0 0 52%; min-height: 0; }
+.shares { grid-column: 2; grid-row: 1; margin: 14px 14px 0; display: grid; gap: 10px; min-height: 0; }
 .shares > * { min-width: 0; min-height: 0; }
 .share { position: relative; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; min-height: 140px; cursor: pointer; }
 .share-own, .share-locked { cursor: default; }
@@ -121,10 +110,6 @@ button.leave { background: var(--bad); color: #fff; border-color: transparent; }
 .spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--dim); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .hint { font-size: 12px; color: var(--dim); }
-@media (max-width: 700px) {
-  .shares { grid-template-columns: 1fr !important; flex: none; }
-  .shares .share { min-height: 180px; }
-}
 
 /* settings panels */
 .actions .row { display: flex; gap: 6px; }
@@ -157,11 +142,9 @@ select.picker option::checkmark { order: 1; margin-left: auto; }
 .volrow .dim { flex: none; min-width: 3.5em; text-align: right; }
 
 /* history tools */
-.chat-tools { display: flex; justify-content: flex-end; }
 button.link { background: none; border: 0; color: var(--dim); font-size: 11px; padding: 2px 4px; text-decoration: underline; }
 
 /* problem reports */
-.report-link { margin-top: 18px; text-align: center; }
 dialog.report { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: min(480px, 92vw); font-size: 14px; }
 dialog.report::backdrop { background: rgba(0,0,0,.55); }
 dialog.report h3 { margin: 0 0 10px; font-size: 15px; }
@@ -171,3 +154,20 @@ dialog.report .ok { margin: 10px 0 0; font-size: 13px; color: var(--ok); }
 dialog.report .warn { margin: 10px 0 0; }
 dialog.report .row { display: flex; gap: 6px; margin-top: 12px; }
 dialog.report .row button:first-child { flex: 1; }
+
+/* Phone rules come last so they override every desktop placement above. */
+/* Phone width (spec §7.3): one column, the page scrolls as a whole, presence never clips, shares stack above the
+   chat. The composer is pinned to the bottom of the screen; the app leaves room for it. The chat log keeps its own
+   scroll capped at 60vh so a long conversation does not make the page endless. */
+@media (max-width: 700px) {
+  html, body, #app { height: auto; }
+  .app { --side-w: 0px; height: auto; min-height: 100vh; grid-template-columns: 1fr; grid-template-rows: auto auto auto; padding-bottom: 64px; }
+  .app.split { grid-template-rows: auto auto auto; }
+  .side { grid-column: 1; grid-row: 1; border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
+  .shares { grid-column: 1; grid-row: 2; grid-template-columns: 1fr !important; }
+  .shares .share { min-height: 180px; }
+  .chat { grid-column: 1; grid-row: 3; min-height: 50vh; }
+  .chat-log { max-height: 60vh; }
+  .chat-input { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; grid-area: auto; background: var(--bg); border-top: 1px solid var(--line); padding: 8px 14px calc(8px + env(safe-area-inset-bottom)); }
+  .banner { position: fixed; }
+}

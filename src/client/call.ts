@@ -953,13 +953,13 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     // Dev aid for scripts/drive.mjs: inspect the mesh from the DevTools protocol. Absent in production builds.
     (window as unknown as { __dave?: unknown }).__dave = {
       peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, audioBytesIn: p.view.audioBytesIn, videoBytesIn: p.videoBytesIn, watching: p.view.watching, shareLive: p.view.shareLive, subscribedToMe: p.viewsMyShare, transceivers: p.pc.getTransceivers().length })),
-      share: () => ({
+      share: () => untrack(() => ({
         settings: shareSettings(),
-        outgoing: untrack(outgoing),
+        outgoing: outgoing(),
         track: shareVideo ? { ...shareVideo.getSettings(), contentHint: shareVideo.contentHint } : null,
         senders: [...peers.values()].map((p) => { const params = p.tx[SLOT_INDEX.shareVideo]?.sender.getParameters(); const e = params?.encodings?.[0]; return { name: p.name, active: e?.active, maxBitrate: e?.maxBitrate, maxFramerate: e?.maxFramerate, scale: e?.scaleResolutionDownBy, degradation: (params as { degradationPreference?: string } | undefined)?.degradationPreference }; }),
-      }),
-      audio: () => ({ settings: audioSettings(), track: voiceTrack?.getSettings() ?? null }),
+      })),
+      audio: () => untrack(() => ({ settings: audioSettings(), track: voiceTrack?.getSettings() ?? null })),
       volumes: () => [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })),
       dropSocket: () => room.dropSocket(),
       diagnostics,

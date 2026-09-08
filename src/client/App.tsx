@@ -101,8 +101,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
   const connected = () => room.status().kind === 'connected';
 
   return (
-    <div class="app">
-      <div class="cols">
+    <div class={`app ${sharers().length > 0 ? 'split' : ''}`}>
         <aside class={`side ${connected() ? '' : 'frozen'}`}>
           <h2>Online</h2>
           <ul class="plist">
@@ -141,10 +140,12 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
           <Show when={clash()}>
             <div class="warn">Someone else here is also called {props.name}. Your fingerprint <code>{props.identity.fingerprint}</code> tells you apart.</div>
           </Show>
-          <ReportDialog collect={() => collectReport({ status: () => room.status().kind, people: room.people, me: () => me(), call: call.diagnostics })} />
+          <div class="side-foot">
+            <ReportDialog collect={() => collectReport({ status: () => room.status().kind, people: room.people, me: () => me(), call: call.diagnostics })} />
+            <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { if (confirm("Clear this browser's chat history? Nothing is stored on the server, so this cannot be undone.")) void room.clearHistory(); }}>Clear chat history</button>
+          </div>
         </aside>
-        <main class={`main ${sharers().length > 0 ? 'split' : ''}`}>
-          <Banner status={room.status()} onTakeOver={room.takeOver} />
+        <Banner status={room.status()} onTakeOver={room.takeOver} />
           <Show when={sharers().length > 0}>
             <section class="shares" style={`grid-template-columns: repeat(${sharers().length}, 1fr)`}>
               <For each={sharers()}>
@@ -165,9 +166,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
               </For>
             </section>
           </Show>
-          <Chat lines={room.lines()} connected={connected()} onSend={room.sendText} onClear={() => void room.clearHistory()} />
-        </main>
-      </div>
+          <Chat lines={room.lines()} connected={connected()} onSend={room.sendText} />
     </div>
   );
 }
@@ -444,7 +443,7 @@ function ReportDialog(props: { collect: () => Promise<Report> }) {
   };
   return (
     <>
-      <div class="report-link"><button class="link" onClick={open}>Report a problem</button></div>
+      <button class="link" onClick={open}>Report a problem</button>
       <dialog class="report" ref={dialog}>
         <h3>Report a problem</h3>
         <textarea value={text()} onInput={(e) => setText(e.currentTarget.value)} placeholder="What went wrong, and what did you expect? When did it happen?" rows={4} />
@@ -470,7 +469,8 @@ const OVERLAY_HIDE_MS = 2500;
 /** Clock time on a 24-hour clock; older than a day also says which day. */
 const when = (at: number): string => new Date(at).toLocaleString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(Date.now() - at > 20 * 3600 * 1000 ? { day: '2-digit', month: 'short' } : {}) });
 
-function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: string) => void; onClear: () => void }) {
+/** The log (with the new-messages pill) and the composer are siblings in the app grid, so the composer can be placed independently (pinned on phones). */
+function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: string) => void }) {
   const [draft, setDraft] = createSignal('');
   let log: HTMLDivElement | undefined;
   const submit = (e: Event) => {
@@ -504,6 +504,7 @@ function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: str
     contentHeight = log.scrollHeight;
   });
   return (
+    <>
     <div class="chat">
       <div class="chat-log" ref={log} onScroll={onScroll}>
         <For each={newestFirst()}>
@@ -524,15 +525,13 @@ function Chat(props: { lines: ChatLine[]; connected: boolean; onSend: (text: str
         </For>
       </div>
       <Show when={unseen()}><button class="chat-new" onClick={jump} title="Scroll to the newest message">new messages ↓</button></Show>
-      <Show when={props.lines.length > 0}>
-        <div class="chat-tools"><button class="link" onClick={props.onClear} title="Only this browser's copy; nothing is stored on the server">clear history</button></div>
-      </Show>
-      <form class="chat-input" onSubmit={submit}>
-        <input value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!props.connected} maxlength={MAX_TEXT_LENGTH}
-               placeholder={props.connected ? 'Message the room' : "Can't send while disconnected"} />
-        <button disabled={!props.connected || !draft().trim()}>Send</button>
-      </form>
     </div>
+    <form class="chat-input" onSubmit={submit}>
+      <input value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!props.connected} maxlength={MAX_TEXT_LENGTH}
+             placeholder={props.connected ? 'Message the room' : "Can't send while disconnected"} />
+      <button disabled={!props.connected || !draft().trim()}>Send</button>
+    </form>
+    </>
   );
 }
 

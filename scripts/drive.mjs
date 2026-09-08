@@ -330,8 +330,8 @@ try {
     if (shotDir) { mkdirSync(shotDir, { recursive: true }); await b.screenshot(`${shotDir}/${b.name}-history.png`); }
     const before = await b.eval(`document.querySelectorAll('.chat-log .msg:not(.msg-sys)').length`);
     await b.goto(url); await sleep(2500);
-    console.log(`[${b.name}] messages before reload: ${before}, after reload: ${await b.eval(`document.querySelectorAll('.chat-log .msg:not(.msg-sys)').length`)} | notes after reload: ${await b.text('.chat-log .msg-sys') || '(none)'} | tools: ${await b.text('.chat-tools')}`);
-    await b.eval(`document.querySelector('.chat-tools button')?.click(); 'cleared'`); await sleep(500);
+    console.log(`[${b.name}] messages before reload: ${before}, after reload: ${await b.eval(`document.querySelectorAll('.chat-log .msg:not(.msg-sys)').length`)} | notes after reload: ${await b.text('.chat-log .msg-sys') || '(none)'} | footer: ${await b.text('.side-foot')}`);
+    await b.eval(`window.confirm = () => true; [...document.querySelectorAll('.side-foot button')].find(x => x.textContent === 'Clear chat history')?.click(); 'cleared'`); await sleep(500);
     console.log(`[${b.name}] after clear: ${await b.eval(`document.querySelectorAll('.chat-log .msg').length`)} messages`);
   }
   for (const b of browsers) console.log(`[${b.name}] chat: ${await b.text('.chat-log .msg, .chat-log .msg-sys')}`);
