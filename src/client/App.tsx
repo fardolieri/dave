@@ -6,8 +6,9 @@ import { getName, getSecret, setName, takeSecretFromInviteLink } from './invite'
 import { createRoom, type ChatLine, type ServerStatus } from './room';
 import { createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
 import { createAttention } from './attention';
-import { isKnown, markKnown } from './seenKeys';
-import { MAX_TEXT_LENGTH, normaliseName, type Person } from '../core/protocol';
+import { contactOf, isKnown, markKnown, setNickname } from './contacts';
+import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, normaliseName, type Identity, type Person } from '../core/protocol';
+import { ambiguousNames, displayName, knownAgo, showsFingerprint } from '../core/names';
 import { LOW_LATENCY_MS, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatVideo } from '../core/format';
 import { collectReport, formatReport, sendReport, type Report } from './diagnostics';
@@ -62,7 +63,7 @@ function NameForm(props: { onSubmit: (name: string) => void }) {
         <p>What should your friends call you?</p>
         <input value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} maxlength={32} autofocus placeholder="Your name" />
         <button disabled={!valid()}>Continue</button>
-        <p class="dim">Names are not unique. A six-character fingerprint derived from this browser's key tells friends apart.</p>
+        <p class="dim">Names are not unique. Friends tell you apart by this browser's key, and each of them can call you something else on their side.</p>
       </form>
     </main>
   );
@@ -78,8 +79,36 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
   const me = () => props.identity.publicKey;
   const call = createCall(room, untrack(me));
   createAttention(room, call, untrack(me));
+  // Shown names that more than one key uses, among everyone present and everyone in the loaded history:
+  // only those get their fingerprint next to the name (issue #7).
+  const ambiguous = createMemo(() => {
+    const present = room.people().map((p) => ({ publicKey: p.publicKey, shown: displayName(p.name, contactOf(p.publicKey)) }));
+    const wrote = room.lines().flatMap((l) => (l.kind === 'text' ? [{ publicKey: l.from.publicKey, shown: displayName(l.from.name, contactOf(l.from.publicKey)) }] : []));
+    return ambiguousNames([...present, ...wrote]);
+  });
+  /** A friend's current self-declared name from presence; a chat line keeps the name they had when they wrote it. */
+  const currentName = (publicKey: string): string | undefined => room.people().find((p) => p.publicKey === publicKey)?.name;
+  const myName = createMemo(() => currentName(me()) ?? props.name);
+  /** How this browser shows a friend: the name, whether the fingerprint accompanies it, and the hover title with the rest. */
+  const labelOf = (id: Identity): Label => {
+    const c = contactOf(id.publicKey);
+    const isMe = id.publicKey === me();
+    const own = currentName(id.publicKey) ?? id.name;
+    const shown = displayName(own, c);
+    const known = isMe || c !== undefined;
+    const ago = knownAgo(c);
+    const title = [c?.nick ? `calls themselves ${own}` : null, `fingerprint ${id.fingerprint}`, isMe ? null : ago ? `known since ${ago}` : 'first time this key shows up here'].filter(Boolean).join(' · ');
+    return { shown, fp: showsFingerprint(known, shown, ambiguous()), known, title };
+  };
+  // The profile card: which friend it is about and the avatar it hangs from. Opening it acknowledges the key.
+  const [profile, setProfile] = createSignal<{ publicKey: string; anchor: HTMLElement } | null>(null);
+  const openProfile = (p: Person, anchor: HTMLElement) => {
+    if (p.publicKey !== me() && !isKnown(p.publicKey)) { markKnown(p.publicKey, p.name); posthog.capture('new_key_acknowledged'); }
+    setProfile({ publicKey: p.publicKey, anchor });
+    posthog.capture('profile_opened', { own: p.publicKey === me() });
+  };
   const online = createMemo(() => {
-    const others = room.people().filter((p) => p.role === 'visitor' && p.publicKey !== me()).sort((a, b) => a.name.localeCompare(b.name));
+    const others = room.people().filter((p) => p.role === 'visitor' && p.publicKey !== me()).sort((a, b) => labelOf(a).shown.localeCompare(labelOf(b).shown));
     const self = room.people().find((p) => p.publicKey === me());
     return self && self.role === 'visitor' ? [...others, self] : others; // you are listed last in Online (spec §7.1)
   });
@@ -97,7 +126,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
   // Sharers, from presence (tiles render from signaling state, never from track events).
   const sharers = createMemo(() => room.people().filter((p) => p.role === 'participant' && p.sharing));
   const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
-  const clash = createMemo(() => room.people().some((p) => p.publicKey !== me() && p.name === props.name));
+  const clash = createMemo(() => room.people().some((p) => p.publicKey !== me() && p.name === myName()));
   const connected = () => room.status().kind === 'connected';
   // Bumped when I send: the log jumps to the newest line (the composer and the log are separate grid items).
   const [jumpToken, setJumpToken] = createSignal(0);
@@ -108,14 +137,14 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
         <aside class={`side ${connected() ? '' : 'frozen'}`}>
           <h2>Online</h2>
           <ul class="plist">
-            <For each={online()}>{(p) => <PersonRow p={p} isMe={p.publicKey === me()} />}</For>
+            <For each={online()}>{(p) => <PersonRow p={p} isMe={p.publicKey === me()} label={labelOf(p)} onProfile={(el) => openProfile(p, el)} />}</For>
             <Show when={online().length === 0}><li class="dim">nobody yet</li></Show>
           </ul>
           <h2>Call <Show when={!callExists()}><small class="dim">nobody in the call</small></Show></h2>
           <ul class="plist">
-            <Show when={inCallList().self}>{(s) => <ParticipantRow p={s()} isMe speaking={call.speakingSelf()} />}</Show>
-            <For each={inCallList().others}>{(p) => <ParticipantRow p={p} isMe={false} view={call.inCall() ? viewOf(p.publicKey) : undefined} speaking={viewOf(p.publicKey)?.speaking ?? false} onVolume={call.inCall() ? (v) => call.setVolume(p.publicKey, v) : undefined} />}</For>
-            <For each={inCallList().lost}>{(v) => <li class="lost"><span class="avatar">{v.name[0]}</span><span class="pname">{v.name} <em>connection to server lost</em></span></li>}</For>
+            <Show when={inCallList().self}>{(s) => <ParticipantRow p={s()} isMe label={labelOf(s())} onProfile={(el) => openProfile(s(), el)} speaking={call.speakingSelf()} />}</Show>
+            <For each={inCallList().others}>{(p) => <ParticipantRow p={p} isMe={false} label={labelOf(p)} onProfile={(el) => openProfile(p, el)} view={call.inCall() ? viewOf(p.publicKey) : undefined} speaking={viewOf(p.publicKey)?.speaking ?? false} onVolume={call.inCall() ? (v) => call.setVolume(p.publicKey, v) : undefined} />}</For>
+            <For each={inCallList().lost}>{(v) => <li class="lost"><span class="avatar">{displayName(v.name, contactOf(v.publicKey))[0]}</span><span class="pname">{displayName(v.name, contactOf(v.publicKey))} <em>connection to server lost</em></span></li>}</For>
           </ul>
           <div class="actions">
             <Show when={!call.inCall()} fallback={
@@ -141,13 +170,14 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
             <Show when={call.shareError()}>{(e) => <div class="warn">{e()}</div>}</Show>
           </div>
           <Show when={clash()}>
-            <div class="warn">Someone else here is also called {props.name}. Your fingerprint <code>{props.identity.fingerprint}</code> tells you apart.</div>
+            <div class="warn">Someone else here is also called {myName()}. Your fingerprint <code>{props.identity.fingerprint}</code> tells you apart.</div>
           </Show>
           <div class="side-foot">
             <ReportDialog collect={() => collectReport({ status: () => room.status().kind, people: room.people, me: () => me(), call: call.diagnostics })} />
             <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { if (confirm("Clear this browser's chat history? Nothing is stored on the server, so this cannot be undone.")) void room.clearHistory(); }}>Clear chat history</button>
           </div>
         </aside>
+        <ProfileCard open={profile()} people={room.people()} me={me()} label={labelOf} onClose={() => setProfile(null)} onRenameSelf={(n) => { room.rename(n); setName(n); posthog.capture('name_changed'); }} />
         <Banner status={room.status()} onTakeOver={room.takeOver} />
           <Show when={sharers().length > 0}>
             <section class="shares" style={`grid-template-columns: repeat(${sharers().length}, 1fr)`}>
@@ -155,6 +185,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
                 {(p) => (
                   <ShareTile
                     p={p}
+                    name={labelOf(p).shown}
                     isMe={p.publicKey === me()}
                     inCall={call.inCall()}
                     view={viewOf(p.publicKey)}
@@ -169,25 +200,143 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
               </For>
             </section>
           </Show>
-          <ChatLog lines={room.lines()} jumpToken={jumpToken()} />
+          <ChatLog lines={room.lines()} jumpToken={jumpToken()} label={labelOf} />
       </div>
       <Composer connected={connected()} onSend={(text) => { room.sendText(text); setJumpToken((n) => n + 1); }} />
     </div>
   );
 }
 
-function PersonRow(props: { p: Person; isMe: boolean }) {
-  // One-time snapshot on purpose: whether this key was known when the row appeared.
-  const [known, setKnown] = createSignal(untrack(() => props.isMe || isKnown(props.p.publicKey)));
-  const acknowledge = () => { if (!known()) { markKnown(props.p.publicKey, props.p.name); setKnown(true); posthog.capture('new_key_acknowledged'); } };
+/** How a friend is shown here, computed by RoomView from the address book and who else is around. */
+type Label = { shown: string; fp: boolean; known: boolean; title: string };
+
+/** The avatar is the way into a friend's profile card; the same element will carry the profile picture (#8). */
+function Avatar(props: { initial: string; speaking?: boolean; title: string; onOpen: (anchor: HTMLElement) => void }) {
+  return <button class={`avatar ${props.speaking ? 'speaking' : ''}`} title={props.title} onClick={(e) => { e.stopPropagation(); props.onOpen(e.currentTarget); }}>{props.initial}</button>;
+}
+
+function PersonRow(props: { p: Person; isMe: boolean; label: Label; onProfile: (anchor: HTMLElement) => void }) {
+  const acknowledge = () => { if (!props.label.known) { markKnown(props.p.publicKey, props.p.name); posthog.capture('new_key_acknowledged'); } };
   return (
-    <li onClick={acknowledge} title={known() ? undefined : 'First time this key shows up here. Click to acknowledge.'}>
-      <span class="avatar">{props.p.name[0]}</span>
-      <span class="pname"><span class="nm" title={props.p.name}>{props.p.name}{props.isMe ? ' (you)' : ''}</span> <code class="fp">{props.p.fingerprint}</code>
-        <Show when={!known()}><b class="new">new</b></Show>
+    <li onClick={acknowledge} title={props.label.known ? props.label.title : `${props.label.title}. Click to acknowledge.`}>
+      <Avatar initial={props.label.shown[0]!} title={props.isMe ? 'Your profile' : 'Profile'} onOpen={props.onProfile} />
+      <span class="pname"><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span> <Show when={props.label.fp}><code class="fp">{props.p.fingerprint}</code></Show>
+        <Show when={!props.label.known}><b class="new">new</b></Show>
       </span>
     </li>
   );
+}
+
+/**
+ * The profile card (issues #6, #7): a popover hanging from the avatar that was clicked, with the name,
+ * the fingerprint and since when this browser knows the key, and the one edit that fits the person: a
+ * friend gets a nickname only this browser shows; you change the name everyone sees. Follows presence
+ * live, so a friend renaming themselves while the card is open shows up, and closes if they leave.
+ */
+function ProfileCard(props: { open: { publicKey: string; anchor: HTMLElement } | null; people: Person[]; me: string; label: (id: Identity) => Label; onClose: () => void; onRenameSelf: (name: string) => void }) {
+  let card: HTMLDivElement | undefined;
+  let input: HTMLInputElement | undefined;
+  const person = createMemo(() => (props.open ? props.people.find((p) => p.publicKey === props.open!.publicKey) ?? null : null));
+  const isMe = () => person()?.publicKey === props.me;
+  const contact = () => (person() ? contactOf(person()!.publicKey) : undefined);
+  const [editing, setEditing] = createSignal(false);
+  const [draft, setDraft] = createSignal('');
+  const isOpen = () => card?.matches(':popover-open') ?? false;
+  createEffect(() => props.open, (o) => {
+    if (!card) return;
+    if (!o) { if (isOpen()) card.hidePopover(); return; }
+    setEditing(false);
+    if (!isOpen()) card.showPopover();
+    place(card, o.anchor);
+  });
+  // The friend left (or the socket rebuilt presence without them): nothing to show.
+  createEffect(() => props.open !== null && person() === null, (gone) => { if (gone) props.onClose(); });
+  const startEdit = () => {
+    const p = untrack(person);
+    if (!p) return;
+    setDraft(untrack(() => (p.publicKey === props.me ? p.name : contactOf(p.publicKey)?.nick ?? '')));
+    setEditing(true);
+    queueMicrotask(() => input?.select());
+  };
+  const save = (e: Event) => {
+    e.preventDefault();
+    const p = untrack(person);
+    if (!p) return;
+    if (p.publicKey === props.me) {
+      const name = normaliseName(draft());
+      if (!name) return;
+      if (name !== p.name) props.onRenameSelf(name);
+    } else {
+      setNickname(p.publicKey, p.name, draft());
+      posthog.capture('friend_renamed', { cleared: draft().trim() === '' });
+    }
+    setEditing(false);
+  };
+  const useOwnName = () => {
+    const p = untrack(person);
+    if (!p) return;
+    setNickname(p.publicKey, p.name, null);
+    posthog.capture('friend_renamed', { cleared: true });
+    setEditing(false);
+  };
+  const editTitle = () => (isMe() ? 'Change your name' : contact()?.nick ? 'Change nickname' : 'Give a nickname');
+  // Light dismiss (click outside, Escape) closes the popover; the state follows. Clicking another avatar
+  // dismisses and reopens in the same task, so only report a close that stuck.
+  const onToggle = (e: Event) => { if ((e as ToggleEvent).newState === 'closed' && !isOpen()) props.onClose(); };
+  return (
+    <div class="profile" popover="auto" ref={card} onToggle={onToggle}>
+      <Show when={person()}>{(p) => (
+        <>
+          <Show when={editing()} fallback={
+            <div class="profile-head">
+              <span class="avatar big">{props.label(p()).shown[0]}</span>
+              <div class="profile-names">
+                <span class="profile-name">
+                  <strong>{props.label(p()).shown}{isMe() ? ' (you)' : ''}</strong>
+                  <button class="edit" title={editTitle()} aria-label={editTitle()} onClick={startEdit}>✎</button>
+                </span>
+                <Show when={!isMe() && contact()?.nick}><span class="dim">calls themselves {p().name}</span></Show>
+                <Show when={isMe()}><span class="dim">what friends see, unless they gave you a nickname</span></Show>
+              </div>
+            </div>
+          }>
+            <form class="profile-edit" onSubmit={save}>
+              <div class="profile-head">
+                <span class="avatar big">{props.label(p()).shown[0]}</span>
+                <input ref={input} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} maxlength={MAX_NAME_LENGTH} placeholder={isMe() ? 'Your name' : p().name} aria-label={editTitle()} />
+              </div>
+              <p class="hint">{isMe() ? 'Everyone in the room sees this name, unless they gave you a nickname of their own.' : `Only this browser shows the name you pick. ${p().name} keeps their own name everywhere else.`}</p>
+              <div class="row">
+                <button class="on" disabled={isMe() && normaliseName(draft()) === null}>Save</button>
+                <Show when={!isMe() && contact()?.nick}><button type="button" onClick={useOwnName}>Use their own name</button></Show>
+                <button type="button" onClick={() => setEditing(false)}>Cancel</button>
+              </div>
+            </form>
+          </Show>
+          <dl class="profile-facts">
+            <dt>Fingerprint</dt><dd><code>{p().fingerprint}</code></dd>
+            <Show when={!isMe()} fallback={<><dt>Identity</dt><dd>this browser's key</dd></>}>
+              <dt>Known since</dt><dd title={contact() ? new Date(contact()!.since).toLocaleString() : undefined}>{knownAgo(contact()) ?? 'now'}</dd>
+            </Show>
+          </dl>
+        </>
+      )}</Show>
+    </div>
+  );
+}
+
+/** Puts the card next to the avatar it belongs to: to the right when there is room, else below, always inside the viewport. */
+function place(card: HTMLElement, anchor: HTMLElement): void {
+  const a = anchor.getBoundingClientRect();
+  const w = card.offsetWidth;
+  const h = card.offsetHeight;
+  const gap = 8;
+  let left = a.right + gap;
+  let top = a.top - gap;
+  if (left + w > window.innerWidth - gap) { left = Math.max(gap, Math.min(a.left, window.innerWidth - w - gap)); top = a.bottom + gap; }
+  top = Math.max(gap, Math.min(top, window.innerHeight - h - gap));
+  card.style.left = `${left}px`;
+  card.style.top = `${top}px`;
 }
 
 type Call = ReturnType<typeof createCall>;
@@ -247,14 +396,14 @@ function AudioPanel(props: { call: Call }) {
 
 const CONN_LABEL: Record<ConnState, string> = { connecting: 'connecting…', direct: 'direct', relayed: 'via relay', reconnecting: 'reconnecting…', unreachable: 'unreachable' };
 
-function ParticipantRow(props: { p: Person; isMe: boolean; view?: PeerView; speaking: boolean; onVolume?: (v: number) => void }) {
+function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: PeerView; speaking: boolean; onVolume?: (v: number) => void; onProfile: (anchor: HTMLElement) => void }) {
   const [sliderOpen, setSliderOpen] = createSignal(false);
   const volume = () => props.view?.volume ?? 1;
   const percent = () => Math.round(volume() * 100);
   return (
     <li class="prow">
-      <span class={`avatar ${props.speaking ? 'speaking' : ''}`}>{props.p.name[0]}</span>
-      <span class="pname" title={`${props.p.name} ${props.p.fingerprint}`}><span class="nm">{props.p.name}{props.isMe ? ' (you)' : ''}</span> <code class="fp">{props.p.fingerprint}</code></span>
+      <Avatar initial={props.label.shown[0]!} speaking={props.speaking} title={props.isMe ? 'Your profile' : 'Profile'} onOpen={props.onProfile} />
+      <span class="pname" title={props.label.title}><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span> <Show when={props.label.fp}><code class="fp">{props.p.fingerprint}</code></Show></span>
       <span class="pflags">
         <Show when={props.p.muted}><em>muted</em></Show>
         <Show when={props.p.sharing}><em>sharing</em></Show>
@@ -291,7 +440,8 @@ const requestFullscreenSafely = (el: FullscreenEl, video?: HTMLVideoElement & { 
 };
 
 type ShareTileProps = {
-  p: Person; isMe: boolean; inCall: boolean; view?: PeerView; stream?: MediaStream; outgoing?: OutgoingShare | null;
+  /** The sharer as this browser names them. */
+  p: Person; name: string; isMe: boolean; inCall: boolean; view?: PeerView; stream?: MediaStream; outgoing?: OutgoingShare | null;
   onWatch: (on: boolean) => void; onFullscreen: () => void; onVolume?: (v: number) => void;
   /** The tile has been live for a while and still shows no frame (ticket 12). */
   onBlack?: (element: Record<string, unknown>) => void;
@@ -392,7 +542,7 @@ function ShareTile(props: ShareTileProps) {
     <div class={`share share-${state()} ${fullscreen() ? 'share-fs' : ''} ${fullscreen() && idle() && !onControls() ? 'share-idle' : ''}`} ref={root} onClick={onTileClick}
       onPointerMove={() => { if (fullscreen()) wake(); }} onPointerDown={() => { if (fullscreen()) wake(); }}>
       <div class="share-head" onPointerEnter={() => setOnControls(true)} onPointerLeave={() => setOnControls(false)}>
-        <span>{props.isMe ? 'Your screen' : `${props.p.name}'s screen`}</span>
+        <span>{props.isMe ? 'Your screen' : `${props.name}'s screen`}</span>
         <Show when={!props.isMe && props.view ? props.view : undefined}>{(v) => <span class={`conn conn-${v().conn}`}><i />{CONN_LABEL[v().conn]}</span>}</Show>
         <Show when={!props.isMe && (state() === 'live' || state() === 'opening')}><button class="stop" title="Stop receiving this share" onClick={stopWatching}>Stop watching</button></Show>
       </div>
@@ -401,7 +551,7 @@ function ShareTile(props: ShareTileProps) {
         <Match when={state() === 'locked'}><div class="share-note">Join to watch</div></Match>
         <Match when={state() === 'closed'}><div class="share-note">Click to watch</div></Match>
         <Match when={state() === 'opening'}><div class="share-note"><span class="spinner" /> Opening…</div></Match>
-        <Match when={state() === 'unreachable'}><div class="share-note">No connection to {props.p.name}</div></Match>
+        <Match when={state() === 'unreachable'}><div class="share-note">No connection to {props.name}</div></Match>
       </Switch>
       <Show when={running()}>
         <div class="share-bar" onClick={(e) => e.stopPropagation()} onPointerEnter={() => setOnControls(true)} onPointerLeave={() => setOnControls(false)}>
@@ -494,7 +644,7 @@ function Composer(props: { connected: boolean; onSend: (text: string) => void })
 }
 
 /** The log with the new-messages pill. `jumpToken` changes when I send, which brings me back to the newest line. */
-function ChatLog(props: { lines: ChatLine[]; jumpToken: number }) {
+function ChatLog(props: { lines: ChatLine[]; jumpToken: number; label: (id: Identity) => Label }) {
   let log: HTMLDivElement | undefined;
   // The log is a reversed flex column (newest line first in the DOM, drawn at the bottom), so the
   // scroll origin is the bottom edge: position 0 is "at the newest line" and the browser keeps that
@@ -529,7 +679,7 @@ function ChatLog(props: { lines: ChatLine[]; jumpToken: number }) {
               <Match when={l.kind === 'text' && l}>
                 {(m) => (
                   <div class="msg">
-                    <span class="msg-from">{m().from.name} <code class="fp">{m().from.fingerprint}</code></span>
+                    <span class="msg-from" title={props.label(m().from).title}>{props.label(m().from).shown} <Show when={props.label(m().from).fp}><code class="fp">{m().from.fingerprint}</code></Show></span>
                     <span class="msg-at">{when(m().at)}</span>
                     <div class="msg-text"><Linkified text={m().text} /></div>
                   </div>

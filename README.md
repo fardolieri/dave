@@ -4,7 +4,7 @@ A single-room chat for a few friends: text, voice, and screen share over a peer-
 
 ## Using it
 
-Friends enter through an **invite link**: the app URL with the shared secret after `#`, for example `https://dave.example.workers.dev/#the-passphrase`. The secret is stored in the browser on first visit and stripped from the address bar. Each browser gets its own identity key; the six-character fingerprint next to a name tells two friends with the same name apart.
+Friends enter through an **invite link**: the app URL with the shared secret after `#`, for example `https://dave.example.workers.dev/#the-passphrase`. The secret is stored in the browser on first visit and stripped from the address bar. Each browser gets its own identity key. A friend you have not seen before wears a "new" badge and a six-character fingerprint until you click them; after that the fingerprint only returns when two friends show the same name. Click an avatar for the profile card: fingerprint, since when you know them, and a nickname only your browser shows. Your own card changes the name everyone sees.
 
 Open the page to see who is online and who is in the call, chat as a visitor, then **Join** for voice. **Share screen** publishes one share; nobody receives it until they click its tile. The gear next to Share screen tunes frame rate, resolution, and bandwidth live; the gear next to Mute picks devices and toggles audio processing.
 

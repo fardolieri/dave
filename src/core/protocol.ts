@@ -37,6 +37,8 @@ export type ClientMessage =
   | { t: 'join'; muted: boolean; sharing?: boolean }
   | { t: 'leave' }
   | { t: 'mute'; muted: boolean }
+  /** Change the self-declared display name; everyone learns through presence. Texts already sent keep the old one. */
+  | { t: 'name'; name: string }
   /** Point-to-point signaling to another participant, by public key. */
   | { t: 'signal'; to: string; data: SignalData }
   /** Ask for fresh TURN credentials (before an ICE restart with expired ones). */
@@ -115,6 +117,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | Invalid {
       return { t: 'leave' };
     case 'mute':
       return typeof m.muted === 'boolean' ? { t: 'mute', muted: m.muted } : invalid('unrecognised message');
+    case 'name': {
+      if (!str(m.name, 256)) return invalid('unrecognised message');
+      const name = normaliseName(m.name);
+      return name ? { t: 'name', name } : invalid('invalid name');
+    }
     case 'ice':
       return { t: 'ice' };
     case 'share':

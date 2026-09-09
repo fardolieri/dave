@@ -31,6 +31,10 @@ code.fp { font-size: 11px; color: var(--dim); }
 .plist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .plist li { display: flex; align-items: center; gap: 8px; }
 .avatar { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--panel2); font-weight: 600; flex: none; }
+/* In the lists the avatar is a button that opens the profile card; it keeps the look of the plain badge. */
+button.avatar { padding: 0; border: 0; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+button.avatar:hover:not(.speaking) { box-shadow: 0 0 0 2px var(--line); }
+button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
 .new { font-size: 10px; background: var(--warn); color: #000; border-radius: 4px; padding: 0 4px; margin-left: 4px; font-weight: 700; cursor: pointer; }
 .warn { margin-top: 10px; padding: 8px; border-radius: 8px; background: #4a3a12; color: var(--warn); font-size: 13px; }
 
@@ -145,6 +149,27 @@ select.picker option::checkmark { order: 1; margin-left: auto; }
 
 /* history tools */
 button.link { background: none; border: 0; color: var(--dim); font-size: 11px; padding: 2px 4px; text-decoration: underline; }
+
+/* Profile card (issues #6, #7): a popover next to the avatar that was clicked. Placed by script, so the
+   UA's centred inset is undone here; the top layer keeps it above shares and the composer. */
+.profile[popover] { position: fixed; inset: auto; margin: 0; width: 280px; max-width: calc(100vw - 16px); padding: 14px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); font-size: 14px; }
+.profile-head { display: flex; align-items: center; gap: 12px; }
+.avatar.big { width: 56px; height: 56px; font-size: 22px; }
+.profile-names { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.profile-name { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.profile-name strong { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the one edit the card offers sits right by the name it changes */
+.profile button.edit { background: none; border: 0; padding: 2px 5px; color: var(--dim); font-size: 13px; line-height: 1; flex: none; }
+.profile button.edit:hover { color: var(--fg); }
+.profile-names .dim { font-size: 12px; }
+.profile-head input { flex: 1; min-width: 0; }
+.profile-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 12px 0 0; font-size: 13px; }
+.profile-facts dt { color: var(--dim); }
+.profile-facts dd { margin: 0; }
+.profile .row { display: flex; gap: 6px; margin-top: 12px; }
+.profile .row button:first-child { flex: 1; }
+.profile input { width: 100%; }
+.profile .hint { margin: 8px 0 0; font-size: 12px; color: var(--dim); }
 
 /* problem reports */
 dialog.report { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: min(480px, 92vw); font-size: 14px; }

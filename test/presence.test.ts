@@ -58,6 +58,20 @@ describe('presence', () => {
     a.ws.close(1000, 'bye');
   });
 
+  it('a name change reaches everyone through presence and tags later texts; blank names are refused', async () => {
+    const a = await attach('Alice');
+    const b = await attach('Bob');
+    b.ws.send(JSON.stringify({ t: 'name', name: '  Robert  ' }));
+    const seen = await a.next((m) => m.t === 'presence' && names(m).includes('Robert'));
+    expect(names(seen)).toEqual(['Alice', 'Robert']);
+    b.ws.send(JSON.stringify({ t: 'text', text: 'hi' }));
+    expect(((await a.next((m) => m.t === 'text')) as unknown as { from: Person }).from.name).toBe('Robert');
+    b.ws.send(JSON.stringify({ t: 'name', name: '   ' }));
+    expect(await b.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'invalid name' });
+    a.ws.close(1000, 'bye');
+    b.ws.close(1000, 'bye');
+  });
+
   it('survives eviction: a brand-new Room instance over the same state sees the same presence', async () => {
     const a = await attach('Alice');
     const seenByClient = names(await a.next((m) => m.t === 'presence'));

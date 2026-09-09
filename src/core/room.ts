@@ -160,6 +160,10 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       if (state.person.role !== 'participant' || state.person.muted === msg.muted) return { state: next, replies: [] };
       return { state: { ...next, person: { ...state.person, muted: msg.muted } }, replies: [], presenceChanged: true };
     }
+    case 'name': {
+      if (state.person.name === msg.name) return { state: next, replies: [] };
+      return { state: { ...next, person: { ...state.person, name: msg.name } }, replies: [], presenceChanged: true };
+    }
     case 'ice': {
       if (state.person.role !== 'participant') return notInCall('ice');
       const now = ctx.now;

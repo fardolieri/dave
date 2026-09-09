@@ -45,8 +45,12 @@ The single invite passphrase or link that gates entry to the room. Everyone who 
 _Avoid_: Password, token, invite code
 
 **Fingerprint**:
-A short, human-comparable code derived from an identity's public key, shown beside the display name so friends can tell two identities with the same name apart.
+A short, human-comparable code derived from an identity's public key. Shown beside the name only while this browser has not acknowledged the key or while two identities show the same name; otherwise it lives in the hover title.
 _Avoid_: Hash, ID, key ID
+
+**Nickname**:
+The name this browser shows for a friend's identity instead of their self-declared name. Local: nobody else sees it, and it follows the key, so a friend on a new device starts without one.
+_Avoid_: Alias, rename, pet name, contact name
 
 **Invite link**:
 The URL a friend receives to enter the room. Carries the shared secret in its fragment, which never reaches the server.
@@ -55,3 +59,11 @@ _Avoid_: Join link, room URL
 **Identity**:
 A per-browser keypair that makes a friend's display name stable and unforgeable across sessions.
 _Avoid_: Account, login, profile
+
+**Profile card**:
+The popover that opens from an avatar: name, fingerprint, since when this browser knows the key, and the one edit that fits, a nickname for a friend or your own name for everyone. The place a profile picture will live.
+_Avoid_: Popup, tooltip, user details, modal
+
+**Acknowledged**:
+An identity this browser has seen and clicked once. Until then it wears a "new" badge and its fingerprint. Acknowledging or nicknaming a friend records the key in the browser's address book.
+_Avoid_: Trusted, verified, known (in UI copy; fine in code)

@@ -31,6 +31,8 @@ const BACKOFF_MAX_MS = 30_000;
  * ephemeral text. WebRTC state is added by later tickets.
  */
 export function createRoom(opts: { identity: LocalIdentity; secret: string; name: string }) {
+  // The self-declared name: sent at every (re)connect, changeable live through `rename`.
+  let name = opts.name;
   const [status, setStatus] = createSignal<ServerStatus>({ kind: 'connecting' });
   const [you, setYou] = createSignal<Person | null>(null);
   const [people, setPeople] = createSignal<Person[]>([]);
@@ -81,7 +83,7 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
       switch (m.t) {
         case 'challenge':
           socket.send(JSON.stringify(await buildAuthMessage({
-            secret: opts.secret, nonce: m.nonce, publicKeyRaw: opts.identity.publicKeyRaw, privateKey: opts.identity.keys.privateKey, name: opts.name,
+            secret: opts.secret, nonce: m.nonce, publicKeyRaw: opts.identity.publicKeyRaw, privateKey: opts.identity.keys.privateKey, name,
           })));
           return;
         case 'welcome':
@@ -178,6 +180,8 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
     clearHistory: async () => { await clearHistory(); setLines([]); },
     /** Dev aid for scripts/drive.mjs: drops the socket so the reconnect path runs. */
     dropSocket: () => ws?.close(),
+    /** Change the name everyone sees; presence brings it back. A later reconnect authenticates with it too. */
+    rename: (next: string) => { name = next; send({ t: 'name', name: next }); },
     /** After stepping back for another tab: reconnect here, which supersedes that tab in turn. */
     takeOver: () => { if (status().kind !== 'elsewhere') return; stopped = false; attempt = 0; downSince = null; setStatus({ kind: 'connecting' }); open(); },
     /** Fires for texts from other people (for the message cue). */
