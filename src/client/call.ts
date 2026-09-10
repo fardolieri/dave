@@ -354,6 +354,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       peer.candidateTimer ??= setTimeout(() => flushCandidates(peer), CANDIDATE_BATCH_MS);
     };
     pc.oniceconnectionstatechange = () => onIceState(peer);
+    pc.onconnectionstatechange = () => onConnectionState(peer);
     armConnectWatchdog(peer, initiator);
     pc.ontrack = ({ track, transceiver }) => {
       // Fires inside setRemoteDescription, before the answerer has recorded its transceivers,
@@ -551,16 +552,27 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     }
   }
 
+  /**
+   * The badge turns green only on the full connection state, which includes the DTLS handshake. ICE alone
+   * can succeed one-sidedly (the other side answered our checks but refused our description, ticket 14),
+   * and a path without encryption carries no media; showing "direct" for it also silenced the watchdog.
+   */
+  function onConnectionState(peer: Peer): void {
+    if (peer.pc.connectionState !== 'connected') return;
+    clearTimeout(peer.connectTimer);
+    stuckAttempts.delete(peer.key);
+    if (peer.view.conn === 'connecting' || peer.view.conn === 'reconnecting' || peer.view.conn === 'unreachable') setView(peer, { conn: 'direct' });
+    void refreshStats(peer);
+  }
+
   function onIceState(peer: Peer): void {
     const s = peer.pc.iceConnectionState;
     clearTimeout(peer.disconnectTimer);
     if (s === 'connected' || s === 'completed') {
       peer.restarts = 0;
       clearTimeout(peer.restartTimer);
-      clearTimeout(peer.connectTimer);
-      stuckAttempts.delete(peer.key);
-      if (peer.view.conn === 'connecting' || peer.view.conn === 'reconnecting' || peer.view.conn === 'unreachable') setView(peer, { conn: 'direct' });
-      void refreshStats(peer);
+      // After an ICE restart the connection state may already read connected; let it settle the badge.
+      onConnectionState(peer);
     } else if (s === 'disconnected') {
       setView(peer, { conn: 'reconnecting' });
       // A peer whose server socket is gone cannot be signalled, so an ICE restart would only produce
@@ -734,8 +746,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const local = st.get(pair.localCandidateId) as CandidateStats | undefined;
     const remote = st.get(pair.remoteCandidateId) as CandidateStats | undefined;
     const relayed = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
-    const ice = peer.pc.iceConnectionState;
-    if ((ice === 'connected' || ice === 'completed') && peer.view.conn !== (relayed ? 'relayed' : 'direct')) setView(peer, { conn: relayed ? 'relayed' : 'direct' });
+    if (peer.pc.connectionState === 'connected' && peer.view.conn !== (relayed ? 'relayed' : 'direct')) setView(peer, { conn: relayed ? 'relayed' : 'direct' });
   }
   const statsTimer = setInterval(() => { for (const p of peers.values()) void refreshStats(p); }, 2000);
 
