@@ -2,6 +2,8 @@ import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
 import { distinctFormats, type VideoFormat } from '../core/format';
 import { stuckDelay } from '../core/mesh';
 import posthog from './posthog';
+import { signDescription, verifyDescription } from '../core/dtls';
+import type { LocalIdentity } from './identity';
 import {
   ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
 } from '../core/mesh';
@@ -96,7 +98,8 @@ const SPEAK_HOLD_MS = 300;
  * participant, three fixed transceivers, perfect negotiation with polite = lower key,
  * newcomer initiates, all control over the room socket. Voice and one Share per participant.
  */
-export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
+export function createCall(room: ReturnType<typeof createRoom>, identity: LocalIdentity) {
+  const myKey = identity.publicKey;
   const [inCall, setInCallSignal] = createSignal(false);
   // Solid 2 stages signal writes to a microtask, so code that runs right after a write still reads the old
   // value. Internal logic therefore uses this plain mirror; the signal is for rendering only.
@@ -339,7 +342,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
       try {
         peer.makingOffer = true;
         await pc.setLocalDescription();
-        room.send({ t: 'signal', to: key, data: { description: pc.localDescription } });
+        await sendDescription(peer);
       } catch (e) {
         console.warn('negotiationneeded failed', e);
       } finally {
@@ -454,6 +457,20 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
     for (const p of peers.values()) if (p.viewsMyShare) void applyShareEncoding(p);
   }
 
+  /** Send my current local description with its DTLS fingerprints signed by my identity key, bound to this peer (ADR 0004). */
+  async function sendDescription(peer: Peer): Promise<void> {
+    const description = peer.pc.localDescription;
+    if (!description) return;
+    const sig = await signDescription({ privateKey: identity.keys.privateKey, from: myKey, to: peer.key, sdp: description.sdp });
+    if (!sig) {
+      // Never happens with a real browser description; if it did, the other side would refuse it anyway.
+      console.warn('local description carries no DTLS fingerprint; not sent');
+      posthog.capture('signal_unsignable', { type: description.type });
+      return;
+    }
+    room.send({ t: 'signal', to: peer.key, data: { description: { type: description.type, sdp: description.sdp }, sig } });
+  }
+
   function flushCandidates(peer: Peer): void {
     peer.candidateTimer = undefined;
     if (!peer.outgoingCandidates.length) return;
@@ -476,8 +493,18 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
 
   async function onSignalNow(from: string, data: SignalData): Promise<void> {
     if (!joined) return;
-    let peer = peers.get(from);
     const isOffer = (data.description as RTCSessionDescriptionInit | undefined)?.type === 'offer';
+    if (data.description) {
+      // The server only attributes this description to `from`; the signature proves that identity produced
+      // the DTLS fingerprints inside it, for me (ADR 0004). Checked before anything is torn down or created.
+      const verdict = await verifyDescription({ from, to: myKey, sdp: (data.description as RTCSessionDescriptionInit).sdp ?? '', signature: data.sig });
+      if (verdict !== 'ok') {
+        console.warn('description rejected:', verdict, 'from', peers.get(from)?.view.name ?? from.slice(0, 8));
+        posthog.capture('signal_rejected', { reason: verdict, offer: isOffer });
+        return;
+      }
+    }
+    let peer = peers.get(from);
     if (peer && isOffer && (peer.view.serverLost || peer.pc.iceConnectionState === 'failed' || peer.pc.connectionState === 'closed')) {
       // A fresh offer from a peer whose old connection is dead or who vanished and came back: start over.
       closePeer(from);
@@ -507,7 +534,7 @@ export function createCall(room: ReturnType<typeof createRoom>, myKey: string) {
             attachLocalTracks(peer);
           }
           await pc.setLocalDescription();
-          room.send({ t: 'signal', to: from, data: { description: pc.localDescription } });
+          await sendDescription(peer);
         }
       }
       if (data.candidates) {

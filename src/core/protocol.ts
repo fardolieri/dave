@@ -24,8 +24,12 @@ export type Person = Identity & {
 /** An entry for RTCPeerConnection's iceServers. */
 export type IceServer = { urls: string | string[]; username?: string; credential?: string };
 
-/** Opaque WebRTC signaling payload, relayed untouched between two participants. Candidates travel batched. */
-export type SignalData = { description?: unknown; candidates?: unknown[] };
+/**
+ * Opaque WebRTC signaling payload, relayed untouched between two participants. Candidates travel batched.
+ * `sig` is the sender's identity signature over the description's DTLS fingerprints (ADR 0004);
+ * the server passes it through and only the receiving client checks it.
+ */
+export type SignalData = { description?: unknown; sig?: string; candidates?: unknown[] };
 export const MAX_CANDIDATES_PER_MESSAGE = 64;
 
 export type ClientMessage =
@@ -135,7 +139,13 @@ export function parseClientMessage(raw: unknown): ClientMessage | Invalid {
       if (!b64(m.to) || typeof m.data !== 'object' || m.data === null) return invalid('unrecognised message');
       const d = m.data as Record<string, unknown>;
       const data: SignalData = {};
-      if ('description' in d) data.description = d.description;
+      if ('description' in d) {
+        data.description = d.description;
+        if ('sig' in d) {
+          if (!b64(d.sig)) return invalid('unrecognised message');
+          data.sig = d.sig;
+        }
+      }
       if ('candidates' in d) {
         if (!Array.isArray(d.candidates) || d.candidates.length > MAX_CANDIDATES_PER_MESSAGE) return invalid('unrecognised message');
         data.candidates = d.candidates;

@@ -77,7 +77,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
   // A deliberate one-time snapshot: the socket is created once with the props at mount.
   const room = createRoom(untrack(() => ({ secret: props.secret, name: props.name, identity: props.identity })));
   const me = () => props.identity.publicKey;
-  const call = createCall(room, untrack(me));
+  const call = createCall(room, untrack(() => props.identity));
   createAttention(room, call, untrack(me));
   // Shown names that more than one key uses, among everyone present and everyone in the loaded history:
   // only those get their fingerprint next to the name (issue #7).

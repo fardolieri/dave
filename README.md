@@ -1,6 +1,6 @@
 # dave
 
-A single-room chat for a few friends: text, voice, and screen share over a peer-to-peer WebRTC mesh, brokered by a small Cloudflare Worker that never touches the media. Spec: `.scratch/p2p-friends-chat/spec.md`. Glossary: `CONTEXT.md`. Decisions: `docs/adr/`.
+A single-room chat for a few friends: text, voice, and screen share over a peer-to-peer WebRTC mesh, brokered by a small Cloudflare Worker that never touches the media and cannot insert itself into a call: each WebRTC handshake is signed by the sender's identity key and checked by the receiver. Spec: `.scratch/p2p-friends-chat/spec.md`. Glossary: `CONTEXT.md`. Decisions: `docs/adr/`.
 
 ## Using it
 

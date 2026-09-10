@@ -97,6 +97,11 @@ describe('signaling relay', () => {
     send(a, { t: 'signal', to: b.you.publicKey, data: { description: { type: 'offer', sdp: 'v=0' } } });
     const got = await b.next((m) => m.t === 'signal');
     expect(got).toEqual({ t: 'signal', from: a.you.publicKey, data: { description: { type: 'offer', sdp: 'v=0' } } });
+    // the identity signature over the DTLS fingerprints (ADR 0004) passes through untouched; a malformed one is rejected
+    send(a, { t: 'signal', to: b.you.publicKey, data: { description: { type: 'answer', sdp: 'v=0' }, sig: 'c2ln' } });
+    expect(await b.next((m) => m.t === 'signal')).toEqual({ t: 'signal', from: a.you.publicKey, data: { description: { type: 'answer', sdp: 'v=0' }, sig: 'c2ln' } });
+    send(a, { t: 'signal', to: b.you.publicKey, data: { description: { type: 'answer', sdp: 'v=0' }, sig: 'not base64!' } });
+    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'unrecognised message' });
     send(a, { t: 'signal', to: b.you.publicKey, data: { candidates: [{ candidate: 'x' }, null] } });
     expect(await b.next((m) => m.t === 'signal')).toEqual({ t: 'signal', from: a.you.publicKey, data: { candidates: [{ candidate: 'x' }, null] } });
     send(a, { t: 'signal', to: v.you.publicKey, data: { candidates: [null] } });

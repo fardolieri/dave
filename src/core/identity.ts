@@ -107,13 +107,27 @@ export async function verifyAnswer(input: {
   const key = await hmacKey(input.secret, 'verify');
   const macOk = await subtle().verify('HMAC', key, input.hmac as BufferSource, concat(input.nonce, input.publicKeyRaw) as BufferSource);
   if (!macOk) return false;
-  let publicKey: CryptoKey;
+  const publicKey = await importPublicKey(input.publicKeyRaw);
+  return publicKey ? verifyBytes(publicKey, input.signature, input.nonce) : false;
+}
+
+/** Imports a raw uncompressed P-256 public key for verification; null when the bytes are not a valid point. */
+export async function importPublicKey(publicKeyRaw: Uint8Array): Promise<CryptoKey | null> {
+  if (!isValidPublicKey(publicKeyRaw)) return null;
   try {
-    publicKey = await subtle().importKey('raw', input.publicKeyRaw as BufferSource, P256, true, ['verify']);
+    return await subtle().importKey('raw', publicKeyRaw as BufferSource, P256, true, ['verify']);
   } catch {
-    return false;
+    return null;
   }
-  return subtle().verify(SIGN, publicKey, input.signature as BufferSource, input.nonce as BufferSource);
+}
+
+/** ECDSA P-256 with SHA-256 over arbitrary bytes, the identity key's one signing scheme. */
+export async function signBytes(privateKey: CryptoKey, bytes: Uint8Array): Promise<Uint8Array> {
+  return new Uint8Array(await subtle().sign(SIGN, privateKey, bytes as BufferSource));
+}
+
+export function verifyBytes(publicKey: CryptoKey, signature: Uint8Array, bytes: Uint8Array): Promise<boolean> {
+  return subtle().verify(SIGN, publicKey, signature as BufferSource, bytes as BufferSource);
 }
 
 /** Client side: turn a challenge into the complete `auth` message. Shared by the app and the tests. */
