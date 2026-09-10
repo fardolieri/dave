@@ -175,6 +175,12 @@ button.link { background: none; border: 0; color: var(--dim); font-size: 11px; p
 dialog.report { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: min(480px, 92vw); font-size: 14px; }
 dialog.report::backdrop { background: rgba(0,0,0,.55); }
 dialog.report h3 { margin: 0 0 10px; font-size: 15px; }
+dialog.report .field { display: block; margin: 0 0 10px; font-size: 13px; color: var(--dim); }
+dialog.report .field select { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
+dialog.report fieldset.field { border: 0; padding: 0; }
+dialog.report fieldset.field legend { padding: 0; margin-bottom: 4px; }
+dialog.report .severity label { display: block; color: var(--fg); margin: 2px 0; }
+dialog.report .severity input { margin: 0 6px 0 0; vertical-align: -1px; }
 dialog.report textarea { width: 100%; box-sizing: border-box; background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; resize: vertical; }
 dialog.report .hint { margin: 8px 0 0; }
 dialog.report .ok { margin: 10px 0 0; font-size: 13px; color: var(--ok); }

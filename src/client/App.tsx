@@ -1,6 +1,6 @@
 import { createSignal, Switch, Match, createMemo, createEffect, For, Show, untrack, onCleanup } from 'solid-js';
 import './styles.css';
-import posthog from './posthog';
+import posthog, { isTestAccount } from './posthog';
 import { loadIdentity, type LocalIdentity } from './identity';
 import { getName, getSecret, setName, takeSecretFromInviteLink } from './invite';
 import { createRoom, type ChatLine, type ServerStatus } from './room';
@@ -12,6 +12,7 @@ import { ambiguousNames, displayName, knownAgo, showsFingerprint } from '../core
 import { LOW_LATENCY_MS, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatVideo } from '../core/format';
 import { collectReport, formatReport, sendReport, type Report } from './diagnostics';
+import { CATEGORIES, SEVERITIES, isCategory, isSeverity, type Category, type Severity } from '../core/report';
 
 export default function App() {
   takeSecretFromInviteLink();
@@ -71,8 +72,10 @@ function NameForm(props: { onSubmit: (name: string) => void }) {
 
 // Owns the socket: a component body runs once, so `createRoom` is called exactly once.
 function RoomView(props: { secret: string; name: string; identity: LocalIdentity }) {
-  // Pseudonymous identity for analytics: the public key, nothing personal. One-time read on purpose.
-  posthog.identify(untrack(() => props.identity.publicKey));
+  // Pseudonymous identity for analytics: the public key, nothing personal. The fingerprint is the
+  // same code the profile card shows, so a report's person can be matched to a friend by eye. A
+  // driver-seeded browser marks its person for the project's test-account filter. One-time read on purpose.
+  posthog.identify(untrack(() => props.identity.publicKey), untrack(() => ({ fingerprint: props.identity.fingerprint, ...(isTestAccount ? { $internal_or_test_user: true } : {}) })));
   posthog.capture('room_entered');
   // A deliberate one-time snapshot: the socket is created once with the props at mount.
   const room = createRoom(untrack(() => ({ secret: props.secret, name: props.name, identity: props.identity })));
@@ -583,17 +586,21 @@ function Banner(props: { status: ServerStatus; onTakeOver: () => void }) {
 }
 
 /**
- * "Report a problem" (ticket 12): a description plus a technical snapshot go to the room's error log
- * (PostHog), next to this tab's masked session replay. Copy is the fallback for browsers that block it.
+ * "Report a problem" (ticket 12): a category, a severity and a description plus a technical snapshot
+ * go to the room's error log (PostHog), next to this tab's masked session replay. Copy is the fallback
+ * for browsers that block it.
  */
 function ReportDialog(props: { collect: () => Promise<Report> }) {
   let dialog: HTMLDialogElement | undefined;
   const [text, setText] = createSignal('');
+  const [category, setCategory] = createSignal<Category>('other');
+  const [severity, setSeverity] = createSignal<Severity>('annoying');
   const [phase, setPhase] = createSignal<'idle' | 'sending' | 'sent' | 'copied' | 'copy_failed'>('idle');
+  const form = () => ({ text: text(), category: category(), severity: severity() });
   const open = () => { setPhase('idle'); dialog?.showModal(); };
-  const send = async () => { setPhase('sending'); sendReport(text(), await props.collect()); setPhase('sent'); };
+  const send = async () => { setPhase('sending'); sendReport(form(), await props.collect()); setPhase('sent'); };
   const copy = async () => {
-    const body = formatReport(text(), await props.collect());
+    const body = formatReport(form(), await props.collect());
     try { await navigator.clipboard.writeText(body); setPhase('copied'); } catch { setPhase('copy_failed'); }
   };
   return (
@@ -601,6 +608,17 @@ function ReportDialog(props: { collect: () => Promise<Report> }) {
       <button class="link" onClick={open}>Report a problem</button>
       <dialog class="report" ref={dialog}>
         <h3>Report a problem</h3>
+        <label class="field">What is broken?
+          <select value={category()} onChange={(e) => { const v = e.currentTarget.value; if (isCategory(v)) setCategory(v); }}>
+            <For each={Object.entries(CATEGORIES)}>{([key, label]) => <option value={key}>{label}</option>}</For>
+          </select>
+        </label>
+        <fieldset class="field severity">
+          <legend>How bad is it?</legend>
+          <For each={Object.entries(SEVERITIES)}>{([key, label]) => (
+            <label><input type="radio" name="severity" value={key} checked={severity() === key} onChange={() => { if (isSeverity(key)) setSeverity(key); }} /> {label}</label>
+          )}</For>
+        </fieldset>
         <textarea value={text()} onInput={(e) => setText(e.currentTarget.value)} placeholder="What went wrong, and what did you expect? When did it happen?" rows={4} />
         <p class="hint">Your description is sent to this room's error log together with a technical snapshot of your connection: states and counters, never message texts or names. The last minutes of this tab are already kept as a masked session replay.</p>
         <Switch>

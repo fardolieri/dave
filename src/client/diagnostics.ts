@@ -3,11 +3,15 @@
  * snapshot of this tab: connection states and media counters per peer, the share tiles' video
  * elements, recent console warnings. Never message texts or names, only fingerprints. It goes to
  * PostHog as one event, next to the masked session replay of the same tab, and can be copied as
- * text for browsers that block PostHog.
+ * text for browsers that block PostHog. The event's shape (category, severity, flat fields) lives in
+ * `core/report.ts`, which has no DOM or SDK dependency and is unit-tested.
  */
 import posthog from './posthog';
 import { recentLog } from './log';
 import type { CallDiagnostics } from './call';
+import { reportProperties, type ReportForm } from '../core/report';
+
+export { formatReport } from '../core/report';
 
 export type Report = {
   at: string;
@@ -52,15 +56,7 @@ export function videoElementStates(): Report['videoElements'] {
   });
 }
 
-export function sendReport(text: string, report: Report): void {
-  posthog.capture('bug_report', {
-    text,
-    report: JSON.stringify(report),
-    in_call: report.call.inCall,
-    peers: report.call.peers.length,
-    watching_count: report.call.peers.filter((p) => p.view.watching).length,
-    black_tiles: report.videoElements.filter((v) => !v.hidden && (v.width === 0 || v.frames === 0)).length,
-  });
+/** One event: the friend's words and tags as properties, the snapshot as JSON, and the flat fields `reportProperties` lifts out of it. */
+export function sendReport(form: ReportForm, report: Report): void {
+  posthog.capture('bug_report', reportProperties(form, report));
 }
-
-export const formatReport = (text: string, report: Report): string => `${text.trim()}\n\n--- technical snapshot ---\n${JSON.stringify(report, null, 1)}`;

@@ -6,6 +6,14 @@
  * masks all text and inputs, and no event ever carries message text or names.
  */
 import posthogJs from 'posthog-js';
+import { local } from './storage';
+
+/**
+ * A browser the driver (scripts/drive.mjs) seeded with `dave.test = true`. Its events carry
+ * `is_test_account` and its person is marked `$internal_or_test_user`, the property the project's
+ * "Internal / Test users" cohort keys on, so PostHog's test-account filter drops it from insights.
+ */
+export const isTestAccount: boolean = local.get('test') === 'true';
 
 const key = import.meta.env['VITE_POSTHOG_KEY'] as string | undefined;
 const host = import.meta.env['VITE_POSTHOG_HOST'] as string | undefined;
@@ -23,6 +31,7 @@ if (!key || !host) {
       maskTextSelector: '*', // chat, names, fingerprints: never in a recording
     },
   });
+  if (isTestAccount) posthogJs.register({ is_test_account: true });
 }
 
 export default posthogJs;

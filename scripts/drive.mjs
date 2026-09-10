@@ -63,8 +63,10 @@ class Browser {
   async goto(u) { await this.cdp('Page.navigate', { url: u }); await sleep(800); }
   async seed() {
     await this.goto(new URL('/', url).href);
+    // dave.test marks this browser as a test account: its events carry is_test_account and its PostHog person
+    // is flagged $internal_or_test_user, which the project's test-account filter excludes from insights.
     // SEED_MUTED=1: join with the microphone muted (for runs against the live room; pair with CHROME_FLAGS=--use-file-for-fake-audio-capture=<silent.wav> so nothing hums either way).
-    await this.eval(`localStorage.setItem('dave.secret', ${JSON.stringify(secret)}); localStorage.setItem('dave.name', ${JSON.stringify(this.name)}); ${process.env.SEED_MUTED ? "localStorage.setItem('dave.muted', 'true');" : ''} 'ok'`);
+    await this.eval(`localStorage.setItem('dave.secret', ${JSON.stringify(secret)}); localStorage.setItem('dave.name', ${JSON.stringify(this.name)}); localStorage.setItem('dave.test', 'true'); ${process.env.SEED_MUTED ? "localStorage.setItem('dave.muted', 'true');" : ''} 'ok'`);
     await this.goto(url);
   }
   async screenshot(path, width) {
@@ -209,6 +211,7 @@ try {
       if (process.env.REPORT_CHECK) {
         // The viewer files a problem report while watching; the dialog must confirm, and the event carries a snapshot.
         await viewer.eval(`document.querySelector('.report-link button')?.click(); 'open'`); await sleep(300);
+        await viewer.eval(`(() => { const s = document.querySelector('dialog.report select'); s.value = 'share'; s.dispatchEvent(new Event('change', { bubbles: true })); document.querySelector('dialog.report input[value=blocking]').click(); return 'tagged'; })()`); await sleep(100);
         await viewer.eval(`(() => { const t = document.querySelector('dialog.report textarea'); t.value = 'automated test report from the driver, please ignore'; t.dispatchEvent(new Event('input', { bubbles: true })); return 'typed'; })()`); await sleep(200);
         await viewer.eval(`[...document.querySelectorAll('dialog.report .row button')].find(b => b.textContent === 'Send')?.click(); 'send'`); await sleep(2500);
         console.log(`[${viewer.name}] report dialog says: ${await viewer.text('dialog.report .ok, dialog.report .warn') || '(nothing yet)'} | dialog open: ${await viewer.eval(`document.querySelector('dialog.report').open`)}`);
