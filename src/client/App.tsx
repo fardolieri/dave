@@ -675,10 +675,10 @@ function Composer(props: { connected: boolean; onSend: (text: string) => void })
   };
   return (
     <form class="chat-input" onSubmit={submit}>
-      <input ref={input} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!props.connected} maxlength={MAX_TEXT_LENGTH}
-             placeholder={props.connected ? 'Message the room' : "Can't send while disconnected"} />
       <button type="button" class="emoji-open" ref={emojiButton} popovertarget="composer-emoji" disabled={!props.connected} title="Emoji" aria-label="Emoji">🙂</button>
       <EmojiPicker id="composer-emoji" anchor={() => emojiButton} onPick={insert} />
+      <input ref={input} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!props.connected} maxlength={MAX_TEXT_LENGTH}
+             placeholder={props.connected ? 'Message the room' : "Can't send while disconnected"} />
       <button disabled={!props.connected || !draft().trim()}>Send</button>
     </form>
   );
