@@ -229,7 +229,7 @@ dialog.report .row button:first-child { flex: 1; }
   .side { grid-column: 1; grid-row: 1; border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
   .shares { grid-column: 1; grid-row: 2; grid-template-columns: 1fr !important; }
   .shares .share { min-height: 180px; }
-  .chat { grid-column: 1; grid-row: 3; min-height: 180px; }
+  .chat { grid-column: 1; grid-row: 3; min-height: 180px; padding-bottom: 8px; } /* breathing room between the newest line and the composer's top border */
   .chat-input { grid-column: 1; grid-row: 2; border-top: 1px solid var(--line); padding: 8px 14px calc(8px + env(safe-area-inset-bottom)); }
   .emoji-picker[popover] { width: calc(100vw - 16px); } /* the whole width: the finger is the pointer here */
 }
