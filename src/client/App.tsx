@@ -13,6 +13,8 @@ import { LOW_LATENCY_MS, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioS
 import { formatBitrate, formatVideo } from '../core/format';
 import { collectReport, formatReport, sendReport, type Report } from './diagnostics';
 import { CATEGORIES, SEVERITIES, isCategory, isSeverity, type Category, type Severity } from '../core/report';
+import { EmojiPicker } from './EmojiPicker';
+import { place } from './place';
 
 export default function App() {
   takeSecretFromInviteLink();
@@ -328,20 +330,6 @@ function ProfileCard(props: { open: { publicKey: string; anchor: HTMLElement } |
   );
 }
 
-/** Puts the card next to the avatar it belongs to: to the right when there is room, else below, always inside the viewport. */
-function place(card: HTMLElement, anchor: HTMLElement): void {
-  const a = anchor.getBoundingClientRect();
-  const w = card.offsetWidth;
-  const h = card.offsetHeight;
-  const gap = 8;
-  let left = a.right + gap;
-  let top = a.top - gap;
-  if (left + w > window.innerWidth - gap) { left = Math.max(gap, Math.min(a.left, window.innerWidth - w - gap)); top = a.bottom + gap; }
-  top = Math.max(gap, Math.min(top, window.innerHeight - h - gap));
-  card.style.left = `${left}px`;
-  card.style.top = `${top}px`;
-}
-
 type Call = ReturnType<typeof createCall>;
 
 function SharePanel(props: { call: Call }) {
@@ -642,9 +630,14 @@ const OVERLAY_HIDE_MS = 2500;
 /** Clock time on a 24-hour clock; older than a day also says which day. */
 const when = (at: number): string => new Date(at).toLocaleString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(Date.now() - at > 20 * 3600 * 1000 ? { day: '2-digit', month: 'short' } : {}) });
 
-/** The message input. A separate grid item from the log so phones can keep it as the bottom row of the screen. */
+/**
+ * The message input. A separate grid item from the log so phones can keep it as the bottom row of the screen.
+ * The emoji button opens the picker (issue #3); a pick lands at the caret and the picker stays for the next one.
+ */
 function Composer(props: { connected: boolean; onSend: (text: string) => void }) {
   const [draft, setDraft] = createSignal('');
+  let input: HTMLInputElement | undefined;
+  let emojiButton: HTMLButtonElement | undefined;
   const submit = (e: Event) => {
     e.preventDefault();
     const text = draft().trim();
@@ -652,10 +645,22 @@ function Composer(props: { connected: boolean; onSend: (text: string) => void })
     props.onSend(text);
     setDraft('');
   };
+  const insert = (emoji: string) => {
+    const at = input?.selectionStart ?? draft().length;
+    const to = input?.selectionEnd ?? at;
+    const next = draft().slice(0, at) + emoji + draft().slice(to);
+    if (next.length > MAX_TEXT_LENGTH) return;
+    setDraft(next);
+    posthog.capture('emoji_picked', { via: 'composer' });
+    // Typing continues right after the emoji; the picker stays open (a popover does not take focus back).
+    queueMicrotask(() => { input?.focus(); input?.setSelectionRange(at + emoji.length, at + emoji.length); });
+  };
   return (
     <form class="chat-input" onSubmit={submit}>
-      <input value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!props.connected} maxlength={MAX_TEXT_LENGTH}
+      <input ref={input} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!props.connected} maxlength={MAX_TEXT_LENGTH}
              placeholder={props.connected ? 'Message the room' : "Can't send while disconnected"} />
+      <button type="button" class="emoji-open" ref={emojiButton} popovertarget="composer-emoji" disabled={!props.connected} title="Emoji" aria-label="Emoji">🙂</button>
+      <EmojiPicker id="composer-emoji" anchor={() => emojiButton} onPick={insert} />
       <button disabled={!props.connected || !draft().trim()}>Send</button>
     </form>
   );

@@ -56,7 +56,7 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .msg-text { white-space: pre-wrap; word-break: break-word; }
 .msg-sys { font-size: 12px; color: var(--dim); font-style: italic; } .msg-sys .msg-text { display: inline; }
 .chat-input { grid-column: 2; grid-row: 3; display: flex; gap: 6px; padding: 8px 14px 14px; }
-.chat-input input { flex: 1; }
+.chat-input > input { flex: 1; } /* the child selector keeps the rule off the picker's search field inside the form */
 
 /* call */
 .plist li { flex-wrap: nowrap; }
@@ -171,6 +171,24 @@ button.link { background: none; border: 0; color: var(--dim); font-size: 11px; p
 .profile input { width: 100%; }
 .profile .hint { margin: 8px 0 0; font-size: 12px; color: var(--dim); }
 
+/* Emoji picker (issue #3): a popover over the button that opened it, placed by script like the profile card.
+   The UA hides a closed popover with display:none, so the flex layout applies only while open. */
+.emoji-picker[popover] { position: fixed; inset: auto; margin: 0; width: 320px; max-width: calc(100vw - 16px); height: 380px; max-height: calc(100dvh - 16px); padding: 10px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.emoji-picker:popover-open { display: flex; flex-direction: column; gap: 8px; }
+.emoji-picker .emoji-search { width: 100%; padding: 6px 10px; }
+.emoji-tabs { display: flex; gap: 2px; flex: none; }
+.emoji-tabs button { flex: 1; padding: 2px 0; border: 0; background: none; font-size: 18px; line-height: 1.4; border-radius: 6px; }
+.emoji-tabs button:hover { background: var(--panel2); }
+.emoji-scroll { flex: 1; min-height: 0; overflow: auto; scroll-padding-top: 4px; }
+.emoji-scroll h4 { margin: 6px 0 2px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); position: sticky; top: 0; background: var(--panel); padding: 2px 0; }
+.emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, 36px); justify-content: space-between; }
+.emoji-grid button { width: 36px; height: 36px; padding: 0; border: 0; background: none; border-radius: 6px; font-size: 22px; line-height: 1; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", system-ui, sans-serif; }
+.emoji-grid button:hover, .emoji-grid button:focus-visible { background: var(--panel2); }
+.emoji-picker .hint { margin: 8px 2px; }
+/* the button in the composer is quiet until hovered: the input and Send are what the row is about */
+.chat-input .emoji-open { padding: 8px 10px; font-size: 16px; line-height: 1; background: none; border-color: transparent; filter: grayscale(1); opacity: .7; }
+.chat-input .emoji-open:hover:not(:disabled) { filter: none; opacity: 1; border-color: var(--line); }
+
 /* problem reports */
 dialog.report { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: min(480px, 92vw); font-size: 14px; }
 dialog.report::backdrop { background: rgba(0,0,0,.55); }
@@ -205,4 +223,5 @@ dialog.report .row button:first-child { flex: 1; }
   .shares .share { min-height: 180px; }
   .chat { grid-column: 1; grid-row: 3; min-height: 180px; }
   .chat-input { grid-column: 1; grid-row: 2; border-top: 1px solid var(--line); padding: 8px 14px calc(8px + env(safe-area-inset-bottom)); }
+  .emoji-picker[popover] { width: calc(100vw - 16px); } /* the whole width: the finger is the pointer here */
 }
