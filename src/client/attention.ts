@@ -23,11 +23,20 @@ export function createAttention(room: ReturnType<typeof createRoom>, call: Retur
   // ---- title badge
   createEffect(() => titleFor(othersInCall(), unfocused()), (title) => { document.title = title; });
 
-  // ---- chimes: browsers only let audio start after a gesture, so the context is created lazily on first interaction
+  // ---- chimes: browsers only let audio start after a gesture, so the context is created lazily on first interaction.
+  // The unlock listens for `click`, not `pointerdown`, and unregisters once the context runs. Brave with autoplay
+  // set to Block clears the page's user activation whenever the autoplay policy is consulted, and creating or
+  // resuming an AudioContext consults it: an unlock on pointerdown robbed the click handler that followed, a share
+  // tile's play(), of the gesture it needs, and the tile stayed black (reproduced in headless Brave, Sep 10).
   let ctx: AudioContext | null = null;
-  const unlock = () => { ctx ??= new AudioContext(); void ctx.resume(); };
-  window.addEventListener('pointerdown', unlock, { passive: true });
-  window.addEventListener('keydown', unlock, { passive: true });
+  const stopUnlocking = () => { window.removeEventListener('click', unlock); window.removeEventListener('keydown', unlock); };
+  function unlock(): void {
+    ctx ??= new AudioContext();
+    if (ctx.state === 'running') { stopUnlocking(); return; }
+    ctx.resume().then(() => { if (ctx?.state === 'running') stopUnlocking(); }, () => {});
+  }
+  window.addEventListener('click', unlock);
+  window.addEventListener('keydown', unlock);
   function chime(notes: readonly number[], gainLevel: number = CHIME.gain): void {
     const c = ctx;
     if (!c || c.state !== 'running') return;
@@ -93,8 +102,7 @@ export function createAttention(room: ReturnType<typeof createRoom>, call: Retur
     document.removeEventListener('visibilitychange', syncFocus);
     window.removeEventListener('focus', syncFocus);
     window.removeEventListener('blur', syncFocus);
-    window.removeEventListener('pointerdown', unlock);
-    window.removeEventListener('keydown', unlock);
+    stopUnlocking();
     document.removeEventListener('visibilitychange', syncWakeLock);
     void sentinel?.release();
     void ctx?.close();

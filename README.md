@@ -19,6 +19,6 @@ To rotate the secret: change the `ROOM_SECRET` GitHub repository secret, push to
     pnpm typecheck
     pnpm build                        # dist/client and dist/dave
 
-`node scripts/drive.mjs --join --share <url> <secret> Alice Bob Carol` drives real headless Chromium profiles through join, mute, share, subscribe, and leave, and reports what each browser shows. Use `localhost`, not `127.0.0.1`, for the dev server.
+`node scripts/drive.mjs --join --share <url> <secret> Alice Bob Carol` drives real headless Chromium profiles through join, mute, share, subscribe, and leave, and reports what each browser shows. Use `localhost`, not `127.0.0.1`, for the dev server. `BROWSER_BOB="flatpak run --filesystem=$HOME/.cache/dave-drive com.brave.Browser" PROFILE_DIR=$HOME/.cache/dave-drive AUTOPLAY_BLOCK=Bob BLACK_CHECK=1` runs one browser in Brave with autoplay blocked and probes whether the share tile actually paints (ticket 16). Firefox has no CDP;  runs the same viewer check through Playwright (see its header).
 
 Deploys run from GitHub Actions on push to master. Secrets live in GitHub repository secrets (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `TURN_KEY_API_TOKEN`, `ROOM_SECRET`) and are pushed to the Worker by the workflow; nothing secret is in this repo.

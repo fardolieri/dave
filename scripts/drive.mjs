@@ -9,7 +9,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// CHROME may be a command with leading arguments, e.g. "flatpak run --filesystem=$TMPDIR com.brave.Browser"; BROWSER_<NAME> (upper case)
+// overrides it for one browser, so a viewer can run in Brave while the sharer stays in Chromium. A Flatpak browser only sees
+// its own /tmp, so set PROFILE_DIR to a short path its --filesystem flag grants (Chromium itself dies on a long TMPDIR, the
+// sockets it puts there have a 108-byte path limit). AUTOPLAY_BLOCK=<name,name>: those profiles start
+// with Brave's/Chrome's autoplay site setting on Block, the setup behind the black share tiles friends on Brave reported.
 const CHROME = process.env.CHROME ?? `${process.env.HOME}/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome`;
+const command = (s) => { const [cmd, ...pre] = s.split(' ').filter(Boolean); return { cmd, pre }; };
+const autoplayBlocked = new Set((process.env.AUTOPLAY_BLOCK ?? '').split(',').filter(Boolean));
 const args = process.argv.slice(2);
 const holdArg = args.find((a) => a.startsWith('--hold='));
 const joinAll = args.includes('--join');
@@ -24,15 +31,19 @@ if (!url || !secret || names.length === 0) { console.error('usage: drive.mjs <ur
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 class Browser {
-  constructor(name, port, size = '1200,800') { this.name = name; this.port = port; this.size = size; this.dir = mkdtempSync(join(tmpdir(), `dave-${name}-`)); }
+  constructor(name, port, size = '1200,800') { this.name = name; this.port = port; this.size = size; this.dir = mkdtempSync(join(process.env.PROFILE_DIR ?? tmpdir(), `dave-${name}-`)); }
   async launch() {
     const extra = (process.env.CHROME_FLAGS ?? '').split(' ').filter(Boolean); // e.g. --force-webrtc-ip-handling-policy=disable_non_proxied_udp to force TURN
-    this.proc = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-sandbox', ...extra, `--window-size=${this.size}`, `--user-data-dir=${this.dir}`, `--remote-debugging-port=${this.port}`,
-      '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required', 'about:blank'], { stdio: 'ignore', detached: true });
-    for (let i = 0; i < 50; i++) {
-      try { const r = await fetch(`http://127.0.0.1:${this.port}/json/list`); const tabs = await r.json(); if (tabs.length) { this.tab = tabs[0]; break; } } catch {}
-      await sleep(100);
+    const { cmd, pre } = command(process.env[`BROWSER_${this.name.toUpperCase()}`] ?? CHROME);
+    const blocked = autoplayBlocked.has(this.name);
+    if (blocked) { mkdirSync(join(this.dir, 'Default'), { recursive: true }); writeFileSync(join(this.dir, 'Default', 'Preferences'), JSON.stringify({ profile: { default_content_setting_values: { autoplay: 2 } } })); }
+    this.proc = spawn(cmd, [...pre, '--headless=new', '--disable-gpu', '--no-sandbox', ...extra, `--window-size=${this.size}`, `--user-data-dir=${this.dir}`, `--remote-debugging-port=${this.port}`,
+      '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', ...(blocked ? [] : ['--autoplay-policy=no-user-gesture-required']), 'about:blank'], { stdio: 'ignore', detached: true });
+    for (let i = 0; i < 200 && !this.tab; i++) { // a Flatpak browser needs a few seconds to start
+      try { const r = await fetch(`http://127.0.0.1:${this.port}/json/list`); this.tab = (await r.json()).find((t) => t.type === 'page' && !t.url.startsWith('chrome-extension:')); } catch {} // Chrome lists its own extension pages first
+      if (!this.tab) await sleep(100);
     }
+    if (!this.tab) throw new Error(`${this.name}: browser did not open a debugging port within 20 s`);
     this.ws = new WebSocket(this.tab.webSocketDebuggerUrl);
     await new Promise((r) => (this.ws.onopen = r));
     this.id = 0; this.pending = new Map();
@@ -170,7 +181,36 @@ try {
       for (const b of browsers) console.log(`[${b.name}] tiles: ${await b.text('.share') || '(none)'}`);
       console.log(`[${sharer.name}] mesh before anyone watches: ${JSON.stringify(await sharer.eval(`window.__dave?.peers().map(p => ({ name: p.name, subscribedToMe: p.subscribedToMe }))`))}`);
       const bytesBefore = Object.fromEntries(await Promise.all(browsers.slice(1).map(async (b) => [b.name, (await b.eval(`window.__dave?.peers().find(p => p.name === ${JSON.stringify(sharer.name)})?.videoBytesIn ?? -1`))])));
-      await viewer.eval(`[...document.querySelectorAll('.share')].find(t => t.textContent.includes(${JSON.stringify(sharer.name)}))?.click(); 'watch'`);
+      if (process.env.BLACK_CHECK) {
+        // A friend on Brave with autoplay set to Block saw a black tile while frames decoded fine (share_black, Sep 10). Click the tile
+        // with a real mouse event, the user gesture the friend had, then watch the video element itself: paused, frames, and what it
+        // actually paints (mean brightness of a downscaled copy; the fake screen capture is not black).
+        // BLACK_CHECK=nogesture: start watching from a synthetic click instead, the case of a tile that turns live without any
+        // gesture; the tile must then offer "Click to play", and the real click that follows the probes must start the picture.
+        const box = await viewer.eval(`(() => { const r = [...document.querySelectorAll('.share')].find(t => t.textContent.includes(${JSON.stringify(sharer.name)})).getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+        const realClick = async () => { await viewer.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1 }); await viewer.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount: 1 }); };
+        if (process.env.BLACK_CHECK === 'nogesture') await viewer.eval(`[...document.querySelectorAll('.share')].find(t => t.textContent.includes(${JSON.stringify(sharer.name)}))?.click(); 'watch'`);
+        else await realClick();
+        const probeOf = (tileSel) => `(() => { const t = document.querySelector(${JSON.stringify(tileSel)}); const v = t?.querySelector('video'); if (!v) return null; const q = v.getVideoPlaybackQuality(); let brightness = null;
+          try { const c = document.createElement('canvas'); c.width = 32; c.height = 32; const g = c.getContext('2d'); g.drawImage(v, 0, 0, 32, 32); const d = g.getImageData(0, 0, 32, 32).data; let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2]; brightness = Math.round(s / (d.length / 4) / 3); } catch (e) { brightness = 'error: ' + e.message; }
+          return { tile: t.className.trim(), paused: v.paused, hidden: v.hidden, width: v.videoWidth, frames: q.totalVideoFrames, shown: v.dataset.frames ?? null, dropped: q.droppedVideoFrames, brightness, note: t.querySelector('.share-note')?.textContent ?? null }; })()`;
+        const probe = probeOf('.share:not(.share-own)');
+        let at = 0;
+        for (const t of [1000, 3000, 6000, 10000, 15000]) { await sleep(t - at); at = t; console.log(`[${viewer.name}] t+${t / 1000}s video element: ${JSON.stringify(await viewer.eval(probe))}`); }
+        // The sharer's own preview must play too; with autoplay blocked it may need its own click (the capture arrives after the picker, outside any gesture).
+        console.log(`[${sharer.name}] own tile video element: ${JSON.stringify(await sharer.eval(probeOf('.share-own')))}`);
+        if ((await sharer.eval(`document.querySelector('.share-own .share-note')?.textContent ?? ''`)).includes('Click to play')) {
+          const own = await sharer.eval(`(() => { const r = document.querySelector('.share-own').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+          await sharer.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: own.x, y: own.y, button: 'left', clickCount: 1 }); await sharer.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: own.x, y: own.y, button: 'left', clickCount: 1 }); await sleep(1000);
+          console.log(`[${sharer.name}] own tile after a click: ${JSON.stringify(await sharer.eval(probeOf('.share-own')))} | fullscreen: ${await sharer.eval('document.fullscreenElement !== null')}`);
+        }
+        if (process.env.BLACK_CHECK === 'nogesture') {
+          await realClick(); await sleep(1500);
+          console.log(`[${viewer.name}] after a real click on the tile: ${JSON.stringify(await viewer.eval(probe))} | fullscreen: ${await viewer.eval('document.fullscreenElement !== null')}`);
+        }
+      } else {
+        await viewer.eval(`[...document.querySelectorAll('.share')].find(t => t.textContent.includes(${JSON.stringify(sharer.name)}))?.click(); 'watch'`);
+      }
       await sleep(5000);
       const bytesAfter = Object.fromEntries(await Promise.all(browsers.slice(1).map(async (b) => [b.name, (await b.eval(`window.__dave?.peers().find(p => p.name === ${JSON.stringify(sharer.name)})?.videoBytesIn ?? -1`))])));
       console.log(`share bytes before/after ${viewer.name} clicked: ${JSON.stringify({ before: bytesBefore, after: bytesAfter })}`);

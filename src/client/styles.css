@@ -101,6 +101,8 @@ button.leave { background: var(--bad); color: #fff; border-color: transparent; }
 .share-head .stop:first-of-type:not(.conn + .stop) { margin-left: auto; }
 .share video { flex: 1; width: 100%; min-height: 0; object-fit: contain; background: #000; }
 .share-note { flex: 1; display: grid; place-items: center; color: var(--dim); font-size: 13px; }
+/* the browser refused to start the video without a gesture: the note sits over the black picture, clicks fall through to the tile */
+.share-play { position: absolute; inset: 0; z-index: 1; pointer-events: none; color: #fff; font-size: 14px; background: rgba(0,0,0,.45); }
 /* stats bar: rates and formats on the left, fullscreen where players keep it, bottom right */
 .share-bar { display: flex; align-items: center; gap: 10px; padding: 3px 8px; font-family: monospace; font-size: 11px; color: var(--dim); background: rgba(0,0,0,.35); cursor: default; }
 .share-bar .share-stats { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

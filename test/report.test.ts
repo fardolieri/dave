@@ -12,9 +12,10 @@ const report: ReportShape = {
     peers: [peer({ conn: 'direct', watching: true, shareLive: true }), peer({ conn: 'relayed', watching: true, shareLive: false }), peer({ conn: 'reconnecting' })],
   },
   videoElements: [
-    { hidden: false, width: 1280, frames: 300 },
-    { hidden: false, width: 0, frames: 0 },
-    { hidden: true, width: 0, frames: 0 },
+    { hidden: false, width: 1280, frames: 300, paused: false },
+    { hidden: false, width: 0, frames: 0, paused: false },
+    { hidden: true, width: 0, frames: 0, paused: true },
+    { hidden: false, width: 1280, frames: 300, paused: true }, // frames arrive, the element never started: black
   ],
   log: [{ level: 'warn' }, { level: 'error' }, { level: 'error' }],
 };
@@ -37,7 +38,7 @@ describe('reportProperties', () => {
       server_status: 'connected', participants: 3, visitors: 1,
       in_call: true, muted: true, sharing: true, share_viewers: 2, turn_configured: true,
       peers: 3, peers_direct: 1, peers_relayed: 1, peers_troubled: 1, watching_count: 2, shares_live: 1,
-      black_tiles: 1, warnings: 1, errors: 2,
+      black_tiles: 2, warnings: 1, errors: 2,
     });
   });
   it('is flat: every value is a primitive, so each is filterable in PostHog', () => {
@@ -54,8 +55,8 @@ describe('reportProperties', () => {
 });
 
 describe('isBlackTile', () => {
-  it('flags a shown tile with no size or no decoded frame, not a hidden one', () => {
-    expect(report.videoElements.map(isBlackTile)).toEqual([false, true, false]);
+  it('flags a shown tile with no size, no decoded frame, or a paused element, not a hidden one', () => {
+    expect(report.videoElements.map(isBlackTile)).toEqual([false, true, false, true]);
   });
 });
 

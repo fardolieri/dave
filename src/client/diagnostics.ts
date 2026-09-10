@@ -48,11 +48,17 @@ export async function collectReport(src: ReportSources): Promise<Report> {
   };
 }
 
-/** What the share tiles' video elements say about themselves: the difference between "no frames arrive" and "frames arrive but do not show". */
+/**
+ * What the share tiles' video elements say about themselves: the difference between "no frames arrive" and
+ * "frames arrive but do not show". `frames` is the tile's own presented-frame count (data-frames, from
+ * requestVideoFrameCallback) where the browser has it; getVideoPlaybackQuality() is the fallback and reads
+ * zero for a MediaStream in Firefox.
+ */
 export function videoElementStates(): Report['videoElements'] {
   return [...document.querySelectorAll<HTMLVideoElement>('.share video')].map((v) => {
     const q = typeof v.getVideoPlaybackQuality === 'function' ? v.getVideoPlaybackQuality() : null;
-    return { readyState: v.readyState, width: v.videoWidth, height: v.videoHeight, paused: v.paused, ended: v.ended, error: v.error?.code ?? null, hidden: v.hidden, frames: q?.totalVideoFrames ?? null, dropped: q?.droppedVideoFrames ?? null };
+    const shown = v.dataset['frames'];
+    return { readyState: v.readyState, width: v.videoWidth, height: v.videoHeight, paused: v.paused, ended: v.ended, error: v.error?.code ?? null, hidden: v.hidden, frames: shown !== undefined ? Number(shown) : q?.totalVideoFrames ?? null, dropped: q?.droppedVideoFrames ?? null };
   });
 }
 

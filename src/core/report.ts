@@ -12,7 +12,7 @@ export type ReportShape = {
     inCall: boolean; muted: boolean; sharing: unknown; outgoing: { viewers: number } | null; ice: { turn: boolean };
     peers: Array<{ view: { conn: string; watching: boolean; shareLive: boolean } }>;
   };
-  videoElements: Array<{ hidden: boolean; width: number; frames: number | null }>;
+  videoElements: Array<{ hidden: boolean; width: number; frames: number | null; paused: boolean }>;
   log: Array<{ level: 'warn' | 'error' }>;
 };
 
@@ -38,8 +38,11 @@ export type ReportForm = { text: string; category: Category; severity: Severity 
 export const isCategory = (v: string): v is Category => Object.hasOwn(CATEGORIES, v);
 export const isSeverity = (v: string): v is Severity => Object.hasOwn(SEVERITIES, v);
 
-/** A share tile that is shown but has no size or has never decoded a frame. */
-export const isBlackTile = (v: ReportShape['videoElements'][number]): boolean => !v.hidden && (v.width === 0 || v.frames === 0);
+/**
+ * A share tile that is shown but has no size, has never decoded a frame, or is paused: a paused element
+ * paints nothing however many frames arrive (Brave with autoplay blocked, Sep 10).
+ */
+export const isBlackTile = (v: ReportShape['videoElements'][number]): boolean => !v.hidden && (v.width === 0 || v.frames === 0 || v.paused);
 
 /**
  * Event properties for `bug_report`. Flat, primitive, and named so an insight can filter or break

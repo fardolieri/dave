@@ -467,8 +467,46 @@ const BLACK_CHECK_MS = 4000;
 function ShareTile(props: ShareTileProps) {
   let root: HTMLDivElement | undefined;
   let video: HTMLVideoElement | undefined;
+  // Playback is started explicitly and the element carries no `autoplay` attribute, on purpose. Brave with
+  // autoplay set to Block ignores the attribute even for a muted MediaStream and refuses play() outside a
+  // user gesture; worse, its patch to Blink's autoplay policy clears the page's user activation whenever
+  // a paused `autoplay` video re-checks the policy, which happens on every click, so with the attribute
+  // present not even a click could start the picture (reproduced in headless Brave, Sep 10; the friend's
+  // share_black event showed a paused element with frames decoding). Chrome and Firefox play a muted
+  // stream either way. So play() runs inside the click that starts watching, while the gesture counts,
+  // again when the tile turns live or my own capture arrives, and after every source reset (the load
+  // algorithm pauses the element). A refusal is logged, so problem reports carry it, and the tile says
+  // "Click to play": that click is the gesture play() needs.
+  const [needsClick, setNeedsClick] = createSignal(false);
+  const play = (why: 'click' | 'live' | 'own' | 'reset'): void => {
+    if (!video) return;
+    setNeedsClick(false);
+    const gesture = navigator.userActivation?.isActive ?? null;
+    video.play().catch((e: unknown) => {
+      const name = e instanceof Error ? e.name : String(e);
+      if (name === 'AbortError') return; // a newer load or pause superseded this call; not a refusal
+      console.warn(`share video play() refused (${why}, gesture ${gesture}):`, name);
+      setNeedsClick(true);
+    });
+  };
+  // Frames the element has actually presented, counted with requestVideoFrameCallback (Chrome, Safari,
+  // Firefox 132+): getVideoPlaybackQuality() stays at zero for a MediaStream in Firefox, which made the
+  // black check below fire on every Firefox viewer. The count is mirrored to data-frames so a problem
+  // report reads the same number (diagnostics.ts, core/report.ts).
+  let framesShown = 0;
+  const countFrames = (): void => {
+    if (!video || typeof video.requestVideoFrameCallback !== 'function') return;
+    video.dataset['frames'] = '0';
+    const tick = (): void => { framesShown++; if (video) { video.dataset['frames'] = String(framesShown); video.requestVideoFrameCallback(tick); } };
+    video.requestVideoFrameCallback(tick);
+  };
   // Mirror the stream into the element; never read state off the media object in JSX (spec §2.1).
-  createEffect(() => props.stream, (stream) => { if (video && video.srcObject !== (stream ?? null)) video.srcObject = stream ?? null; });
+  createEffect(() => props.stream, (stream) => {
+    if (!video || video.srcObject === (stream ?? null)) return;
+    if (video.dataset['frames'] === undefined) countFrames();
+    video.srcObject = stream ?? null;
+    if (stream && props.isMe) play('own'); // a viewer's tile plays from the click that starts watching
+  });
   const state = () => {
     if (props.isMe) return 'own';
     if (!props.inCall) return 'locked';
@@ -483,17 +521,24 @@ function ShareTile(props: ShareTileProps) {
   // At most two rounds per subscription so a genuinely broken share does not loop forever.
   let blackTimer: ReturnType<typeof setTimeout> | undefined;
   let blackChecks = 0;
-  createEffect(() => state() === 'live' && !props.isMe, (live) => {
+  // A memo, so the effect runs on the transition only: an effect on a plain expression reruns with every
+  // view update (kbps, speaking), which would re-arm the timer forever and call play() in a loop.
+  const live = createMemo(() => state() === 'live' && !props.isMe);
+  createEffect(live, (on) => {
     clearTimeout(blackTimer);
-    if (!live) return;
+    if (!on) { setNeedsClick(false); return; }
+    play('live');
+    const framesAtLive = framesShown;
     blackTimer = setTimeout(() => {
       if (!video || untrack(state) !== 'live' || blackChecks >= 2) return;
       const q = typeof video.getVideoPlaybackQuality === 'function' ? video.getVideoPlaybackQuality() : null;
-      const shows = video.videoWidth > 0 && (q === null || q.totalVideoFrames > 0) && !video.paused;
+      const counted = video.dataset['frames'] !== undefined; // requestVideoFrameCallback available
+      const framed = counted ? framesShown > framesAtLive : q === null || q.totalVideoFrames > 0;
+      const shows = video.videoWidth > 0 && framed && !video.paused;
       if (shows) { blackChecks = 0; return; }
-      const element = { readyState: video.readyState, width: video.videoWidth, height: video.videoHeight, paused: video.paused, frames: q?.totalVideoFrames ?? null, error: video.error?.code ?? null, attempt: blackChecks };
+      const element = { readyState: video.readyState, width: video.videoWidth, height: video.videoHeight, paused: video.paused, frames: counted ? framesShown - framesAtLive : q?.totalVideoFrames ?? null, error: video.error?.code ?? null, attempt: blackChecks };
       blackChecks++;
-      const source = video.srcObject; video.srcObject = null; video.srcObject = source; void video.play().catch(() => {});
+      const source = video.srcObject; video.srcObject = null; video.srcObject = source; play('reset');
       props.onBlack?.(element);
     }, BLACK_CHECK_MS);
   });
@@ -516,7 +561,8 @@ function ShareTile(props: ShareTileProps) {
   const holdsFullscreen = () => root !== undefined && fullscreenElement() === root;
   // Fullscreen ends the moment the share can no longer show anything (sharer quit, I stopped, peer
   // unreachable, I left the call, tile gone); the page must never stay stuck black.
-  createEffect(() => running(), (on) => { if (!on && holdsFullscreen()) exitFullscreenSafely(); });
+  const isRunning = createMemo(running);
+  createEffect(isRunning, (on) => { if (!on && holdsFullscreen()) exitFullscreenSafely(); });
   onCleanup(() => {
     clearTimeout(idleTimer);
     document.removeEventListener('fullscreenchange', onFsChange);
@@ -530,7 +576,8 @@ function ShareTile(props: ShareTileProps) {
   };
   const onTileClick = () => {
     if (fullscreen()) exitFullscreenSafely();
-    else if (state() === 'closed') props.onWatch(true);
+    else if (state() === 'closed') { props.onWatch(true); play('click'); }
+    else if (needsClick()) play('click');
     else if (running()) enterFullscreen();
   };
   const stopWatching = (e: MouseEvent) => { e.stopPropagation(); props.onWatch(false); };
@@ -555,7 +602,8 @@ function ShareTile(props: ShareTileProps) {
         <Show when={!props.isMe && props.view ? props.view : undefined}>{(v) => <span class={`conn conn-${v().conn}`}><i />{CONN_LABEL[v().conn]}</span>}</Show>
         <Show when={!props.isMe && (state() === 'live' || state() === 'opening')}><button class="stop" title="Stop receiving this share" onClick={stopWatching}>Stop watching</button></Show>
       </div>
-      <video ref={video} autoplay playsinline muted hidden={!showsVideo()} />
+      <video ref={video} playsinline muted hidden={!showsVideo()} />
+      <Show when={showsVideo() && needsClick()}><div class="share-note share-play">Click to play</div></Show>
       <Switch>
         <Match when={state() === 'locked'}><div class="share-note">Join to watch</div></Match>
         <Match when={state() === 'closed'}><div class="share-note">Click to watch</div></Match>
