@@ -40,4 +40,7 @@ export const local = {
   set: (key: string, value: string): void => {
     try { localStorage.setItem(`dave.${key}`, value); } catch { /* private mode etc. */ }
   },
+  remove: (key: string): void => {
+    try { localStorage.removeItem(`dave.${key}`); } catch { /* private mode etc. */ }
+  },
 };

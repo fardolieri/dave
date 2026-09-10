@@ -30,9 +30,10 @@ const BACKOFF_MAX_MS = 30_000;
  * reconnection with exponential backoff (spec §8.1), presence snapshots, and
  * ephemeral text. WebRTC state is added by later tickets.
  */
-export function createRoom(opts: { identity: LocalIdentity; secret: string; name: string }) {
-  // The self-declared name: sent at every (re)connect, changeable live through `rename`.
+export function createRoom(opts: { identity: LocalIdentity; secret: string; name: string; picture: string | null }) {
+  // The self-declared name and picture: sent at every (re)connect, changeable live through `rename` and `setPicture`.
   let name = opts.name;
+  let picture = opts.picture;
   const [status, setStatus] = createSignal<ServerStatus>({ kind: 'connecting' });
   const [you, setYou] = createSignal<Person | null>(null);
   const [people, setPeople] = createSignal<Person[]>([]);
@@ -83,7 +84,7 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
       switch (m.t) {
         case 'challenge':
           socket.send(JSON.stringify(await buildAuthMessage({
-            secret: opts.secret, nonce: m.nonce, publicKeyRaw: opts.identity.publicKeyRaw, privateKey: opts.identity.keys.privateKey, name,
+            secret: opts.secret, nonce: m.nonce, publicKeyRaw: opts.identity.publicKeyRaw, privateKey: opts.identity.keys.privateKey, name, ...(picture ? { picture } : {}),
           })));
           return;
         case 'welcome':
@@ -182,6 +183,8 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
     dropSocket: () => ws?.close(),
     /** Change the name everyone sees; presence brings it back. A later reconnect authenticates with it too. */
     rename: (next: string) => { name = next; send({ t: 'name', name: next }); },
+    /** Choose the emoji everyone sees as your avatar, or null for the initial; presence brings it back. */
+    setPicture: (next: string | null) => { picture = next; send({ t: 'picture', picture: next }); },
     /** After stepping back for another tab: reconnect here, which supersedes that tab in turn. */
     takeOver: () => { if (status().kind !== 'elsewhere') return; stopped = false; attempt = 0; downSince = null; setStatus({ kind: 'connecting' }); open(); },
     /** Fires for texts from other people (for the message cue). */

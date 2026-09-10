@@ -137,9 +137,10 @@ export async function buildAuthMessage(input: {
   publicKeyRaw: Uint8Array;
   privateKey: CryptoKey;
   name: string;
-}): Promise<{ t: 'auth'; publicKey: string; name: string; hmac: string; signature: string }> {
+  picture?: string;
+}): Promise<{ t: 'auth'; publicKey: string; name: string; picture?: string; hmac: string; signature: string }> {
   const nonce = fromBase64Url(input.nonce);
   if (!nonce) throw new Error('malformed challenge nonce');
   const { hmac, signature } = await answerChallenge({ secret: input.secret, nonce, publicKeyRaw: input.publicKeyRaw, privateKey: input.privateKey });
-  return { t: 'auth', publicKey: toBase64Url(input.publicKeyRaw), name: input.name, hmac: toBase64Url(hmac), signature: toBase64Url(signature) };
+  return { t: 'auth', publicKey: toBase64Url(input.publicKeyRaw), name: input.name, ...(input.picture ? { picture: input.picture } : {}), hmac: toBase64Url(hmac), signature: toBase64Url(signature) };
 }

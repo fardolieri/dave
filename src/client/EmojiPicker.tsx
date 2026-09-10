@@ -1,5 +1,6 @@
 import { createSignal, createMemo, For, Show } from 'solid-js';
 import { EMOJI_CATEGORIES, searchEmoji, type EmojiEntry } from '../core/emoji';
+import { isSingleEmoji } from '../core/protocol';
 import { local } from './storage';
 import { place } from './place';
 
@@ -32,7 +33,7 @@ export function EmojiPicker(props: { id: string; anchor: () => HTMLElement | und
   const [query, setQuery] = createSignal('');
   const results = createMemo(() => searchEmoji(query()));
   // What was typed, when it is itself a single emoji (pasted from elsewhere, or from the OS keyboard): offered as the first result.
-  const typed = createMemo(() => { const q = query().trim(); return q && /^\p{RGI_Emoji}$/v.test(q) && !results().some((e) => e.char === q) ? q : null; });
+  const typed = createMemo(() => { const q = query().trim(); return q && isSingleEmoji(q) && !results().some((e) => e.char === q) ? q : null; });
   const recentEntries = createMemo((): EmojiEntry[] => recent().map((char) => ({ char, name: '' })));
   const onToggle = (e: Event) => {
     if ((e as ToggleEvent).newState !== 'open' || !card) return;

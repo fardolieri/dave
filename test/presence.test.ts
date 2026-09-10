@@ -11,7 +11,7 @@ const SECRET = 'test-secret';
 type Client = { ws: WebSocket; you: Person; inbox: ServerMessage[]; next: (pred?: (m: ServerMessage) => boolean) => Promise<ServerMessage> };
 
 /** Opens and authenticates a visitor (attaches a socket), returning a client whose inbox records everything after the welcome. */
-async function attach(name: string): Promise<Client> {
+async function attach(name: string, picture?: string): Promise<Client> {
   // a distinct client address per socket, so the per-IP upgrade limit never trips inside a test file
   const ip = `10.0.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
   const res = await exports.default.fetch(new Request('https://dave.test/ws', { headers: { Upgrade: 'websocket', 'cf-connecting-ip': ip } }));
@@ -34,7 +34,7 @@ async function attach(name: string): Promise<Client> {
   const challenge = (await next((m) => m.t === 'challenge')) as { nonce: string };
   const keys = await generateIdentityKeyPair();
   const publicKeyRaw = await exportPublicKey(keys.publicKey);
-  ws.send(JSON.stringify(await buildAuthMessage({ secret: SECRET, nonce: challenge.nonce, publicKeyRaw, privateKey: keys.privateKey, name })));
+  ws.send(JSON.stringify(await buildAuthMessage({ secret: SECRET, nonce: challenge.nonce, publicKeyRaw, privateKey: keys.privateKey, name, ...(picture ? { picture } : {}) })));
   const welcome = (await next((m) => m.t === 'welcome')) as { you: Person };
   return { ws, you: welcome.you, inbox, next };
 }
@@ -68,6 +68,28 @@ describe('presence', () => {
     expect(((await a.next((m) => m.t === 'text')) as unknown as { from: Person }).from.name).toBe('Robert');
     b.ws.send(JSON.stringify({ t: 'name', name: '   ' }));
     expect(await b.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'invalid name' });
+    a.ws.close(1000, 'bye');
+    b.ws.close(1000, 'bye');
+  });
+
+  it('a profile picture arrives with auth, changes through presence, tags texts, and clears to nothing; non-emoji are refused', async () => {
+    const a = await attach('Alice', '🐱');
+    expect(a.you.picture).toBe('🐱');
+    const b = await attach('Bob');
+    expect(b.you.picture).toBeUndefined();
+    const pictureOf = (m: ServerMessage, name: string) => (m as { people: Person[] }).people.find((p) => p.name === name)?.picture ?? null;
+    b.ws.send(JSON.stringify({ t: 'picture', picture: '🦖' }));
+    const seen = await a.next((m) => m.t === 'presence' && pictureOf(m, 'Bob') === '🦖');
+    expect(pictureOf(seen, 'Alice')).toBe('🐱');
+    b.ws.send(JSON.stringify({ t: 'text', text: 'rawr' }));
+    expect(((await a.next((m) => m.t === 'text')) as unknown as { from: Person }).from.picture).toBe('🦖');
+    b.ws.send(JSON.stringify({ t: 'picture', picture: null }));
+    // Bob present and without the key, not merely absent (earlier snapshots from before he attached are still queued).
+    const bobs = (m: ServerMessage) => (m.t === 'presence' ? m.people.filter((p) => p.name === 'Bob') : []);
+    const cleared = await a.next((m) => bobs(m).length === 1 && !('picture' in bobs(m)[0]!));
+    expect(bobs(cleared)[0]).not.toHaveProperty('picture');
+    b.ws.send(JSON.stringify({ t: 'picture', picture: 'Bob' }));
+    expect(await b.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'invalid picture' });
     a.ws.close(1000, 'bye');
     b.ws.close(1000, 'bye');
   });

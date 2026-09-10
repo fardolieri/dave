@@ -35,6 +35,8 @@ code.fp { font-size: 11px; color: var(--dim); }
 button.avatar { padding: 0; border: 0; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
 button.avatar:hover:not(.speaking) { box-shadow: 0 0 0 2px var(--line); }
 button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+/* A profile picture (issue #8) fills the circle instead of the initial; colour emoji, so no weight. */
+.avatar.pic { font-weight: 400; font-size: 18px; line-height: 1; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", system-ui, sans-serif; }
 .new { font-size: 10px; background: var(--warn); color: #000; border-radius: 4px; padding: 0 4px; margin-left: 4px; font-weight: 700; cursor: pointer; }
 .warn { margin-top: 10px; padding: 8px; border-radius: 8px; background: #4a3a12; color: var(--warn); font-size: 13px; }
 
@@ -155,6 +157,12 @@ button.link { background: none; border: 0; color: var(--dim); font-size: 11px; p
 .profile[popover] { position: fixed; inset: auto; margin: 0; width: 280px; max-width: calc(100vw - 16px); padding: 14px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); font-size: 14px; }
 .profile-head { display: flex; align-items: center; gap: 12px; }
 .avatar.big { width: 56px; height: 56px; font-size: 22px; }
+.avatar.big.pic { font-size: 34px; }
+/* your own big avatar opens the emoji picker; a pencil in the corner says so */
+button.avatar.own { position: relative; }
+button.avatar.own::after { content: '✎'; position: absolute; right: -2px; bottom: -2px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: var(--panel2); border: 1px solid var(--line); font: 11px system-ui, sans-serif; color: var(--dim); }
+button.avatar.own:hover::after { color: var(--fg); }
+.profile-names .link { padding: 0; font-size: 12px; }
 .profile-names { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
 .profile-name { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .profile-name strong { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -162,13 +170,13 @@ button.link { background: none; border: 0; color: var(--dim); font-size: 11px; p
 .profile button.edit { background: none; border: 0; padding: 2px 5px; color: var(--dim); font-size: 13px; line-height: 1; flex: none; }
 .profile button.edit:hover { color: var(--fg); }
 .profile-names .dim { font-size: 12px; }
-.profile-head input { flex: 1; min-width: 0; }
+.profile-head > input { flex: 1; min-width: 0; } /* the name field only; the emoji picker's search field lives in the head too */
 .profile-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 12px 0 0; font-size: 13px; }
 .profile-facts dt { color: var(--dim); }
 .profile-facts dd { margin: 0; }
 .profile .row { display: flex; gap: 6px; margin-top: 12px; }
 .profile .row button:first-child { flex: 1; }
-.profile input { width: 100%; }
+.profile > form input { width: 100%; }
 .profile .hint { margin: 8px 0 0; font-size: 12px; color: var(--dim); }
 
 /* Emoji picker (issue #3): a popover over the button that opened it, placed by script like the profile card.

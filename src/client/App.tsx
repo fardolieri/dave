@@ -2,7 +2,7 @@ import { createSignal, Switch, Match, createMemo, createEffect, For, Show, untra
 import './styles.css';
 import posthog, { isTestAccount } from './posthog';
 import { loadIdentity, type LocalIdentity } from './identity';
-import { getName, getSecret, setName, takeSecretFromInviteLink } from './invite';
+import { getName, getPicture, getSecret, setName, setPicture, takeSecretFromInviteLink } from './invite';
 import { createRoom, type ChatLine, type ServerStatus } from './room';
 import { createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
 import { createAttention } from './attention';
@@ -80,7 +80,7 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
   posthog.identify(untrack(() => props.identity.publicKey), untrack(() => ({ fingerprint: props.identity.fingerprint, ...(isTestAccount ? { $internal_or_test_user: true } : {}) })));
   posthog.capture('room_entered');
   // A deliberate one-time snapshot: the socket is created once with the props at mount.
-  const room = createRoom(untrack(() => ({ secret: props.secret, name: props.name, identity: props.identity })));
+  const room = createRoom(untrack(() => ({ secret: props.secret, name: props.name, picture: getPicture(), identity: props.identity })));
   const me = () => props.identity.publicKey;
   const call = createCall(room, untrack(() => props.identity));
   createAttention(room, call, untrack(me));
@@ -91,19 +91,21 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
     const wrote = room.lines().flatMap((l) => (l.kind === 'text' ? [{ publicKey: l.from.publicKey, shown: displayName(l.from.name, contactOf(l.from.publicKey)) }] : []));
     return ambiguousNames([...present, ...wrote]);
   });
-  /** A friend's current self-declared name from presence; a chat line keeps the name they had when they wrote it. */
-  const currentName = (publicKey: string): string | undefined => room.people().find((p) => p.publicKey === publicKey)?.name;
+  /** A friend's current presence entry; a chat line keeps the name and picture they had when they wrote it. */
+  const present = (publicKey: string): Person | undefined => room.people().find((p) => p.publicKey === publicKey);
+  const currentName = (publicKey: string): string | undefined => present(publicKey)?.name;
   const myName = createMemo(() => currentName(me()) ?? props.name);
-  /** How this browser shows a friend: the name, whether the fingerprint accompanies it, and the hover title with the rest. */
+  /** How this browser shows a friend: the name, whether the fingerprint accompanies it, the picture, and the hover title with the rest. */
   const labelOf = (id: Identity): Label => {
     const c = contactOf(id.publicKey);
     const isMe = id.publicKey === me();
-    const own = currentName(id.publicKey) ?? id.name;
+    const now = present(id.publicKey);
+    const own = now?.name ?? id.name;
     const shown = displayName(own, c);
     const known = isMe || c !== undefined;
     const ago = knownAgo(c);
     const title = [c?.nick ? `calls themselves ${own}` : null, `fingerprint ${id.fingerprint}`, isMe ? null : ago ? `known since ${ago}` : 'first time this key shows up here'].filter(Boolean).join(' · ');
-    return { shown, fp: showsFingerprint(known, shown, ambiguous()), known, title };
+    return { shown, fp: showsFingerprint(known, shown, ambiguous()), known, title, picture: now ? now.picture : id.picture };
   };
   // The profile card: which friend it is about and the avatar it hangs from. Opening it acknowledges the key.
   const [profile, setProfile] = createSignal<{ publicKey: string; anchor: HTMLElement } | null>(null);
@@ -182,7 +184,9 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
             <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { if (confirm("Clear this browser's chat history? Nothing is stored on the server, so this cannot be undone.")) void room.clearHistory(); }}>Clear chat history</button>
           </div>
         </aside>
-        <ProfileCard open={profile()} people={room.people()} me={me()} label={labelOf} onClose={() => setProfile(null)} onRenameSelf={(n) => { room.rename(n); setName(n); posthog.capture('name_changed'); }} />
+        <ProfileCard open={profile()} people={room.people()} me={me()} label={labelOf} onClose={() => setProfile(null)}
+                     onRenameSelf={(n) => { room.rename(n); setName(n); posthog.capture('name_changed'); }}
+                     onPictureSelf={(pic) => { room.setPicture(pic); setPicture(pic); posthog.capture('picture_changed', { cleared: pic === null }); }} />
         <Banner status={room.status()} onTakeOver={room.takeOver} />
           <Show when={sharers().length > 0}>
             <section class="shares" style={`grid-template-columns: repeat(${sharers().length}, 1fr)`}>
@@ -213,18 +217,18 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
 }
 
 /** How a friend is shown here, computed by RoomView from the address book and who else is around. */
-type Label = { shown: string; fp: boolean; known: boolean; title: string };
+type Label = { shown: string; fp: boolean; known: boolean; title: string; picture?: string };
 
-/** The avatar is the way into a friend's profile card; the same element will carry the profile picture (#8). */
-function Avatar(props: { initial: string; speaking?: boolean; title: string; onOpen: (anchor: HTMLElement) => void }) {
-  return <button class={`avatar ${props.speaking ? 'speaking' : ''}`} title={props.title} onClick={(e) => { e.stopPropagation(); props.onOpen(e.currentTarget); }}>{props.initial}</button>;
+/** The avatar is the way into a friend's profile card. It shows the profile picture (issue #8), else the initial. */
+function Avatar(props: { initial: string; picture?: string; speaking?: boolean; title: string; onOpen: (anchor: HTMLElement) => void }) {
+  return <button class={`avatar ${props.picture ? 'pic' : ''} ${props.speaking ? 'speaking' : ''}`} title={props.title} onClick={(e) => { e.stopPropagation(); props.onOpen(e.currentTarget); }}>{props.picture ?? props.initial}</button>;
 }
 
 function PersonRow(props: { p: Person; isMe: boolean; label: Label; onProfile: (anchor: HTMLElement) => void }) {
   const acknowledge = () => { if (!props.label.known) { markKnown(props.p.publicKey, props.p.name); posthog.capture('new_key_acknowledged'); } };
   return (
     <li onClick={acknowledge} title={props.label.known ? props.label.title : `${props.label.title}. Click to acknowledge.`}>
-      <Avatar initial={props.label.shown[0]!} title={props.isMe ? 'Your profile' : 'Profile'} onOpen={props.onProfile} />
+      <Avatar initial={props.label.shown[0]!} picture={props.label.picture} title={props.isMe ? 'Your profile' : 'Profile'} onOpen={props.onProfile} />
       <span class="pname"><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span> <Show when={props.label.fp}><code class="fp">{props.p.fingerprint}</code></Show>
         <Show when={!props.label.known}><b class="new">new</b></Show>
       </span>
@@ -233,14 +237,16 @@ function PersonRow(props: { p: Person; isMe: boolean; label: Label; onProfile: (
 }
 
 /**
- * The profile card (issues #6, #7): a popover hanging from the avatar that was clicked, with the name,
- * the fingerprint and since when this browser knows the key, and the one edit that fits the person: a
- * friend gets a nickname only this browser shows; you change the name everyone sees. Follows presence
+ * The profile card (issues #6, #7, #8): a popover hanging from the avatar that was clicked, with the name,
+ * the fingerprint and since when this browser knows the key, and the edits that fit the person: a
+ * friend gets a nickname only this browser shows; you change the name everyone sees and pick your
+ * profile picture from the emoji picker, which opens from your own big avatar. Follows presence
  * live, so a friend renaming themselves while the card is open shows up, and closes if they leave.
  */
-function ProfileCard(props: { open: { publicKey: string; anchor: HTMLElement } | null; people: Person[]; me: string; label: (id: Identity) => Label; onClose: () => void; onRenameSelf: (name: string) => void }) {
+function ProfileCard(props: { open: { publicKey: string; anchor: HTMLElement } | null; people: Person[]; me: string; label: (id: Identity) => Label; onClose: () => void; onRenameSelf: (name: string) => void; onPictureSelf: (picture: string | null) => void }) {
   let card: HTMLDivElement | undefined;
   let input: HTMLInputElement | undefined;
+  let ownAvatar: HTMLButtonElement | undefined;
   const person = createMemo(() => (props.open ? props.people.find((p) => p.publicKey === props.open!.publicKey) ?? null : null));
   const isMe = () => person()?.publicKey === props.me;
   const contact = () => (person() ? contactOf(person()!.publicKey) : undefined);
@@ -285,6 +291,8 @@ function ProfileCard(props: { open: { publicKey: string; anchor: HTMLElement } |
     setEditing(false);
   };
   const editTitle = () => (isMe() ? 'Change your name' : contact()?.nick ? 'Change nickname' : 'Give a nickname');
+  const picture = () => (person() ? props.label(person()!).picture : undefined);
+  const BigAvatar = (p: { of: Person }) => <span class={`avatar big ${picture() ? 'pic' : ''}`}>{picture() ?? props.label(p.of).shown[0]}</span>;
   // Light dismiss (click outside, Escape) closes the popover; the state follows. Clicking another avatar
   // dismisses and reopens in the same task, so only report a close that stuck.
   const onToggle = (e: Event) => { if ((e as ToggleEvent).newState === 'closed' && !isOpen()) props.onClose(); };
@@ -294,7 +302,10 @@ function ProfileCard(props: { open: { publicKey: string; anchor: HTMLElement } |
         <>
           <Show when={editing()} fallback={
             <div class="profile-head">
-              <span class="avatar big">{props.label(p()).shown[0]}</span>
+              <Show when={isMe()} fallback={<BigAvatar of={p()} />}>
+                <button class={`avatar big own ${picture() ? 'pic' : ''}`} ref={ownAvatar} popovertarget="profile-emoji" title="Choose a profile picture" aria-label="Choose a profile picture">{picture() ?? props.label(p()).shown[0]}</button>
+                <EmojiPicker id="profile-emoji" anchor={() => ownAvatar} onPick={(c) => props.onPictureSelf(c)} closeOnPick />
+              </Show>
               <div class="profile-names">
                 <span class="profile-name">
                   <strong>{props.label(p()).shown}{isMe() ? ' (you)' : ''}</strong>
@@ -302,12 +313,19 @@ function ProfileCard(props: { open: { publicKey: string; anchor: HTMLElement } |
                 </span>
                 <Show when={!isMe() && contact()?.nick}><span class="dim">calls themselves {p().name}</span></Show>
                 <Show when={isMe()}><span class="dim">what friends see, unless they gave you a nickname</span></Show>
+                <Show when={isMe()}>
+                  <span class="dim">
+                    <Show when={picture()} fallback="click the circle to pick an emoji picture">
+                      <button class="link" type="button" onClick={() => props.onPictureSelf(null)}>remove the picture</button>
+                    </Show>
+                  </span>
+                </Show>
               </div>
             </div>
           }>
             <form class="profile-edit" onSubmit={save}>
               <div class="profile-head">
-                <span class="avatar big">{props.label(p()).shown[0]}</span>
+                <BigAvatar of={p()} />
                 <input ref={input} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} maxlength={MAX_NAME_LENGTH} placeholder={isMe() ? 'Your name' : p().name} aria-label={editTitle()} />
               </div>
               <p class="hint">{isMe() ? 'Everyone in the room sees this name, unless they gave you a nickname of their own.' : `Only this browser shows the name you pick. ${p().name} keeps their own name everywhere else.`}</p>
@@ -393,7 +411,7 @@ function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: 
   const percent = () => Math.round(volume() * 100);
   return (
     <li class="prow">
-      <Avatar initial={props.label.shown[0]!} speaking={props.speaking} title={props.isMe ? 'Your profile' : 'Profile'} onOpen={props.onProfile} />
+      <Avatar initial={props.label.shown[0]!} picture={props.label.picture} speaking={props.speaking} title={props.isMe ? 'Your profile' : 'Profile'} onOpen={props.onProfile} />
       <span class="pname" title={props.label.title}><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span> <Show when={props.label.fp}><code class="fp">{props.p.fingerprint}</code></Show></span>
       <span class="pflags">
         <Show when={props.p.muted}><em>muted</em></Show>

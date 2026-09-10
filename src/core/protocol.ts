@@ -8,6 +8,8 @@ export type Identity = {
   fingerprint: string;
   /** Self-declared display name, 1 to 32 characters. */
   name: string;
+  /** Self-declared profile picture: exactly one emoji. Absent means the avatar shows the initial (issue #8). */
+  picture?: string;
 };
 
 export type Role = 'visitor' | 'participant';
@@ -33,7 +35,7 @@ export type SignalData = { description?: unknown; sig?: string; candidates?: unk
 export const MAX_CANDIDATES_PER_MESSAGE = 64;
 
 export type ClientMessage =
-  | { t: 'auth'; publicKey: string; name: string; hmac: string; signature: string }
+  | { t: 'auth'; publicKey: string; name: string; picture?: string; hmac: string; signature: string }
   | { t: 'ping' }
   | { t: 'text'; text: string }
   /** Enter the Call (or re-declare after a server reconnect). */
@@ -43,6 +45,8 @@ export type ClientMessage =
   | { t: 'mute'; muted: boolean }
   /** Change the self-declared display name; everyone learns through presence. Texts already sent keep the old one. */
   | { t: 'name'; name: string }
+  /** Choose an emoji as the profile picture, or null for none; everyone learns through presence. */
+  | { t: 'picture'; picture: string | null }
   /** Point-to-point signaling to another participant, by public key. */
   | { t: 'signal'; to: string; data: SignalData }
   /** Ask for fresh TURN credentials (before an ICE restart with expired ones). */
@@ -77,6 +81,8 @@ export const PING_INTERVAL_MS = 30_000;
 export const MAX_MESSAGE_BYTES = 16384;
 export const MAX_NAME_LENGTH = 32;
 export const MAX_TEXT_LENGTH = 2000;
+/** Longest RGI emoji is a four-person family: 7 code points, 11 UTF-16 units. A little slack for a variation selector. */
+export const MAX_PICTURE_LENGTH = 16;
 
 /** Close codes the server uses. 4000 to 4999 are application-defined. */
 export const CLOSE_AUTH_FAILED = 4001;
@@ -91,6 +97,18 @@ const b64 = (v: unknown): v is string => str(v, 1024) && B64URL.test(v);
 export function normaliseName(raw: string): string | null {
   const name = raw.trim().replace(/\s+/g, ' ');
   return name.length >= 1 && name.length <= MAX_NAME_LENGTH ? name : null;
+}
+
+/** One emoji exactly: a single RGI emoji as Unicode defines it (flags, skin tones and ZWJ families included), nothing around it. */
+const RGI_EMOJI = new RegExp('^\\p{RGI_Emoji}$', 'v');
+export function isSingleEmoji(s: string): boolean {
+  return RGI_EMOJI.test(s);
+}
+
+/** A profile picture as sent: trimmed; null when it is not exactly one emoji. */
+export function normalisePicture(raw: string): string | null {
+  const picture = raw.trim();
+  return picture.length <= MAX_PICTURE_LENGTH && isSingleEmoji(picture) ? picture : null;
 }
 
 /** Not a wire message: the parser's way of saying why a frame was rejected. */
@@ -111,7 +129,15 @@ export function parseClientMessage(raw: unknown): ClientMessage | Invalid {
     case 'auth': {
       if (!b64(m.publicKey) || !b64(m.hmac) || !b64(m.signature) || !str(m.name, 256)) return invalid('unrecognised message');
       const name = normaliseName(m.name);
-      return name ? { t: 'auth', publicKey: m.publicKey, name, hmac: m.hmac, signature: m.signature } : invalid('invalid name');
+      if (!name) return invalid('invalid name');
+      const auth: ClientMessage = { t: 'auth', publicKey: m.publicKey, name, hmac: m.hmac, signature: m.signature };
+      if (m.picture !== undefined && m.picture !== null) {
+        if (!str(m.picture, 64)) return invalid('unrecognised message');
+        const picture = normalisePicture(m.picture);
+        if (!picture) return invalid('invalid picture');
+        auth.picture = picture;
+      }
+      return auth;
     }
     case 'ping':
       return { t: 'ping' };
@@ -125,6 +151,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | Invalid {
       if (!str(m.name, 256)) return invalid('unrecognised message');
       const name = normaliseName(m.name);
       return name ? { t: 'name', name } : invalid('invalid name');
+    }
+    case 'picture': {
+      if (m.picture === null) return { t: 'picture', picture: null };
+      if (!str(m.picture, 64)) return invalid('unrecognised message');
+      const picture = normalisePicture(m.picture);
+      return picture ? { t: 'picture', picture } : invalid('invalid picture');
     }
     case 'ice':
       return { t: 'ice' };

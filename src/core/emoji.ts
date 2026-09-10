@@ -1,19 +1,11 @@
-// The emoji the picker offers, and the check the server applies to a profile picture. Runtime-neutral: plain data only.
+// The emoji the picker offers. Runtime-neutral: plain data only. Kept apart from protocol.ts so the
+// worker, which only checks pictures (`isSingleEmoji` there), never bundles the list.
 //
 // The list is hand-curated and stops at Emoji 12.0 (2019) so nothing renders as a box on an older system;
 // the picker also takes a typed or pasted emoji, so anything newer is still reachable. Names are for search.
 
 export type EmojiEntry = { char: string; name: string };
 export type EmojiCategory = { label: string; icon: string; entries: EmojiEntry[] };
-
-/** One emoji exactly: a single RGI emoji as Unicode defines it (flags, skin tones and ZWJ families included), nothing around it. */
-const RGI = new RegExp('^\\p{RGI_Emoji}$', 'v');
-export function isSingleEmoji(s: string): boolean {
-  return RGI.test(s);
-}
-
-/** Longest RGI sequence is a four-person family: 7 code points, 11 UTF-16 units. A little slack for a variation selector. */
-export const MAX_EMOJI_LENGTH = 16;
 
 const parse = (lines: string): EmojiEntry[] =>
   lines.trim().split('\n').map((line) => {

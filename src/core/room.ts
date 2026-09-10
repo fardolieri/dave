@@ -92,6 +92,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       publicKey: msg.publicKey,
       fingerprint: await fingerprint(publicKeyRaw),
       name: msg.name,
+      ...(msg.picture ? { picture: msg.picture } : {}),
       role: 'visitor',
       joinSeq: null,
       sharing: false,
@@ -131,8 +132,8 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       // Normally answered by the hibernation auto-response before reaching here.
       return { state: next, replies: [{ t: 'pong' }] };
     case 'text': {
-      const { publicKey, fingerprint: fp, name } = state.person;
-      return { state: next, replies: [], broadcast: [{ t: 'text', from: { publicKey, fingerprint: fp, name }, text: msg.text, at: ctx.now }] };
+      const { publicKey, fingerprint: fp, name, picture } = state.person;
+      return { state: next, replies: [], broadcast: [{ t: 'text', from: { publicKey, fingerprint: fp, name, ...(picture ? { picture } : {}) }, text: msg.text, at: ctx.now }] };
     }
     case 'join': {
       // Joining twice (after a server reconnect) is fine: a fresh join sequence, same identity.
@@ -163,6 +164,11 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     case 'name': {
       if (state.person.name === msg.name) return { state: next, replies: [] };
       return { state: { ...next, person: { ...state.person, name: msg.name } }, replies: [], presenceChanged: true };
+    }
+    case 'picture': {
+      if ((state.person.picture ?? null) === msg.picture) return { state: next, replies: [] };
+      const { picture: _old, ...person } = state.person;
+      return { state: { ...next, person: msg.picture ? { ...person, picture: msg.picture } : person }, replies: [], presenceChanged: true };
     }
     case 'ice': {
       if (state.person.role !== 'participant') return notInCall('ice');

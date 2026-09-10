@@ -61,8 +61,16 @@ A per-browser keypair that makes a friend's display name stable and unforgeable 
 _Avoid_: Account, login, profile
 
 **Profile card**:
-The popover that opens from an avatar: name, fingerprint, since when this browser knows the key, and the one edit that fits, a nickname for a friend or your own name for everyone. The place a profile picture will live.
+The popover that opens from an avatar: name, fingerprint, since when this browser knows the key, and the edits that fit, a nickname for a friend, or your own name and profile picture for everyone.
 _Avoid_: Popup, tooltip, user details, modal
+
+**Profile picture**:
+The one emoji a friend chose to fill their avatar instead of their initial. Self-declared like the name, travels with it, seen by everyone; none means the initial.
+_Avoid_: Avatar (the circle itself, which shows either), icon, emoji (the picker's currency, not the role), image, photo
+
+**Avatar**:
+The circle beside a name in the lists: the profile picture when there is one, else the initial. Clicking it opens the profile card.
+_Avoid_: Badge, bubble, icon
 
 **Acknowledged**:
 An identity this browser has seen and clicked once. Until then it wears a "new" badge and its fingerprint. Acknowledging or nicknaming a friend records the key in the browser's address book.

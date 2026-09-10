@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ALL_EMOJI, EMOJI_CATEGORIES, MAX_EMOJI_LENGTH, isSingleEmoji, searchEmoji } from '../src/core/emoji';
+import { ALL_EMOJI, EMOJI_CATEGORIES, searchEmoji } from '../src/core/emoji';
+import { MAX_PICTURE_LENGTH, isSingleEmoji } from '../src/core/protocol';
 
 describe('the curated list', () => {
   it('holds only single, fully qualified emoji, so every entry passes the profile-picture check', () => {
@@ -13,7 +14,7 @@ describe('the curated list', () => {
     expect(dupes).toEqual([]);
   });
   it('stays within the length cap the server enforces', () => {
-    expect(ALL_EMOJI.filter((e) => e.char.length > MAX_EMOJI_LENGTH)).toEqual([]);
+    expect(ALL_EMOJI.filter((e) => e.char.length > MAX_PICTURE_LENGTH)).toEqual([]);
   });
   it('has an icon from its own entries for every category', () => {
     for (const c of EMOJI_CATEGORIES) expect(c.entries.some((e) => e.char === c.icon), c.label).toBe(true);
