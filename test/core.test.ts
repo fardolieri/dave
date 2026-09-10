@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES } from '../src/core/protocol';
+import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, type Person } from '../src/core/protocol';
+import { presenceSnapshot, type SocketState } from '../src/core/room';
 
 describe('protocol', () => {
   it('parses known messages and rejects the rest', () => {
@@ -43,5 +44,22 @@ describe('protocol', () => {
     expect(normaliseName('')).toBeNull();
     expect(normaliseName('x'.repeat(32))).toHaveLength(32);
     expect(normaliseName('x'.repeat(33))).toBeNull();
+  });
+});
+
+describe('presenceSnapshot', () => {
+  const person = (publicKey: string, name: string): Person => ({ publicKey, fingerprint: publicKey.slice(0, 6), name, role: 'visitor', joinSeq: null, sharing: false, muted: false });
+  const attached = (publicKey: string, name: string, attachedAt: number): SocketState => ({ stage: 'attached', person: person(publicKey, name), bucket: { tokens: 1, at: attachedAt }, attachedAt });
+
+  it('lists each identity once, from its newest socket, and skips sockets that are closing or unauthenticated', () => {
+    const snapshot = presenceSnapshot([
+      attached('k-alice', 'Alice', 1000),
+      { stage: 'challenge', nonce: 'n', attempts: 0, since: 0 },
+      attached('k-bob', 'Bob', 2000),
+      attached('k-alice', 'Alice renamed', 3000), // the reconnect the server has not yet seen the old socket die for
+      { stage: 'closing' },
+      null,
+    ]);
+    expect(snapshot.people.map((p) => [p.publicKey, p.name])).toEqual([['k-alice', 'Alice renamed'], ['k-bob', 'Bob']]);
   });
 });

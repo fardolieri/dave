@@ -3,15 +3,16 @@ import { runInDurableObject } from 'cloudflare:test';
 import { Room } from '../src/worker/room';
 import { describe, expect, it, vi } from 'vitest';
 import { buildAuthMessage, exportPublicKey, generateIdentityKeyPair, toBase64Url } from '../src/core/identity';
-import { MAX_TEXT_LENGTH, PING_FRAME, PONG_FRAME, type Person, type ServerMessage } from '../src/core/protocol';
+import { CLOSE_SUPERSEDED, MAX_TEXT_LENGTH, PING_FRAME, PONG_FRAME, type Person, type ServerMessage } from '../src/core/protocol';
 import { BURST } from '../src/core/ratelimit';
 
 const SECRET = 'test-secret';
 
-type Client = { ws: WebSocket; you: Person; inbox: ServerMessage[]; next: (pred?: (m: ServerMessage) => boolean) => Promise<ServerMessage> };
+type Keys = Awaited<ReturnType<typeof generateIdentityKeyPair>>;
+type Client = { ws: WebSocket; you: Person; keys: Keys; inbox: ServerMessage[]; next: (pred?: (m: ServerMessage) => boolean) => Promise<ServerMessage> };
 
-/** Opens and authenticates a visitor (attaches a socket), returning a client whose inbox records everything after the welcome. */
-async function attach(name: string, picture?: string): Promise<Client> {
+/** Opens and authenticates a visitor (attaches a socket), returning a client whose inbox records everything after the welcome. `keys` reuses an identity. */
+async function attach(name: string, picture?: string, keys?: Keys): Promise<Client> {
   // a distinct client address per socket, so the per-IP upgrade limit never trips inside a test file
   const ip = `10.0.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
   const res = await exports.default.fetch(new Request('https://dave.test/ws', { headers: { Upgrade: 'websocket', 'cf-connecting-ip': ip } }));
@@ -32,11 +33,11 @@ async function attach(name: string, picture?: string): Promise<Client> {
       else waiters.push({ pred, resolve });
     });
   const challenge = (await next((m) => m.t === 'challenge')) as { nonce: string };
-  const keys = await generateIdentityKeyPair();
+  keys ??= await generateIdentityKeyPair();
   const publicKeyRaw = await exportPublicKey(keys.publicKey);
   ws.send(JSON.stringify(await buildAuthMessage({ secret: SECRET, nonce: challenge.nonce, publicKeyRaw, privateKey: keys.privateKey, name, ...(picture ? { picture } : {}) })));
   const welcome = (await next((m) => m.t === 'welcome')) as { you: Person };
-  return { ws, you: welcome.you, inbox, next };
+  return { ws, you: welcome.you, keys, inbox, next };
 }
 
 const names = (m: ServerMessage) => (m as { people: Person[] }).people.map((p) => p.name).sort();
@@ -56,6 +57,25 @@ describe('presence', () => {
     expect(afterLeave).toContain('Alice');
     expect(afterLeave).not.toContain('Bob');
     a.ws.close(1000, 'bye');
+  });
+
+  it('a second socket for the same identity supersedes the first, and every later snapshot lists that identity once', async () => {
+    const a = await attach('Alice');
+    const b = await attach('Bob');
+    await b.next((m) => m.t === 'presence');
+    const closed = new Promise<number>((resolve) => a.ws.addEventListener('close', (e) => resolve(e.code)));
+    const a2 = await attach('Alice', undefined, a.keys); // the same identity again: a reconnect the server saw no close for, or a second tab
+    expect(a2.you.publicKey).toBe(a.you.publicKey);
+    expect(await closed).toBe(CLOSE_SUPERSEDED);
+    expect(names(await b.next((m) => m.t === 'presence'))).toEqual(['Alice', 'Bob']);
+    // A broadcast for an unrelated reason must not resurrect the superseded socket's entry, however long it lingers.
+    const c = await attach('Carol');
+    expect(names(await b.next((m) => m.t === 'presence' && names(m).includes('Carol')))).toEqual(['Alice', 'Bob', 'Carol']);
+    expect(names(await a2.next((m) => m.t === 'presence' && names(m).includes('Carol')))).toEqual(['Alice', 'Bob', 'Carol']);
+    // Leave in order and wait for the room to notice, so the next test starts from an empty room.
+    b.ws.close(1000, 'bye'); c.ws.close(1000, 'bye');
+    await a2.next((m) => m.t === 'presence' && names(m).length === 1);
+    a2.ws.close(1000, 'bye');
   });
 
   it('a name change reaches everyone through presence and tags later texts; blank names are refused', async () => {

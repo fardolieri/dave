@@ -13,7 +13,9 @@ export const CHALLENGE_TIMEOUT_MS = 10_000;
 
 export type SocketState =
   | { stage: 'challenge'; nonce: string; attempts: number; since: number }
-  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; attachedAt: number; turnUser?: string };
+  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; attachedAt: number; turnUser?: string }
+  /** Told to close (superseded, or silent too long) but still attached until the runtime finishes the handshake; invisible meanwhile. */
+  | { stage: 'closing' };
 
 export type Outcome = {
   state: SocketState;
@@ -61,10 +63,19 @@ export function challengeExpired(state: SocketState, now: number): boolean {
 }
 
 /** Presence is nothing but the attached sockets' attachments. */
+/**
+ * One entry per identity, from its newest socket. A superseded or dead socket can stay attached until the
+ * runtime finishes closing it, and every later broadcast used to list it again: two rows for one friend,
+ * seen live on 2026-09-10 after a run of socket drops.
+ */
 export function presenceSnapshot(states: Iterable<SocketState | null | undefined>): Extract<ServerMessage, { t: 'presence' }> {
-  const people: Person[] = [];
-  for (const s of states) if (s && s.stage === 'attached') people.push(s.person);
-  return { t: 'presence', people };
+  const newest = new Map<string, Extract<SocketState, { stage: 'attached' }>>();
+  for (const s of states) {
+    if (!s || s.stage !== 'attached') continue;
+    const seen = newest.get(s.person.publicKey);
+    if (!seen || s.attachedAt >= seen.attachedAt) newest.set(s.person.publicKey, s);
+  }
+  return { t: 'presence', people: [...newest.values()].map((s) => s.person) };
 }
 
 /** Every frame before authentication that is not a correct answer counts as a strike. */
@@ -102,6 +113,8 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     // noticed dying (the client already reconnected) or another tab, which is told so.
     return { state: { stage: 'attached', person, bucket: newBucket(ctx.now), attachedAt: ctx.now }, replies: [{ t: 'welcome', you: person }], presenceChanged: true, supersede: msg.publicKey };
   }
+
+  if (state.stage === 'closing') return { state, replies: [] }; // already told to go; nothing it says counts
 
   if (state.stage !== 'attached') {
     // Unknown state shape (for example after a protocol change): fail closed.

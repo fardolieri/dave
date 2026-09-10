@@ -78,8 +78,10 @@ export class Room extends DurableObject<Env> {
         else challengesLeft++;
         continue;
       }
+      if (state.stage === 'closing') { try { ws.close(CLOSE_SILENT, 'still closing'); } catch { /* handshake under way */ } continue; }
       const lastPing = this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? state.attachedAt;
       if (now - lastPing >= SILENT_TIMEOUT_MS) {
+        ws.serializeAttachment({ stage: 'closing' } satisfies SocketState); // out of presence now, whenever the runtime lets go
         ws.close(CLOSE_SILENT, 'no sign of life');
         dropped = true;
       } else attachedLeft++;
@@ -114,7 +116,11 @@ export class Room extends DurableObject<Env> {
     }
   }
 
-  /** Close every other socket attached under this identity and return them, so the caller can leave them out of the next snapshot. */
+  /**
+   * Close every other socket attached under this identity and return them, so the caller can leave them out of the
+   * next snapshot. They are marked closing first: a dead socket (the client reconnected before the server noticed)
+   * can linger in getWebSockets() long after close(), and must not be listed or written to meanwhile.
+   */
   private supersede(keeper: WebSocket, publicKey: string): WebSocket[] {
     const gone: WebSocket[] = [];
     for (const s of this.ctx.getWebSockets()) {
@@ -122,6 +128,7 @@ export class Room extends DurableObject<Env> {
       const state = s.deserializeAttachment() as SocketState | null;
       if (state?.stage !== 'attached' || state.person.publicKey !== publicKey) continue;
       if (state.turnUser) this.ctx.waitUntil(revokeIce(this.env, state.turnUser));
+      s.serializeAttachment({ stage: 'closing' } satisfies SocketState);
       try { s.close(CLOSE_SUPERSEDED, 'opened elsewhere'); } catch { /* already gone */ }
       gone.push(s);
     }
