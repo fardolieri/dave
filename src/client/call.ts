@@ -119,6 +119,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   const [outgoing, setOutgoing] = createSignal<OutgoingShare | null>(null);
   /** Subscribe requests that arrived before the connection to that participant existed. */
   const earlyViewers = new Map<string, number>();
+  /** Sharers whose share I have asked to watch. Kept apart from any one peer so a rebuild or a reconnect re-asserts it. */
+  const watchIntent = new Set<string>();
 
   // ---- settings (spec §6.1, §6.3), remembered per browser
   /** A setting signal that also persists: [read, write]. */
@@ -378,6 +380,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     };
     peers.set(key, peer);
     publish();
+    assertWatch(peer); // a rebuilt connection lost the sharer's subscription; re-assert mine (spec §6.5, §8.1)
     return peer;
   }
 
@@ -792,7 +795,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       if (existing) {
         if (existing.view.serverLost) { clearTimeout(existing.graceTimer); setView(existing, { serverLost: false, name: p.name }); }
         // Their share ended: my subscription is void, the tile goes back to "click to watch" (spec §6.5).
-        if (!p.sharing && existing.view.watching) setView(existing, { watching: false, shareLive: false, shareKbps: 0, shareFormat: null });
+        if (!p.sharing) { watchIntent.delete(p.publicKey); if (existing.view.watching) setView(existing, { watching: false, shareLive: false, shareKbps: 0, shareFormat: null }); }
         continue;
       }
       if (initiatesTo({ ...self, joinSeq: myJoinSeq }, p)) createPeer(p.publicKey, p.name, true);
@@ -829,6 +832,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       if (s === 'failed' || s === 'disconnected' || s === 'closed') closePeer(peer.key);
     }
     reconcile(room.people());
+    reassertSubscriptions(); // re-ask for any watched share the reconnect dropped (spec §6.5)
   }
 
   async function declareJoin(): Promise<Extract<ServerMessage, { t: 'call' }> | null> {
@@ -842,7 +846,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       case 'call': pending.get('call')?.(m); return;
       case 'ice': pending.get('ice')?.(m); return;
       case 'signal': onSignal(m.from, m.data); return;
-      case 'left': closePeer(m.publicKey); return;
+      case 'left': watchIntent.delete(m.publicKey); closePeer(m.publicKey); return;
       case 'subscribe': {
         const peer = peers.get(m.from);
         if (!peer) { if (m.on) earlyViewers.set(m.from, m.scale ?? 1); else earlyViewers.delete(m.from); return; }
@@ -913,14 +917,38 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     }
   }
 
+  /** Send one subscribe/unsubscribe frame; a small screen asks for a downscaled encoding (spec §6.4). Returns whether it reached the socket. */
+  function sendSubscribe(key: string, on: boolean): boolean {
+    return room.send(smallScreen() ? { t: 'subscribe', to: key, on, scale: 2 } : { t: 'subscribe', to: key, on });
+  }
+
+  /**
+   * Re-assert my intent to watch one peer whose connection just (re)appeared. The sharer keeps each
+   * subscription in memory only, so a rebuilt connection or a rejoin after a server reconnect drops it even
+   * though the sharing flag survives; re-asking from my own intent brings the picture back without a click
+   * (spec §6.5, §8.1). A peer already marked watching keeps a live subscription and is left untouched.
+   */
+  function assertWatch(peer: Peer): void {
+    if (watchIntent.has(peer.key) && !peer.view.watching && sendSubscribe(peer.key, true)) setView(peer, { watching: true });
+  }
+
+  /** Re-ask for every share I still intend to watch, e.g. after a reconnect, so a picture live before does not stay dark. */
+  function reassertSubscriptions(): void {
+    for (const peer of peers.values()) assertWatch(peer);
+  }
+
   /** Viewer side: ask the sharer to start or stop sending me their share. */
   function watch(key: string, on: boolean): void {
     const peer = peers.get(key);
     if (!peer || peer.view.watching === on) return;
+    if (on) watchIntent.add(key); else watchIntent.delete(key);
+    const asked = sendSubscribe(key, on);
+    posthog.capture('screen_watch_toggled', { watching: on, asked });
+    // Show a watched tile only once the sharer has been asked. A frame dropped while the socket is down keeps
+    // the intent and re-asserts on reconnect; until then the tile stays "click to watch" rather than promise a
+    // picture nobody was asked for (spec §6.5). Stopping always takes effect at once.
+    if (on && !asked) return;
     setView(peer, { watching: on, shareKbps: 0, shareFormat: null });
-    posthog.capture('screen_watch_toggled', { watching: on });
-    // A small screen asks the sharer for a downscaled encoding for this connection only (spec §6.4).
-    room.send(smallScreen() ? { t: 'subscribe', to: key, on, scale: 2 } : { t: 'subscribe', to: key, on });
   }
 
   /** Fullscreen on one share unsubscribes every other (spec §6.5); leaving fullscreen does nothing. */
