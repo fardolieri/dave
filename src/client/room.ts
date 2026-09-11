@@ -65,8 +65,11 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
   let pingTimer: ReturnType<typeof setInterval> | undefined;
   let unavailableTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const send = (m: ClientMessage) => {
-    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m));
+  /** Write a frame if the socket is open; returns whether it went out, so a caller can re-assert what was dropped. */
+  const send = (m: ClientMessage): boolean => {
+    if (ws?.readyState !== WebSocket.OPEN) return false;
+    ws.send(JSON.stringify(m));
+    return true;
   };
 
   function open() {
