@@ -1,3 +1,2 @@
 # Copy to .dev.vars for local development. Never commit .dev.vars.
-ROOM_SECRET=dev-secret
 TURN_KEY_API_TOKEN=unused-locally

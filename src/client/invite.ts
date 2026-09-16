@@ -1,17 +1,19 @@
+import { formatInviteFragment, parseInviteFragment, type InviteLink } from '../core/rooms';
 import { local } from './storage';
 import { normalisePicture } from '../core/protocol';
 
-// The invite link carries the shared secret in the URL fragment, which browsers
-// never send to the server. Store it on first load and strip it from the address
-// bar at once, so a screenshared browser does not leak it.
-export function takeSecretFromInviteLink(): void {
-  const hash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
-  if (!hash) return;
-  local.set('secret', decodeURIComponent(hash));
-  history.replaceState(null, '', location.pathname + location.search);
+// The invite link carries the room's secret and name in the URL fragment, which browsers never send to
+// the server. It is read on first load and stripped from the address bar at once, so a screenshared
+// browser does not leak it.
+export function takeInviteLink(): InviteLink | null {
+  const link = parseInviteFragment(location.hash);
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  return link;
 }
 
-export const getSecret = (): string | null => local.get('secret');
+/** The link to send a friend so they land in this room. */
+export const inviteLinkFor = (room: InviteLink): string => `${location.origin}${location.pathname}${formatInviteFragment(room)}`;
+
 export const getName = (): string | null => local.get('name');
 export const setName = (name: string): void => local.set('name', name);
 /** The chosen profile picture, checked on the way out so a stale or edited value can never fail the handshake. */

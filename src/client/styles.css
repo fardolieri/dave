@@ -22,11 +22,26 @@ code.fp { font-size: 11px; color: var(--dim); }
 .app > *, .scroll > * { min-width: 0; min-height: 0; }
 /* On desktop the wrapper is invisible to layout (its children are grid items of .app); phones turn it into the scrolling part above the composer. */
 .scroll { display: contents; }
-.side { grid-column: 1; grid-row: 1 / -1; display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--line); padding: 0 14px 14px; overflow: auto; transition: opacity .2s; }
-.side.frozen { opacity: .45; pointer-events: none; } /* presence is stale while the socket is down (spec §8.1) */
+.side { grid-column: 1; grid-row: 1 / -1; display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--line); padding: 0 14px 14px; overflow: auto; }
 .side > * { flex: none; }
 /* rare actions live at the very bottom of the sidebar, far from anything clicked often */
-.side-foot { margin-top: auto; padding-top: 18px; display: flex; justify-content: center; gap: 14px; }
+.side-foot { margin-top: auto; padding-top: 18px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 14px; }
+.newroom { display: flex; gap: 6px; width: 100%; }
+.newroom input { flex: 1; min-width: 0; }
+
+/* Rooms: each one is a section of the sidebar headed by its name; the one on screen is bright, the rest dim.
+   The header is a button: clicking a name brings that room's chat on screen without touching the call. */
+.room-head { display: flex; align-items: center; gap: 6px; margin: 14px 0 6px; }
+button.room-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: none; border: 0; border-radius: 6px; padding: 2px 0; text-align: left; cursor: pointer; }
+.room-title { font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room.selected .room-title, button.room-name:hover .room-title { color: var(--fg); }
+button.room-name:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.unread { flex: none; font-size: 10px; line-height: 16px; background: var(--acc); color: #fff; border-radius: 999px; padding: 0 6px; font-weight: 700; }
+.room-head button.link.on { color: var(--fg); }
+/* that room's presence is stale while its socket is down (spec §8.1); the header stays clickable */
+.room.frozen .plist, .room.frozen .actions { opacity: .45; pointer-events: none; transition: opacity .2s; }
+.panel.invite input { width: 100%; font-size: 12px; font-family: monospace; }
+.panel.invite .hint { margin: 0; }
 
 .plist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .plist li { display: flex; align-items: center; gap: 8px; }

@@ -34,41 +34,41 @@ describe('identity primitives', () => {
 });
 
 describe('challenge and answer', () => {
-  const secret = 'correct horse battery staple';
+  const authKey = 'correct horse battery staple';
 
   async function setup() {
     const keys = await generateIdentityKeyPair();
     const publicKeyRaw = await exportPublicKey(keys.publicKey);
     const nonce = randomNonce();
-    const answer = await answerChallenge({ secret, nonce, publicKeyRaw, privateKey: keys.privateKey });
+    const answer = await answerChallenge({ authKey, nonce, publicKeyRaw, privateKey: keys.privateKey });
     return { keys, publicKeyRaw, nonce, answer };
   }
 
   it('accepts a correct answer', async () => {
     const { publicKeyRaw, nonce, answer } = await setup();
-    expect(await verifyAnswer({ secret, nonce, publicKeyRaw, ...answer })).toBe(true);
+    expect(await verifyAnswer({ authKey, nonce, publicKeyRaw, ...answer })).toBe(true);
   });
 
   it('rejects a wrong secret', async () => {
     const { publicKeyRaw, nonce, answer } = await setup();
-    expect(await verifyAnswer({ secret: 'wrong', nonce, publicKeyRaw, ...answer })).toBe(false);
+    expect(await verifyAnswer({ authKey: 'wrong', nonce, publicKeyRaw, ...answer })).toBe(false);
   });
 
   it('rejects a replay against a fresh nonce', async () => {
     const { publicKeyRaw, answer } = await setup();
-    expect(await verifyAnswer({ secret, nonce: randomNonce(), publicKeyRaw, ...answer })).toBe(false);
+    expect(await verifyAnswer({ authKey, nonce: randomNonce(), publicKeyRaw, ...answer })).toBe(false);
   });
 
   it('rejects a signature from a different key even with a correct hmac', async () => {
     const { publicKeyRaw, nonce, answer } = await setup();
     const impostor = await generateIdentityKeyPair();
-    const forged = await answerChallenge({ secret, nonce, publicKeyRaw, privateKey: impostor.privateKey });
-    expect(await verifyAnswer({ secret, nonce, publicKeyRaw, hmac: answer.hmac, signature: forged.signature })).toBe(false);
+    const forged = await answerChallenge({ authKey, nonce, publicKeyRaw, privateKey: impostor.privateKey });
+    expect(await verifyAnswer({ authKey, nonce, publicKeyRaw, hmac: answer.hmac, signature: forged.signature })).toBe(false);
   });
 
   it('rejects a malformed public key', async () => {
     const { nonce, answer } = await setup();
-    expect(await verifyAnswer({ secret, nonce, publicKeyRaw: new Uint8Array(10), ...answer })).toBe(false);
+    expect(await verifyAnswer({ authKey, nonce, publicKeyRaw: new Uint8Array(10), ...answer })).toBe(false);
   });
 });
 
@@ -77,12 +77,12 @@ describe('buildAuthMessage', () => {
     const keys = await generateIdentityKeyPair();
     const publicKeyRaw = await exportPublicKey(keys.publicKey);
     const nonce = randomNonce();
-    const msg = await buildAuthMessage({ secret: 's', nonce: toBase64Url(nonce), publicKeyRaw, privateKey: keys.privateKey, name: 'Dave' });
+    const msg = await buildAuthMessage({ authKey: 's', nonce: toBase64Url(nonce), publicKeyRaw, privateKey: keys.privateKey, name: 'Dave' });
     expect(msg.t).toBe('auth');
-    expect(await verifyAnswer({ secret: 's', nonce, publicKeyRaw, hmac: fromBase64Url(msg.hmac)!, signature: fromBase64Url(msg.signature)! })).toBe(true);
+    expect(await verifyAnswer({ authKey: 's', nonce, publicKeyRaw, hmac: fromBase64Url(msg.hmac)!, signature: fromBase64Url(msg.signature)! })).toBe(true);
   });
   it('rejects a malformed nonce', async () => {
     const keys = await generateIdentityKeyPair();
-    await expect(buildAuthMessage({ secret: 's', nonce: 'aaaaa', publicKeyRaw: await exportPublicKey(keys.publicKey), privateKey: keys.privateKey, name: 'D' })).rejects.toThrow();
+    await expect(buildAuthMessage({ authKey: 's', nonce: 'aaaaa', publicKeyRaw: await exportPublicKey(keys.publicKey), privateKey: keys.privateKey, name: 'D' })).rejects.toThrow();
   });
 });

@@ -949,6 +949,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       const reply = await declareJoin();
       if (!reply) { setJoinError('The server did not answer the join request.'); posthog.capture('join_error', { reason: 'server_no_answer' }); return; }
       setInCall(true);
+      exposeDevHook();
       posthog.capture('call_joined');
       reconcile(untrack(room.people));
     } finally {
@@ -987,8 +988,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     audioCtx?.close();
   });
 
-  if (import.meta.env.DEV) {
-    // Dev aid for scripts/drive.mjs: inspect the mesh from the DevTools protocol. Absent in production builds.
+  // Dev aid for scripts/drive.mjs: inspect the mesh from the DevTools protocol. Absent in production builds.
+  // Every room has a call object; the hook follows the one you joined last.
+  const exposeDevHook = () => {
+    if (!import.meta.env.DEV) return;
     (window as unknown as { __dave?: unknown }).__dave = {
       peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, audioBytesIn: p.view.audioBytesIn, videoBytesIn: p.videoBytesIn, watching: p.view.watching, shareLive: p.view.shareLive, subscribedToMe: p.viewsMyShare, transceivers: p.pc.getTransceivers().length })),
       share: () => untrack(() => ({
@@ -1003,7 +1006,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       diagnostics,
       state: () => ({ inCall: joined, joining, joinError: untrack(joinError), myJoinSeq, role: untrack(me)?.role ?? null, participants: untrack(room.people).filter((p) => p.role === 'participant').map((p) => `${p.name}#${p.joinSeq}`) }),
     };
-  }
+  };
+  exposeDevHook();
 
   return {
     inCall, muted, views, speakingSelf, joinError, join, leave, setMuted, myJoinSeq: () => myJoinSeq,

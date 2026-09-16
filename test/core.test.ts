@@ -21,6 +21,10 @@ describe('protocol', () => {
     expect(parseClientMessage(JSON.stringify({ ...ok, publicKey: 'not base64url!' }))).toMatchObject({ t: 'invalid' });
     expect(parseClientMessage(JSON.stringify({ ...ok, name: '   ' }))).toEqual({ t: 'invalid', reason: 'invalid name' });
     expect(parseClientMessage(JSON.stringify({ ...ok, name: 'x'.repeat(33) }))).toEqual({ t: 'invalid', reason: 'invalid name' });
+    const authKey = 'a'.repeat(43);
+    expect(parseClientMessage(JSON.stringify({ ...ok, authKey }))).toEqual({ ...ok, name: 'Dave Smith', authKey });
+    expect(parseClientMessage(JSON.stringify({ ...ok, authKey: 'short' }))).toMatchObject({ t: 'invalid' });
+    expect(parseClientMessage(JSON.stringify({ ...ok, authKey: 42 }))).toMatchObject({ t: 'invalid' });
   });
 
   it('takes one emoji as the profile picture, in auth and on its own; null clears it', () => {

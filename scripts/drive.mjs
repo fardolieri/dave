@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Drives real headless Chromium profiles against the app over the DevTools protocol.
 // Development aid, not a test: `node scripts/drive.mjs <url> <secret> <name> [name2 ...]`
-// Each name gets its own profile with the secret and name pre-seeded, so the page
-// lands straight in the Room. Prints each browser's sidebar and chat, then sends one
+// Each name gets its own profile with one room (the secret) and the name pre-seeded, so the page
+// lands straight in that room. Prints each browser's sidebar and chat, then sends one
 // message from the first browser and shows what the others received.
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -77,7 +77,9 @@ class Browser {
     // dave.test marks this browser as a test account: its events carry is_test_account and its PostHog person
     // is flagged $internal_or_test_user, which the project's test-account filter excludes from insights.
     // SEED_MUTED=1: join with the microphone muted (for runs against the live room; pair with CHROME_FLAGS=--use-file-for-fake-audio-capture=<silent.wav> so nothing hums either way).
-    await this.eval(`localStorage.setItem('dave.secret', ${JSON.stringify(secret)}); localStorage.setItem('dave.name', ${JSON.stringify(this.name)}); localStorage.setItem('dave.test', 'true'); ${process.env.SEED_MUTED ? "localStorage.setItem('dave.muted', 'true');" : ''} 'ok'`);
+    // One saved room, named Drive, the way the app stores rooms it was invited to.
+    const rooms = JSON.stringify([{ secret, name: 'Drive', addedAt: Date.now() }]);
+    await this.eval(`localStorage.setItem('dave.rooms', ${JSON.stringify(rooms)}); localStorage.setItem('dave.name', ${JSON.stringify(this.name)}); localStorage.setItem('dave.test', 'true'); ${process.env.SEED_MUTED ? "localStorage.setItem('dave.muted', 'true');" : ''} 'ok'`);
     await this.goto(url);
   }
   async screenshot(path, width) {
@@ -123,12 +125,12 @@ try {
       await sleep(1000);
       if (process.env.TRACE_ICE) { const last = browsers[browsers.length - 1]; console.log(`t+${((Date.now() - t0) / 1000).toFixed(0)}s [${last.name}] peers=${JSON.stringify(await last.eval(`window.__dave?.peers().map(p => p.name + ':' + p.ice) ?? 'no hook'`))} state=${JSON.stringify(await last.eval(`window.__dave?.state()`))}`); }
       for (const b of browsers) if (!settled.has(b.name)) {
-        const badges = await b.eval(`[...document.querySelectorAll('.side ul:nth-of-type(2) .conn')].map(c => c.textContent.trim())`);
+        const badges = await b.eval(`[...document.querySelectorAll('.room.selected ul .conn')].map(c => c.textContent.trim())`);
         if (badges.length === browsers.length - 1 && badges.every((x) => x === 'direct' || x === 'via relay')) { settled.set(b.name, badges); console.log(`[${b.name}] badges settled after ${((Date.now() - t0) / 1000).toFixed(1)}s: ${badges.join(', ')}`); }
       }
     }
-    for (const b of browsers) if (!settled.has(b.name)) console.log(`[${b.name}] badges NOT settled after 30s: ${await b.eval(`[...document.querySelectorAll('.side ul:nth-of-type(2) .conn')].map(c => c.textContent.trim()).join(', ')`) || '(none)'}`);
-    for (const b of browsers) console.log(`[${b.name}] call: ${await b.text('.side ul:nth-of-type(2) li') || '(empty)'}\n[${b.name}] actions: ${await b.text('.actions button')} | speaking rings: ${await b.eval(`document.querySelectorAll('.avatar.speaking').length`)} (on others: ${await b.eval(`document.querySelectorAll('.side ul:nth-of-type(2) li:not(:first-child) .avatar.speaking').length`)})`);
+    for (const b of browsers) if (!settled.has(b.name)) console.log(`[${b.name}] badges NOT settled after 30s: ${await b.eval(`[...document.querySelectorAll('.room.selected ul .conn')].map(c => c.textContent.trim()).join(', ')`) || '(none)'}`);
+    for (const b of browsers) console.log(`[${b.name}] call: ${await b.text('.room.selected ul li') || '(empty)'}\n[${b.name}] actions: ${await b.text('.actions button')} | speaking rings: ${await b.eval(`document.querySelectorAll('.avatar.speaking').length`)} (on others: ${await b.eval(`document.querySelectorAll('.room.selected ul li:not(:first-child) .avatar.speaking').length`)})`);
     if (browsers[1]) {
       await browsers[1].eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Mute')?.click(); 'muted'`);
       await sleep(1500);
@@ -137,9 +139,9 @@ try {
       const seen = new Map(browsers.map((b) => [b.name, new Set()]));
       for (let i = 0; i < 30; i++) {
         await sleep(100);
-        for (const b of browsers) for (const n of await b.eval(`[...document.querySelectorAll('.side ul:nth-of-type(2) li:not(:first-child)')].filter(li => li.querySelector('.avatar.speaking')).map(li => li.querySelector('.pname').firstChild.textContent.trim())`)) seen.get(b.name).add(n);
+        for (const b of browsers) for (const n of await b.eval(`[...document.querySelectorAll('.room.selected ul li:not(:first-child)')].filter(li => li.querySelector('.avatar.speaking')).map(li => li.querySelector('.pname').firstChild.textContent.trim())`)) seen.get(b.name).add(n);
       }
-      for (const b of browsers) console.log(`[${b.name}] call after mute: ${await b.text('.side ul:nth-of-type(2) li')} | heard ringing: ${[...seen.get(b.name)].join(', ') || 'nobody'}`);
+      for (const b of browsers) console.log(`[${b.name}] call after mute: ${await b.text('.room.selected ul li')} | heard ringing: ${[...seen.get(b.name)].join(', ') || 'nobody'}`);
       for (const b of browsers) console.log(`[${b.name}] mesh: ${JSON.stringify(await b.eval(`window.__dave?.peers() ?? 'no debug hook'`))}`);
     }
     if (shareToo && browsers.length > 1) {
@@ -334,8 +336,8 @@ try {
     if (browsers.length > 1) {
       await last.eval(`document.querySelector('button.leave')?.click(); 'left'`);
       await sleep(1500);
-      console.log(`[${last.name}] own actions after leave: ${await last.text('.actions button')} | online: ${await last.text('.side ul:nth-of-type(1) li')}`);
-      console.log(`[${browsers[0].name}] call after ${last.name} left: ${await browsers[0].text('.side ul:nth-of-type(2) li')}`);
+      console.log(`[${last.name}] own actions after leave: ${await last.text('.actions button')} | online: ${await last.text('.side > .plist li')}`);
+      console.log(`[${browsers[0].name}] call after ${last.name} left: ${await browsers[0].text('.room.selected ul li')}`);
     }
   }
   await browsers[0].say(`hello from ${browsers[0].name} https://example.com`);

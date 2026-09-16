@@ -1,12 +1,20 @@
 # Friends Chat
 
-A single shared space where a small group of friends can text, talk, and share screens, with media flowing peer-to-peer and a small server only brokering connections.
+Shared spaces where small groups of friends text, talk, and share screens, with media flowing peer-to-peer and a small server only brokering connections.
 
 ## Language
 
 **Room**:
-The single shared space. Has one text chat and at most one call.
+One shared space, entered through its invite link. Has one text chat and at most one call. A browser can be in several rooms at once; one of them is on screen and at most one call is joined.
 _Avoid_: Server (Discord sense), channel, lobby
+
+**Room id**:
+The room's name on the wire, derived from the shared secret by hashing. Knowing it gets nobody in.
+_Avoid_: Room key, room token
+
+**Auth key**:
+What the server keeps of a room: a second hash of the shared secret, handed over by the first friend to enter. The challenge is keyed with it. Never the secret itself.
+_Avoid_: Verifier (in UI copy; fine in code), password hash
 
 **Call**:
 The live voice and screen session in the room. Exists while at least one participant is in it.
@@ -41,7 +49,7 @@ A link between two participants whose media passes through a TURN relay because 
 _Avoid_: Proxied, tunnelled
 
 **Shared secret**:
-The single invite passphrase or link that gates entry to the room. Everyone who holds it is a friend.
+The random string in a room's invite link that gates entry to that room. Everyone who holds it is a friend. The room id and the auth key are derived from it.
 _Avoid_: Password, token, invite code
 
 **Fingerprint**:
@@ -53,8 +61,12 @@ The name this browser shows for a friend's identity instead of their self-declar
 _Avoid_: Alias, rename, pet name, contact name
 
 **Invite link**:
-The URL a friend receives to enter the room. Carries the shared secret in its fragment, which never reaches the server.
+The URL a friend receives to enter a room. Carries the shared secret and the room's name in its fragment, which never reaches the server. Opening one adds the room to the browser's list.
 _Avoid_: Join link, room URL
+
+**Unread**:
+Texts from others that arrived in a room while another room was on screen. Shown as a count beside the room's name.
+_Avoid_: Notifications, badge count (in UI copy)
 
 **Identity**:
 A per-browser keypair that makes a friend's display name stable and unforgeable across sessions.

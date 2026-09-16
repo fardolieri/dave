@@ -1,21 +1,18 @@
-import { env, exports } from 'cloudflare:workers';
+import { env } from 'cloudflare:workers';
 import { runDurableObjectAlarm } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
-import { buildAuthMessage, exportPublicKey, generateIdentityKeyPair } from '../src/core/identity';
+import { generateIdentityKeyPair } from '../src/core/identity';
 import type { IceServer, Person, ServerMessage } from '../src/core/protocol';
 import { CLOSE_SILENT, SILENT_TIMEOUT_MS } from '../src/worker/room';
 import { CLOSE_SUPERSEDED } from '../src/core/protocol';
+import { roomIdOf } from '../src/core/rooms';
+import { authFrame, openRoomSocket, type Challenge, type Keys } from './harness';
 
-const SECRET = 'test-secret';
+const SECRET = 'call-test-room';
 type Client = { ws: WebSocket; you: Person; next: (pred?: (m: ServerMessage) => boolean) => Promise<ServerMessage>; closed: Promise<number> };
 
-type Keys = Awaited<ReturnType<typeof generateIdentityKeyPair>>;
 async function attach(name: string, existingKeys?: Keys): Promise<Client> {
-  // a distinct client address per socket, so the per-IP upgrade limit never trips inside a test file
-  const ip = `10.0.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
-  const res = await exports.default.fetch(new Request('https://dave.test/ws', { headers: { Upgrade: 'websocket', 'cf-connecting-ip': ip } }));
-  const ws = res.webSocket!;
-  ws.accept();
+  const ws = await openRoomSocket(SECRET);
   const inbox: ServerMessage[] = [];
   const waiters: Array<{ pred: (m: ServerMessage) => boolean; resolve: (m: ServerMessage) => void }> = [];
   ws.addEventListener('message', (e) => {
@@ -31,9 +28,8 @@ async function attach(name: string, existingKeys?: Keys): Promise<Client> {
       if (i >= 0) resolve(inbox.splice(i, 1)[0]!);
       else waiters.push({ pred, resolve });
     });
-  const challenge = (await next((m) => m.t === 'challenge')) as { nonce: string };
-  const keys = existingKeys ?? await generateIdentityKeyPair();
-  ws.send(JSON.stringify(await buildAuthMessage({ secret: SECRET, nonce: challenge.nonce, publicKeyRaw: await exportPublicKey(keys.publicKey), privateKey: keys.privateKey, name })));
+  const challenge = (await next((m) => m.t === 'challenge')) as Challenge;
+  ws.send(JSON.stringify(await authFrame(challenge, existingKeys ?? await generateIdentityKeyPair(), SECRET, name)));
   const welcome = (await next((m) => m.t === 'welcome')) as { you: Person };
   return { ws, you: welcome.you, next, closed };
 }
@@ -116,7 +112,7 @@ describe('sweep', () => {
   it('leaves recently attached sockets alone', async () => {
     const a = await attach('Alice');
     await a.next((m) => m.t === 'presence');
-    const stub = env.ROOM.get(env.ROOM.idFromName('the-room'));
+    const stub = env.ROOM.get(env.ROOM.idFromName(await roomIdOf(SECRET)));
     expect(await runDurableObjectAlarm(stub)).toBe(true); // an alarm is always pending while sockets exist
     a.ws.send('{"t":"ping"}');
     expect((await a.next((m) => m.t === 'pong')).t).toBe('pong'); // still open
@@ -130,7 +126,7 @@ describe('sweep', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
       vi.setSystemTime(Date.now() + SILENT_TIMEOUT_MS + 1000);
-      const stub = env.ROOM.get(env.ROOM.idFromName('the-room'));
+      const stub = env.ROOM.get(env.ROOM.idFromName(await roomIdOf(SECRET)));
       expect(await runDurableObjectAlarm(stub)).toBe(true);
     } finally {
       vi.useRealTimers();

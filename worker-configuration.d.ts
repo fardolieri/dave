@@ -4,7 +4,6 @@
 interface __BaseEnv_Env {
 	UPGRADE_LIMIT: RateLimit;
 	TURN_KEY_ID: "d3d456166c56302f67957272a1ff9ba5";
-	ROOM_SECRET: string;
 	TURN_KEY_API_TOKEN: string;
 	ROOM: DurableObjectNamespace<import("./src/worker/index").Room>;
 }
@@ -20,7 +19,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "TURN_KEY_ID" | "ROOM_SECRET" | "TURN_KEY_API_TOKEN">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "TURN_KEY_ID" | "TURN_KEY_API_TOKEN">> {}
 }
 
 // Begin runtime types

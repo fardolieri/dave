@@ -1,5 +1,5 @@
-// Identity and the shared-secret handshake (ADR 0003). WebCrypto only, so this
-// runs unchanged in browsers, workerd, and Node. No imports.
+// Identity and the challenge handshake (ADR 0003, keyed per room since ADR 0004). WebCrypto only, so
+// this runs unchanged in browsers, workerd, and Node. No imports.
 
 const subtle = () => crypto.subtle;
 
@@ -75,36 +75,36 @@ export async function exportPublicKey(publicKey: CryptoKey): Promise<Uint8Array>
   return new Uint8Array((await subtle().exportKey('raw', publicKey)) as ArrayBuffer);
 }
 
-async function hmacKey(secret: string, usage: 'sign' | 'verify'): Promise<CryptoKey> {
-  return subtle().importKey('raw', utf8(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [usage]);
+async function hmacKey(authKey: string, usage: 'sign' | 'verify'): Promise<CryptoKey> {
+  return subtle().importKey('raw', utf8(authKey), { name: 'HMAC', hash: 'SHA-256' }, false, [usage]);
 }
 
 /**
- * Client side: prove possession of the shared secret and of the private key.
- * hmac = HMAC-SHA256(secret, nonce || publicKey); signature = ECDSA(privateKey, nonce).
+ * Client side: prove possession of the room's auth key (derived from the shared secret) and of the private key.
+ * hmac = HMAC-SHA256(authKey, nonce || publicKey); signature = ECDSA(privateKey, nonce).
  */
 export async function answerChallenge(input: {
-  secret: string;
+  authKey: string;
   nonce: Uint8Array;
   publicKeyRaw: Uint8Array;
   privateKey: CryptoKey;
 }): Promise<{ hmac: Uint8Array; signature: Uint8Array }> {
-  const key = await hmacKey(input.secret, 'sign');
+  const key = await hmacKey(input.authKey, 'sign');
   const hmac = new Uint8Array(await subtle().sign('HMAC', key, concat(input.nonce, input.publicKeyRaw) as BufferSource));
   const signature = new Uint8Array(await subtle().sign(SIGN, input.privateKey, input.nonce as BufferSource));
   return { hmac, signature };
 }
 
-/** Server side. Both checks are constant time inside WebCrypto; the secret never leaves the server. */
+/** Server side. Both checks are constant time inside WebCrypto; the server holds only the derived auth key. */
 export async function verifyAnswer(input: {
-  secret: string;
+  authKey: string;
   nonce: Uint8Array;
   publicKeyRaw: Uint8Array;
   hmac: Uint8Array;
   signature: Uint8Array;
 }): Promise<boolean> {
   if (!isValidPublicKey(input.publicKeyRaw)) return false;
-  const key = await hmacKey(input.secret, 'verify');
+  const key = await hmacKey(input.authKey, 'verify');
   const macOk = await subtle().verify('HMAC', key, input.hmac as BufferSource, concat(input.nonce, input.publicKeyRaw) as BufferSource);
   if (!macOk) return false;
   const publicKey = await importPublicKey(input.publicKeyRaw);
@@ -132,7 +132,7 @@ export function verifyBytes(publicKey: CryptoKey, signature: Uint8Array, bytes: 
 
 /** Client side: turn a challenge into the complete `auth` message. Shared by the app and the tests. */
 export async function buildAuthMessage(input: {
-  secret: string;
+  authKey: string;
   nonce: string;
   publicKeyRaw: Uint8Array;
   privateKey: CryptoKey;
@@ -141,6 +141,6 @@ export async function buildAuthMessage(input: {
 }): Promise<{ t: 'auth'; publicKey: string; name: string; picture?: string; hmac: string; signature: string }> {
   const nonce = fromBase64Url(input.nonce);
   if (!nonce) throw new Error('malformed challenge nonce');
-  const { hmac, signature } = await answerChallenge({ secret: input.secret, nonce, publicKeyRaw: input.publicKeyRaw, privateKey: input.privateKey });
+  const { hmac, signature } = await answerChallenge({ authKey: input.authKey, nonce, publicKeyRaw: input.publicKeyRaw, privateKey: input.privateKey });
   return { t: 'auth', publicKey: toBase64Url(input.publicKeyRaw), name: input.name, ...(input.picture ? { picture: input.picture } : {}), hmac: toBase64Url(hmac), signature: toBase64Url(signature) };
 }

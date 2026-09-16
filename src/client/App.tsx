@@ -1,11 +1,13 @@
-import { createSignal, Switch, Match, createMemo, createEffect, For, Show, untrack, onCleanup } from 'solid-js';
+import { createSignal, Switch, Match, createMemo, createEffect, For, Show, untrack, onCleanup, mapArray } from 'solid-js';
 import './styles.css';
 import posthog, { isTestAccount } from './posthog';
 import { loadIdentity, type LocalIdentity } from './identity';
-import { getName, getPicture, getSecret, setName, setPicture, takeSecretFromInviteLink } from './invite';
+import { getName, getPicture, inviteLinkFor, setName, setPicture, takeInviteLink } from './invite';
+import { addRoom, forgetRoom, getSelectedRoom, loadRooms, setSelectedRoom, type SavedRoom } from './rooms';
+import { newRoomSecret, normaliseRoomName, type InviteLink } from '../core/rooms';
 import { createRoom, type ChatLine, type ServerStatus } from './room';
 import { createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
-import { createAttention } from './attention';
+import { createAttention, type RoomLink } from './attention';
 import { contactOf, isKnown, markKnown, setNickname } from './contacts';
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, normaliseName, type Identity, type Person } from '../core/protocol';
 import { ambiguousNames, displayName, knownAgo, showsFingerprint } from '../core/names';
@@ -17,23 +19,66 @@ import { EmojiPicker } from './EmojiPicker';
 import { place } from './place';
 
 export default function App() {
-  takeSecretFromInviteLink();
-  const [secret] = createSignal(getSecret());
+  // An invite link is consumed before anything else renders, so it never stays in the address bar.
+  const invite = takeInviteLink();
+  const [rooms, setRooms] = createSignal<SavedRoom[] | null>(null);
+  const [selected, setSelected] = createSignal<string | null>(getSelectedRoom());
+  /** The room started in this browser during this visit, if any: its link still has to be sent around. */
+  const [created, setCreated] = createSignal<string | null>(null);
   const [name, setNameSignal] = createSignal(getName());
   const [identity, setIdentity] = createSignal<LocalIdentity | null>(null);
   const [identityError, setIdentityError] = createSignal<string | null>(null);
 
   loadIdentity().then(setIdentity, (e: unknown) => setIdentityError(e instanceof Error ? e.message : String(e)));
 
-  const ready = createMemo(() => (secret() && name() && identity() ? { secret: secret()!, name: name()!, identity: identity()! } : null));
+  const select = (secret: string) => { setSelectedRoom(secret); setSelected(secret); };
+  /** The room from a link joins the list (or takes the link's name if already known) and comes on screen. */
+  const enter = async (list: SavedRoom[], link: InviteLink): Promise<SavedRoom[]> => {
+    const known = list.some((r) => r.secret === link.secret);
+    const next = await addRoom(list, link);
+    select(link.secret);
+    posthog.capture('room_entered_by_link', { known });
+    return next;
+  };
+  void loadRooms().then(async (list) => setRooms(invite ? await enter(list, invite) : list));
+  // A link opened in a tab that already shows the app only changes the fragment: no load, so it is read here.
+  window.addEventListener('hashchange', () => {
+    const link = takeInviteLink();
+    const list = rooms();
+    if (link && list) void enter(list, link).then(setRooms);
+  });
+  const create = async (roomName: string): Promise<SavedRoom> => {
+    const list = await addRoom(rooms() ?? [], { secret: newRoomSecret(), name: roomName });
+    const room = list[list.length - 1]!;
+    select(room.secret);
+    setCreated(room.secret);
+    setRooms(list);
+    posthog.capture('room_created');
+    return room;
+  };
+  const forget = (secret: string) => {
+    const list = forgetRoom(rooms() ?? [], secret);
+    if (selected() === secret && list[0]) select(list[0].secret);
+    setRooms(list);
+    posthog.capture('room_left');
+  };
+  const rename = (n: string) => { setName(n); setNameSignal(n); };
+
+  const ready = createMemo(() => {
+    const list = rooms();
+    return list && list.length > 0 && name() && identity() ? { rooms: list, selected: selected(), created: created(), name: name()!, identity: identity()! } : null;
+  });
 
   return (
     <Switch>
-      <Match when={!secret()}>
-        <Notice title="You need an invite link">Open the link a friend sent you. Nothing else gets you in.</Notice>
+      <Match when={rooms() === null}>
+        <Notice title="Loading…"> </Notice>
+      </Match>
+      <Match when={rooms()?.length === 0}>
+        <Welcome onCreate={(n) => void create(n)} />
       </Match>
       <Match when={!name()}>
-        <NameForm onSubmit={(n) => { setName(n); setNameSignal(n); }} />
+        <NameForm onSubmit={rename} />
       </Match>
       <Match when={identityError()}>
         <Notice title="No identity key">This browser could not create or load an identity key ({identityError()}). Private windows and blocked site data cause this.</Notice>
@@ -41,7 +86,7 @@ export default function App() {
       <Match when={!identity()}>
         <Notice title="Preparing your identity…"> </Notice>
       </Match>
-      <Match when={ready()}>{(r) => <RoomView {...r()} />}</Match>
+      <Match when={ready()}>{(r) => <Workspace {...r()} onSelect={select} onCreate={create} onForget={forget} onRename={rename} />}</Match>
     </Switch>
   );
 }
@@ -52,6 +97,23 @@ function Notice(props: { title: string; children: any }) {
       <h1>dave</h1>
       <h2>{props.title}</h2>
       <p>{props.children}</p>
+    </main>
+  );
+}
+
+/** No room yet: either a friend's link gets you in, or you start a room and become the one sending links. */
+function Welcome(props: { onCreate: (name: string) => void }) {
+  const [draft, setDraft] = createSignal('');
+  const valid = () => normaliseRoomName(draft()) !== null;
+  return (
+    <main class="notice">
+      <h1>dave</h1>
+      <h2>You need an invite link</h2>
+      <p>Open the link a friend sent you. Or start a room of your own and send them its link.</p>
+      <form onSubmit={(e) => { e.preventDefault(); const n = normaliseRoomName(draft()); if (n) props.onCreate(n); }}>
+        <input value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} maxlength={MAX_NAME_LENGTH} autofocus placeholder="Room name" />
+        <button disabled={!valid()}>Start a room</button>
+      </form>
     </main>
   );
 }
@@ -72,33 +134,64 @@ function NameForm(props: { onSubmit: (name: string) => void }) {
   );
 }
 
-// Owns the socket: a component body runs once, so `createRoom` is called exactly once.
-function RoomView(props: { secret: string; name: string; identity: LocalIdentity }) {
+/** One room this browser is in: what was saved about it, its socket, and its call. */
+type Link = RoomLink & { saved: SavedRoom };
+
+type WorkspaceProps = {
+  rooms: SavedRoom[]; selected: string | null; created: string | null; name: string; identity: LocalIdentity;
+  onSelect: (secret: string) => void; onCreate: (name: string) => Promise<SavedRoom>; onForget: (secret: string) => void; onRename: (name: string) => void;
+};
+
+/**
+ * Owns the sockets: one connection and one call object per room, created when the room joins the list and
+ * disposed when it is left. One room is on screen (its chat, its composer); at most one call is joined,
+ * and it stays joined while you read another room.
+ */
+function Workspace(props: WorkspaceProps) {
   // Pseudonymous identity for analytics: the public key, nothing personal. The fingerprint is the
   // same code the profile card shows, so a report's person can be matched to a friend by eye. A
   // driver-seeded browser marks its person for the project's test-account filter. One-time read on purpose.
-  posthog.identify(untrack(() => props.identity.publicKey), untrack(() => ({ fingerprint: props.identity.fingerprint, ...(isTestAccount ? { $internal_or_test_user: true } : {}) })));
-  posthog.capture('room_entered');
-  // A deliberate one-time snapshot: the socket is created once with the props at mount.
-  const room = createRoom(untrack(() => ({ secret: props.secret, name: props.name, picture: getPicture(), identity: props.identity })));
-  const me = () => props.identity.publicKey;
-  const call = createCall(room, untrack(() => props.identity));
-  createAttention(room, call, untrack(me));
+  const identity = untrack(() => props.identity);
+  const me = identity.publicKey;
+  posthog.identify(me, { fingerprint: identity.fingerprint, ...(isTestAccount ? { $internal_or_test_user: true } : {}) });
+  const links = mapArray(() => props.rooms, (saved): Link => {
+    // A deliberate one-time snapshot of name and picture: the socket is created once; changes go through `rename` and `setPicture`.
+    const room = createRoom({ identity, roomId: saved.id, authKey: saved.authKey, name: untrack(() => props.name), picture: getPicture() });
+    const call = createCall(room, identity);
+    posthog.capture('room_entered');
+    return { saved, room, call };
+  });
+  createAttention(links, me);
+  /** The room on screen. Null only for the moment between leaving the last room and the workspace going away. */
+  const current = createMemo(() => links().find((l) => l.saved.secret === props.selected) ?? links()[0] ?? null);
+  /** The room whose call I am in, if any. */
+  const active = createMemo(() => links().find((l) => l.call.inCall()) ?? null);
+  /** Whose shares are on screen: the call I am in, else the room I am reading. */
+  const stage = () => active() ?? current();
+  /** Everyone online in any of my rooms, once each; a participant anywhere is listed as one. */
+  const everyone = createMemo(() => {
+    const byKey = new Map<string, Person>();
+    for (const l of links()) for (const p of l.room.people()) {
+      const prev = byKey.get(p.publicKey);
+      if (!prev || (p.role === 'participant' && prev.role !== 'participant')) byKey.set(p.publicKey, p);
+    }
+    return [...byKey.values()];
+  });
   // Shown names that more than one key uses, among everyone present and everyone in the loaded history:
   // only those get their fingerprint next to the name (issue #7).
   const ambiguous = createMemo(() => {
-    const present = room.people().map((p) => ({ publicKey: p.publicKey, shown: displayName(p.name, contactOf(p.publicKey)) }));
-    const wrote = room.lines().flatMap((l) => (l.kind === 'text' ? [{ publicKey: l.from.publicKey, shown: displayName(l.from.name, contactOf(l.from.publicKey)) }] : []));
+    const present = everyone().map((p) => ({ publicKey: p.publicKey, shown: displayName(p.name, contactOf(p.publicKey)) }));
+    const wrote = (current()?.room.lines() ?? []).flatMap((l) => (l.kind === 'text' ? [{ publicKey: l.from.publicKey, shown: displayName(l.from.name, contactOf(l.from.publicKey)) }] : []));
     return ambiguousNames([...present, ...wrote]);
   });
-  /** A friend's current presence entry; a chat line keeps the name and picture they had when they wrote it. */
-  const present = (publicKey: string): Person | undefined => room.people().find((p) => p.publicKey === publicKey);
+  /** A friend's current presence entry, from any room; a chat line keeps the name and picture they had when they wrote it. */
+  const present = (publicKey: string): Person | undefined => everyone().find((p) => p.publicKey === publicKey);
   const currentName = (publicKey: string): string | undefined => present(publicKey)?.name;
-  const myName = createMemo(() => currentName(me()) ?? props.name);
+  const myName = createMemo(() => currentName(me) ?? props.name);
   /** How this browser shows a friend: the name, whether the fingerprint accompanies it, the picture, and the hover title with the rest. */
   const labelOf = (id: Identity): Label => {
     const c = contactOf(id.publicKey);
-    const isMe = id.publicKey === me();
+    const isMe = id.publicKey === me;
     const now = present(id.publicKey);
     const own = now?.name ?? id.name;
     const shown = displayName(own, c);
@@ -110,113 +203,194 @@ function RoomView(props: { secret: string; name: string; identity: LocalIdentity
   // The profile card: which friend it is about and the avatar it hangs from. Opening it acknowledges the key.
   const [profile, setProfile] = createSignal<{ publicKey: string; anchor: HTMLElement } | null>(null);
   const openProfile = (p: Person, anchor: HTMLElement) => {
-    if (p.publicKey !== me() && !isKnown(p.publicKey)) { markKnown(p.publicKey, p.name); posthog.capture('new_key_acknowledged'); }
+    if (p.publicKey !== me && !isKnown(p.publicKey)) { markKnown(p.publicKey, p.name); posthog.capture('new_key_acknowledged'); }
     setProfile({ publicKey: p.publicKey, anchor });
-    posthog.capture('profile_opened', { own: p.publicKey === me() });
+    posthog.capture('profile_opened', { own: p.publicKey === me });
   };
+  // Online: friends who are in none of the calls, across all rooms; you are listed last (spec §7.1).
   const online = createMemo(() => {
-    const others = room.people().filter((p) => p.role === 'visitor' && p.publicKey !== me()).sort((a, b) => labelOf(a).shown.localeCompare(labelOf(b).shown));
-    const self = room.people().find((p) => p.publicKey === me());
-    return self && self.role === 'visitor' ? [...others, self] : others; // you are listed last in Online (spec §7.1)
+    const others = everyone().filter((p) => p.role === 'visitor' && p.publicKey !== me).sort((a, b) => labelOf(a).shown.localeCompare(labelOf(b).shown));
+    const self = everyone().find((p) => p.publicKey === me);
+    return self && self.role === 'visitor' ? [...others, self] : others;
   });
-  // Call list: you first, then by join order. Participants whose server socket dropped stay listed, dimmed, for the grace period.
-  const inCallList = createMemo(() => {
-    const participants = room.people().filter((p) => p.role === 'participant');
-    const self = participants.find((p) => p.publicKey === me());
-    const others = participants.filter((p) => p.publicKey !== me()).sort((a, b) => (a.joinSeq ?? 0) - (b.joinSeq ?? 0));
-    const lost = call.views().filter((v) => v.serverLost && !participants.some((p) => p.publicKey === v.publicKey));
-    return { self, others, lost };
-  });
-  const viewOf = (key: string): PeerView | undefined => call.views().find((v) => v.publicKey === key);
+  const viewOf = (l: Link, key: string): PeerView | undefined => l.call.views().find((v) => v.publicKey === key);
   const [panel, setPanel] = createSignal<'audio' | 'share' | null>(null);
-  const callExists = () => inCallList().others.length > 0 || inCallList().self !== undefined;
-  // Sharers, from presence (tiles render from signaling state, never from track events).
-  const sharers = createMemo(() => room.people().filter((p) => p.role === 'participant' && p.sharing));
+  // Sharers, from the staged room's presence (tiles render from signaling state, never from track events).
+  const sharers = createMemo(() => stage()?.room.people().filter((p) => p.role === 'participant' && p.sharing) ?? []);
   const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
-  const clash = createMemo(() => room.people().some((p) => p.publicKey !== me() && p.name === myName()));
-  const connected = () => room.status().kind === 'connected';
-  // Bumped when I send: the log jumps to the newest line (the composer and the log are separate grid items).
+  const clash = createMemo(() => everyone().some((p) => p.publicKey !== me && p.name === myName()));
+  const connected = () => current()?.room.status().kind === 'connected';
+  // Bumped when I send or switch rooms: the log jumps to the newest line (the composer and the log are separate grid items).
   const [jumpToken, setJumpToken] = createSignal(0);
+  // The room on screen has nothing unread, however many lines arrive while it is up.
+  createEffect(() => ({ link: current(), lines: current()?.room.lines().length }), ({ link }, prev) => {
+    link?.room.markRead();
+    if (prev && prev.link !== link) setJumpToken((n) => n + 1);
+  });
+  /** At most one call at a time: joining here leaves the call in another room first. */
+  const joinCall = (l: Link) => {
+    const a = untrack(active);
+    if (a && a !== l) a.call.leave();
+    void l.call.join();
+  };
+  const renameSelf = (n: string) => { for (const l of links()) l.room.rename(n); props.onRename(n); posthog.capture('name_changed'); };
+  const pictureSelf = (pic: string | null) => { for (const l of links()) l.room.setPicture(pic); setPicture(pic); posthog.capture('picture_changed', { cleared: pic === null }); };
+  // Sidebar footer forms: a new room, and the invite link of the room on screen.
+  const [creating, setCreating] = createSignal(false);
+  // The room whose invite panel is open. A room started in this browser opens with it: sending the link is the next step.
+  const [inviteFor, setInviteFor] = createSignal<string | null>(untrack(() => props.created));
+  const toggleInvite = (l: Link) => setInviteFor(inviteFor() === l.saved.secret ? null : l.saved.secret);
+  const [roomDraft, setRoomDraft] = createSignal('');
+  const createRoomFromDraft = (e: Event) => {
+    e.preventDefault();
+    const n = normaliseRoomName(roomDraft());
+    if (!n) return;
+    void props.onCreate(n).then((room) => { setCreating(false); setRoomDraft(''); setInviteFor(room.secret); }); // the new room needs its link sent around
+  };
+  const leaveRoom = (l: Link) => {
+    if (!confirm(`Leave ${l.saved.name}? This browser forgets the room and its chat history. The invite link gets you back in.`)) return;
+    if (untrack(active) === l) l.call.leave(); // say goodbye while the socket is still open, so nobody waits out the grace period
+    props.onForget(l.saved.secret); // disposing the room closes its socket
+  };
 
   return (
-    <div class={`app ${sharers().length > 0 ? 'split' : ''}`}>
-      <div class="scroll">
-        <aside class={`side ${connected() ? '' : 'frozen'}`}>
-          <h2>Online</h2>
-          <ul class="plist">
-            <For each={online()}>{(p) => <PersonRow p={p} isMe={p.publicKey === me()} label={labelOf(p)} onProfile={(el) => openProfile(p, el)} />}</For>
-            <Show when={online().length === 0}><li class="dim">nobody yet</li></Show>
-          </ul>
-          <h2>Call <Show when={!callExists()}><small class="dim">nobody in the call</small></Show></h2>
-          <ul class="plist">
-            <Show when={inCallList().self}>{(s) => <ParticipantRow p={s()} isMe label={labelOf(s())} onProfile={(el) => openProfile(s(), el)} speaking={call.speakingSelf()} />}</Show>
-            <For each={inCallList().others}>{(p) => <ParticipantRow p={p} isMe={false} label={labelOf(p)} onProfile={(el) => openProfile(p, el)} view={call.inCall() ? viewOf(p.publicKey) : undefined} speaking={viewOf(p.publicKey)?.speaking ?? false} onVolume={call.inCall() ? (v) => call.setVolume(p.publicKey, v) : undefined} />}</For>
-            <For each={inCallList().lost}>{(v) => <li class="lost"><span class="avatar">{displayName(v.name, contactOf(v.publicKey))[0]}</span><span class="pname">{displayName(v.name, contactOf(v.publicKey))} <em>connection to server lost</em></span></li>}</For>
-          </ul>
-          <div class="actions">
-            <Show when={!call.inCall()} fallback={
-              <>
-                <div class="row">
-                  <button class={call.muted() ? 'on' : ''} onClick={() => call.setMuted(!call.muted())}>{call.muted() ? 'Unmute' : 'Mute'}</button>
-                  <button class={`gear ${panel() === 'audio' ? 'on' : ''}`} title="Audio settings" onClick={() => { setPanel(panel() === 'audio' ? null : 'audio'); void call.refreshDevices(); }}>⚙</button>
-                </div>
-                <Show when={panel() === 'audio'}><AudioPanel call={call} /></Show>
-                <Show when={canShare} fallback={<div class="hint">Screen sharing is not available on this device</div>}>
-                  <div class="row">
-                    <button class={call.sharing() ? 'on' : ''} onClick={() => void (call.sharing() ? call.stopShare() : call.startShare())}>{call.sharing() ? 'Stop sharing' : 'Share screen'}</button>
-                    <button class={`gear ${panel() === 'share' ? 'on' : ''}`} title="Share settings" onClick={() => setPanel(panel() === 'share' ? null : 'share')}>⚙</button>
+    <Show when={current()}>{(cur) => (
+      <div class={`app ${sharers().length > 0 ? 'split' : ''}`}>
+        <div class="scroll">
+          <aside class="side">
+            <h2>Online</h2>
+            <ul class="plist">
+              <For each={online()}>{(p) => <PersonRow p={p} isMe={p.publicKey === me} label={labelOf(p)} onProfile={(el) => openProfile(p, el)} />}</For>
+              <Show when={online().length === 0}><li class="dim">nobody yet</li></Show>
+            </ul>
+            <For each={links()}>{(l) => {
+              const selected = () => l === cur();
+              const inThis = () => l.call.inCall();
+              // Call list: you first, then by join order. Participants whose server socket dropped stay listed, dimmed, for the grace period.
+              const participants = createMemo(() => {
+                const all = l.room.people().filter((p) => p.role === 'participant');
+                const self = all.find((p) => p.publicKey === me);
+                const others = all.filter((p) => p.publicKey !== me).sort((a, b) => (a.joinSeq ?? 0) - (b.joinSeq ?? 0));
+                const lost = l.call.views().filter((v) => v.serverLost && !all.some((p) => p.publicKey === v.publicKey));
+                return { self, others, lost };
+              });
+              const elsewhere = () => { const a = active(); return a && a !== l ? a : null; };
+              const inviteOpen = () => inviteFor() === l.saved.secret;
+              return (
+                <section class={`room ${selected() ? 'selected' : ''} ${l.room.status().kind === 'connected' ? '' : 'frozen'}`}>
+                  <div class="room-head">
+                    <button class="room-name" onClick={() => props.onSelect(l.saved.secret)} title={selected() ? 'This room is on screen' : `Read ${l.saved.name}`}>
+                      <span class="room-title">{l.saved.name}</span>
+                      <Show when={l.room.unread() > 0}><b class="unread" title="new messages">{l.room.unread()}</b></Show>
+                    </button>
+                    <Show when={selected()}><button class={`link ${inviteOpen() ? 'on' : ''}`} title="The link that gets a friend into this room" onClick={() => toggleInvite(l)}>invite</button></Show>
                   </div>
-                </Show>
-                <Show when={panel() === 'share'}><SharePanel call={call} /></Show>
-                <button class="leave" onClick={call.leave}>Leave</button>
-              </>
-            }>
-              <button class="join" disabled={!connected()} onClick={() => void call.join()}>Join</button>
+                  <Show when={selected() && inviteOpen()}><InvitePanel link={inviteLinkFor(l.saved)} name={l.saved.name} /></Show>
+                  <ul class="plist">
+                    <Show when={participants().self}>{(s) => <ParticipantRow p={s()} isMe label={labelOf(s())} onProfile={(el) => openProfile(s(), el)} speaking={l.call.speakingSelf()} />}</Show>
+                    <For each={participants().others}>{(p) => <ParticipantRow p={p} isMe={false} label={labelOf(p)} onProfile={(el) => openProfile(p, el)} view={inThis() ? viewOf(l, p.publicKey) : undefined} speaking={viewOf(l, p.publicKey)?.speaking ?? false} onVolume={inThis() ? (v) => l.call.setVolume(p.publicKey, v) : undefined} />}</For>
+                    <For each={participants().lost}>{(v) => <li class="lost"><span class="avatar">{displayName(v.name, contactOf(v.publicKey))[0]}</span><span class="pname">{displayName(v.name, contactOf(v.publicKey))} <em>connection to server lost</em></span></li>}</For>
+                    <Show when={selected() && !participants().self && participants().others.length === 0}><li class="dim">nobody in the call</li></Show>
+                  </ul>
+                  <Show when={selected() || inThis()}>
+                    <div class="actions">
+                      <Show when={!inThis()} fallback={<CallControls call={l.call} panel={panel()} onPanel={setPanel} canShare={canShare} />}>
+                        <button class="join" disabled={l.room.status().kind !== 'connected'} title={elsewhere() ? `Leaves the call in ${elsewhere()!.saved.name}` : undefined} onClick={() => joinCall(l)}>Join</button>
+                      </Show>
+                      <Show when={l.call.joinError()}>{(e) => <div class="warn">{e()}</div>}</Show>
+                      <Show when={l.call.shareError()}>{(e) => <div class="warn">{e()}</div>}</Show>
+                    </div>
+                  </Show>
+                </section>
+              );
+            }}</For>
+            <Show when={clash()}>
+              <div class="warn">Someone else here is also called {myName()}. Your fingerprint <code>{identity.fingerprint}</code> tells you apart.</div>
             </Show>
-            <Show when={call.joinError()}>{(e) => <div class="warn">{e()}</div>}</Show>
-            <Show when={call.shareError()}>{(e) => <div class="warn">{e()}</div>}</Show>
-          </div>
-          <Show when={clash()}>
-            <div class="warn">Someone else here is also called {myName()}. Your fingerprint <code>{props.identity.fingerprint}</code> tells you apart.</div>
-          </Show>
-          <div class="side-foot">
-            <ReportDialog collect={() => collectReport({ status: () => room.status().kind, people: room.people, me: () => me(), call: call.diagnostics })} />
-            <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { if (confirm("Clear this browser's chat history? Nothing is stored on the server, so this cannot be undone.")) void room.clearHistory(); }}>Clear chat history</button>
-          </div>
-        </aside>
-        <ProfileCard open={profile()} people={room.people()} me={me()} label={labelOf} onClose={() => setProfile(null)}
-                     onRenameSelf={(n) => { room.rename(n); setName(n); posthog.capture('name_changed'); }}
-                     onPictureSelf={(pic) => { room.setPicture(pic); setPicture(pic); posthog.capture('picture_changed', { cleared: pic === null }); }} />
-        <Banner status={room.status()} onTakeOver={room.takeOver} />
-          <Show when={sharers().length > 0}>
+            <div class="side-foot">
+              <Show when={creating()} fallback={<button class="link" onClick={() => setCreating(true)}>New room</button>}>
+                <form class="newroom" onSubmit={createRoomFromDraft}>
+                  <input value={roomDraft()} onInput={(e) => setRoomDraft(e.currentTarget.value)} maxlength={MAX_NAME_LENGTH} autofocus placeholder="Room name" aria-label="Name of the new room" />
+                  <button class="on" disabled={normaliseRoomName(roomDraft()) === null}>Start</button>
+                  <button type="button" onClick={() => setCreating(false)}>Cancel</button>
+                </form>
+              </Show>
+              <button class="link" title="Forget this room in this browser" onClick={() => leaveRoom(cur())}>Leave {cur().saved.name}</button>
+              <ReportDialog collect={() => collectReport({ status: () => cur().room.status().kind, people: everyone, me: () => me, call: (active() ?? cur()).call.diagnostics })} />
+              <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { if (confirm(`Clear this browser's chat history of ${cur().saved.name}? Nothing is stored on the server, so this cannot be undone.`)) void cur().room.clearHistory(); }}>Clear chat history</button>
+            </div>
+          </aside>
+          <ProfileCard open={profile()} people={everyone()} me={me} label={labelOf} onClose={() => setProfile(null)} onRenameSelf={renameSelf} onPictureSelf={pictureSelf} />
+          <Banner status={cur().room.status()} onTakeOver={() => { for (const l of links()) l.room.takeOver(); }} />
+          <Show when={sharers().length > 0 && stage()}>{(s) => (
             <section class="shares" style={`grid-template-columns: repeat(${sharers().length}, 1fr)`}>
               <For each={sharers()}>
                 {(p) => (
                   <ShareTile
                     p={p}
                     name={labelOf(p).shown}
-                    isMe={p.publicKey === me()}
-                    inCall={call.inCall()}
-                    view={viewOf(p.publicKey)}
-                    stream={p.publicKey === me() ? call.sharing() ?? undefined : call.shareStreamOf(p.publicKey)}
-                    outgoing={p.publicKey === me() ? call.outgoing() : undefined}
-                    onWatch={(on) => call.watch(p.publicKey, on)}
-                    onFullscreen={() => call.watchOnly(p.publicKey)}
-                    onVolume={call.inCall() ? (v) => call.setVolume(p.publicKey, v) : undefined}
-                    onBlack={(element) => void call.reportBlackShare(p.publicKey, element)}
+                    isMe={p.publicKey === me}
+                    inCall={s().call.inCall()}
+                    view={viewOf(s(), p.publicKey)}
+                    stream={p.publicKey === me ? s().call.sharing() ?? undefined : s().call.shareStreamOf(p.publicKey)}
+                    outgoing={p.publicKey === me ? s().call.outgoing() : undefined}
+                    onWatch={(on) => s().call.watch(p.publicKey, on)}
+                    onFullscreen={() => s().call.watchOnly(p.publicKey)}
+                    onVolume={s().call.inCall() ? (v) => s().call.setVolume(p.publicKey, v) : undefined}
+                    onBlack={(element) => void s().call.reportBlackShare(p.publicKey, element)}
                   />
                 )}
               </For>
             </section>
-          </Show>
-          <ChatLog lines={room.lines()} jumpToken={jumpToken()} label={labelOf} />
+          )}</Show>
+          <ChatLog lines={cur().room.lines()} jumpToken={jumpToken()} label={labelOf} />
+        </div>
+        <Composer connected={connected()} roomName={cur().saved.name} onSend={(text) => { cur().room.sendText(text); setJumpToken((n) => n + 1); }} />
       </div>
-      <Composer connected={connected()} onSend={(text) => { room.sendText(text); setJumpToken((n) => n + 1); }} />
+    )}</Show>
+  );
+}
+
+/** The controls while in a call: mute and audio settings, share and share settings, leave. */
+function CallControls(props: { call: Call; panel: 'audio' | 'share' | null; onPanel: (p: 'audio' | 'share' | null) => void; canShare: boolean }) {
+  const toggle = (p: 'audio' | 'share') => props.onPanel(props.panel === p ? null : p);
+  return (
+    <>
+      <div class="row">
+        <button class={props.call.muted() ? 'on' : ''} onClick={() => props.call.setMuted(!props.call.muted())}>{props.call.muted() ? 'Unmute' : 'Mute'}</button>
+        <button class={`gear ${props.panel === 'audio' ? 'on' : ''}`} title="Audio settings" onClick={() => { toggle('audio'); void props.call.refreshDevices(); }}>⚙</button>
+      </div>
+      <Show when={props.panel === 'audio'}><AudioPanel call={props.call} /></Show>
+      <Show when={props.canShare} fallback={<div class="hint">Screen sharing is not available on this device</div>}>
+        <div class="row">
+          <button class={props.call.sharing() ? 'on' : ''} onClick={() => void (props.call.sharing() ? props.call.stopShare() : props.call.startShare())}>{props.call.sharing() ? 'Stop sharing' : 'Share screen'}</button>
+          <button class={`gear ${props.panel === 'share' ? 'on' : ''}`} title="Share settings" onClick={() => toggle('share')}>⚙</button>
+        </div>
+      </Show>
+      <Show when={props.panel === 'share'}><SharePanel call={props.call} /></Show>
+      <button class="leave" onClick={props.call.leave}>Leave</button>
+    </>
+  );
+}
+
+/** The invite link of a room, ready to copy. The link is the whole secret: whoever has it is in. */
+function InvitePanel(props: { link: string; name: string }) {
+  let input: HTMLInputElement | undefined;
+  const [state, setState] = createSignal<'idle' | 'copied' | 'failed'>('idle');
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(props.link); setState('copied'); posthog.capture('invite_link_copied'); } catch { input?.select(); setState('failed'); }
+  };
+  return (
+    <div class="panel invite">
+      <p class="hint">Anyone with this link can enter {props.name}. Send it to friends only.</p>
+      <input ref={input} readonly value={props.link} onFocus={(e) => e.currentTarget.select()} aria-label="Invite link" />
+      <button class="on" onClick={() => void copy()}>{state() === 'copied' ? 'Copied' : 'Copy link'}</button>
+      <Show when={state() === 'failed'}><div class="warn">Could not access the clipboard. The link is selected above: copy it yourself.</div></Show>
     </div>
   );
 }
 
-/** How a friend is shown here, computed by RoomView from the address book and who else is around. */
+/** How a friend is shown here, computed by the Workspace from the address book and who else is around. */
 type Label = { shown: string; fp: boolean; known: boolean; title: string; picture?: string };
 
 /** The avatar is the way into a friend's profile card. It shows the profile picture (issue #8), else the initial. */
@@ -700,7 +874,7 @@ const when = (at: number): string => new Date(at).toLocaleString([], { hour: '2-
  * The message input. A separate grid item from the log so phones can keep it as the bottom row of the screen.
  * The emoji button opens the picker (issue #3); a pick lands at the caret and the picker stays for the next one.
  */
-function Composer(props: { connected: boolean; onSend: (text: string) => void }) {
+function Composer(props: { connected: boolean; roomName: string; onSend: (text: string) => void }) {
   const [draft, setDraft] = createSignal('');
   let input: HTMLInputElement | undefined;
   let emojiButton: HTMLButtonElement | undefined;
@@ -726,7 +900,7 @@ function Composer(props: { connected: boolean; onSend: (text: string) => void })
       <button type="button" class="emoji-open" ref={emojiButton} popovertarget="composer-emoji" disabled={!props.connected} title="Emoji" aria-label="Emoji">🙂</button>
       <EmojiPicker id="composer-emoji" anchor={() => emojiButton} onPick={insert} />
       <input ref={input} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!props.connected} maxlength={MAX_TEXT_LENGTH}
-             placeholder={props.connected ? 'Message the room' : "Can't send while disconnected"} />
+             placeholder={props.connected ? `Message ${props.roomName}` : "Can't send while disconnected"} />
       <button disabled={!props.connected || !draft().trim()}>Send</button>
     </form>
   );

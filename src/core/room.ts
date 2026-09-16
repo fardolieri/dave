@@ -29,6 +29,8 @@ export type Outcome = {
   relay?: { to: string; message: ServerMessage };
   /** Close every other socket attached under this public key: one live socket per identity (spec §4). */
   supersede?: string;
+  /** First correct answer in a room nobody had entered: the adapter keeps this as the room's verifier (ADR 0004). */
+  storeAuthKey?: string;
   /**
    * Replies that need I/O (TURN minting). The adapter stores `state` first, then awaits this and
    * sends what it returns, so a second join arriving mid-fetch already sees the new join sequence.
@@ -41,8 +43,8 @@ export type Outcome = {
 };
 
 export type RoomContext = {
-  /** The shared secret, held only by the server. */
-  secret: string;
+  /** The room's verifier, derived from the shared secret by the first visitor; null while nobody has entered yet. */
+  authKey: string | null;
   /** Current time in ms; injected so tests can drive time. */
   now: number;
   /** Everyone else currently attached (this socket excluded). Join sequences derive from it. */
@@ -51,10 +53,10 @@ export type RoomContext = {
   mintIce: () => Promise<{ iceServers: IceServer[]; turnUser: string | null }>;
 };
 
-/** A socket has just been accepted: challenge it. */
-export function openSocket(now: number): Outcome {
+/** A socket has just been accepted: challenge it. `fresh` tells the client the room has no verifier yet. */
+export function openSocket(now: number, fresh = false): Outcome {
   const nonce = toBase64Url(randomNonce());
-  return { state: { stage: 'challenge', nonce, attempts: 0, since: now }, replies: [{ t: 'challenge', nonce }] };
+  return { state: { stage: 'challenge', nonce, attempts: 0, since: now }, replies: [fresh ? { t: 'challenge', nonce, fresh: true } : { t: 'challenge', nonce }] };
 }
 
 /** True when an unanswered challenge has outlived its window and the socket should be closed. */
@@ -93,11 +95,15 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
   if (state.stage === 'challenge') {
     if (msg.t === 'invalid') return strike(state, msg.reason);
     if (msg.t !== 'auth') return strike(state, 'unauthenticated');
+    // A room nobody has entered takes its verifier from the first correct answer: whoever holds the secret
+    // derives the same key, so a wiped server is re-created by the next friend who opens the link.
+    const authKey = ctx.authKey ?? msg.authKey ?? null;
+    if (!authKey) return strike(state, 'unknown room');
     const publicKeyRaw = fromBase64Url(msg.publicKey);
     const nonce = fromBase64Url(state.nonce);
     const hmac = fromBase64Url(msg.hmac);
     const signature = fromBase64Url(msg.signature);
-    const ok = publicKeyRaw && nonce && hmac && signature && (await verifyAnswer({ secret: ctx.secret, nonce, publicKeyRaw, hmac, signature }));
+    const ok = publicKeyRaw && nonce && hmac && signature && (await verifyAnswer({ authKey, nonce, publicKeyRaw, hmac, signature }));
     if (!ok) return strike(state, 'authentication failed');
     const person: Person = {
       publicKey: msg.publicKey,
@@ -111,7 +117,13 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     };
     // A newer socket for a known identity wins: an older one is either a ghost the server has not
     // noticed dying (the client already reconnected) or another tab, which is told so.
-    return { state: { stage: 'attached', person, bucket: newBucket(ctx.now), attachedAt: ctx.now }, replies: [{ t: 'welcome', you: person }], presenceChanged: true, supersede: msg.publicKey };
+    return {
+      state: { stage: 'attached', person, bucket: newBucket(ctx.now), attachedAt: ctx.now },
+      replies: [{ t: 'welcome', you: person }],
+      presenceChanged: true,
+      supersede: msg.publicKey,
+      ...(ctx.authKey === null ? { storeAuthKey: authKey } : {}),
+    };
   }
 
   if (state.stage === 'closing') return { state, replies: [] }; // already told to go; nothing it says counts

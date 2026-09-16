@@ -1,14 +1,16 @@
 import { DurableObject } from 'cloudflare:workers';
 import { CHALLENGE_TIMEOUT_MS, challengeExpired, onMessage, openSocket, presenceSnapshot, type Outcome, type SocketState } from '../core/room';
-import { CLOSE_AUTH_FAILED, CLOSE_NOT_CONFIGURED, CLOSE_SUPERSEDED, PING_FRAME, PONG_FRAME, type Person, type ServerMessage } from '../core/protocol';
+import { CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, PING_FRAME, PONG_FRAME, type Person, type ServerMessage } from '../core/protocol';
 import { mintIceServers, revokeIce } from './turn';
 
 /** A socket whose last sign of life is older than this is dropped by the sweep (spec §4). */
 export const SILENT_TIMEOUT_MS = 90_000;
 export const SWEEP_INTERVAL_MS = 60_000;
 export const CLOSE_SILENT = 4003;
+/** Storage key of the room's verifier, set by the first friend to enter (ADR 0004). The only thing a Room persists. */
+const AUTH_KEY = 'authKey';
 
-// One Room per app. Uses the WebSocket Hibernation API so the object can be
+// One Room per room id (ADR 0004). Uses the WebSocket Hibernation API so the object can be
 // evicted while sockets stay attached. The per-socket state machine lives in
 // the attachment (16 KB cap); this class deliberately has no fields of its own,
 // so nothing is lost when the object is evicted and re-created.
@@ -26,11 +28,8 @@ export class Room extends DurableObject<Env> {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     this.ctx.acceptWebSocket(server);
-    if (!this.env.ROOM_SECRET) {
-      server.close(CLOSE_NOT_CONFIGURED, 'room secret not configured');
-      return new Response(null, { status: 101, webSocket: client });
-    }
-    await this.apply(server, openSocket(Date.now()));
+    const authKey = await this.ctx.storage.get<string>(AUTH_KEY);
+    await this.apply(server, openSocket(Date.now(), authKey === undefined));
     await this.scheduleSweep(CHALLENGE_TIMEOUT_MS);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -38,8 +37,10 @@ export class Room extends DurableObject<Env> {
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const state = ws.deserializeAttachment() as SocketState;
     const others = this.ctx.getWebSockets().filter((s) => s !== ws).map((s) => s.deserializeAttachment() as SocketState | null);
+    // The verifier is only needed to check an answer; attached sockets never touch storage.
+    const authKey = state.stage === 'challenge' ? (await this.ctx.storage.get<string>(AUTH_KEY)) ?? null : null;
     const outcome = await onMessage(state, message, {
-      secret: this.env.ROOM_SECRET,
+      authKey,
       now: Date.now(),
       others: others.flatMap((s) => (s && s.stage === 'attached' ? [s.person] : [])),
       mintIce: () => mintIceServers(this.env),
@@ -99,6 +100,7 @@ export class Room extends DurableObject<Env> {
   }
 
   private async apply(ws: WebSocket, outcome: Outcome): Promise<void> {
+    if (outcome.storeAuthKey) await this.ctx.storage.put(AUTH_KEY, outcome.storeAuthKey);
     ws.serializeAttachment(outcome.state);
     for (const reply of outcome.replies) ws.send(JSON.stringify(reply));
     if (outcome.broadcast) for (const m of outcome.broadcast) this.fanOut(m);

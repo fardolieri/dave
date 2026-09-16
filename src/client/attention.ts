@@ -3,25 +3,31 @@ import { CHIME, callDiff, titleFor } from '../core/attention';
 import type { createRoom } from './room';
 import type { createCall } from './call';
 
+/** One room this browser is connected to, with its call. The list changes as rooms are added and left. */
+export type RoomLink = { room: ReturnType<typeof createRoom>; call: ReturnType<typeof createCall> };
+
 /**
- * Attention cues (spec §7.4) and the screen wake lock (spec §6.5): title badge while the window is
- * unfocused, quiet chimes when others join or leave the Call, and the screen kept awake while
- * watching a share. Platform state (focus, visibility) is mirrored into a signal once; everything
- * else derives from room and call signals.
+ * Attention cues (spec §7.4) and the screen wake lock (spec §6.5) across every room: title badge while
+ * the window is unfocused, quiet chimes when others join or leave a call, a tick for messages, and the
+ * screen kept awake while watching a share. Platform state (focus, visibility) is mirrored into a
+ * signal once; everything else derives from room and call signals.
  */
-export function createAttention(room: ReturnType<typeof createRoom>, call: ReturnType<typeof createCall>, myKey: string): void {
+export function createAttention(links: () => RoomLink[], myKey: string): void {
   const [unfocused, setUnfocused] = createSignal(document.hidden || !document.hasFocus());
   const syncFocus = () => setUnfocused(document.hidden || !document.hasFocus());
   document.addEventListener('visibilitychange', syncFocus);
   window.addEventListener('focus', syncFocus);
   window.addEventListener('blur', syncFocus);
 
-  const participants = () => new Set(room.people().filter((p) => p.role === 'participant').map((p) => p.publicKey));
-  const othersInCall = () => [...participants()].filter((k) => k !== myKey).length;
-  const held = () => new Set(call.views().filter((v) => v.serverLost).map((v) => v.publicKey));
+  // Participants are keyed per room, so a friend in two calls at once counts twice: two things are happening.
+  const tag = (roomId: string, publicKey: string) => `${roomId} ${publicKey}`;
+  const others = () => new Set(links().flatMap((l) => l.room.people().filter((p) => p.role === 'participant' && p.publicKey !== myKey).map((p) => tag(l.room.roomId, p.publicKey))));
+  const held = () => new Set(links().flatMap((l) => l.call.views().filter((v) => v.serverLost).map((v) => tag(l.room.roomId, v.publicKey))));
+  /** Rooms whose first real snapshot (one that includes me) has arrived; nothing before it is a join. */
+  const seeded = () => new Set(links().filter((l) => l.room.people().some((p) => p.publicKey === myKey)).map((l) => l.room.roomId));
 
   // ---- title badge
-  createEffect(() => titleFor(othersInCall(), unfocused()), (title) => { document.title = title; });
+  createEffect(() => titleFor(others().size, unfocused()), (title) => { document.title = title; });
 
   // ---- chimes: browsers only let audio start after a gesture, so the context is created lazily on first interaction.
   // The unlock listens for `click`, not `pointerdown`, and unregisters once the context runs. Brave with autoplay
@@ -55,27 +61,33 @@ export function createAttention(room: ReturnType<typeof createRoom>, call: Retur
       osc.stop(start + CHIME.noteSeconds + 0.01);
     });
   }
-  // The first real snapshot (one that includes me) is the baseline; nothing before it is a join.
   createEffect(
     // Everything reactive is read here, in the compute phase; the apply phase only acts on the snapshot.
-    () => ({ now: participants(), seeded: room.people().some((p) => p.publicKey === myKey), held: held() }),
+    () => ({ now: others(), seeded: seeded(), held: held() }),
     ({ now, seeded, held }, prev) => {
-      if (!seeded || !prev?.seeded) return;
-      const { joined, left } = callDiff(prev.now, now, myKey, held);
+      if (!prev) return;
+      // Only rooms that were seeded before and still are can report a join or a leave.
+      const settled = (t: string) => { const roomId = t.slice(0, t.indexOf(' ')); return seeded.has(roomId) && prev.seeded.has(roomId); };
+      const before = new Set([...prev.now].filter(settled));
+      const after = new Set([...now].filter(settled));
+      const { joined, left } = callDiff(before, after, '', held); // I am already left out of both sets
       if (joined.length) chime(CHIME.join);
       else if (left.length) chime(CHIME.leave);
     },
   );
 
-  // ---- incoming text: a soft tick for other people's messages, never your own or restored history (ticket 09)
+  // ---- incoming text: a soft tick for other people's messages in any room, never your own or restored history (ticket 09)
   let cues = 0;
-  const stopText = room.onText(() => { cues++; chime(CHIME.message, CHIME.messageGain); });
+  createEffect(() => links().map((l) => l.room), (rooms) => {
+    const stops = rooms.map((room) => room.onText(() => { cues++; chime(CHIME.message, CHIME.messageGain); }));
+    return () => { for (const stop of stops) stop(); };
+  });
   if (import.meta.env.DEV) (window as unknown as { __daveCues?: () => number }).__daveCues = () => cues;
 
   // ---- wake lock while watching at least one live share, serialised so overlapping triggers cannot double-request
   let sentinel: WakeLockSentinel | null = null;
   let wakeChain: Promise<void> = Promise.resolve();
-  const wantLock = () => call.views().some((v) => v.watching && v.shareLive) && !document.hidden;
+  const wantLock = () => links().some((l) => l.call.views().some((v) => v.watching && v.shareLive)) && !document.hidden;
   async function syncWakeLockNow(): Promise<void> {
     const wl = navigator.wakeLock;
     if (!wl) return;
@@ -98,7 +110,6 @@ export function createAttention(room: ReturnType<typeof createRoom>, call: Retur
   document.addEventListener('visibilitychange', syncWakeLock);
 
   onCleanup(() => {
-    stopText();
     document.removeEventListener('visibilitychange', syncFocus);
     window.removeEventListener('focus', syncFocus);
     window.removeEventListener('blur', syncFocus);

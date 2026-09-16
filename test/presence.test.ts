@@ -1,23 +1,21 @@
-import { env, exports } from 'cloudflare:workers';
+import { env } from 'cloudflare:workers';
 import { runInDurableObject } from 'cloudflare:test';
 import { Room } from '../src/worker/room';
 import { describe, expect, it, vi } from 'vitest';
-import { buildAuthMessage, exportPublicKey, generateIdentityKeyPair, toBase64Url } from '../src/core/identity';
+import { generateIdentityKeyPair } from '../src/core/identity';
 import { CLOSE_SUPERSEDED, MAX_TEXT_LENGTH, PING_FRAME, PONG_FRAME, type Person, type ServerMessage } from '../src/core/protocol';
 import { BURST } from '../src/core/ratelimit';
+import { roomIdOf } from '../src/core/rooms';
+import { authFrame, openRoomSocket, type Challenge } from './harness';
 
-const SECRET = 'test-secret';
+const SECRET = 'presence-test-room';
 
 type Keys = Awaited<ReturnType<typeof generateIdentityKeyPair>>;
 type Client = { ws: WebSocket; you: Person; keys: Keys; inbox: ServerMessage[]; next: (pred?: (m: ServerMessage) => boolean) => Promise<ServerMessage> };
 
 /** Opens and authenticates a visitor (attaches a socket), returning a client whose inbox records everything after the welcome. `keys` reuses an identity. */
-async function attach(name: string, picture?: string, keys?: Keys): Promise<Client> {
-  // a distinct client address per socket, so the per-IP upgrade limit never trips inside a test file
-  const ip = `10.0.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
-  const res = await exports.default.fetch(new Request('https://dave.test/ws', { headers: { Upgrade: 'websocket', 'cf-connecting-ip': ip } }));
-  const ws = res.webSocket!;
-  ws.accept();
+async function attach(name: string, picture?: string, keys?: Keys, secret = SECRET): Promise<Client> {
+  const ws = await openRoomSocket(secret);
   const inbox: ServerMessage[] = [];
   const waiters: Array<{ pred: (m: ServerMessage) => boolean; resolve: (m: ServerMessage) => void }> = [];
   ws.addEventListener('message', (e) => {
@@ -32,10 +30,9 @@ async function attach(name: string, picture?: string, keys?: Keys): Promise<Clie
       if (i >= 0) resolve(inbox.splice(i, 1)[0]!);
       else waiters.push({ pred, resolve });
     });
-  const challenge = (await next((m) => m.t === 'challenge')) as { nonce: string };
+  const challenge = (await next((m) => m.t === 'challenge')) as Challenge;
   keys ??= await generateIdentityKeyPair();
-  const publicKeyRaw = await exportPublicKey(keys.publicKey);
-  ws.send(JSON.stringify(await buildAuthMessage({ secret: SECRET, nonce: challenge.nonce, publicKeyRaw, privateKey: keys.privateKey, name, ...(picture ? { picture } : {}) })));
+  ws.send(JSON.stringify(await authFrame(challenge, keys, secret, name, picture)));
   const welcome = (await next((m) => m.t === 'welcome')) as { you: Person };
   return { ws, you: welcome.you, keys, inbox, next };
 }
@@ -114,10 +111,23 @@ describe('presence', () => {
     b.ws.close(1000, 'bye');
   });
 
+  it('rooms are separate: presence and text in one never reach another', async () => {
+    const a = await attach('Alice');
+    const b = await attach('Bob', undefined, undefined, 'another-room');
+    expect(names(await a.next((m) => m.t === 'presence'))).toEqual(['Alice']);
+    expect(names(await b.next((m) => m.t === 'presence'))).toEqual(['Bob']);
+    b.ws.send(JSON.stringify({ t: 'text', text: 'only for my room' }));
+    await b.next((m) => m.t === 'text');
+    const c = await attach('Carol');
+    expect(names(await a.next((m) => m.t === 'presence'))).toEqual(['Alice', 'Carol']);
+    expect(a.inbox.filter((m) => m.t === 'text')).toEqual([]);
+    a.ws.close(1000, 'bye'); b.ws.close(1000, 'bye'); c.ws.close(1000, 'bye');
+  });
+
   it('survives eviction: a brand-new Room instance over the same state sees the same presence', async () => {
     const a = await attach('Alice');
     const seenByClient = names(await a.next((m) => m.t === 'presence'));
-    const stub = env.ROOM.get(env.ROOM.idFromName('the-room'));
+    const stub = env.ROOM.get(env.ROOM.idFromName(await roomIdOf(SECRET)));
     const { ownKeys, fromLiveInstance, fromFreshInstance } = await runInDurableObject(stub, (instance: Room, state) => {
       // Eviction destroys the instance and re-creates it from (state, env). Simulate exactly that.
       const fresh = new Room(state, env);
@@ -192,7 +202,7 @@ describe('ping', () => {
     a.ws.send(PING_FRAME);
     const pong = await a.next((m) => m.t === 'pong');
     expect(JSON.stringify(pong)).toBe(PONG_FRAME);
-    const stub = env.ROOM.get(env.ROOM.idFromName('the-room'));
+    const stub = env.ROOM.get(env.ROOM.idFromName(await roomIdOf(SECRET)));
     const stamped = await runInDurableObject(stub, (_i, state) =>
       state.getWebSockets().some((s) => state.getWebSocketAutoResponseTimestamp(s) !== null));
     expect(stamped).toBe(true); // the platform answered; a woken webSocketMessage would not set this

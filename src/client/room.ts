@@ -2,7 +2,7 @@ import { createSignal, onCleanup } from 'solid-js';
 import posthog from './posthog';
 import { buildAuthMessage } from '../core/identity';
 import {
-  CLOSE_AUTH_FAILED, CLOSE_NOT_CONFIGURED, CLOSE_SUPERSEDED, PING_FRAME, PING_INTERVAL_MS,
+  CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, PING_FRAME, PING_INTERVAL_MS,
   type ClientMessage, type Identity, type Person, type ServerMessage,
 } from '../core/protocol';
 import type { LocalIdentity } from './identity';
@@ -26,11 +26,11 @@ const UNAVAILABLE_AFTER_MS = 30_000;
 const BACKOFF_MAX_MS = 30_000;
 
 /**
- * The client's view of the Room: one WebSocket with the challenge handshake,
+ * The client's view of one Room: one WebSocket with the challenge handshake,
  * reconnection with exponential backoff (spec §8.1), presence snapshots, and
- * ephemeral text. WebRTC state is added by later tickets.
+ * ephemeral text. The call (WebRTC) is layered on top by createCall.
  */
-export function createRoom(opts: { identity: LocalIdentity; secret: string; name: string; picture: string | null }) {
+export function createRoom(opts: { identity: LocalIdentity; roomId: string; authKey: string; name: string; picture: string | null }) {
   // The self-declared name and picture: sent at every (re)connect, changeable live through `rename` and `setPicture`.
   let name = opts.name;
   let picture = opts.picture;
@@ -38,12 +38,14 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
   const [you, setYou] = createSignal<Person | null>(null);
   const [people, setPeople] = createSignal<Person[]>([]);
   const [lines, setLines] = createSignal<ChatLine[]>([]);
+  /** Texts from others that arrived live while this room was not the one on screen. */
+  const [unread, setUnread] = createSignal(0);
   const listeners = new Set<(m: ServerMessage) => void>();
   const textListeners = new Set<(m: Extract<ServerMessage, { t: 'text' }>) => void>();
   let nextId = 1;
   // Recent history from this browser, loaded once; live lines append after it.
   const fromStored = (m: StoredLine): ChatLine => (isNote(m) ? { kind: 'system', id: lineKey(m), text: m.note, at: m.at } : { kind: 'text', id: textKey(m), ...m });
-  void loadHistory().then((stored) => setLines((l) => [...stored.map(fromStored), ...l]));
+  void loadHistory(opts.roomId).then((stored) => setLines((l) => [...stored.map(fromStored), ...l]));
   const push = (line: { kind: 'text'; id: string; from: Identity; text: string; at: number } | { kind: 'system'; text: string; at: number }) =>
     setLines((l) => [...l, 'id' in line ? (line as ChatLine) : ({ ...line, id: `sys-${nextId++}` } as ChatLine)]);
   /**
@@ -53,7 +55,7 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
   const note = (text: string) => {
     const at = Date.now();
     setLines((l) => [...l, { kind: 'system', id: lineKey({ note: text, at }), text, at }]);
-    void appendHistory({ note: text, at });
+    void appendHistory(opts.roomId, { note: text, at });
   };
   
   let ws: WebSocket | null = null;
@@ -72,7 +74,7 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
   function open() {
     if (stopped) return;
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-    const socket = new WebSocket(`${scheme}://${location.host}/ws`);
+    const socket = new WebSocket(`${scheme}://${location.host}/ws/${opts.roomId}`);
     ws = socket;
 
     socket.onopen = () => {
@@ -82,11 +84,14 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
     socket.onmessage = async (e) => {
       const m = JSON.parse(e.data as string) as ServerMessage;
       switch (m.t) {
-        case 'challenge':
-          socket.send(JSON.stringify(await buildAuthMessage({
-            secret: opts.secret, nonce: m.nonce, publicKeyRaw: opts.identity.publicKeyRaw, privateKey: opts.identity.keys.privateKey, name, ...(picture ? { picture } : {}),
-          })));
+        case 'challenge': {
+          const auth = await buildAuthMessage({
+            authKey: opts.authKey, nonce: m.nonce, publicKeyRaw: opts.identity.publicKeyRaw, privateKey: opts.identity.keys.privateKey, name, ...(picture ? { picture } : {}),
+          });
+          // Nobody has entered this room yet: our answer also hands the server the verifier (ADR 0004).
+          socket.send(JSON.stringify(m.fresh ? { ...auth, authKey: opts.authKey } : auth));
           return;
+        }
         case 'welcome':
           attempt = 0;
           setYou(m.you);
@@ -106,8 +111,11 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
           return;
         case 'text': {
           push({ kind: 'text', id: textKey(m), from: m.from, text: m.text, at: m.at });
-          void appendHistory({ from: m.from, text: m.text, at: m.at });
-          if (m.from.publicKey !== opts.identity.publicKey) for (const l of textListeners) l(m);
+          void appendHistory(opts.roomId, { from: m.from, text: m.text, at: m.at });
+          if (m.from.publicKey !== opts.identity.publicKey) {
+            setUnread((n) => n + 1);
+            for (const l of textListeners) l(m);
+          }
           return;
         }
         case 'error':
@@ -142,9 +150,9 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
         setStatus({ kind: 'elsewhere' });
         return;
       }
-      if (e.code === CLOSE_AUTH_FAILED || e.code === CLOSE_NOT_CONFIGURED) {
+      if (e.code === CLOSE_AUTH_FAILED) {
         stopped = true;
-        setStatus({ kind: 'refused', reason: e.code === CLOSE_AUTH_FAILED ? 'the invite link is wrong or has been rotated' : 'the server has no room secret configured' });
+        setStatus({ kind: 'refused', reason: 'the invite link is wrong or has been rotated' });
         return;
       }
       if (downSince === null) {
@@ -171,14 +179,18 @@ export function createRoom(opts: { identity: LocalIdentity; secret: string; name
   });
 
   return {
+    roomId: opts.roomId,
     status,
     you,
     people,
     lines,
+    unread,
+    /** The room is on screen: nothing in it is unread. */
+    markRead: () => setUnread(0),
     send,
     sendText: (text: string) => { send({ t: 'text', text }); posthog.capture('message_sent'); },
     /** Empties the local history; the server never had it. */
-    clearHistory: async () => { await clearHistory(); setLines([]); },
+    clearHistory: async () => { await clearHistory(opts.roomId); setLines([]); },
     /** Dev aid for scripts/drive.mjs: drops the socket so the reconnect path runs. */
     dropSocket: () => ws?.close(),
     /** Change the name everyone sees; presence brings it back. A later reconnect authenticates with it too. */

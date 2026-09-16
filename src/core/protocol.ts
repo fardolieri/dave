@@ -35,7 +35,8 @@ export type SignalData = { description?: unknown; sig?: string; candidates?: unk
 export const MAX_CANDIDATES_PER_MESSAGE = 64;
 
 export type ClientMessage =
-  | { t: 'auth'; publicKey: string; name: string; picture?: string; hmac: string; signature: string }
+  /** `authKey` is sent only in answer to a `fresh` challenge: it becomes the room's verifier (ADR 0004). */
+  | { t: 'auth'; publicKey: string; name: string; picture?: string; hmac: string; signature: string; authKey?: string }
   | { t: 'ping' }
   | { t: 'text'; text: string }
   /** Enter the Call (or re-declare after a server reconnect). */
@@ -57,7 +58,8 @@ export type ClientMessage =
   | { t: 'subscribe'; to: string; on: boolean; scale?: number };
 
 export type ServerMessage =
-  | { t: 'challenge'; nonce: string }
+  /** `fresh`: nobody has entered this room yet, so the answer must carry the auth key derived from the secret. */
+  | { t: 'challenge'; nonce: string; fresh?: true }
   | { t: 'welcome'; you: Person }
   | { t: 'presence'; people: Person[] }
   | { t: 'text'; from: Identity; text: string; at: number }
@@ -86,7 +88,6 @@ export const MAX_PICTURE_LENGTH = 16;
 
 /** Close codes the server uses. 4000 to 4999 are application-defined. */
 export const CLOSE_AUTH_FAILED = 4001;
-export const CLOSE_NOT_CONFIGURED = 4002;
 /** This identity opened a newer socket (another tab, or a reconnect whose old socket the server had not noticed). */
 export const CLOSE_SUPERSEDED = 4004;
 
@@ -128,15 +129,17 @@ export function parseClientMessage(raw: unknown): ClientMessage | Invalid {
   switch (m.t) {
     case 'auth': {
       if (!b64(m.publicKey) || !b64(m.hmac) || !b64(m.signature) || !str(m.name, 256)) return invalid('unrecognised message');
+      if (m.authKey !== undefined && !(b64(m.authKey) && m.authKey.length === 43)) return invalid('unrecognised message');
       const name = normaliseName(m.name);
       if (!name) return invalid('invalid name');
-      const auth: ClientMessage = { t: 'auth', publicKey: m.publicKey, name, hmac: m.hmac, signature: m.signature };
+      const auth: Extract<ClientMessage, { t: 'auth' }> = { t: 'auth', publicKey: m.publicKey, name, hmac: m.hmac, signature: m.signature };
       if (m.picture !== undefined && m.picture !== null) {
         if (!str(m.picture, 64)) return invalid('unrecognised message');
         const picture = normalisePicture(m.picture);
         if (!picture) return invalid('invalid picture');
         auth.picture = picture;
       }
+      if (typeof m.authKey === 'string') auth.authKey = m.authKey;
       return auth;
     }
     case 'ping':
