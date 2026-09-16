@@ -1,11 +1,16 @@
 name: deploy
+# master deploys the nightly Worker (dave-nightly); prod deploys the live site (dave).
+# Releasing is a fast-forward of prod to master: git push origin master:prod
 on:
   push:
-    branches: [master]
-concurrency: deploy
+    branches: [master, prod]
+concurrency: deploy-${{ github.ref_name }}
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      # Picks the Wrangler environment when the Vite plugin writes the deploy config; empty means the top-level Worker.
+      CLOUDFLARE_ENV: ${{ github.ref_name == 'master' && 'nightly' || '' }}
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
