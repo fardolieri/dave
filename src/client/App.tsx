@@ -75,7 +75,7 @@ export default function App() {
         <Notice title="Loading…"> </Notice>
       </Match>
       <Match when={rooms()?.length === 0}>
-        <Welcome onCreate={(n) => void create(n)} />
+        <Notice title="You need an invite link">Open the link a friend sent you. Nothing else gets you in.</Notice>
       </Match>
       <Match when={!name()}>
         <NameForm onSubmit={rename} />
@@ -97,23 +97,6 @@ function Notice(props: { title: string; children: any }) {
       <h1>dave</h1>
       <h2>{props.title}</h2>
       <p>{props.children}</p>
-    </main>
-  );
-}
-
-/** No room yet: either a friend's link gets you in, or you start a room and become the one sending links. */
-function Welcome(props: { onCreate: (name: string) => void }) {
-  const [draft, setDraft] = createSignal('');
-  const valid = () => normaliseRoomName(draft()) !== null;
-  return (
-    <main class="notice">
-      <h1>dave</h1>
-      <h2>You need an invite link</h2>
-      <p>Open the link a friend sent you. Or start a room of your own and send them its link.</p>
-      <form onSubmit={(e) => { e.preventDefault(); const n = normaliseRoomName(draft()); if (n) props.onCreate(n); }}>
-        <input value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} maxlength={MAX_NAME_LENGTH} autofocus placeholder="Room name" />
-        <button disabled={!valid()}>Start a room</button>
-      </form>
     </main>
   );
 }

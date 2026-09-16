@@ -17,6 +17,7 @@ The app had one room, gated by one secret set at deploy time. Friends need sever
 ## Consequences
 
 - Anyone with the link can (re)create the room: a wiped server loses nothing but presence. There is no room to "delete", only links to stop sharing.
+- Starting a room is offered only inside the app, to someone already in a room, so a visitor without a link sees a notice and nothing else. The server itself does not check who creates a room: a scripted client could make one of its own, isolated from everyone else's, bounded by the per-IP upgrade limit. A server-side creation gate is deliberately left out until that costs something.
 - Someone who learns a room id (TLS protects it in transit; Cloudflare logs paths) but not the secret cannot enter, and cannot take over a room that exists. They could squat a room id before its creator connects; the creator connects the moment the room is made, so the window is the creator's own first connect.
 - The secret rotates by making a new room and sending a new link; the old one just stops being used. `ROOM_SECRET` is gone from the deployment.
 - Two friends who received different names for the same secret see different names; the link name is updated when a newer link arrives.

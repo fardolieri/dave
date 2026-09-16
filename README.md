@@ -4,7 +4,7 @@ Rooms for a few friends: text, voice, and screen share over a peer-to-peer WebRT
 
 ## Using it
 
-Anyone can start a room: **New room** in the sidebar (or the first screen, when the browser knows no room yet) names it and shows its **invite link**, the app URL with the room's secret and name after `#`, for example `https://dave.example.workers.dev/#Qm3v…/Game%20night`. A friend who opens the link lands in that room; it is added under their other rooms and the secret is stripped from the address bar. The server stores nothing but a hash of the secret, so a link is all a room is (`docs/adr/0004`). Old links without a name still work.
+Without an invite link the site shows nothing but a notice: only friends get in, and only friends can invite. Anyone already in a room can start another: **New room** in the sidebar names it and shows its **invite link**, the app URL with the room's secret and name after `#`, for example `https://dave.example.workers.dev/#Qm3v…/Game%20night`. A friend who opens the link lands in that room; it is added under their other rooms and the secret is stripped from the address bar. The server stores nothing but a hash of the secret, so a link is all a room is (`docs/adr/0004`). Old links without a name still work.
 
 Each browser gets its own identity key. A friend you have not seen before wears a "new" badge and a six-character fingerprint until you click them; after that the fingerprint only returns when two friends show the same name. Click an avatar for the profile card: fingerprint, since when you know them, and a nickname only your browser shows. Your own card changes the name everyone sees, and clicking your own big avatar picks an emoji as your profile picture.
 
