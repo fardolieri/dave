@@ -1,6 +1,7 @@
 {
   "enabledPlugins": {
     "mattpocock-skills@claude-plugins-official": true,
-    "posthog@claude-plugins-official": true
+    "posthog@claude-plugins-official": true,
+    "cloudflare@claude-plugins-official": true
   }
 }
