@@ -200,6 +200,11 @@ function Workspace(props: WorkspaceProps) {
   const [panel, setPanel] = createSignal<'audio' | 'share' | null>(null);
   // Sharers, from the staged room's presence (tiles render from signaling state, never from track events).
   const sharers = createMemo(() => stage()?.room.people().filter((p) => p.role === 'participant' && p.sharing) ?? []);
+  // Tiles are keyed by public key, not by Person object: every presence frame (a join, a leave, a mute, a rename)
+  // replaces every Person, and a tile recreated for that would lose its video element and its fullscreen.
+  const sameKeys = (a: string[], b: string[]): boolean => a.length === b.length && a.every((k, i) => k === b[i]);
+  const sharerKeys = createMemo<string[]>(() => sharers().map((p) => p.publicKey), { equals: sameKeys });
+  const sharerOf = (key: string): Person => sharers().find((p) => p.publicKey === key) ?? sharers()[0]!;
   const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
   const clash = createMemo(() => everyone().some((p) => p.publicKey !== me && p.name === myName()));
   const connected = () => current()?.room.status().kind === 'connected';
@@ -307,20 +312,20 @@ function Workspace(props: WorkspaceProps) {
           <Banner status={cur().room.status()} onTakeOver={() => { for (const l of links()) l.room.takeOver(); }} />
           <Show when={sharers().length > 0 && stage()}>{(s) => (
             <section class="shares" style={`grid-template-columns: repeat(${sharers().length}, 1fr)`}>
-              <For each={sharers()}>
-                {(p) => (
+              <For each={sharerKeys()}>
+                {(key) => (
                   <ShareTile
-                    p={p}
-                    name={labelOf(p).shown}
-                    isMe={p.publicKey === me}
+                    p={sharerOf(key)}
+                    name={labelOf(sharerOf(key)).shown}
+                    isMe={key === me}
                     inCall={s().call.inCall()}
-                    view={viewOf(s(), p.publicKey)}
-                    stream={p.publicKey === me ? s().call.sharing() ?? undefined : s().call.shareStreamOf(p.publicKey)}
-                    outgoing={p.publicKey === me ? s().call.outgoing() : undefined}
-                    onWatch={(on) => s().call.watch(p.publicKey, on)}
-                    onFullscreen={() => s().call.watchOnly(p.publicKey)}
-                    onVolume={s().call.inCall() ? (v) => s().call.setVolume(p.publicKey, v) : undefined}
-                    onBlack={(element) => void s().call.reportBlackShare(p.publicKey, element)}
+                    view={viewOf(s(), key)}
+                    stream={key === me ? s().call.sharing() ?? undefined : s().call.shareStreamOf(key)}
+                    outgoing={key === me ? s().call.outgoing() : undefined}
+                    onWatch={(on) => s().call.watch(key, on)}
+                    onFullscreen={() => s().call.watchOnly(key)}
+                    onVolume={s().call.inCall() ? (v) => s().call.setVolume(key, v) : undefined}
+                    onBlack={(element) => void s().call.reportBlackShare(key, element)}
                   />
                 )}
               </For>
