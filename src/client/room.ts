@@ -24,6 +24,12 @@ export type ChatLine =
 
 const UNAVAILABLE_AFTER_MS = 30_000;
 const BACKOFF_MAX_MS = 30_000;
+/**
+ * A reconnect gets a line in the chat only from this gap on. Most socket drops heal in one or two seconds
+ * (PostHog, Sep 2026: median 1.5 s, four in five under 5 s) and one friend on a flaky link collected ten
+ * such lines in a morning (report of Sep 16). A gap that short rarely loses a text; a long one still says so.
+ */
+const NOTE_GAP_MS = 10_000;
 
 /**
  * The client's view of one Room: one WebSocket with the challenge handshake,
@@ -102,7 +108,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           if (everConnected) {
             // "about": a dead socket is only noticed when a ping goes unanswered, so the real gap can be longer.
             const downMs = downSince ? Date.now() - downSince : 0;
-            note(`Reconnected after about ${formatDuration(downMs)} offline. Messages sent meanwhile are missing here.`);
+            if (downMs >= NOTE_GAP_MS) note(`Reconnected after about ${formatDuration(downMs)} offline. Messages sent meanwhile are missing here.`);
             posthog.capture('server_reconnected', { down_ms: downMs });
           }
           everConnected = true;

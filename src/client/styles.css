@@ -83,8 +83,9 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 /* When space is tight the fingerprint gives way before the name; it is also in the row's hover title. */
 .plist .pname .fp { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .plist .pname .new { flex: none; }
-.plist .pflags { flex: none; }
-.plist .pflags { display: flex; gap: 6px; align-items: center; }
+/* Badges give way before the name and wrap among themselves: "sharing", "via relay" and a set volume together
+   are wider than the sidebar leaves (report of Sep 17: the labels ran out of the row). */
+.plist .pflags { flex: 0 1 auto; min-width: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px 6px; align-items: center; }
 .plist li.lost { opacity: .5; }
 .avatar.speaking { box-shadow: 0 0 0 2px var(--ok); }
 .plist em { font-style: normal; font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
@@ -160,8 +161,11 @@ select.picker option::checkmark { order: 1; margin-left: auto; }
 .vol { padding: 2px 6px; font-size: 12px; display: inline-flex; gap: 4px; align-items: center; }
 .vol small { font-size: 10px; }
 .volrow { flex-basis: 100%; display: flex; align-items: center; gap: 8px; padding-left: 36px; }
-.plist li.prow { flex-wrap: wrap; } /* only the volume row may wrap under the name line */
-.plist li.prow > .avatar, .plist li.prow > .pname, .plist li.prow > .pflags { flex-wrap: nowrap; }
+/* A participant row is a grid: avatar, name, badges, and the volume row on a line of its own. The name column
+   floors at 8ch and the badges column takes what is left and wraps inside it. As a wrapping flex row the badges
+   jumped to a second line as a block, or, kept on the line, squeezed the name to nothing and painted over it. */
+.plist li.prow { display: grid; grid-template-columns: auto minmax(8ch, 1fr) auto; align-items: center; }
+.plist li.prow > .volrow { grid-column: 1 / -1; }
 /* Firefox keeps a range input at its intrinsic width unless told it may shrink. */
 .volrow input[type=range] { flex: 1 1 0; min-width: 0; width: 0; accent-color: var(--acc); }
 .volrow .dim { flex: none; min-width: 3.5em; text-align: right; }

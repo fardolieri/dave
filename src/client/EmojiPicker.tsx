@@ -35,12 +35,18 @@ export function EmojiPicker(props: { id: string; anchor: () => HTMLElement | und
   // What was typed, when it is itself a single emoji (pasted from elsewhere, or from the OS keyboard): offered as the first result.
   const typed = createMemo(() => { const q = query().trim(); return q && isSingleEmoji(q) && !results().some((e) => e.char === q) ? q : null; });
   const recentEntries = createMemo((): EmojiEntry[] => recent().map((char) => ({ char, name: '' })));
+  // The UA paints a popover at its own centred position before `toggle` fires, so the first open of each picker
+  // flashed there and jumped (report of Sep 16). Invisible from `beforetoggle` until placed, it appears in place.
+  const onBeforeToggle = (e: Event) => {
+    if ((e as ToggleEvent).newState === 'open' && card) card.style.visibility = 'hidden';
+  };
   const onToggle = (e: Event) => {
     if ((e as ToggleEvent).newState !== 'open' || !card) return;
     setQuery('');
     scroller?.scrollTo(0, 0);
     const anchor = props.anchor();
     if (anchor) place(card, anchor, 'above');
+    card.style.visibility = '';
     // Only a pointer that is not a finger gets the search field focused: a phone would pop its keyboard over the grid.
     if (matchMedia('(pointer: fine)').matches) search?.focus();
   };
@@ -61,7 +67,7 @@ export function EmojiPicker(props: { id: string; anchor: () => HTMLElement | und
     <div class="emoji-grid"><For each={p.entries}>{(e) => <button type="button" title={e.name || undefined} onClick={() => pick(e.char)}>{e.char}</button>}</For></div>
   );
   return (
-    <div id={props.id} class="emoji-picker" popover="auto" ref={card} onToggle={onToggle}>
+    <div id={props.id} class="emoji-picker" popover="auto" ref={card} onBeforeToggle={onBeforeToggle} onToggle={onToggle}>
       <input ref={search} class="emoji-search" type="search" value={query()} onInput={(e) => setQuery(e.currentTarget.value)} onKeyDown={onKey} placeholder="Search emoji" aria-label="Search emoji" />
       <Show when={!query().trim()} fallback={
         <div class="emoji-scroll" ref={scroller}>
