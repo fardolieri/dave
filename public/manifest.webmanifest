@@ -1,0 +1,14 @@
+{
+  "name": "dave",
+  "short_name": "dave",
+  "description": "Rooms for a few friends: text, voice, and screen share.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FDFCFA",
+  "theme_color": "#0C2742",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
