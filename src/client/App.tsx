@@ -944,33 +944,34 @@ function Composer(props: { connected: boolean; roomName: string; onSend: (text: 
 /** The log with the new-messages pill. `jumpToken` changes when I send, which brings me back to the newest line. */
 function ChatLog(props: { lines: ChatLine[]; jumpToken: number; label: (id: Identity) => Label }) {
   let log: HTMLDivElement | undefined;
-  // The log is a reversed flex column (newest line first in the DOM, drawn at the bottom), so the
-  // scroll origin is the bottom edge: position 0 is "at the newest line" and the browser keeps that
-  // offset when lines arrive or the log changes size. The browser's own scroll anchoring is off (CSS):
-  // it measures from the top edge, which is the edge that moves when a share strip comes or goes, and
-  // it snapped a scrolled-up reader to the bottom. The one thing it did for us, holding a scrolled-up
-  // reader in place when a new line pushes everything up, is the two lines in the effect below.
-  const newestFirst = createMemo(() => [...props.lines].reverse());
-  let atBottom = true;
-  let contentHeight = 0; // scrollHeight at the last scroll or line change
+  // Lines in reading order, so selecting text works as it reads. The browser measures scroll positions from the
+  // top edge, which is the edge that moves when the share strip comes or goes, so the log keeps its own distance
+  // to the bottom edge and restores it after every size change (ResizeObserver) and every change of the lines:
+  // a reader at the newest line stays there, a reader who scrolled up keeps the lines they were reading in
+  // place. Browser scroll anchoring is off (CSS); it snapped a scrolled-up reader to the bottom.
+  let gap = 0; // distance from the bottom edge at the last measurement; 0 is "at the newest line"
+  let size = ''; // client and scroll height at that measurement: a scroll event under a different size is the browser clamping, not the reader
+  const sizeKey = () => `${log?.clientHeight}x${log?.scrollHeight}`;
+  const atBottom = () => gap < 8;
   const [unseen, setUnseen] = createSignal(false);
-  const onScroll = () => { if (!log) return; atBottom = Math.abs(log.scrollTop) < 8; contentHeight = log.scrollHeight; if (atBottom) setUnseen(false); };
-  // Block bodies on purpose: an effect callback's return value is taken as a cleanup, and browser
-  // extensions that hook scrolling make scrollTo return a value, which halted the whole page once.
-  const jump = () => { log?.scrollTo({ top: 0 }); setUnseen(false); };
+  const measure = () => { if (!log) return; gap = log.scrollHeight - log.clientHeight - log.scrollTop; size = sizeKey(); };
+  const restore = () => { if (!log) return; log.scrollTop = log.scrollHeight - log.clientHeight - gap; size = sizeKey(); };
+  const onScroll = () => { if (size === sizeKey()) measure(); else restore(); if (atBottom()) setUnseen(false); };
+  const jump = () => { gap = 0; restore(); setUnseen(false); };
+  const observer = new ResizeObserver(restore);
+  onCleanup(() => observer.disconnect());
   createEffect(() => props.lines.length, (n, prev) => {
     if (!log) return;
-    if (prev !== undefined && n > prev && !atBottom) {
-      log.scrollTop -= log.scrollHeight - contentHeight; // scrollTop is negative here: further up by the added height
-      setUnseen(true);
-    }
-    contentHeight = log.scrollHeight;
+    if (prev === undefined) observer.observe(log);
+    // A line arrived while the reader was up in the older lines: the browser has left them in place and the
+    // new line waits below, so only the distance to the bottom changes. Otherwise the log stays at the newest line.
+    if (prev !== undefined && n > prev && !atBottom()) { measure(); setUnseen(true); } else restore();
   });
   createEffect(() => props.jumpToken, (t, prev) => { if (prev !== undefined && t !== prev) jump(); });
   return (
     <div class="chat">
       <div class="chat-log" ref={log} onScroll={onScroll}>
-        <For each={newestFirst()}>
+        <For each={props.lines}>
           {(l) => (
             <Switch>
               <Match when={l.kind === 'system' && l}>{(s) => <div class="msg msg-sys"><span class="msg-text">{s().text}</span><span class="msg-at">{when(s().at)}</span></div>}</Match>

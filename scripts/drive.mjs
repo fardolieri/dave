@@ -92,7 +92,8 @@ class Browser {
   }
   text(sel) { return this.eval(`Array.from(document.querySelectorAll(${JSON.stringify(sel)})).map(e => e.innerText.replace(/\\s+/g,' ').trim()).join(' | ')`); }
   async say(text) {
-    await this.eval(`(() => { const i = document.querySelector('.chat-input input'); i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input', { bubbles: true })); return 'typed'; })()`);
+    // The child selector skips the emoji picker's search field, which sits inside the form before the message input.
+    await this.eval(`(() => { const i = document.querySelector('.chat-input > input'); i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input', { bubbles: true })); return 'typed'; })()`);
     await sleep(50);
     await this.eval(`document.querySelector('.chat-input form, form.chat-input').requestSubmit(); 'sent'`);
   }
@@ -146,22 +147,22 @@ try {
     }
     if (shareToo && browsers.length > 1) {
       const [sharer, viewer, ...rest] = browsers;
-      const gap = (b) => b.eval(`(() => { const l = document.querySelector('.chat-log'); return Math.abs(Math.round(l.scrollTop)); })()`);
+      const gap = (b) => b.eval(`(() => { const l = document.querySelector('.chat-log'); return Math.round(l.scrollHeight - l.clientHeight - l.scrollTop); })()`);
       if (process.env.SCROLL_CHECK) {
         // A short viewport and many lines make the log overflow; the share strip then halves it. The newest line must stay in view.
         await viewer.cdp('Emulation.setDeviceMetricsOverride', { width: 1000, height: 420, deviceScaleFactor: 1, mobile: false });
         for (let i = 0; i < 14; i++) { await sharer.say(`filler line ${i}`); await sleep(120); }
         await sleep(800);
         console.log(`[${viewer.name}] gap to bottom before share (expect 0): ${await gap(viewer)}`);
-        var lastTop = (b) => b.eval(`(() => { const m = document.querySelector('.chat-log .msg'); return m ? Math.round(m.getBoundingClientRect().bottom) : null; })()`); // newest line is first in the DOM
+        var lastTop = (b) => b.eval(`(() => { const m = document.querySelector('.chat-log .msg:last-child'); return m ? Math.round(m.getBoundingClientRect().bottom) : null; })()`); // newest line is last in the DOM
         console.log(`[${viewer.name}] last line bottom edge on screen before share: ${await lastTop(viewer)}`);
       }
       await sharer.eval(`[...document.querySelectorAll('.actions button')].find(b => b.textContent === 'Share screen')?.click(); 'share'`);
       await sleep(3000);
       if (process.env.SCROLL_CHECK) {
         console.log(`[${viewer.name}] gap to bottom after the share strip appeared (expect 0): ${await gap(viewer)} | last line bottom edge (expect unchanged): ${await lastTop(viewer)}`);
-        // A gap smaller than the growth: the browser must clamp scrollTop when the log grows, the case that used to lose the gap.
-        await viewer.eval(`(() => { const l = document.querySelector('.chat-log'); l.scrollTop = -60; })(); 'scroll up 60px'`); await sleep(300);
+        // A gap smaller than the growth: when the strip goes and the log grows, the browser clamps scrollTop; the log must restore the gap itself.
+        await viewer.eval(`(() => { const l = document.querySelector('.chat-log'); l.scrollTop -= 60; })(); 'scroll up 60px'`); await sleep(300);
         console.log(`[${viewer.name}] scrolled up a bit: gap ${await gap(viewer)} | log height ${await viewer.eval(`document.querySelector('.chat-log').clientHeight`)} | hint: ${await viewer.text('.chat-new') || '(none)'}`);
         await sharer.say('arrives while Bob reads older lines'); await sleep(600);
         console.log(`[${viewer.name}] a line arrived while scrolled up: gap (expect 108 = 60 + one line, reader not moved) ${await gap(viewer)} | hint (expect shown): ${await viewer.text('.chat-new') || '(none)'}`);
