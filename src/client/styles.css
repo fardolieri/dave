@@ -28,6 +28,12 @@ code.fp { font-size: 11px; color: var(--dim); }
 .side-foot { margin-top: auto; padding-top: 18px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 14px; }
 .newroom { display: flex; gap: 6px; width: 100%; }
 .newroom input { flex: 1; min-width: 0; }
+/* the pasted link is long, so the field takes a line of its own and the buttons the next */
+.joinlink { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.joinlink input { width: 100%; min-width: 0; }
+.joinlink .row { display: flex; gap: 6px; }
+.joinlink .warn { margin-top: 0; }
+.notice .joinlink { margin: 0 0 12px; }
 
 /* Rooms: each one is a section of the sidebar headed by its name; the one on screen is bright, the rest dim.
    The header is a button: clicking a name brings that room's chat on screen without touching the call. */

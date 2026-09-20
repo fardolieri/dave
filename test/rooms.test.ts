@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_ROOM_NAME, authKeyOf, formatInviteFragment, isRoomId, newRoomSecret, parseInviteFragment, roomIdOf } from '../src/core/rooms';
+import { DEFAULT_ROOM_NAME, authKeyOf, formatInviteFragment, isRoomId, newRoomSecret, parseInviteFragment, parseInviteText, roomIdOf } from '../src/core/rooms';
 
 describe('room derivation', () => {
   it('derives a stable room id and auth key from the secret, distinct from each other and per secret', async () => {
@@ -43,5 +43,30 @@ describe('invite fragments', () => {
     expect(parseInviteFragment('')).toBeNull();
     expect(parseInviteFragment('#')).toBeNull();
     expect(parseInviteFragment('#/name-only')).toBeNull();
+  });
+});
+
+describe('pasted invite text', () => {
+  const link = { secret: 'S3cr-t_x', name: 'Game night' };
+  const fragment = formatInviteFragment(link);
+
+  it('reads a whole URL, its fragment alone, or the bare secret and name', () => {
+    expect(parseInviteText(`https://dave.example/${fragment}`)).toEqual(link);
+    expect(parseInviteText(`  ${fragment}\n`)).toEqual(link);
+    expect(parseInviteText(fragment.slice(1))).toEqual(link);
+    expect(parseInviteText('the-passphrase')).toEqual({ secret: 'the-passphrase', name: DEFAULT_ROOM_NAME });
+  });
+
+  it('takes the fragment from any origin or path', () => {
+    expect(parseInviteText(`http://localhost:5173/some/path?q=1${fragment}`)).toEqual(link);
+  });
+
+  it('rejects a URL without a fragment, prose, and empty text', () => {
+    expect(parseInviteText('https://dave.example/')).toBeNull();
+    expect(parseInviteText('https://dave.example/#')).toBeNull();
+    expect(parseInviteText('just some text https://x.example/')).toBeNull();
+    expect(parseInviteText('see you at 8')).toBeNull();
+    expect(parseInviteText('')).toBeNull();
+    expect(parseInviteText('   ')).toBeNull();
   });
 });

@@ -4,7 +4,7 @@ import posthog, { isTestAccount } from './posthog';
 import { loadIdentity, type LocalIdentity } from './identity';
 import { getName, getPicture, inviteLinkFor, setName, setPicture, takeInviteLink } from './invite';
 import { addRoom, forgetRoom, getSelectedRoom, loadRooms, setSelectedRoom, type SavedRoom } from './rooms';
-import { newRoomSecret, normaliseRoomName, type InviteLink } from '../core/rooms';
+import { newRoomSecret, normaliseRoomName, parseInviteText, type InviteLink } from '../core/rooms';
 import { createRoom, type ChatLine, type ServerStatus } from './room';
 import { createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
 import { createAttention, type RoomLink } from './attention';
@@ -33,20 +33,23 @@ export default function App() {
 
   const select = (secret: string) => { setSelectedRoom(secret); setSelected(secret); };
   /** The room from a link joins the list (or takes the link's name if already known) and comes on screen. */
-  const enter = async (list: SavedRoom[], link: InviteLink): Promise<SavedRoom[]> => {
+  const enter = async (list: SavedRoom[], link: InviteLink, via: 'opened' | 'pasted'): Promise<SavedRoom[]> => {
     const known = list.some((r) => r.secret === link.secret);
     const next = await addRoom(list, link);
     select(link.secret);
-    posthog.capture('room_entered_by_link', { known });
+    posthog.capture('room_entered_by_link', { known, via });
     return next;
   };
-  void loadRooms().then(async (list) => setRooms(invite ? await enter(list, invite) : list));
+  void loadRooms().then(async (list) => setRooms(invite ? await enter(list, invite, 'opened') : list));
   // A link opened in a tab that already shows the app only changes the fragment: no load, so it is read here.
   window.addEventListener('hashchange', () => {
     const link = takeInviteLink();
     const list = rooms();
-    if (link && list) void enter(list, link).then(setRooms);
+    if (link && list) void enter(list, link, 'opened').then(setRooms);
   });
+  // A link pasted in. A home-screen web app on iOS never receives a tapped link (Safari opens it, in its own
+  // storage), so pasting is the only way a room reaches such an app.
+  const join = (link: InviteLink) => { void enter(rooms() ?? [], link, 'pasted').then(setRooms); };
   const create = async (roomName: string): Promise<SavedRoom> => {
     const list = await addRoom(rooms() ?? [], { secret: newRoomSecret(), name: roomName });
     const room = list[list.length - 1]!;
@@ -75,7 +78,16 @@ export default function App() {
         <Notice title="Loading…"> </Notice>
       </Match>
       <Match when={rooms()?.length === 0}>
-        <Notice title="You need an invite link">Open the link a friend sent you. Nothing else gets you in.</Notice>
+        <main class="notice">
+          <h1>dave</h1>
+          <h2>You need an invite link</h2>
+          <p>Open the link a friend sent you, or paste it here. Nothing else gets you in.</p>
+          <JoinLinkForm autofocus onJoin={join} />
+          <p class="dim">
+            Installed on an iPhone or iPad home screen? Tapped links open in Safari, which keeps its rooms to itself, so pasting is the only way in here.
+            This copy of the app also starts with its own identity: friends will see you as new.
+          </p>
+        </main>
       </Match>
       <Match when={!name()}>
         <NameForm onSubmit={rename} />
@@ -86,7 +98,7 @@ export default function App() {
       <Match when={!identity()}>
         <Notice title="Preparing your identity…"> </Notice>
       </Match>
-      <Match when={ready()}>{(r) => <Workspace {...r()} onSelect={select} onCreate={create} onForget={forget} onRename={rename} />}</Match>
+      <Match when={ready()}>{(r) => <Workspace {...r()} onSelect={select} onCreate={create} onJoin={join} onForget={forget} onRename={rename} />}</Match>
     </Switch>
   );
 }
@@ -117,12 +129,43 @@ function NameForm(props: { onSubmit: (name: string) => void }) {
   );
 }
 
+/**
+ * An invite link typed or pasted in, for a browser the link itself cannot reach. Accepts the whole URL or
+ * just its fragment. The Paste button reads the clipboard directly (iOS asks once); the field is the fallback.
+ */
+function JoinLinkForm(props: { onJoin: (link: InviteLink) => void; onCancel?: () => void; autofocus?: boolean }) {
+  const [draft, setDraft] = createSignal('');
+  const [note, setNote] = createSignal<string | null>(null);
+  const parsed = () => parseInviteText(draft());
+  const canReadClipboard = typeof navigator.clipboard?.readText === 'function';
+  const join = (link: InviteLink) => { setDraft(''); setNote(null); props.onJoin(link); };
+  const submit = (e: Event) => { e.preventDefault(); const link = parsed(); if (link) join(link); };
+  const paste = async () => {
+    let text: string;
+    try { text = await navigator.clipboard.readText(); } catch { setNote('Could not read the clipboard. Paste the link into the field instead.'); return; }
+    const link = parseInviteText(text);
+    if (link) join(link);
+    else { setDraft(text); setNote('The clipboard does not hold an invite link.'); }
+  };
+  return (
+    <form class="joinlink" onSubmit={submit}>
+      <input value={draft()} onInput={(e) => { setDraft(e.currentTarget.value); setNote(null); }} autofocus={props.autofocus} placeholder="Invite link" aria-label="Invite link" autocomplete="off" autocapitalize="off" spellcheck={false} />
+      <div class="row">
+        <button class="on" disabled={parsed() === null}>Join</button>
+        <Show when={canReadClipboard}><button type="button" title="Read the link from the clipboard" onClick={() => void paste()}>Paste</button></Show>
+        <Show when={props.onCancel}><button type="button" onClick={props.onCancel}>Cancel</button></Show>
+      </div>
+      <Show when={note()}><div class="warn">{note()}</div></Show>
+    </form>
+  );
+}
+
 /** One room this browser is in: what was saved about it, its socket, and its call. */
 type Link = RoomLink & { saved: SavedRoom };
 
 type WorkspaceProps = {
   rooms: SavedRoom[]; selected: string | null; created: string | null; name: string; identity: LocalIdentity;
-  onSelect: (secret: string) => void; onCreate: (name: string) => Promise<SavedRoom>; onForget: (secret: string) => void; onRename: (name: string) => void;
+  onSelect: (secret: string) => void; onCreate: (name: string) => Promise<SavedRoom>; onJoin: (link: InviteLink) => void; onForget: (secret: string) => void; onRename: (name: string) => void;
 };
 
 /**
@@ -223,8 +266,9 @@ function Workspace(props: WorkspaceProps) {
   };
   const renameSelf = (n: string) => { for (const l of links()) l.room.rename(n); props.onRename(n); posthog.capture('name_changed'); };
   const pictureSelf = (pic: string | null) => { for (const l of links()) l.room.setPicture(pic); setPicture(pic); posthog.capture('picture_changed', { cleared: pic === null }); };
-  // Sidebar footer forms: a new room, and the invite link of the room on screen.
+  // Sidebar footer forms: a new room, a room from a pasted link, and the invite link of the room on screen.
   const [creating, setCreating] = createSignal(false);
+  const [joining, setJoining] = createSignal(false);
   // The room whose invite panel is open. A room started in this browser opens with it: sending the link is the next step.
   const [inviteFor, setInviteFor] = createSignal<string | null>(untrack(() => props.created));
   const toggleInvite = (l: Link) => setInviteFor(inviteFor() === l.saved.secret ? null : l.saved.secret);
@@ -302,6 +346,9 @@ function Workspace(props: WorkspaceProps) {
                   <button class="on" disabled={normaliseRoomName(roomDraft()) === null}>Start</button>
                   <button type="button" onClick={() => setCreating(false)}>Cancel</button>
                 </form>
+              </Show>
+              <Show when={joining()} fallback={<button class="link" title="Enter a room from a pasted invite link" onClick={() => setJoining(true)}>Join by link</button>}>
+                <JoinLinkForm autofocus onJoin={(link) => { setJoining(false); props.onJoin(link); }} onCancel={() => setJoining(false)} />
               </Show>
               <button class="link" title="Forget this room in this browser" onClick={() => leaveRoom(cur())}>Leave {cur().saved.name}</button>
               <ReportDialog collect={() => collectReport({ status: () => cur().room.status().kind, people: everyone, me: () => me, call: (active() ?? cur()).call.diagnostics })} />

@@ -48,3 +48,18 @@ export function parseInviteFragment(hash: string): InviteLink | null {
 export function formatInviteFragment(link: InviteLink): string {
   return `#${encodeURIComponent(link.secret)}/${encodeURIComponent(link.name)}`;
 }
+
+/**
+ * An invite link as a friend pastes it: the whole URL, just its fragment, or the bare `secret/name`.
+ * Everything from the first `#` counts. Without one, only a single token with no whitespace and no
+ * `://` is taken as a fragment, so a URL without a fragment or a sentence off the clipboard is not a
+ * link and cannot open a garbage room. Needed because iOS never routes a tapped link into a home-screen
+ * web app, so pasting is the only way a room gets in there.
+ */
+export function parseInviteText(text: string): InviteLink | null {
+  const trimmed = text.trim();
+  const hash = trimmed.indexOf('#');
+  if (hash >= 0) return parseInviteFragment(trimmed.slice(hash));
+  if (/\s/.test(trimmed) || trimmed.includes('://')) return null;
+  return parseInviteFragment(trimmed);
+}
