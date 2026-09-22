@@ -155,6 +155,9 @@ button.leave { background: var(--bad); color: #fff; border-color: transparent; }
 .panel select.picker { flex: 1 1 6em; min-width: 0; width: 6em; max-width: 100%; }
 .panel > button { width: 100%; }
 .panel label.check { justify-content: flex-start; }
+/* master volume: the slider takes the width the label leaves, the percentage keeps a fixed slot so the track does not jump */
+.panel label.mvol input[type=range] { flex: 1 1 0; min-width: 0; width: 0; accent-color: var(--acc); }
+.panel label.mvol .dim { flex: none; min-width: 3.5em; text-align: right; }
 .panel .presets button { flex: 1; }
 .panel input[type=number] { width: 4.5em; padding: 4px 6px; }
 /* Customizable select where supported (Chrome 135, Safari 27): radio-style items. Firefox falls back to the native picker. */

@@ -77,8 +77,10 @@ export type AudioSettings = {
   /** Device ids; empty means the browser default. */
   microphoneId: string;
   speakerId: string;
+  /** Master volume for everyone's voice and share audio, 0 to MAX_VOLUME; multiplied with each participant's local volume. */
+  masterVolume: number;
 };
-export const DEFAULT_AUDIO: AudioSettings = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, microphoneId: '', speakerId: '' };
+export const DEFAULT_AUDIO: AudioSettings = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, microphoneId: '', speakerId: '', masterVolume: 1 };
 export const processingIsDefault = (a: AudioSettings): boolean => a.echoCancellation && a.noiseSuppression && a.autoGainControl;
 
 export type ViewerSettings = {
@@ -119,7 +121,8 @@ export const parseShareSettings = (raw: string | null): ShareSettings =>
     budgetBps: positive,
     ceilingBps: positive,
   });
-export const parseAudioSettings = (raw: string | null): AudioSettings => parseSettings(DEFAULT_AUDIO, raw);
+export const parseAudioSettings = (raw: string | null): AudioSettings =>
+  parseSettings(DEFAULT_AUDIO, raw, { masterVolume: (v): v is number => typeof v === 'number' && clampVolume(v) === v });
 export const parseViewerSettings = (raw: string | null): ViewerSettings =>
   parseSettings(DEFAULT_VIEWER, raw, { jitterBufferTargetMs: (v): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 });
 

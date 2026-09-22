@@ -323,6 +323,11 @@ try {
       await a.eval(`(() => { const r = document.querySelector('.volrow input[type=range]'); r.value = '150'; r.dispatchEvent(new Event('input', { bubbles: true })); return 'set'; })()`);
       await sleep(500);
       console.log(`[${a.name}] volumes after slider: ${JSON.stringify(await a.eval(`window.__dave?.volumes()`))} | row: ${await a.text('.prow button.vol')}`);
+      // Master volume (ticket 21): the audio panel's slider to 50 percent; every gain becomes master times the friend's own volume, 0.75 here.
+      await a.eval(`document.querySelector('.actions .gear')?.click(); 'audio gear'`); await sleep(300);
+      await a.eval(`(() => { const r = document.querySelector('.panel label.mvol input[type=range]'); r.value = '50'; r.dispatchEvent(new Event('input', { bubbles: true })); return 'set'; })()`);
+      await sleep(500);
+      console.log(`[${a.name}] volumes after master slider: ${JSON.stringify(await a.eval(`window.__dave?.volumes()`))} | panel: ${await a.text('.panel label.mvol')}`);
       await a.goto(url); await sleep(1500);
       await a.eval(`document.querySelector('button.join')?.click(); 'rejoin'`); await sleep(4000);
       console.log(`[${a.name}] volumes after reload and rejoin: ${JSON.stringify(await a.eval(`window.__dave?.volumes()`))} | row: ${await a.text('.prow button.vol')}`);

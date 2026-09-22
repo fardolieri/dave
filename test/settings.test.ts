@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SHARE, applyPreset, contentHint, parseSettings, shareEncoding, trackConstraints, withChange, DEFAULT_AUDIO, parseShareSettings, mbpsToBps } from '../src/core/settings';
+import { DEFAULT_SHARE, applyPreset, contentHint, parseSettings, shareEncoding, trackConstraints, withChange, DEFAULT_AUDIO, parseShareSettings, parseAudioSettings, mbpsToBps } from '../src/core/settings';
 
 describe('share settings', () => {
   it('presets set the three knobs and are recognised again after manual changes', () => {
@@ -44,5 +44,13 @@ describe('local volume', () => {
     expect(clampVolume('x')).toBe(1);
     expect(parseVolumes('{"k1":0.3,"k2":"loud","k3":5}')).toEqual({ k1: 0.3, k3: 2 });
     expect(parseVolumes('nope')).toEqual({});
+  });
+  it('the master volume is part of the audio settings and must lie within the slider range', () => {
+    expect(parseAudioSettings(null).masterVolume).toBe(1);
+    expect(parseAudioSettings('{"masterVolume":0.5}').masterVolume).toBe(0.5);
+    expect(parseAudioSettings('{"masterVolume":2}').masterVolume).toBe(2);
+    expect(parseAudioSettings('{"masterVolume":7}').masterVolume).toBe(1); // out of range falls back rather than blasting
+    expect(parseAudioSettings('{"masterVolume":"loud"}').masterVolume).toBe(1);
+    expect(parseAudioSettings('{"speakerId":"abc"}')).toEqual({ ...DEFAULT_AUDIO, speakerId: 'abc' }); // older blobs without the field
   });
 });

@@ -165,8 +165,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   };
 
   // ---- media
-  function microphoneConstraints(): MediaTrackConstraints {
-    const a = audioSettings();
+  /** Takes the settings explicitly where they were just written: a signal written in this run still reads the old value. */
+  function microphoneConstraints(a: AudioSettings = untrack(audioSettings)): MediaTrackConstraints {
     const c: MediaTrackConstraints = { echoCancellation: a.echoCancellation, noiseSuppression: a.noiseSuppression, autoGainControl: a.autoGainControl };
     // `ideal`, not `exact`: a remembered microphone that is unplugged must not lock anyone out of the call.
     if (a.microphoneId) c.deviceId = { ideal: a.microphoneId };
@@ -227,10 +227,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const prev = audioSettings();
     const next = { ...prev, ...change };
     if (voiceTrack && next.microphoneId !== prev.microphoneId) {
-      storeAudioSettings(next); // so microphoneConstraints() sees the new id
+      storeAudioSettings(next); // the id is selected now; rolled back below if the capture fails
       let stream: MediaStream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: microphoneConstraints() });
+        stream = await navigator.mediaDevices.getUserMedia({ audio: microphoneConstraints(next) });
       } catch (e) {
         storeAudioSettings(prev); // roll back: the old microphone stays live and selected
         console.warn('microphone switch failed', e);
@@ -247,9 +247,19 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       }
     } else {
       storeAudioSettings(next);
-      if (voiceTrack) await voiceTrack.applyConstraints(microphoneConstraints()).catch((e) => console.warn('applyConstraints audio', e));
+      const processingChanged = (['echoCancellation', 'noiseSuppression', 'autoGainControl'] as const).some((k) => next[k] !== prev[k]);
+      if (voiceTrack && processingChanged) await voiceTrack.applyConstraints(microphoneConstraints(next)).catch((e) => console.warn('applyConstraints audio', e));
     }
     if (next.speakerId !== prev.speakerId) for (const p of peers.values()) { void applySink(p.audio); void applySink(p.shareAudio); }
+    if (next.masterVolume !== prev.masterVolume) for (const p of peers.values()) applyGain(p, next.masterVolume);
+  }
+
+  /** What a participant's gain nodes are set to: the master volume times their own local volume. */
+  const effectiveGain = (peer: Peer, master = untrack(audioSettings).masterVolume): number => master * peer.view.volume;
+  function applyGain(peer: Peer, master?: number): void {
+    const g = effectiveGain(peer, master);
+    if (peer.voiceGain) peer.voiceGain.gain.value = g;
+    if (peer.shareGain) peer.shareGain.gain.value = g;
   }
 
   /** Change share settings live: track constraints and content hint on the capture, encodings per Viewer. */
@@ -269,9 +279,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const v = clampVolume(value);
     const peer = peers.get(key);
     if (peer) {
-      if (peer.voiceGain) peer.voiceGain.gain.value = v;
-      if (peer.shareGain) peer.shareGain.gain.value = v;
       setView(peer, { volume: v });
+      applyGain(peer);
     }
     const next = { ...untrack(volumes) };
     if (v === 1) delete next[key]; else next[key] = v;
@@ -387,7 +396,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   /**
-   * Remote audio path (ticket 08): raw track -> gain (0 to 200 percent, local only) -> a MediaStream that a
+   * Remote audio path (ticket 08): raw track -> gain (master times per-participant volume, local only) -> a MediaStream that a
    * normal audio element plays, so speaker selection via setSinkId keeps working. The raw track also stays
    * attached to a muted element, which Chrome requires before it feeds remote audio into WebAudio at all.
    */
@@ -398,7 +407,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (kind === 'voice') { peer.keepAlive.srcObject = stream; peer.keepAlive.play().catch(() => {}); }
     const source = ctx.createMediaStreamSource(stream);
     const gain = ctx.createGain();
-    gain.gain.value = peer.view.volume;
+    gain.gain.value = effectiveGain(peer);
     const dest = ctx.createMediaStreamDestination();
     source.connect(gain).connect(dest);
     peer.audioNodes.push(source, gain, dest);
@@ -1032,7 +1041,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         senders: [...peers.values()].map((p) => { const params = p.tx[SLOT_INDEX.shareVideo]?.sender.getParameters(); const e = params?.encodings?.[0]; return { name: p.name, active: e?.active, maxBitrate: e?.maxBitrate, maxFramerate: e?.maxFramerate, scale: e?.scaleResolutionDownBy, degradation: (params as { degradationPreference?: string } | undefined)?.degradationPreference }; }),
       })),
       audio: () => untrack(() => ({ settings: audioSettings(), track: voiceTrack?.getSettings() ?? null })),
-      volumes: () => [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })),
+      volumes: () => ({ master: untrack(audioSettings).masterVolume, peers: [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })) }),
       dropSocket: () => room.dropSocket(),
       diagnostics,
       state: () => ({ inCall: joined, joining, joinError: untrack(joinError), myJoinSeq, role: untrack(me)?.role ?? null, participants: untrack(room.people).filter((p) => p.role === 'participant').map((p) => `${p.name}#${p.joinSeq}`) }),

@@ -585,6 +585,7 @@ function AudioPanel(props: { call: Call }) {
   const a = () => props.call.audioSettings();
   const set = (change: Partial<AudioSettings>) => void props.call.changeAudio(change);
   const label = (d: MediaDeviceInfo, i: number) => d.label || `${d.kind === 'audioinput' ? 'Microphone' : 'Speaker'} ${i + 1}`;
+  const masterPercent = () => Math.round(a().masterVolume * 100);
   return (
     <div class="panel">
       <label>Microphone <select class="picker" value={a().microphoneId} onChange={(e) => set({ microphoneId: e.currentTarget.value })}>
@@ -601,6 +602,10 @@ function AudioPanel(props: { call: Call }) {
         </Show>
       </Show>
       <Show when={!props.call.canPickSpeaker}><div class="hint">This browser cannot choose an output device; it uses the system default.</div></Show>
+      <label class="mvol" title="How loud everyone is for you, on top of each friend's own volume. Double-click to reset.">Volume
+        <input type="range" min="0" max={MAX_VOLUME * 100} step="5" value={masterPercent()} onInput={(e) => set({ masterVolume: Number(e.currentTarget.value) / 100 })} onDblClick={() => set({ masterVolume: 1 })} />
+        <span class="dim">{masterPercent()}%</span>
+      </label>
       <div class={processingIsDefault(a()) ? 'hint' : 'warn'}>
         {processingIsDefault(a()) ? 'Turning these off usually makes you sound worse to others.' : 'Audio processing is off. Turn everything back on if friends complain.'}
       </div>
