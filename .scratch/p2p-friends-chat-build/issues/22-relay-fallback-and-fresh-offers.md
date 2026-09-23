@@ -30,6 +30,10 @@ Daniel notes the friend has flaky internet in general; the two changes here make
 - `REBUILD_CHECK=1 node scripts/drive.mjs --join http://localhost:5199 <secret> Alice Bob` against `pnpm dev --port 5199`,
   2026-09-23: Alice rebuilds toward Bob; Bob's connection generation goes 1 to 2 (he started over on the new certificate),
   both badges direct again after 1 s, audio bytes flowing. Three browsers with `--join`: direct on every pair after 1 s.
+- Nightly (`dave-nightly`, deployed from master 2026-09-23 18:55 UTC): three browsers direct on every pair after 1 s; two
+  browsers with `UA_OVERRIDE=1` so PostHog keeps their events: `relay_candidate_gathered` present (TURN credentials are
+  minted and relay candidates gather, which the fallback depends on), `peer_connection_state` connecting to direct, no
+  `peer_connecting_slow`, `signal_rejected` or `$exception`. The served bundle carries `relay_only`.
 - Open: the local `.dev.vars` carries the TURN placeholder, so the dev server hands out STUN only and the relay-only
   rebuild reads `relayOnly=false` by design. With a real `TURN_KEY_API_TOKEN` in `.dev.vars` the same driver run should
   print `rebuilt Bob, relayOnly=true` and both badges `via relay` with audio flowing. The rule itself is unit-tested.
