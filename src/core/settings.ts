@@ -1,4 +1,4 @@
-// Share, audio, and viewer settings (spec §6.1, §6.3, §6.4): plain data, defaults, presets,
+// Share, audio, and viewer settings (spec §6.1, §6.3, §6.4): plain data, defaults,
 // and the WebRTC parameters derived from them. Runtime-neutral so it can be unit-tested.
 import { SHARE_BUDGET_BPS, SHARE_CEILING_BPS, perViewerBitrate } from './mesh';
 
@@ -7,10 +7,7 @@ export type FrameRate = 15 | 30 | 60;
 /** Maximum height in pixels; 0 means native. */
 export type MaxHeight = 0 | 1080 | 720;
 
-export type PresetName = 'detail' | 'motion';
-
 export type ShareSettings = {
-  preset: PresetName | 'custom';
   frameRate: FrameRate;
   maxHeight: MaxHeight;
   degradation: Degradation;
@@ -20,29 +17,12 @@ export type ShareSettings = {
   ceilingBps: number;
 };
 
-export const PRESETS: Record<PresetName, Omit<ShareSettings, 'preset' | 'budgetBps' | 'ceilingBps'>> = {
-  // Browsers and documents: sharp text, modest motion. Spec §6.3 allows 15 to 30 fps; 30 is the default.
-  detail: { frameRate: 30, maxHeight: 0, degradation: 'maintain-resolution' },
-  // Game streams: smooth motion at reduced resolution.
-  motion: { frameRate: 60, maxHeight: 720, degradation: 'maintain-framerate' },
-};
-/** Frame rates that still count as the preset (Detail spans 15 to 30 fps). */
-const PRESET_FRAME_RATES: Record<PresetName, readonly FrameRate[]> = { detail: [15, 30], motion: [60] };
+// Browsers and documents out of the box: sharp text at native resolution, 30 fps. Game streams turn the
+// frame rate up and the resolution down themselves; there are no named profiles.
+export const DEFAULT_SHARE: ShareSettings = { frameRate: 30, maxHeight: 0, degradation: 'maintain-resolution', budgetBps: SHARE_BUDGET_BPS, ceilingBps: SHARE_CEILING_BPS };
 
-export const DEFAULT_SHARE: ShareSettings = { preset: 'detail', ...PRESETS.detail, budgetBps: SHARE_BUDGET_BPS, ceilingBps: SHARE_CEILING_BPS };
-
-export function applyPreset(s: ShareSettings, preset: PresetName): ShareSettings {
-  return { ...s, preset, ...PRESETS[preset] };
-}
-
-/** Any manual change leaves the preset unless it happens to match one exactly. */
-export function withChange(s: ShareSettings, change: Partial<Omit<ShareSettings, 'preset'>>): ShareSettings {
-  const next = { ...s, ...change };
-  const matches = (Object.keys(PRESETS) as PresetName[]).find((k) => {
-    const p = PRESETS[k];
-    return PRESET_FRAME_RATES[k].includes(next.frameRate) && p.maxHeight === next.maxHeight && p.degradation === next.degradation;
-  });
-  return { ...next, preset: matches ?? 'custom' };
+export function withChange(s: ShareSettings, change: Partial<ShareSettings>): ShareSettings {
+  return { ...s, ...change };
 }
 
 /** Structural subset of MediaTrackConstraints, so this module needs no DOM types. */
@@ -55,7 +35,7 @@ export function trackConstraints(s: ShareSettings): TrackConstraints {
   return c;
 }
 
-/** The encoder's content hint follows the degradation choice, which is what the two presets differ on: framerate-first means motion. */
+/** The encoder's content hint follows the degradation choice: framerate-first means motion, anything else is detail. */
 export function contentHint(s: ShareSettings): 'detail' | 'motion' {
   return s.degradation === 'maintain-framerate' ? 'motion' : 'detail';
 }
@@ -114,7 +94,6 @@ export function parseSettings<T extends object>(defaults: T, raw: string | null,
 
 export const parseShareSettings = (raw: string | null): ShareSettings =>
   parseSettings(DEFAULT_SHARE, raw, {
-    preset: oneOf<ShareSettings['preset']>('detail', 'motion', 'custom'),
     frameRate: oneOf<FrameRate>(15, 30, 60),
     maxHeight: oneOf<MaxHeight>(0, 1080, 720),
     degradation: oneOf<Degradation>('balanced', 'maintain-framerate', 'maintain-resolution'),

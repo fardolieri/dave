@@ -52,12 +52,12 @@ describe('turn helpers', () => {
 describe('share bandwidth rule', () => {
   it('splits the budget with a ceiling and a floor', async () => {
     const { perViewerBitrate } = await import('../src/core/mesh');
-    expect(perViewerBitrate(0)).toBe(2_500_000);
-    expect(perViewerBitrate(1)).toBe(2_500_000);
-    expect(perViewerBitrate(3)).toBe(2_500_000); // 8/3 Mbps capped
-    expect(perViewerBitrate(4)).toBe(2_000_000);
-    expect(perViewerBitrate(7)).toBe(1_142_857);
-    expect(perViewerBitrate(20)).toBe(1_000_000);
+    expect(perViewerBitrate(0)).toBe(6_000_000);
+    expect(perViewerBitrate(1)).toBe(6_000_000);
+    expect(perViewerBitrate(3)).toBe(6_000_000); // 20/3 Mbps capped
+    expect(perViewerBitrate(4)).toBe(5_000_000);
+    expect(perViewerBitrate(7)).toBe(2_857_142);
+    expect(perViewerBitrate(40)).toBe(1_000_000);
   });
 });
 

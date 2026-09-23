@@ -9,8 +9,8 @@ import {
 } from '../core/mesh';
 import type { IceServer, Person, ServerMessage, SignalData } from '../core/protocol';
 import {
-  SMALL_SCREEN_QUERY, applyPreset, clampVolume, contentHint, parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes, shareEncoding, trackConstraints, withChange,
-  type AudioSettings, type PresetName, type ShareSettings, type ViewerSettings,
+  SMALL_SCREEN_QUERY, clampVolume, contentHint, parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes, shareEncoding, trackConstraints, withChange,
+  type AudioSettings, type ShareSettings, type ViewerSettings,
 } from '../core/settings';
 import type { createRoom } from './room';
 import { local } from './storage';
@@ -271,8 +271,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     }
     reapplyShareEncodings();
   }
-  const setPreset = (preset: PresetName) => setShareSettings(applyPreset(shareSettings(), preset));
-  const changeShare = (change: Partial<Omit<ShareSettings, 'preset'>>) => setShareSettings(withChange(shareSettings(), change));
+  const changeShare = (change: Partial<ShareSettings>) => setShareSettings(withChange(shareSettings(), change));
 
   /** Set how loud one participant is for me: their voice and share audio, nothing sent anywhere (ticket 08). */
   function setVolume(key: string, value: number): void {
@@ -1052,7 +1051,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   return {
     inCall, muted, views, speakingSelf, joinError, join, leave, setMuted, myJoinSeq: () => myJoinSeq,
     sharing, shareError, outgoing, startShare, stopShare, watch, watchOnly, shareStreamOf,
-    shareSettings, setPreset, changeShare, audioSettings, changeAudio, viewerSettings, setViewerSettings, devices, refreshDevices, canPickSpeaker,
+    shareSettings, changeShare, audioSettings, changeAudio, viewerSettings, setViewerSettings, devices, refreshDevices, canPickSpeaker,
     setVolume, canPickSpeakerDialog, pickSpeaker,
     diagnostics, reportBlackShare,
   };

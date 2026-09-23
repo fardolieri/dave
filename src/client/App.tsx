@@ -564,10 +564,6 @@ function SharePanel(props: { call: Call }) {
   const mbps = (bps: number) => (bps / 1_000_000).toFixed(1);
   return (
     <div class="panel">
-      <div class="row presets">
-        <button class={s().preset === 'detail' ? 'on' : ''} onClick={() => props.call.setPreset('detail')} title="Browsers and documents: native resolution, sharp text">Detail</button>
-        <button class={s().preset === 'motion' ? 'on' : ''} onClick={() => props.call.setPreset('motion')} title="Games and video: 60 fps, reduced resolution">Motion</button>
-      </div>
       <label>Frame rate <select class="picker" value={String(s().frameRate)} onChange={(e) => props.call.changeShare({ frameRate: Number(e.currentTarget.value) as FrameRate })}>
         <option value="15">15 fps</option><option value="30">30 fps</option><option value="60">60 fps</option></select></label>
       <label>Resolution <select class="picker" value={String(s().maxHeight)} onChange={(e) => props.call.changeShare({ maxHeight: Number(e.currentTarget.value) as MaxHeight })}>
