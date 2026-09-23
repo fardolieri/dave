@@ -17,9 +17,9 @@ export type ShareSettings = {
   ceilingBps: number;
 };
 
-// Browsers and documents out of the box: sharp text at native resolution, 30 fps. Game streams turn the
-// frame rate up and the resolution down themselves; there are no named profiles.
-export const DEFAULT_SHARE: ShareSettings = { frameRate: 30, maxHeight: 0, degradation: 'maintain-resolution', budgetBps: SHARE_BUDGET_BPS, ceilingBps: SHARE_CEILING_BPS };
+// Out of the box: native resolution at 60 fps, and under pressure the picture stays sharp rather than smooth.
+// There are no named profiles; frame rate and resolution are set directly.
+export const DEFAULT_SHARE: ShareSettings = { frameRate: 60, maxHeight: 0, degradation: 'maintain-resolution', budgetBps: SHARE_BUDGET_BPS, ceilingBps: SHARE_CEILING_BPS };
 
 export function withChange(s: ShareSettings, change: Partial<ShareSettings>): ShareSettings {
   return { ...s, ...change };

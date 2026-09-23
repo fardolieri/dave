@@ -103,7 +103,7 @@ From [Voice and share behaviour](issues/12-voice-and-share-behaviour.md) and [Mu
 
 ### 6.3 Share settings (tunable, first class)
 A gear next to Share screen opens share settings, applied live without renegotiation and remembered per browser:
-- Default: 30 fps, native resolution, `degradationPreference = 'maintain-resolution'`. `contentHint` follows the degradation preference: framerate-first is `'motion'`, otherwise `'detail'`. (Amended 2026-09-23: the Motion and Detail presets were removed; they confused more than they helped, and frame rate plus resolution cover the same ground.)
+- Default: 60 fps, native resolution, `degradationPreference = 'maintain-resolution'` (amended 2026-09-23 from 30 fps). `contentHint` follows the degradation preference: framerate-first is `'motion'`, otherwise `'detail'`. (Amended 2026-09-23: the Motion and Detail presets were removed; they confused more than they helped, and frame rate plus resolution cover the same ground.)
 - Settings: frame rate (15, 30, 60), resolution (native, 1080p, 720p), degradation preference (framerate, resolution, balanced), upload budget and per-viewer ceiling (§6.4). Frame rate and resolution apply with `applyConstraints` on the share track (verified live on Chromium and Firefox); encoding limits with `setParameters` per peer.
 - Viewer-side "low latency" toggle sets `jitterBufferTarget` on the receivers (Chrome 124, Firefox 115, Safari 27).
 
