@@ -163,6 +163,8 @@ Per connection, read `getStats` every 2 s. The selected candidate pair's type gi
 
 Stuck-connecting watchdog (2026-09-08): a connection still "connecting" after 15 s (offerer) or 20 s (answerer, staggered so both do not act at once) reports `peer_connecting_slow` with signaling, ICE and gathering state, description presence and candidate counts, then tears the connection down and offers again itself; perfect negotiation resolves a collision if both sides do. Delay doubles per attempt up to 60 s and resets on success. Root cause found on 2026-09-08: a ghost socket listed as visitor ahead of the live participant made the server reject offers to that person ("not in the call"), leaving the offerer in "connecting" until the ghost was swept or the page reloaded.
 
+Two amendments (2026-09-23, ticket 22, after a friend stayed at "connecting" for three attempts although ICE was up and Brave on the same network reached them): a rebuild after a stalled attempt is **relay-only** (`iceTransportPolicy: "relay"`) when a TURN server is configured, since the direct path ICE found was the one without encryption; the count of stalled attempts is per participant, cleared on success and when they leave the call. And an incoming offer whose DTLS fingerprints differ from the description we hold means the other side built a new connection (their watchdog, a reload), so the receiver **starts over** instead of renegotiating the old one; an ICE restart keeps the certificate and is still applied in place.
+
 ### 8.3 Object eviction and restart
 The room object may be evicted at any quiet moment. Everything is rebuilt from attached sockets and attachments on wake; there is nothing else to lose. Text typed while a client was disconnected is gone by design.
 

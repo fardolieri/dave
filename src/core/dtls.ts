@@ -26,6 +26,20 @@ export function extractDtlsFingerprints(sdp: string): string[] {
   return [...out].sort();
 }
 
+/**
+ * Does this offer come from a new RTCPeerConnection on the other side (ticket 22)? A browser generates one DTLS
+ * certificate per connection, so an offer whose fingerprints differ from the description we hold means the other
+ * side started over, and our connection to their old one is dead whatever its states say. An ICE restart changes
+ * the credentials but keeps the certificate, so it is not one. Without a held description there is nothing to compare.
+ */
+export function isFreshConnection(heldRemoteSdp: string | null | undefined, offerSdp: string): boolean {
+  if (!heldRemoteSdp) return false;
+  const held = extractDtlsFingerprints(heldRemoteSdp);
+  const offered = extractDtlsFingerprints(offerSdp);
+  if (held.length === 0 || offered.length === 0) return false;
+  return held.join('\n') !== offered.join('\n');
+}
+
 /** The bytes both sides sign and verify. Keys are base64url and fingerprints hex, so newlines are unambiguous separators. */
 export function dtlsBindingBytes(from: string, to: string, fingerprints: string[]): Uint8Array {
   return new TextEncoder().encode([DOMAIN, from, to, ...fingerprints].join('\n'));

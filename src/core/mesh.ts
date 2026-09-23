@@ -52,3 +52,12 @@ export const STUCK_MAX_MS = 60_000;
 export function stuckDelay(attempt: number, initiator: boolean): number {
   return Math.min(STUCK_MAX_MS, STUCK_CONNECTING_MS * 2 ** attempt) + (initiator ? 0 : STUCK_STAGGER_MS);
 }
+
+/**
+ * Which candidates a rebuilt connection may use (ticket 22). The first attempt tries everything. Once one attempt
+ * has stalled, the rebuild is relay-only if a TURN server is configured: the direct path that ICE found is the one
+ * that carried no encryption, so the retry takes the path that avoids it. Without TURN there is nothing to fall back to.
+ */
+export function transportPolicyFor(attempt: number, turnAvailable: boolean): 'all' | 'relay' {
+  return attempt >= 1 && turnAvailable ? 'relay' : 'all';
+}

@@ -1,8 +1,8 @@
 import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
 import { distinctFormats, type VideoFormat } from '../core/format';
-import { stuckDelay } from '../core/mesh';
+import { stuckDelay, transportPolicyFor } from '../core/mesh';
 import posthog from './posthog';
-import { signDescription, verifyDescription } from '../core/dtls';
+import { isFreshConnection, signDescription, verifyDescription } from '../core/dtls';
 import type { LocalIdentity } from './identity';
 import {
   ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
@@ -22,7 +22,7 @@ export type OutgoingShare = { kbps: number; formats: VideoFormat[]; viewers: num
 
 /** Snapshot for problem reports (ticket 12): states and counters, no names, no message texts. */
 export type PeerDiagnostics = {
-  fingerprint: string | null; polite: boolean; restarts: number; viewsMyShare: boolean; viewerScale: number;
+  fingerprint: string | null; polite: boolean; restarts: number; relayOnly: boolean; viewsMyShare: boolean; viewerScale: number;
   view: Pick<PeerView, 'conn' | 'watching' | 'shareLive' | 'shareKbps' | 'shareFormat' | 'serverLost' | 'volume'>;
   pc: { connection: RTCPeerConnectionState; ice: RTCIceConnectionState; signaling: RTCSignalingState; gathering: RTCIceGatheringState; transceivers: number };
   shareTrack: { readyState: string; muted: boolean } | null;
@@ -69,6 +69,10 @@ type Peer = {
   graceTimer?: ReturnType<typeof setTimeout>;
   /** Fires if the connection never leaves "connecting" (see connectWatchdog). */
   connectTimer?: ReturnType<typeof setTimeout>;
+  /** Built with iceTransportPolicy "relay": a rebuild after a stalled attempt (ticket 22). */
+  relayOnly: boolean;
+  /** Which RTCPeerConnection of this tab this is (dev hook). */
+  generation: number;
   view: PeerView;
   /** They asked to receive my share (they are a Viewer of it). */
   viewsMyShare: boolean;
@@ -138,10 +142,15 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   const smallScreen = () => typeof matchMedia !== 'undefined' && matchMedia(SMALL_SCREEN_QUERY).matches;
 
   const peers = new Map<string, Peer>();
+  /** Stalled attempts per participant since the last successful connection; drives the watchdog delay and the relay fallback. */
+  const stuckAttempts = new Map<string, number>();
   let localStream: MediaStream | null = null;
   let voiceTrack: MediaStreamTrack | null = null;
   let iceServers: IceServer[] = [];
   let iceIssuedAt = 0;
+  /** Counts RTCPeerConnections built in this tab; the dev hook shows it so a driver can tell a rebuild from a renegotiation. */
+  let generation = 0;
+  const hasTurn = () => iceServers.some((s) => [s.urls].flat().some((u) => String(u).startsWith('turn')));
   let myJoinSeq: number | null = null;
   let audioCtx: AudioContext | null = null;
   let localAnalyser: AnalyserNode | null = null;
@@ -326,14 +335,17 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   // ---- peers
   function createPeer(key: string, name: string, initiator: boolean): Peer {
-    const pc = new RTCPeerConnection({ iceServers });
+    // After a stalled attempt the rebuild goes relay-only (ticket 22): ICE had found a direct path that never carried
+    // encryption, so the retry avoids it. My relay candidates suffice; every pair then passes through the TURN server.
+    const relayOnly = transportPolicyFor(stuckAttempts.get(key) ?? 0, hasTurn()) === 'relay';
+    const pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: relayOnly ? 'relay' : 'all' });
     const audio = new Audio();
     audio.autoplay = true;
     const keepAlive = new Audio();
     keepAlive.autoplay = true;
     keepAlive.muted = true;
     const peer: Peer = {
-      key, name, pc, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, keepAlive, audioNodes: [], restarts: 0,
+      key, name, pc, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, keepAlive, audioNodes: [], restarts: 0, relayOnly, generation: ++generation,
       view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1 },
       viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
@@ -519,8 +531,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       }
     }
     let peer = peers.get(from);
-    if (peer && isOffer && (peer.view.serverLost || peer.pc.iceConnectionState === 'failed' || peer.pc.connectionState === 'closed')) {
-      // A fresh offer from a peer whose old connection is dead or who vanished and came back: start over.
+    if (peer && isOffer && (peer.view.serverLost || peer.pc.iceConnectionState === 'failed' || peer.pc.connectionState === 'closed'
+      || isFreshConnection(peer.pc.remoteDescription?.sdp, (data.description as RTCSessionDescriptionInit).sdp ?? ''))) {
+      // A fresh offer from a peer whose old connection is dead, who vanished and came back, or who built a new connection
+      // (their watchdog or a rejoin, told by a new DTLS certificate, ticket 22): start over. Applying it to the old
+      // connection would renegotiate a link the other side has already torn down.
       closePeer(from);
       peer = undefined;
     }
@@ -635,7 +650,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const track = peer.remoteShare.getVideoTracks()[0];
     const { conn, watching, shareLive, shareKbps, shareFormat, serverLost, volume } = peer.view;
     return {
-      fingerprint: untrack(room.people).find((p) => p.publicKey === peer.key)?.fingerprint ?? null, polite: peer.polite, restarts: peer.restarts, viewsMyShare: peer.viewsMyShare, viewerScale: peer.viewerScale,
+      fingerprint: untrack(room.people).find((p) => p.publicKey === peer.key)?.fingerprint ?? null, polite: peer.polite, restarts: peer.restarts, relayOnly: peer.relayOnly, viewsMyShare: peer.viewsMyShare, viewerScale: peer.viewerScale,
       view: { conn, watching, shareLive, shareKbps, shareFormat, serverLost, volume },
       pc: { connection: peer.pc.connectionState, ice: peer.pc.iceConnectionState, signaling: peer.pc.signalingState, gathering: peer.pc.iceGatheringState, transceivers: peer.pc.getTransceivers().length },
       shareTrack: track ? { readyState: track.readyState, muted: track.muted } : null,
@@ -650,7 +665,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       inCall: joined, muted: untrack(muted), joinSeq: myJoinSeq,
       sharing: shareVideo ? { ...shareVideo.getSettings(), readyState: shareVideo.readyState, contentHint: shareVideo.contentHint } : null,
       outgoing: untrack(outgoing), shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl },
-      ice: { servers: iceServers.length, turn: iceServers.some((s) => [s.urls].flat().some((u) => String(u).startsWith('turn'))), ageMinutes: iceIssuedAt ? Math.round((Date.now() - iceIssuedAt) / 60000) : null },
+      ice: { servers: iceServers.length, turn: hasTurn(), ageMinutes: iceIssuedAt ? Math.round((Date.now() - iceIssuedAt) / 60000) : null },
       peers: await Promise.all([...peers.values()].map(peerDiag)),
     };
   }
@@ -675,7 +690,6 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
    * with everything the browser knows, then torn down and offered again by whoever noticed: perfect
    * negotiation sorts out the collision if both do. This is what a page reload used to achieve by hand.
    */
-  const stuckAttempts = new Map<string, number>();
   function armConnectWatchdog(peer: Peer, initiator: boolean): void {
     const attempt = stuckAttempts.get(peer.key) ?? 0;
     peer.connectTimer = setTimeout(() => void connectWatchdog(peer, initiator, attempt), stuckDelay(attempt, initiator));
@@ -691,7 +705,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       });
     } catch { /* closed meanwhile */ }
     posthog.capture('peer_connecting_slow', {
-      attempt, initiator, polite: peer.polite, signaling: peer.pc.signalingState, ice: peer.pc.iceConnectionState, gathering: peer.pc.iceGatheringState,
+      attempt, initiator, polite: peer.polite, relay_only: peer.relayOnly, signaling: peer.pc.signalingState, ice: peer.pc.iceConnectionState, gathering: peer.pc.iceGatheringState,
       remote_description: peer.pc.remoteDescription !== null, local_description: peer.pc.localDescription !== null, peers: peers.size, ...counts,
     });
     if (!stillStuck()) return;
@@ -788,7 +802,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     sources.get(key)?.disconnect();
     sources.delete(key);
     peers.delete(key);
-    signalChains.delete(key);
+    // The signal chain stays: it is keyed by identity, and a restart from inside a handler (a fresh offer) must keep
+    // the candidates behind that offer queued until setRemoteDescription on the new connection has finished (ticket 22).
     lastLoud.delete(key);
     setShareStreams((m) => { const n = new Map(m); n.delete(key); return n; });
     publish();
@@ -818,6 +833,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       if (!peer.view.serverLost) {
         posthog.capture('peer_server_lost', { ice: peer.pc.iceConnectionState });
         const ice = peer.pc.iceConnectionState;
+        // The stalled-attempt count goes with them: a friend who comes back later gets a fresh first attempt on every path.
+        stuckAttempts.delete(peer.key);
         if (ice === 'failed' || ice === 'closed' || ice === 'new') { closePeer(peer.key); continue; } // nothing worth keeping
         setView(peer, { serverLost: true });
         peer.graceTimer = setTimeout(() => closePeer(peer.key), PEER_GRACE_MS);
@@ -856,7 +873,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       case 'call': pending.get('call')?.(m); return;
       case 'ice': pending.get('ice')?.(m); return;
       case 'signal': onSignal(m.from, m.data); return;
-      case 'left': watchIntent.delete(m.publicKey); closePeer(m.publicKey); return;
+      case 'left': watchIntent.delete(m.publicKey); stuckAttempts.delete(m.publicKey); closePeer(m.publicKey); return;
       case 'subscribe': {
         const peer = peers.get(m.from);
         if (!peer) { if (m.on) earlyViewers.set(m.from, m.scale ?? 1); else earlyViewers.delete(m.from); return; }
@@ -1001,6 +1018,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     stopShare(false); // the server clears the sharing flag on leave
     room.send({ t: 'leave' });
     for (const key of [...peers.keys()]) closePeer(key);
+    stuckAttempts.clear();
     watchIntent.clear(); // a rejoin starts with every tile at "click to watch", not with yesterday's subscriptions
     setInCall(false);
     myJoinSeq = null;
@@ -1032,7 +1050,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   const exposeDevHook = () => {
     if (!import.meta.env.DEV) return;
     (window as unknown as { __dave?: unknown }).__dave = {
-      peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, audioBytesIn: p.view.audioBytesIn, videoBytesIn: p.videoBytesIn, watching: p.view.watching, shareLive: p.view.shareLive, subscribedToMe: p.viewsMyShare, transceivers: p.pc.getTransceivers().length })),
+      peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, relayOnly: p.relayOnly, generation: p.generation, stuck: stuckAttempts.get(p.key) ?? 0, audioBytesIn: p.view.audioBytesIn, videoBytesIn: p.videoBytesIn, watching: p.view.watching, shareLive: p.view.shareLive, subscribedToMe: p.viewsMyShare, transceivers: p.pc.getTransceivers().length })),
       share: () => untrack(() => ({
         settings: shareSettings(),
         outgoing: outgoing(),
@@ -1042,6 +1060,15 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       audio: () => untrack(() => ({ settings: audioSettings(), track: voiceTrack?.getSettings() ?? null })),
       volumes: () => ({ master: untrack(audioSettings).masterVolume, peers: [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })) }),
       dropSocket: () => room.dropSocket(),
+      /** What the stuck-connecting watchdog does, on demand (ticket 22): tear the connection to `name` down and offer again from a fresh one; `stalled` attempts already counted make the rebuild relay-only. */
+      rebuild: (name: string, stalled = 0) => {
+        const peer = [...peers.values()].find((p) => p.name === name);
+        if (!peer) return 'no such peer';
+        closePeer(peer.key);
+        stuckAttempts.set(peer.key, stalled);
+        createPeer(peer.key, peer.name, true);
+        return `rebuilt ${name}, relayOnly=${peers.get(peer.key)?.relayOnly}`;
+      },
       diagnostics,
       state: () => ({ inCall: joined, joining, joinError: untrack(joinError), myJoinSeq, role: untrack(me)?.role ?? null, participants: untrack(room.people).filter((p) => p.role === 'participant').map((p) => `${p.name}#${p.joinSeq}`) }),
     };

@@ -332,6 +332,32 @@ try {
       await a.eval(`document.querySelector('button.join')?.click(); 'rejoin'`); await sleep(4000);
       console.log(`[${a.name}] volumes after reload and rejoin: ${JSON.stringify(await a.eval(`window.__dave?.volumes()`))} | row: ${await a.text('.prow button.vol')}`);
     }
+    if (process.env.REBUILD_CHECK && browsers[1]) {
+      // Ticket 22. First: a fresh connection from A must be followed by B (new certificate, so B starts over) and both badges
+      // return to a connected state. Then: a rebuild after a stalled attempt is relay-only, so both sides read "via relay".
+      const [a, b] = browsers;
+      const badgesOf = async (x) => (await x.eval(`[...document.querySelectorAll('.room.selected ul .conn')].map(c => c.textContent.trim())`)).join(', ');
+      const settle = async (label) => {
+        const t0 = Date.now();
+        while (Date.now() - t0 < 30000) {
+          await sleep(1000);
+          const ba = await badgesOf(a), bb = await badgesOf(b);
+          if (![ba, bb].some((x) => x.includes('connecting') || x.includes('reconnecting') || x.includes('unreachable') || x === '')) { console.log(`[${label}] settled after ${((Date.now() - t0) / 1000).toFixed(1)}s: ${a.name}=[${ba}] ${b.name}=[${bb}]`); return; }
+        }
+        console.log(`[${label}] NOT settled after 30s: ${a.name}=[${await badgesOf(a)}] ${b.name}=[${await badgesOf(b)}]`);
+      };
+      const genOf = (x) => x.eval(`window.__dave.peers().map(p => ({ name: p.name, conn: p.conn, generation: p.generation, relayOnly: p.relayOnly }))`);
+      console.log(`[${b.name}] peers before A's rebuild: ${JSON.stringify(await genOf(b))}`);
+      console.log(`[${a.name}] ${await a.eval(`window.__dave.rebuild(${JSON.stringify(b.name)})`)}`);
+      await settle('rebuild');
+      console.log(`[${b.name}] peers after A's rebuild (generation must have advanced: B started over on the new certificate): ${JSON.stringify(await genOf(b))}`);
+      console.log(`[${a.name}] ${await a.eval(`window.__dave.rebuild(${JSON.stringify(b.name)}, 1)`)}`);
+      await settle('relay fallback');
+      const before = await a.eval(`Object.fromEntries(window.__dave.peers().map(p => [p.name, p.audioBytesIn]))`);
+      await sleep(3000);
+      const after = await a.eval(`Object.fromEntries(window.__dave.peers().map(p => [p.name, p.audioBytesIn]))`);
+      console.log(`[${a.name}] audio bytes in over 3 s on the relayed link: ${JSON.stringify(before)} -> ${JSON.stringify(after)} | peers: ${JSON.stringify(await a.eval(`window.__dave.peers().map(p => ({ name: p.name, conn: p.conn, relayOnly: p.relayOnly, stuck: p.stuck }))`))}`);
+    }
     // Chatter while in the call: messages from both sides, interleaved.
     for (let i = 0; i < 3; i++) {
       for (const b of browsers) { await b.say(`${b.name} in-call message ${i}`); await sleep(250); }

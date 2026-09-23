@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { initiatesTo, isPolite, nextJoinSeq, stuckDelay } from '../src/core/mesh';
+import { initiatesTo, isPolite, nextJoinSeq, stuckDelay, transportPolicyFor } from '../src/core/mesh';
 import { STUN_ONLY, parseIceServers, turnCredentialRequest } from '../src/core/turn';
 import type { Person } from '../src/core/protocol';
 
@@ -68,5 +68,18 @@ describe('stuckDelay', () => {
     expect(stuckDelay(1, true)).toBe(30_000);
     expect(stuckDelay(5, true)).toBe(60_000);
     expect(stuckDelay(5, false)).toBe(65_000);
+  });
+});
+
+describe('transportPolicyFor', () => {
+  it('tries every path first, then relay only once an attempt has stalled and TURN exists', () => {
+    expect(transportPolicyFor(0, true)).toBe('all');
+    expect(transportPolicyFor(1, true)).toBe('relay');
+    expect(transportPolicyFor(3, true)).toBe('relay');
+  });
+
+  it('has nothing to fall back to without TURN', () => {
+    expect(transportPolicyFor(0, false)).toBe('all');
+    expect(transportPolicyFor(2, false)).toBe('all');
   });
 });

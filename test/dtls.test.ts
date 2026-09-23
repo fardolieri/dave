@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dtlsBindingBytes, extractDtlsFingerprints, signDescription, verifyDescription } from '../src/core/dtls';
+import { dtlsBindingBytes, extractDtlsFingerprints, isFreshConnection, signDescription, verifyDescription } from '../src/core/dtls';
 import { exportPublicKey, generateIdentityKeyPair, toBase64Url } from '../src/core/identity';
 
 const FP_A = '7B:8B:F0:65:5F:78:E2:51:3B:AC:6F:F3:3F:46:1B:35:DC:B8:5F:64:1A:24:C2:43:F0:A1:58:D0:A1:2C:19:08';
@@ -32,6 +32,21 @@ describe('DTLS fingerprint extraction', () => {
   it('binds the fingerprints to both identities with a domain tag', () => {
     const bytes = new TextDecoder().decode(dtlsBindingBytes('me', 'you', ['sha-256 AA:BB']));
     expect(bytes).toBe('dave dtls binding v1\nme\nyou\nsha-256 AA:BB');
+  });
+});
+
+describe('fresh connection detection', () => {
+  it('an offer with another certificate is a new connection; the same certificate is a renegotiation', () => {
+    expect(isFreshConnection(sdp(FP_A), sdp(FP_B))).toBe(true);
+    // An ICE restart changes credentials, not the certificate.
+    expect(isFreshConnection(sdp(FP_A), sdp(FP_A).replace('a=ice-ufrag:abcd', 'a=ice-ufrag:wxyz'))).toBe(false);
+  });
+
+  it('has nothing to compare without a held description or without fingerprints', () => {
+    expect(isFreshConnection(null, sdp(FP_B))).toBe(false);
+    expect(isFreshConnection(undefined, sdp(FP_B))).toBe(false);
+    expect(isFreshConnection('v=0', sdp(FP_B))).toBe(false);
+    expect(isFreshConnection(sdp(FP_A), 'v=0')).toBe(false);
   });
 });
 
