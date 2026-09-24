@@ -1,6 +1,6 @@
 # 25 · One tab at a time, the first one keeps working
 
-Status: built 2026-09-24 on `build/25-one-tab-at-a-time`, not yet shipped
+Status: shipped 2026-09-24 to nightly and prod (9187203, review fix 3e34991)
 Asked for 2026-09-24: "when opening dave in a second tab the first one becomes stale. I want to change that behaviour.
 When the app is already open i want newer tabs to display that information (already open) and keep the old tab
 working." Approach from another session (Web Lock in the browser, server unchanged, take-over button kept, one lock for

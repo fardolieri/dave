@@ -1,6 +1,6 @@
 # 24 · Rejoin after a reload
 
-Status: built 2026-09-24 on `build/24-rejoin-after-reload`, not yet shipped
+Status: shipped 2026-09-24 to nightly and prod (a485fb6)
 Asked for 2026-09-24: "When in a call and clicking the refresh button in the browser I want to be automatically be
 reconnected to the channel I've been in before." Then: "its fine if the own screen share dies in the process. but it
 would be nice if watched streams would automatically continue".
