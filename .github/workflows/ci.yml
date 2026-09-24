@@ -1,8 +1,8 @@
 name: ci
-# Typecheck, tests and a build for every branch and pull request. master and prod get the same checks from deploy.yml
-# right before deploying, so they are skipped here. Runs on GitHub's machines so a small dev box never has to.
+# Typecheck, tests and a build for every pushed branch, which covers pull requests from this repository without a second
+# run per push. master and prod get the same checks from deploy.yml right before deploying, so they are skipped here.
+# Runs on GitHub's machines so a small dev box never has to.
 on:
-  pull_request:
   push:
     branches-ignore: [master, prod]
   workflow_dispatch:

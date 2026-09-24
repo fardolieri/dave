@@ -7,6 +7,9 @@ on:
     workflows: [deploy]
     types: [completed]
     branches: [master]
+  # A pull request that touches the scripts or this workflow runs them against nightly, so script changes prove themselves.
+  pull_request:
+    paths: ['.github/workflows/browser.yml', 'scripts/**']
   workflow_dispatch:
     inputs:
       url:
