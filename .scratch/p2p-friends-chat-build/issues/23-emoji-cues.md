@@ -136,3 +136,11 @@ stay as is."
   carries it, `sound.ts` puts a 5 Hz LFO of that depth on the last note. Ring-out 0.6 of what it was. `STEP_SECONDS`
   0.06. Distinct cues back up to 759 of 1082 (test: seven in ten).
 - Not checked by script: the picker's hover and focus previews, and how the cues sound on real speakers.
+
+2026-09-24, after the release, from the Android PWA: "the cues sound weird on mobile, it kind of stutters", and on
+asking: "Only the own join and leave. Friends joining and leaving sounds good." Diagnosis: opening the microphone on
+join and closing it on leave makes the phone switch its audio route (media to call mode, and to the call profile on
+Bluetooth); the own cue plays at that very moment and straddles the switch, while friends' cues play on a settled
+route. Offered a delayed own cue, a leave cue before the microphone closes, or waiting for the microphone track to
+unmute; Daniel: "i am not a fan of any of these options. we will just deal with the choppy sound for now". Left as is.
+
