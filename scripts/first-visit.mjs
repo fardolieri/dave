@@ -8,11 +8,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const CHROME = process.env.CHROME ?? `${process.env.HOME}/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome`;
 const [url, secret, name] = process.argv.slice(2);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms * (Number(process.env.SLOW) || 1))); // SLOW=4 stretches every wait, for a 1 GB VM
 const dir = mkdtempSync(join(tmpdir(), 'dave-first-'));
 const port = Number(process.env.PORT ?? 9890);
 const proc = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-extensions', '--no-first-run', `--user-data-dir=${dir}`, `--remote-debugging-port=${port}`, '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', 'about:blank'], { stdio: 'ignore', detached: true });
-let tab; for (let i = 0; i < 50 && !tab; i++) { try { const t = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(); tab = t.find((x) => x.type === 'page'); } catch {} await sleep(100); }
+let tab; for (let i = 0; i < 1200 && !tab; i++) { try { const t = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(); tab = t.find((x) => x.type === 'page'); } catch {} await sleep(100); }
 const ws = new WebSocket(tab.webSocketDebuggerUrl); await new Promise((r) => (ws.onopen = r));
 let id = 0; const pending = new Map(); const problems = [];
 ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
@@ -31,22 +31,22 @@ try {
   await evaluate(`document.querySelector('input')?.focus(); 'focused'`); await type(name); await sleep(200); await enter(); await sleep(2500);
   console.log('step 2 (after name):', await evaluate('document.body.innerText.replace(/\\s+/g," ").slice(0,120)'));
   for (const text of ['first message', 'second message', 'third message']) {
-    await evaluate(`document.querySelector('.chat-input input')?.focus(); 'focused'`); await type(text); await sleep(100); await enter(); await sleep(900);
-    console.log(`after "${text}":`, await evaluate(`document.querySelectorAll('.chat-log .msg').length + ' lines; input="' + (document.querySelector('.chat-input input')?.value ?? '?') + '"'`));
+    await evaluate(`document.querySelector('.chat-input > input')?.focus(); 'focused'`); await type(text); await sleep(100); await enter(); await sleep(900);
+    console.log(`after "${text}":`, await evaluate(`document.querySelectorAll('.chat-log .msg').length + ' lines; input="' + (document.querySelector('.chat-input > input')?.value ?? '?') + '"'`));
   }
   // Rapid fire: three sends with no wait between them.
-  for (const text of ['rapid 1', 'rapid 2', 'rapid 3']) { await evaluate(`document.querySelector('.chat-input input')?.focus(); 'f'`); await type(text); await enter(); }
+  for (const text of ['rapid 1', 'rapid 2', 'rapid 3']) { await evaluate(`document.querySelector('.chat-input > input')?.focus(); 'f'`); await type(text); await enter(); }
   await sleep(1200);
   console.log('after rapid fire:', await evaluate(`document.querySelectorAll('.chat-log .msg').length + ' lines'`));
   // Second tab in the same browser: same identity key attached twice.
   const t2 = await cdp('Target.createTarget', { url });
   await sleep(2500);
   console.log('second tab opened; first tab online list:', await evaluate(`[...document.querySelectorAll('.side > .plist li')].map(l => l.innerText.replace(/\s+/g,' ')).join(' | ')`));
-  for (const text of ['after second tab 1', 'after second tab 2']) { await evaluate(`document.querySelector('.chat-input input')?.focus(); 'f'`); await type(text); await enter(); await sleep(800); }
+  for (const text of ['after second tab 1', 'after second tab 2']) { await evaluate(`document.querySelector('.chat-input > input')?.focus(); 'f'`); await type(text); await enter(); await sleep(800); }
   console.log('after second tab messages:', await evaluate(`document.querySelectorAll('.chat-log .msg').length + ' lines'`));
   await cdp('Target.closeTarget', { targetId: t2.result.targetId });
   await sleep(1000);
-  for (const text of ['after closing tab']) { await evaluate(`document.querySelector('.chat-input input')?.focus(); 'f'`); await type(text); await enter(); await sleep(800); }
+  for (const text of ['after closing tab']) { await evaluate(`document.querySelector('.chat-input > input')?.focus(); 'f'`); await type(text); await enter(); await sleep(800); }
   console.log('after closing second tab:', await evaluate(`document.querySelectorAll('.chat-log .msg').length + ' lines'`));
 } finally {
   for (const p of problems) console.log(p);

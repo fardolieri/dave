@@ -1,0 +1,25 @@
+name: ci
+# Typecheck, tests and a build for every branch and pull request. master and prod get the same checks from deploy.yml
+# right before deploying, so they are skipped here. Runs on GitHub's machines so a small dev box never has to.
+on:
+  pull_request:
+  push:
+    branches-ignore: [master, prod]
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build

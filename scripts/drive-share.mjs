@@ -13,14 +13,14 @@ import { join } from 'node:path';
 const CHROME = process.env.CHROME ?? `${process.env.HOME}/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome`;
 const [url, secret] = process.argv.slice(2);
 if (!url || !secret) { console.error('usage: drive-share.mjs <url> <secret>'); process.exit(2); }
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms * (Number(process.env.SLOW) || 1))); // SLOW=4 stretches every wait, for a 1 GB VM
 
 class Browser {
   constructor(name, port) { this.name = name; this.port = port; this.dir = mkdtempSync(join(tmpdir(), `dave-${name}-`)); }
   async launch() {
     this.proc = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-extensions', '--window-size=1200,800', `--user-data-dir=${this.dir}`, `--remote-debugging-port=${this.port}`,
       '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required', 'about:blank'], { stdio: 'ignore', detached: true });
-    for (let i = 0; i < 200 && !this.tab; i++) {
+    for (let i = 0; i < 1200 && !this.tab; i++) {
       try { const r = await fetch(`http://127.0.0.1:${this.port}/json/list`); this.tab = (await r.json()).find((t) => t.type === 'page' && !t.url.startsWith('chrome-extension:')); } catch {}
       if (!this.tab) await sleep(100);
     }

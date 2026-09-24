@@ -28,7 +28,7 @@ const hold = holdArg ? Number(holdArg.slice(7)) : 0;
 const [url, secret, ...names] = args.filter((a) => !a.startsWith('--'));
 if (!url || !secret || names.length === 0) { console.error('usage: drive.mjs <url> <secret> <name> [name2 ...]'); process.exit(2); }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms * (Number(process.env.SLOW) || 1))); // SLOW=4 stretches every wait, for a 1 GB VM
 
 class Browser {
   constructor(name, port, size = '1200,800') { this.name = name; this.port = port; this.size = size; this.dir = mkdtempSync(join(process.env.PROFILE_DIR ?? tmpdir(), `dave-${name}-`)); }
@@ -39,11 +39,11 @@ class Browser {
     if (blocked) { mkdirSync(join(this.dir, 'Default'), { recursive: true }); writeFileSync(join(this.dir, 'Default', 'Preferences'), JSON.stringify({ profile: { default_content_setting_values: { autoplay: 2 } } })); }
     this.proc = spawn(cmd, [...pre, '--headless=new', '--disable-gpu', '--no-sandbox', ...extra, `--window-size=${this.size}`, `--user-data-dir=${this.dir}`, `--remote-debugging-port=${this.port}`,
       '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', ...(blocked ? [] : ['--autoplay-policy=no-user-gesture-required']), 'about:blank'], { stdio: 'ignore', detached: true });
-    for (let i = 0; i < 200 && !this.tab; i++) { // a Flatpak browser needs a few seconds to start
+    for (let i = 0; i < 1200 && !this.tab; i++) { // a Flatpak browser needs a few seconds to start, a 1 GB VM half a minute
       try { const r = await fetch(`http://127.0.0.1:${this.port}/json/list`); this.tab = (await r.json()).find((t) => t.type === 'page' && !t.url.startsWith('chrome-extension:')); } catch {} // Chrome lists its own extension pages first
       if (!this.tab) await sleep(100);
     }
-    if (!this.tab) throw new Error(`${this.name}: browser did not open a debugging port within 20 s`);
+    if (!this.tab) throw new Error(`${this.name}: browser did not open a debugging port within 120 s`);
     this.ws = new WebSocket(this.tab.webSocketDebuggerUrl);
     await new Promise((r) => (this.ws.onopen = r));
     this.id = 0; this.pending = new Map();
