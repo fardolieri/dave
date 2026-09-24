@@ -1,6 +1,6 @@
 # 23 · Join and leave cues from the profile picture
 
-Status: built 2026-09-24, knobs settled after 274 blind picks; on build/23-emoji-cues, not merged
+Status: shipped 2026-09-24 to nightly and prod (56d0dd0, one squashed commit)
 Asked for 2026-09-24: "I want to be able to tell who joins and leaves the channel without looking. I want the audio cue
 to be enough to know who it was." Knobs were discussed and dropped: "I want to keep it simple and not overloaded...
 there are enough emojis to pick from. If one doesn't sound good for you just pick another one." Overlapping cues are
