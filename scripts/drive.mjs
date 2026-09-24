@@ -446,9 +446,10 @@ try {
     console.log(`[${a.name} tab 1] after its own reload: notice ${await a.text('main.notice h2') || '(none)'} | in call: ${await a.eval(`!!document.querySelector('button.leave')`)}`);
     console.log(`[${a.name} tab 2] after tab 1's reload: notice ${await tab2.text('main.notice h2') || '(none)'}`);
     console.log(`[${b.name}] sees ${a.name} ${await count()} time(s) | call: ${await inCallRow()}`);
-    // An invite taken in the notice tab lands in the running tab: the notice tab writes the room list, as enter() does.
-    await tab2.eval(`(() => { const rooms = JSON.parse(localStorage.getItem('dave.rooms')); rooms.push({ secret: 'tabs-extra-' + Date.now(), name: 'Extra', addedAt: Date.now() }); localStorage.setItem('dave.rooms', JSON.stringify(rooms)); return 'added'; })()`); await sleep(1500);
-    console.log(`[${a.name} tab 1] rooms after tab 2 added one: ${await a.text('.room-title')} | still in call: ${await a.eval(`!!document.querySelector('button.leave')`)}`);
+    // An invite taken in the notice tab lands in the running tab: the notice tab writes the room list, as enter() does. One
+    // link renames the room the call is in (review finding): the name changes, the call stays.
+    await tab2.eval(`(() => { const rooms = JSON.parse(localStorage.getItem('dave.rooms')); rooms.push({ secret: 'tabs-extra-' + Date.now(), name: 'Extra', addedAt: Date.now() }); rooms[0].name = 'Drive renamed'; localStorage.setItem('dave.rooms', JSON.stringify(rooms)); return 'added'; })()`); await sleep(1500);
+    console.log(`[${a.name} tab 1] rooms after tab 2 added one and renamed the first: ${await a.text('.room-title')} | still in call: ${await a.eval(`!!document.querySelector('button.leave')`)}`);
     await tab2.eval(`document.querySelector('main.notice button')?.click(); 'take over'`); await sleep(3500);
     console.log(`[${a.name} tab 2] after its take-over: notice ${await tab2.text('main.notice h2') || '(none)'} | in call: ${await tab2.eval(`!!document.querySelector('button.leave')`)}`);
     console.log(`[${a.name} tab 1] after tab 2 took over: notice ${await a.text('main.notice h2') || '(none)'} | marker: ${await a.eval(`localStorage.getItem('dave.rejoin')`)}`);
@@ -458,6 +459,10 @@ try {
     await tab2.shut(); await sleep(4000);
     console.log(`[${a.name} tab 1] after tab 2 (in the call) closed: notice ${await a.text('main.notice h2') || '(none)'} | app: ${await a.eval(`!!document.querySelector('.side')`)} | in call (must be false): ${await a.eval(`!!document.querySelector('button.leave')`)}`);
     console.log(`[${b.name}] sees ${a.name} ${await count()} time(s) | call: ${await inCallRow()}`);
+    // Forgetting a room: its link goes, the other room keeps its socket (rooms are keyed by secret since the review fix).
+    await a.eval(`window.confirm = () => true; [...document.querySelectorAll('.room-name')].find(b => b.textContent.includes('Extra'))?.click(); 'select'`); await sleep(500);
+    await a.eval(`[...document.querySelectorAll('button.link')].find(b => b.textContent.startsWith('Leave Extra'))?.click(); 'forget'`); await sleep(1500);
+    console.log(`[${a.name} tab 1] after leaving Extra: rooms ${await a.text('.room-title')} | Join enabled: ${await a.eval(`!document.querySelector('button.join')?.disabled`)} | banner: ${await a.text('.banner') || '(none)'} | warnings: ${JSON.stringify([...a.warnings.keys()].filter(k => k.includes('EXCEPTION')))}`);
   }
   if (process.env.HISTORY_CHECK && browsers[1]) {
     const [a, b] = browsers;

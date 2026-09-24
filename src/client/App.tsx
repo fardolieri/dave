@@ -52,10 +52,10 @@ export default function App() {
     if (link && list) void enter(list, link, 'opened').then(setRooms);
   });
   // What another tab of this browser writes: the tab on the notice screen still takes invite links, and the tab that
-  // runs the app shows the room at once. Rooms already on screen keep their objects, so their sockets stay up.
+  // runs the app shows the room at once.
   window.addEventListener('storage', (e) => {
     if (e.key === 'dave.rooms') {
-      void loadRooms().then((list) => setRooms((prev) => list.map((r) => prev?.find((p) => p.secret === r.secret && p.name === r.name) ?? r)));
+      void loadRooms().then(setRooms); // rooms already here keep their sockets: the workspace keys them by secret
     }
     if (e.key === 'dave.room' && e.newValue) setSelected(e.newValue);
     if (e.key === 'dave.name' && e.newValue) setNameSignal(e.newValue);
@@ -209,12 +209,16 @@ function Workspace(props: WorkspaceProps) {
   const identity = untrack(() => props.identity);
   const me = identity.publicKey;
   posthog.identify(me, { fingerprint: identity.fingerprint, ...(isTestAccount ? { $internal_or_test_user: true } : {}) });
-  const links = mapArray(() => props.rooms, (saved): Link => {
+  // Keyed by secret, not by the saved object: an invite link that renames a room already here (in this tab, or in a
+  // waiting one, ticket 25) replaces the object, and must not rebuild the room and drop its call. The name is read live.
+  const links = mapArray(() => props.rooms.map((r) => r.secret), (secret): Link => {
+    let last = untrack(() => props.rooms.find((r) => r.secret === secret)!);
     // A deliberate one-time snapshot of name and picture: the socket is created once; changes go through `rename` and `setPicture`.
-    const room = createRoom({ identity, roomId: saved.id, authKey: saved.authKey, name: untrack(() => props.name), picture: getPicture() });
+    const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, name: untrack(() => props.name), picture: getPicture() });
     const call = createCall(room, identity, { mayRejoin: untrack(() => props.mayRejoin) });
     posthog.capture('room_entered');
-    return { saved, room, call };
+    // The latest saved entry; the last one seen while the room is being forgotten and its link disposed.
+    return { get saved() { return (last = props.rooms.find((r) => r.secret === secret) ?? last); }, room, call };
   });
   createAttention(links, me);
   onCleanup(props.onStepBack(() => untrack(active)?.call.leave()));

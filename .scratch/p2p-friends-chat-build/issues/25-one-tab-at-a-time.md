@@ -21,7 +21,8 @@ the whole app); then "I want you to do all of it".
   - No Web Locks: behaves as before; the server's 4004 rule and the "open in another tab" banner stay as the backstop.
 - `App.tsx`: the workspace renders only while the lock is held; the notice otherwise. `storage` events carry rooms,
   the selected room and the name from the waiting tab, so an invite link opened in a new tab lands in the running one.
-  Room objects already on screen are kept, so their sockets stay up.
+  The workspace keys its rooms by secret, so a link that renames a room already here (found in review: the rename
+  made a new object, which rebuilt the room and dropped its call, in the same tab too) only changes the name.
 - `call.ts`: `createCall` takes `mayRejoin`; the Rejoin marker is ignored without it.
 - PostHog: `tab_waiting`, `tab_taken_over`.
 - Spec §4 (one socket per identity), amended.
