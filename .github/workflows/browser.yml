@@ -32,6 +32,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+          package-manager-cache: false # nothing is installed; without this the action looks for pnpm and fails
       - run: google-chrome --version
       # The run id keeps each run in rooms of its own.
       - run: scripts/ci-browser.sh "$URL" "ci-${{ github.run_id }}" browser-out
