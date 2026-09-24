@@ -48,6 +48,8 @@ button.room-name:focus-visible { outline: 2px solid var(--acc); outline-offset: 
 .room.frozen .plist, .room.frozen .actions { opacity: .45; pointer-events: none; transition: opacity .2s; }
 .panel.invite input { width: 100%; font-size: 12px; font-family: monospace; }
 .panel.invite .hint { margin: 0; }
+/* Scanners want dark modules on light ground with a quiet zone, whatever the theme; the viewBox carries a 4-module margin. */
+.panel.invite .qr { display: block; width: 100%; max-width: 220px; margin: 0 auto; aspect-ratio: 1; background: #fff; border-radius: 6px; fill: #000; }
 
 .plist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .plist li { display: flex; align-items: center; gap: 8px; }

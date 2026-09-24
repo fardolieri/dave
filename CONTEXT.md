@@ -61,7 +61,7 @@ The name this browser shows for a friend's identity instead of their self-declar
 _Avoid_: Alias, rename, pet name, contact name
 
 **Invite link**:
-The URL a friend receives to enter a room. Carries the shared secret and the room's name in its fragment, which never reaches the server. Opening or pasting one adds the room to the browser's list.
+The URL a friend receives to enter a room. Carries the shared secret and the room's name in its fragment, which never reaches the server. Opening or pasting one adds the room to the browser's list. The invite panel shows it as text and as a QR code for a phone to scan.
 _Avoid_: Join link, room URL
 
 **Unread**:

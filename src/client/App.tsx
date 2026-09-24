@@ -5,6 +5,7 @@ import { loadIdentity, type LocalIdentity } from './identity';
 import { getName, getPicture, inviteLinkFor, setName, setPicture, takeInviteLink } from './invite';
 import { addRoom, forgetRoom, getSelectedRoom, loadRooms, setSelectedRoom, type SavedRoom } from './rooms';
 import { newRoomSecret, normaliseRoomName, parseInviteText, type InviteLink } from '../core/rooms';
+import { encodeQr, qrPath } from '../core/qr';
 import { createRoom, type ChatLine, type ServerStatus } from './room';
 import { createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
 import { createAttention, type RoomLink } from './attention';
@@ -408,16 +409,25 @@ function CallControls(props: { call: Call; panel: 'audio' | 'share' | null; onPa
   );
 }
 
-/** The invite link of a room, ready to copy. The link is the whole secret: whoever has it is in. */
+/**
+ * The invite link of a room, ready to copy, and as a QR code for a phone in the same room to scan. The link
+ * is the whole secret: whoever has it is in, so the code is as private as the screen it is on.
+ */
 function InvitePanel(props: { link: string; name: string }) {
   let input: HTMLInputElement | undefined;
   const [state, setState] = createSignal<'idle' | 'copied' | 'failed'>('idle');
   const copy = async () => {
     try { await navigator.clipboard.writeText(props.link); setState('copied'); posthog.capture('invite_link_copied'); } catch { input?.select(); setState('failed'); }
   };
+  const qr = createMemo(() => encodeQr(props.link));
   return (
     <div class="panel invite">
       <p class="hint">Anyone with this link can enter {props.name}. Send it to friends only.</p>
+      <Show when={qr()}>{(code) => (
+        <svg class="qr" viewBox={`0 0 ${code().size + 8} ${code().size + 8}`} shape-rendering="crispEdges" role="img" aria-label={`QR code of the invite link to ${props.name}`}>
+          <path d={qrPath(code())} />
+        </svg>
+      )}</Show>
       <input ref={input} readonly value={props.link} onFocus={(e) => e.currentTarget.select()} aria-label="Invite link" />
       <button class="on" onClick={() => void copy()}>{state() === 'copied' ? 'Copied' : 'Copy link'}</button>
       <Show when={state() === 'failed'}><div class="warn">Could not access the clipboard. The link is selected above: copy it yourself.</div></Show>
