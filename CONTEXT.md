@@ -20,6 +20,10 @@ _Avoid_: Verifier (in UI copy; fine in code), password hash
 The live voice and screen session in the room. Exists while at least one participant is in it.
 _Avoid_: Voice channel, session, meeting
 
+**Rejoin**:
+Re-entering the Call without a click because this browser was in it moments ago and the page has since reloaded, whatever caused the reload. Shares you were watching come back with it; your own share does not.
+_Avoid_: Reconnect (reserved for the server socket), resume, restore, auto-join
+
 **Participant**:
 A friend currently in the call.
 _Avoid_: Member, peer (reserve "peer" for the transport layer), user

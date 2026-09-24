@@ -392,6 +392,9 @@ function CallControls(props: { call: Call; panel: 'audio' | 'share' | null; onPa
   const toggle = (p: 'audio' | 'share') => props.onPanel(props.panel === p ? null : p);
   return (
     <>
+      <Show when={props.call.audioBlocked()}>
+        <button class="unblock" title="The browser held back the call's sound until you click" onClick={props.call.unblockAudio}>Click to hear the call</button>
+      </Show>
       <div class="row">
         <button class={props.call.muted() ? 'on' : ''} onClick={() => props.call.setMuted(!props.call.muted())}>{props.call.muted() ? 'Unmute' : 'Mute'}</button>
         <button class={`gear ${props.panel === 'audio' ? 'on' : ''}`} title="Audio settings" onClick={() => { toggle('audio'); void props.call.refreshDevices(); }}>⚙</button>

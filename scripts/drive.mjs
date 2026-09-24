@@ -14,6 +14,7 @@ import { join } from 'node:path';
 // its own /tmp, so set PROFILE_DIR to a short path its --filesystem flag grants (Chromium itself dies on a long TMPDIR, the
 // sockets it puts there have a 108-byte path limit). AUTOPLAY_BLOCK=<name,name>: those profiles start
 // with Brave's/Chrome's autoplay site setting on Block, the setup behind the black share tiles friends on Brave reported.
+// DEFAULT_AUTOPLAY=1: no profile gets the autoplay-without-gesture flag, so a reload faces Chrome's real policy (REJOIN_CHECK).
 const CHROME = process.env.CHROME ?? `${process.env.HOME}/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome`;
 const command = (s) => { const [cmd, ...pre] = s.split(' ').filter(Boolean); return { cmd, pre }; };
 const autoplayBlocked = new Set((process.env.AUTOPLAY_BLOCK ?? '').split(',').filter(Boolean));
@@ -38,7 +39,7 @@ class Browser {
     const blocked = autoplayBlocked.has(this.name);
     if (blocked) { mkdirSync(join(this.dir, 'Default'), { recursive: true }); writeFileSync(join(this.dir, 'Default', 'Preferences'), JSON.stringify({ profile: { default_content_setting_values: { autoplay: 2 } } })); }
     this.proc = spawn(cmd, [...pre, '--headless=new', '--disable-gpu', '--no-sandbox', ...extra, `--window-size=${this.size}`, `--user-data-dir=${this.dir}`, `--remote-debugging-port=${this.port}`,
-      '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', ...(blocked ? [] : ['--autoplay-policy=no-user-gesture-required']), 'about:blank'], { stdio: 'ignore', detached: true });
+      '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', ...(blocked || process.env.DEFAULT_AUTOPLAY ? [] : ['--autoplay-policy=no-user-gesture-required']), 'about:blank'], { stdio: 'ignore', detached: true });
     for (let i = 0; i < 1200 && !this.tab; i++) { // a Flatpak browser needs a few seconds to start, a 1 GB VM half a minute
       try { const r = await fetch(`http://127.0.0.1:${this.port}/json/list`); this.tab = (await r.json()).find((t) => t.type === 'page' && !t.url.startsWith('chrome-extension:')); } catch {} // Chrome lists its own extension pages first
       if (!this.tab) await sleep(100);
@@ -349,6 +350,29 @@ try {
       await a.goto(url); await sleep(1500);
       await a.eval(`document.querySelector('button.join')?.click(); 'rejoin'`); await sleep(4000);
       console.log(`[${a.name}] volumes after reload and rejoin: ${JSON.stringify(await a.eval(`window.__dave?.volumes()`))} | row: ${await a.text('.prow button.vol')}`);
+    }
+    if (process.env.REJOIN_CHECK && browsers[1]) {
+      // Ticket 24. A watches B's share; A reloads and must come back into the call with no click, the share playing again, and
+      // audio running (under Chrome's real autoplay policy with DEFAULT_AUTOPLAY=1). Then B, the sharer, reloads: B is back, the
+      // share is gone. Then A leaves and reloads: A stays a visitor.
+      const [a, b] = browsers;
+      const reload = async (x) => { await x.cdp('Page.reload', { ignoreCache: false }); await sleep(800); };
+      const state = (x, who) => x.eval(`(() => { const p = window.__dave?.peers().find(p => p.name === ${JSON.stringify(who)}); return { inCall: !!document.querySelector('button.leave'), watching: p?.watching ?? null, shareLive: p?.shareLive ?? null, videoBytesIn: p?.videoBytesIn ?? null, conn: p ? p.ice : null, playback: window.__dave?.playback?.() ?? null, unblock: !!document.querySelector('button.unblock'), videoPaused: document.querySelector('.share:not(.share-own) video')?.paused ?? null, frames: document.querySelector('.share:not(.share-own) video')?.dataset.frames ?? null, tiles: [...document.querySelectorAll('.share')].map(t => t.innerText.replace(/\\s+/g, ' ').trim()).join(' | ') }; })()`);
+      await b.eval(`[...document.querySelectorAll('.actions button')].find(x => x.textContent === 'Share screen')?.click(); 'share'`); await sleep(2500);
+      await a.gesture(`[...document.querySelectorAll('.share')].find(t => t.textContent.includes(${JSON.stringify(b.name)}))?.click(); 'watch'`); await sleep(4000);
+      console.log(`[${a.name}] before reload: ${JSON.stringify(await state(a, b.name))} | marker: ${await a.eval(`localStorage.getItem('dave.rejoin')`)}`);
+      await reload(a);
+      for (const t of [2, 5, 9]) { await sleep(t === 2 ? 1200 : (t === 5 ? 3000 : 4000)); console.log(`[${a.name}] t+${t}s after reload: ${JSON.stringify(await state(a, b.name))}`); }
+      const v1 = (await state(a, b.name)).videoBytesIn; await sleep(2000); const v2 = (await state(a, b.name)).videoBytesIn;
+      console.log(`[${a.name}] share bytes over 2 s after rejoin: ${v1} -> ${v2} (must grow) | ${b.name} sees: ${await b.text('.room.selected ul li')}`);
+      await reload(b); await sleep(6000);
+      console.log(`[${b.name}] after the sharer's reload: inCall ${await b.eval(`!!document.querySelector('button.leave')`)} | own actions: ${await b.text('.actions button')}`);
+      console.log(`[${a.name}] after the sharer's reload: ${JSON.stringify(await state(a, b.name))}`);
+      await a.eval(`document.querySelector('button.leave')?.click(); 'left'`); await sleep(800);
+      console.log(`[${a.name}] marker after Leave: ${await a.eval(`localStorage.getItem('dave.rejoin')`)}`);
+      await reload(a); await sleep(4000);
+      console.log(`[${a.name}] after Leave and reload (must be a visitor): inCall ${await a.eval(`!!document.querySelector('button.leave')`)} | ${b.name} sees: ${await b.text('.room.selected ul li')}`);
+      await a.eval(`document.querySelector('button.join')?.click(); 'join again'`); await sleep(4000);
     }
     if (process.env.REBUILD_CHECK && browsers[1]) {
       // Ticket 22. First: a fresh connection from A must be followed by B (new certificate, so B starts over) and both badges

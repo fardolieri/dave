@@ -15,6 +15,12 @@ function unlock(): void {
   ctx.resume().then(() => { if (ctx?.state === 'running') stopUnlocking(); }, () => {});
 }
 
+/**
+ * Tries to unlock without a gesture, for a Rejoin: once the page holds the microphone, Chromium and Firefox let the
+ * context run. If it stays suspended, the click unlock still waits. No gesture exists here for Brave to take.
+ */
+export function tryUnlockSound(): void { unlock(); }
+
 /** Starts listening for the gesture that unlocks audio; the returned function stops everything. */
 export function armSound(): () => void {
   window.addEventListener('click', unlock);

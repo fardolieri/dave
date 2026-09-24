@@ -12,7 +12,9 @@ import {
   SMALL_SCREEN_QUERY, clampVolume, contentHint, parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes, shareEncoding, trackConstraints, withChange,
   type AudioSettings, type ShareSettings, type ViewerSettings,
 } from '../core/settings';
+import { REJOIN_HEARTBEAT_MS, parseRejoinMarker, rejoinFor, type RejoinMarker } from '../core/rejoin';
 import type { createRoom } from './room';
+import { tryUnlockSound } from './sound';
 import { local } from './storage';
 
 export type ConnState = 'connecting' | 'direct' | 'relayed' | 'reconnecting' | 'unreachable';
@@ -126,6 +128,21 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   /** Sharers whose share I have asked to watch. Kept apart from any one peer so a rebuild or a reconnect re-asserts it. */
   const watchIntent = new Set<string>();
 
+  // ---- Rejoin (ticket 24): a marker kept fresh while in the Call, read once when the page loads
+  const REJOIN_KEY = 'rejoin';
+  const writeRejoinMarker = () => {
+    const m: RejoinMarker = { room: room.roomId, at: Date.now(), watching: [...watchIntent] };
+    local.set(REJOIN_KEY, JSON.stringify(m));
+  };
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
+  /** Written at every heartbeat and on pagehide: Android kills a background app without any page event. */
+  const onPageHide = () => { if (joined) writeRejoinMarker(); };
+  window.addEventListener('pagehide', onPageHide);
+  /** Read at load: another tab superseding this one clears the marker, so a later read could miss it. */
+  let pendingRejoin = rejoinFor(parseRejoinMarker(local.get(REJOIN_KEY)), room.roomId, Date.now());
+  /** Remote audio the browser refused to start without a gesture (a Rejoin normally avoids it by taking the mic first). */
+  const [audioBlocked, setAudioBlocked] = createSignal(false);
+
   // ---- settings (spec §6.1, §6.3), remembered per browser
   /** A setting signal that also persists: [read, write]. */
   function persisted<T extends object>(key: string, parse: (raw: string | null) => T): [() => T, (next: T) => void] {
@@ -187,6 +204,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     voiceTrack = localStream.getAudioTracks()[0] ?? null;
     if (voiceTrack) voiceTrack.enabled = !muted();
     audioCtx ??= new AudioContext();
+    // With the microphone live, Chromium and Firefox let the context run without a gesture (research: rejoin without a click).
+    if (audioCtx.state === 'suspended') void audioCtx.resume().catch(() => {});
     localAnalyser = analyserFor('me', localStream);
     void refreshDevices();
   }
@@ -415,7 +434,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const out = kind === 'voice' ? peer.audio : peer.shareAudio;
     audioCtx ??= new AudioContext();
     const ctx = audioCtx;
-    if (kind === 'voice') { peer.keepAlive.srcObject = stream; peer.keepAlive.play().catch(() => {}); }
+    if (kind === 'voice') { peer.keepAlive.srcObject = stream; peer.keepAlive.play().catch(refused); }
     const source = ctx.createMediaStreamSource(stream);
     const gain = ctx.createGain();
     gain.gain.value = effectiveGain(peer);
@@ -433,7 +452,15 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       peer.shareGain = gain;
     }
     out.srcObject = dest.stream;
-    out.play().catch(() => { /* needs a gesture on some browsers; the join click normally suffices */ });
+    out.play().catch(refused); // the join click, or on a Rejoin the live microphone, normally suffices
+  }
+
+  const refused = (e: unknown) => { if (e instanceof Error && e.name === 'NotAllowedError') setAudioBlocked(true); };
+  /** The click behind "Click to hear the call": replay every remote element and resume the context inside the gesture. */
+  function unblockAudio(): void {
+    setAudioBlocked(false);
+    void audioCtx?.resume().catch(() => {});
+    for (const p of peers.values()) for (const el of [p.keepAlive, p.audio, p.shareAudio]) if (el.srcObject) el.play().catch(refused);
   }
 
   function attachLocalTracks(peer: Peer): void {
@@ -590,6 +617,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     clearTimeout(peer.connectTimer);
     stuckAttempts.delete(peer.key);
     if (peer.view.conn === 'connecting' || peer.view.conn === 'reconnecting' || peer.view.conn === 'unreachable') setView(peer, { conn: 'direct' });
+    // Ask again now the link is up. The ask sent when this connection was built can reach the sharer while they still
+    // hold the old one, which their fresh-offer path then closes along with the subscription (a Rejoin, a rebuild).
+    // A repeated subscribe is harmless on the sharer's side.
+    if (watchIntent.has(peer.key) && sendSubscribe(peer.key, true) && !peer.view.watching) setView(peer, { watching: true });
     void refreshStats(peer);
   }
 
@@ -845,11 +876,13 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   // Re-declare after our own server reconnect (spec §8.1): peer connections stay, join sequence is fresh.
   createEffect(() => room.status().kind, (kind, prev) => {
-    if (kind === 'connected' && prev !== undefined && prev !== 'connected' && joined) void rejoinAfterReconnect();
-    if (kind === 'elsewhere' && joined) leave(); // another tab took over; this one is no longer in the call
+    if (kind === 'connected' && prev !== undefined && prev !== 'connected' && joined) void redeclareAfterReconnect();
+    if (kind === 'elsewhere' && joined) leave(); // another tab took over; this one is no longer in the call, and the marker goes
+    if (kind === 'connected' && pendingRejoin) { const r = pendingRejoin; pendingRejoin = null; void join(r); }
   });
 
-  async function rejoinAfterReconnect(): Promise<void> {
+  /** Not a Rejoin: the page never reloaded, only the server socket came back. */
+  async function redeclareAfterReconnect(): Promise<void> {
     const reply = await declareJoin();
     if (!reply) return;
     // Peers that kept their connection to us stay. Any connection that died while we were away is
@@ -969,6 +1002,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const peer = peers.get(key);
     if (!peer || peer.view.watching === on) return;
     if (on) watchIntent.add(key); else watchIntent.delete(key);
+    if (joined) writeRejoinMarker();
     const asked = sendSubscribe(key, on);
     posthog.capture('screen_watch_toggled', { watching: on, asked });
     // Show a watched tile only once the sharer has been asked. A frame dropped while the socket is down keeps
@@ -988,13 +1022,15 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   // ---- actions
   let joining = false;
-  async function join(): Promise<void> {
+  /** Join from the button, or as a Rejoin from the marker a reload left behind: the same steps without the click. */
+  async function join(rejoin?: RejoinMarker): Promise<void> {
     if (joined || joining) return;
     joining = true;
     setJoinError(null);
     try {
       try {
-        await openMicrophone();
+        await openMicrophone(); // first: a live capture is what lets the audio below start without a gesture
+        if (rejoin) tryUnlockSound();
       } catch (e) {
         const joinErrMsg = e instanceof Error && e.name === 'NotAllowedError' ? 'Microphone access was denied.' : `Could not open the microphone: ${e instanceof Error ? e.message : String(e)}`;
         setJoinError(joinErrMsg);
@@ -1003,9 +1039,18 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       }
       const reply = await declareJoin();
       if (!reply) { setJoinError('The server did not answer the join request.'); posthog.capture('join_error', { reason: 'server_no_answer' }); return; }
+      if (rejoin) {
+        // Watched shares come back: intents set before reconcile builds the connections are subscribed as each one appears.
+        // Only for friends still sharing, or a later share of theirs would start flowing to me without a click.
+        const sharing = new Set(untrack(room.people).filter((p) => p.sharing).map((p) => p.publicKey));
+        for (const key of rejoin.watching) if (sharing.has(key)) watchIntent.add(key);
+        if (audioCtx?.state === 'suspended') setAudioBlocked(true);
+      }
       setInCall(true);
+      writeRejoinMarker();
+      heartbeat = setInterval(writeRejoinMarker, REJOIN_HEARTBEAT_MS);
       exposeDevHook();
-      posthog.capture('call_joined');
+      posthog.capture('call_joined', { rejoin: !!rejoin });
       reconcile(untrack(room.people));
     } finally {
       joining = false;
@@ -1019,7 +1064,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     room.send({ t: 'leave' });
     for (const key of [...peers.keys()]) closePeer(key);
     stuckAttempts.clear();
-    watchIntent.clear(); // a rejoin starts with every tile at "click to watch", not with yesterday's subscriptions
+    watchIntent.clear(); // joining again starts with every tile at "click to watch", not with yesterday's subscriptions
+    clearInterval(heartbeat);
+    local.remove(REJOIN_KEY); // a deliberate Leave (or another tab taking over) means no Rejoin
+    setAudioBlocked(false);
     setInCall(false);
     myJoinSeq = null;
     voiceTrack?.stop();
@@ -1039,6 +1087,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   onCleanup(() => {
     unsubscribe();
+    window.removeEventListener('pagehide', onPageHide);
     clearInterval(statsTimer);
     clearInterval(speakingTimer);
     leave();
@@ -1058,6 +1107,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         senders: [...peers.values()].map((p) => { const params = p.tx[SLOT_INDEX.shareVideo]?.sender.getParameters(); const e = params?.encodings?.[0]; return { name: p.name, active: e?.active, maxBitrate: e?.maxBitrate, maxFramerate: e?.maxFramerate, scale: e?.scaleResolutionDownBy, degradation: (params as { degradationPreference?: string } | undefined)?.degradationPreference }; }),
       })),
       audio: () => untrack(() => ({ settings: audioSettings(), track: voiceTrack?.getSettings() ?? null })),
+      playback: () => untrack(() => ({ context: audioCtx?.state ?? null, blocked: audioBlocked(), paused: [...peers.values()].map((p) => ({ name: p.name, voice: p.audio.paused, keepAlive: p.keepAlive.paused })) })),
       volumes: () => ({ master: untrack(audioSettings).masterVolume, peers: [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })) }),
       dropSocket: () => room.dropSocket(),
       /** What the stuck-connecting watchdog does, on demand (ticket 22): tear the connection to `name` down and offer again from a fresh one; `stalled` attempts already counted make the rebuild relay-only. */
@@ -1076,7 +1126,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   exposeDevHook();
 
   return {
-    inCall, muted, views, speakingSelf, joinError, join, leave, setMuted, myJoinSeq: () => myJoinSeq,
+    inCall, muted, views, speakingSelf, joinError, join: () => join(), leave, setMuted, myJoinSeq: () => myJoinSeq, audioBlocked, unblockAudio,
     sharing, shareError, outgoing, startShare, stopShare, watch, watchOnly, shareStreamOf,
     shareSettings, changeShare, audioSettings, changeAudio, viewerSettings, setViewerSettings, devices, refreshDevices, canPickSpeaker,
     setVolume, canPickSpeakerDialog, pickSpeaker,

@@ -112,6 +112,7 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 button.on { background: var(--acc); border-color: var(--acc); color: #fff; }
 button.join { background: var(--ok); color: #062; border-color: transparent; font-weight: 600; }
 button.leave { background: var(--bad); color: #fff; border-color: transparent; }
+button.unblock { background: #4a3a12; color: var(--warn); border-color: transparent; font-weight: 600; }
 
 /* shares */
 .shares { grid-column: 2; grid-row: 1; margin: 14px 14px 0; display: grid; gap: 10px; min-height: 0; }
