@@ -60,6 +60,10 @@ class Browser {
       }
     };
     await this.cdp('Runtime.enable');
+    // CUE_CHECK=1 (ticket 23): every oscillator the page starts is recorded as "type Hz" (custom for an overtone mix), so a run can show which cue played.
+    if (process.env.CUE_CHECK) await this.cdp('Page.enable');
+    if (process.env.CUE_CHECK) await this.cdp('Page.addScriptToEvaluateOnNewDocument', { source: `window.__cuesPlayed = []; const start = OscillatorNode.prototype.start;
+      OscillatorNode.prototype.start = function (...a) { window.__cuesPlayed.push(this.type + ' ' + Math.round(this.frequency.value)); return start.apply(this, a); };` });
     // UA_OVERRIDE=1: look like a normal Chrome. posthog-js drops every event from a "HeadlessChrome" user agent
     // client-side, so a run that must reach PostHog (e.g. REPORT_CHECK) needs this; leave it off otherwise.
     if (process.env.UA_OVERRIDE) {
@@ -79,7 +83,7 @@ class Browser {
     // SEED_MUTED=1: join with the microphone muted (for runs against the live room; pair with CHROME_FLAGS=--use-file-for-fake-audio-capture=<silent.wav> so nothing hums either way).
     // One saved room, named Drive, the way the app stores rooms it was invited to.
     const rooms = JSON.stringify([{ secret, name: 'Drive', addedAt: Date.now() }]);
-    await this.eval(`localStorage.setItem('dave.rooms', ${JSON.stringify(rooms)}); localStorage.setItem('dave.name', ${JSON.stringify(this.name)}); localStorage.setItem('dave.test', 'true'); ${process.env.SEED_MUTED ? "localStorage.setItem('dave.muted', 'true');" : ''} 'ok'`);
+    await this.eval(`localStorage.setItem('dave.rooms', ${JSON.stringify(rooms)}); localStorage.setItem('dave.name', ${JSON.stringify(this.name)}); localStorage.setItem('dave.test', 'true'); ${process.env.SEED_MUTED ? "localStorage.setItem('dave.muted', 'true');" : ''} ${process.env.CUE_CHECK ? `localStorage.setItem('dave.picture', ${JSON.stringify(CUE_PICTURES[browsers.indexOf(this) % CUE_PICTURES.length])});` : ''} 'ok'`);
     await this.goto(url);
   }
   async screenshot(path, width) {
@@ -112,6 +116,8 @@ class Browser {
   close() { try { this.ws?.close(); } catch {} try { process.kill(-this.proc.pid, 'SIGKILL'); } catch { this.proc?.kill('SIGKILL'); } setTimeout(() => { try { rmSync(this.dir, { recursive: true, force: true }); } catch {} }, 500); }
 }
 
+/** Profile pictures seeded under CUE_CHECK, one per browser in order: a face, an animal, an object. */
+const CUE_PICTURES = ['😀', '🦊', '💡', '🎸'];
 const portBase = Number(process.env.PORT_BASE ?? 9300);
 const browsers = names.map((n, i) => new Browser(n, portBase + i));
 try {
@@ -315,6 +321,18 @@ try {
       mkdirSync(shotDir, { recursive: true });
       for (const b of browsers) await b.screenshot(`${shotDir}/${b.name}.png`, narrowLast && b === browsers[browsers.length - 1] ? 390 : undefined);
       console.log(`screenshots in ${shotDir}`);
+    }
+    if (process.env.CUE_CHECK && browsers[1]) {
+      // Ticket 23: each browser heard its own join and the friends who joined after it, each with the cue of their own picture; then the last
+      // one leaves, hearing its own leave while the others hear that picture's cue backwards and lower, and hears its own join on rejoining.
+      const played = async (b) => { const all = await b.eval('window.__cuesPlayed.splice(0)'); return all.length ? all.join(', ') : 'nothing'; };
+      for (const b of browsers) console.log(`[${b.name}] (${CUE_PICTURES[browsers.indexOf(b)]}) heard while the others joined: ${await played(b)}`);
+      const last = browsers[browsers.length - 1];
+      await last.eval(`document.querySelector('button.leave')?.click(); 'left'`); await sleep(1500);
+      for (const b of browsers.slice(0, -1)) console.log(`[${b.name}] heard ${last.name} (${CUE_PICTURES[browsers.length - 1]}) leave: ${await played(b)}`);
+      console.log(`[${last.name}] heard their own leave: ${await played(last)}`);
+      await last.eval(`document.querySelector('button.join')?.click(); 'rejoined'`); await sleep(2000);
+      console.log(`[${last.name}] heard their own join: ${await played(last)} | ${browsers[0].name} heard: ${await played(browsers[0])}`);
     }
     if (process.env.VOLUME_CHECK && browsers[1]) {
       const [a, b] = browsers;

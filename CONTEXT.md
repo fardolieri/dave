@@ -77,7 +77,7 @@ The popover that opens from an avatar: name, fingerprint, since when this browse
 _Avoid_: Popup, tooltip, user details, modal
 
 **Profile picture**:
-The one emoji a friend chose to fill their avatar instead of their initial. Self-declared like the name, travels with it, seen by everyone; none means the initial.
+The one emoji a friend chose to fill their avatar instead of their initial. Self-declared like the name, travels with it, seen by everyone; none means the initial. It is also the friend's sound: the cue others hear when they join or leave a call is derived from it.
 _Avoid_: Avatar (the circle itself, which shows either), icon, emoji (the picker's currency, not the role), image, photo
 
 **Avatar**:
