@@ -18,6 +18,7 @@ import { collectReport, formatReport, sendReport, type Report } from './diagnost
 import { CATEGORIES, SEVERITIES, isCategory, isSeverity, type Category, type Severity } from '../core/report';
 import { EmojiPicker } from './EmojiPicker';
 import { place } from './place';
+import { createTabLock } from './tablock';
 
 export default function App() {
   // An invite link is consumed before anything else renders, so it never stays in the address bar.
@@ -31,6 +32,8 @@ export default function App() {
   const [identityError, setIdentityError] = createSignal<string | null>(null);
 
   loadIdentity().then(setIdentity, (e: unknown) => setIdentityError(e instanceof Error ? e.message : String(e)));
+  /** Only the tab holding the lock opens sockets; another tab of this browser shows a notice (ticket 25). */
+  const tab = createTabLock();
 
   const select = (secret: string) => { setSelectedRoom(secret); setSelected(secret); };
   /** The room from a link joins the list (or takes the link's name if already known) and comes on screen. */
@@ -47,6 +50,15 @@ export default function App() {
     const link = takeInviteLink();
     const list = rooms();
     if (link && list) void enter(list, link, 'opened').then(setRooms);
+  });
+  // What another tab of this browser writes: the tab on the notice screen still takes invite links, and the tab that
+  // runs the app shows the room at once. Rooms already on screen keep their objects, so their sockets stay up.
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'dave.rooms') {
+      void loadRooms().then((list) => setRooms((prev) => list.map((r) => prev?.find((p) => p.secret === r.secret && p.name === r.name) ?? r)));
+    }
+    if (e.key === 'dave.room' && e.newValue) setSelected(e.newValue);
+    if (e.key === 'dave.name' && e.newValue) setNameSignal(e.newValue);
   });
   // A link pasted in. A home-screen web app on iOS never receives a tapped link (Safari opens it, in its own
   // storage), so pasting is the only way a room reaches such an app.
@@ -70,7 +82,8 @@ export default function App() {
 
   const ready = createMemo(() => {
     const list = rooms();
-    return list && list.length > 0 && name() && identity() ? { rooms: list, selected: selected(), created: created(), name: name()!, identity: identity()! } : null;
+    const t = tab.state();
+    return list && list.length > 0 && name() && identity() && t.kind === 'held' ? { rooms: list, selected: selected(), created: created(), name: name()!, identity: identity()!, mayRejoin: t.mayRejoin } : null;
   });
 
   return (
@@ -99,7 +112,18 @@ export default function App() {
       <Match when={!identity()}>
         <Notice title="Preparing your identity…"> </Notice>
       </Match>
-      <Match when={ready()}>{(r) => <Workspace {...r()} onSelect={select} onCreate={create} onJoin={join} onForget={forget} onRename={rename} />}</Match>
+      <Match when={tab.state().kind === 'checking'}>
+        <Notice title="Loading…"> </Notice>
+      </Match>
+      <Match when={tab.state().kind === 'waiting'}>
+        <main class="notice">
+          <h1>dave</h1>
+          <h2>Dave is already open in another tab</h2>
+          <p>That tab keeps working. {invite ? `${invite.name} was added to it. ` : ''}This one connects by itself once the other closes.</p>
+          <p><button onClick={tab.takeOver}>Use it here instead</button></p>
+        </main>
+      </Match>
+      <Match when={ready()}>{(r) => <Workspace {...r()} onStepBack={tab.onStepBack} onSelect={select} onCreate={create} onJoin={join} onForget={forget} onRename={rename} />}</Match>
     </Switch>
   );
 }
@@ -166,6 +190,10 @@ type Link = RoomLink & { saved: SavedRoom };
 
 type WorkspaceProps = {
   rooms: SavedRoom[]; selected: string | null; created: string | null; name: string; identity: LocalIdentity;
+  /** The tab lock came at load, as after a reload: a call this browser was just in may be rejoined. */
+  mayRejoin: boolean;
+  /** Registers what to do when another tab takes over, before this workspace goes away. */
+  onStepBack: (fn: () => void) => () => void;
   onSelect: (secret: string) => void; onCreate: (name: string) => Promise<SavedRoom>; onJoin: (link: InviteLink) => void; onForget: (secret: string) => void; onRename: (name: string) => void;
 };
 
@@ -184,11 +212,12 @@ function Workspace(props: WorkspaceProps) {
   const links = mapArray(() => props.rooms, (saved): Link => {
     // A deliberate one-time snapshot of name and picture: the socket is created once; changes go through `rename` and `setPicture`.
     const room = createRoom({ identity, roomId: saved.id, authKey: saved.authKey, name: untrack(() => props.name), picture: getPicture() });
-    const call = createCall(room, identity);
+    const call = createCall(room, identity, { mayRejoin: untrack(() => props.mayRejoin) });
     posthog.capture('room_entered');
     return { saved, room, call };
   });
   createAttention(links, me);
+  onCleanup(props.onStepBack(() => untrack(active)?.call.leave()));
   /** The room on screen. Null only for the moment between leaving the last room and the workspace going away. */
   const current = createMemo(() => links().find((l) => l.saved.secret === props.selected) ?? links()[0] ?? null);
   /** The room whose call I am in, if any. */

@@ -112,7 +112,7 @@ class Browser {
     ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
     const cdp = (method, params = {}) => { const i = ++id; ws.send(JSON.stringify({ id: i, method, params })); return new Promise((r) => pending.set(i, r)); };
     const evaluate = async (expression) => (await cdp('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })).result?.result?.value;
-    return { eval: evaluate, text: (sel) => evaluate(`Array.from(document.querySelectorAll(${JSON.stringify(sel)})).map(e => e.innerText.replace(/\s+/g,' ').trim()).join(' | ')`), close: () => ws.close() };
+    return { eval: evaluate, text: (sel) => evaluate(`Array.from(document.querySelectorAll(${JSON.stringify(sel)})).map(e => e.innerText.replace(/\s+/g,' ').trim()).join(' | ')`), close: () => ws.close(), shut: async () => { ws.close(); await this.cdp('Target.closeTarget', { targetId: tab.id }); } };
   }
   close() { try { this.ws?.close(); } catch {} try { process.kill(-this.proc.pid, 'SIGKILL'); } catch { this.proc?.kill('SIGKILL'); } setTimeout(() => { try { rmSync(this.dir, { recursive: true, force: true }); } catch {} }, 500); }
 }
@@ -430,18 +430,34 @@ try {
     await sleep(2500);
   }
   if (process.env.TABS_CHECK && browsers[1]) {
-    // A second tab of the same browser shares the identity: the server keeps one socket per identity,
-    // the older tab steps back with a banner, and "Use it here instead" turns the tables.
+    // Ticket 25: one tab at a time, decided in the browser with a Web Lock. A second tab shows a notice and opens no socket;
+    // the first keeps working, call included. "Use it here instead" steals the lock and the first tab steps back, leaving
+    // the call properly. A tab waiting behind the one in the call takes over by itself when that one closes, and must not
+    // Rejoin the call it closed. Best with --join, so tab 1 starts in the call.
     const [a, b] = browsers;
-    const tab2 = await a.secondTab(url); await sleep(2500);
-    console.log(`[${a.name} tab 1] banner: ${await a.text('.banner') || '(none)'} | in call: ${await a.eval(`window.__dave?.state().inCall`)}`);
-    console.log(`[${a.name} tab 2] banner: ${await tab2.text('.banner') || '(none)'} | online: ${await tab2.text('.plist li')}`);
-    console.log(`[${b.name}] sees ${a.name} how many times: ${await b.eval(`[...document.querySelectorAll('.plist li')].filter(li => li.textContent.includes(${JSON.stringify(a.name)})).length`)} | list: ${await b.text('.plist li')}`);
-    await a.eval(`document.querySelector('.banner button')?.click(); 'take over'`); await sleep(2500);
-    console.log(`[${a.name} tab 1] after take-over: ${await a.text('.banner') || '(none)'} | online: ${await a.text('.plist li')}`);
-    console.log(`[${a.name} tab 2] after take-over: ${await tab2.text('.banner') || '(none)'}`);
-    console.log(`[${b.name}] sees ${a.name} how many times: ${await b.eval(`[...document.querySelectorAll('.plist li')].filter(li => li.textContent.includes(${JSON.stringify(a.name)})).length`)}`);
-    tab2.close();
+    const count = () => b.eval(`[...document.querySelectorAll('.plist li')].filter(li => li.textContent.includes(${JSON.stringify(a.name)})).length`);
+    const inCallRow = () => b.text('.room.selected ul li');
+    const tab2 = await a.secondTab(url); await sleep(3500);
+    console.log(`[${a.name} tab 1] banner: ${await a.text('.banner') || '(none)'} | in call: ${await a.eval(`!!document.querySelector('button.leave')`)}`);
+    console.log(`[${a.name} tab 2] notice: ${await tab2.text('main.notice h2')} | sockets UI: ${await tab2.eval(`!!document.querySelector('.side')`)}`);
+    console.log(`[${b.name}] sees ${a.name} ${await count()} time(s) | call: ${await inCallRow()}`);
+    // Tab 2 is ahead in the lock queue; a refresh of tab 1 must still land in tab 1 and rejoin, not hand the app to tab 2.
+    await a.cdp('Page.reload', {}); await sleep(6000);
+    console.log(`[${a.name} tab 1] after its own reload: notice ${await a.text('main.notice h2') || '(none)'} | in call: ${await a.eval(`!!document.querySelector('button.leave')`)}`);
+    console.log(`[${a.name} tab 2] after tab 1's reload: notice ${await tab2.text('main.notice h2') || '(none)'}`);
+    console.log(`[${b.name}] sees ${a.name} ${await count()} time(s) | call: ${await inCallRow()}`);
+    // An invite taken in the notice tab lands in the running tab: the notice tab writes the room list, as enter() does.
+    await tab2.eval(`(() => { const rooms = JSON.parse(localStorage.getItem('dave.rooms')); rooms.push({ secret: 'tabs-extra-' + Date.now(), name: 'Extra', addedAt: Date.now() }); localStorage.setItem('dave.rooms', JSON.stringify(rooms)); return 'added'; })()`); await sleep(1500);
+    console.log(`[${a.name} tab 1] rooms after tab 2 added one: ${await a.text('.room-title')} | still in call: ${await a.eval(`!!document.querySelector('button.leave')`)}`);
+    await tab2.eval(`document.querySelector('main.notice button')?.click(); 'take over'`); await sleep(3500);
+    console.log(`[${a.name} tab 2] after its take-over: notice ${await tab2.text('main.notice h2') || '(none)'} | in call: ${await tab2.eval(`!!document.querySelector('button.leave')`)}`);
+    console.log(`[${a.name} tab 1] after tab 2 took over: notice ${await a.text('main.notice h2') || '(none)'} | marker: ${await a.eval(`localStorage.getItem('dave.rejoin')`)}`);
+    console.log(`[${b.name}] sees ${a.name} ${await count()} time(s) | call: ${await inCallRow()}`);
+    await tab2.eval(`document.querySelector('button.join')?.click(); 'join in tab 2'`); await sleep(4000);
+    console.log(`[${b.name}] after tab 2 joined: ${await inCallRow()}`);
+    await tab2.shut(); await sleep(4000);
+    console.log(`[${a.name} tab 1] after tab 2 (in the call) closed: notice ${await a.text('main.notice h2') || '(none)'} | app: ${await a.eval(`!!document.querySelector('.side')`)} | in call (must be false): ${await a.eval(`!!document.querySelector('button.leave')`)}`);
+    console.log(`[${b.name}] sees ${a.name} ${await count()} time(s) | call: ${await inCallRow()}`);
   }
   if (process.env.HISTORY_CHECK && browsers[1]) {
     const [a, b] = browsers;

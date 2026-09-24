@@ -104,7 +104,7 @@ const SPEAK_HOLD_MS = 300;
  * participant, three fixed transceivers, perfect negotiation with polite = lower key,
  * newcomer initiates, all control over the room socket. Voice and one Share per participant.
  */
-export function createCall(room: ReturnType<typeof createRoom>, identity: LocalIdentity) {
+export function createCall(room: ReturnType<typeof createRoom>, identity: LocalIdentity, opts: { mayRejoin: boolean } = { mayRejoin: true }) {
   const myKey = identity.publicKey;
   const [inCall, setInCallSignal] = createSignal(false);
   // Solid 2 stages signal writes to a microtask, so code that runs right after a write still reads the old
@@ -138,8 +138,9 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   /** Written at every heartbeat and on pagehide: Android kills a background app without any page event. */
   const onPageHide = () => { if (joined) writeRejoinMarker(); };
   window.addEventListener('pagehide', onPageHide);
-  /** Read at load: another tab superseding this one clears the marker, so a later read could miss it. */
-  let pendingRejoin = rejoinFor(parseRejoinMarker(local.get(REJOIN_KEY)), room.roomId, Date.now());
+  /** Read at load: another tab superseding this one clears the marker, so a later read could miss it. A tab that waited
+   * behind another open tab is not a reload and never rejoins (ticket 25): that tab may have just left the call by closing. */
+  let pendingRejoin = opts.mayRejoin ? rejoinFor(parseRejoinMarker(local.get(REJOIN_KEY)), room.roomId, Date.now()) : null;
   /** Remote audio the browser refused to start without a gesture (a Rejoin normally avoids it by taking the mic first). */
   const [audioBlocked, setAudioBlocked] = createSignal(false);
 
