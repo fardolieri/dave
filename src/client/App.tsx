@@ -961,11 +961,18 @@ function VersionDialog() {
       <button class="link" title={`Version ${shortCommit(build.commit)}${build.dirty ? '+' : ''}, ${deployed.toLowerCase()} ${formatAgo(Date.parse(build.builtAt))}`} onClick={() => dialog?.showModal()}>About</button>
       <dialog class="about" ref={dialog}>
         <h3>About dave</h3>
-        <p class="subject">{build.subject || 'No commit message'}</p>
-        <Show when={build.body}><p class="body">{build.body}</p></Show>
         <dl>
-          <dt>Commit</dt>
-          <dd><a href={commitUrl(build.commit)} target="_blank" rel="noopener"><code>{shortCommit(build.commit)}</code></a>{build.dirty ? ' plus uncommitted changes' : ''}, committed {stamp(build.committedAt)}</dd>
+          <dt>Version</dt>
+          <dd><a href={commitUrl(build.commit)} target="_blank" rel="noopener"><code>{shortCommit(build.commit)}</code></a>{build.dirty ? ' plus uncommitted changes' : ''}</dd>
+          <dt>Latest change</dt>
+          {/* The commit message: its title, and the description behind it for whoever wants the detail. */}
+          <dd>
+            <Show when={build.body} fallback={<span class="change">{build.subject || 'No commit message'}</span>}>
+              <details class="change"><summary>{build.subject || 'No commit message'}</summary><p>{build.body}</p></details>
+            </Show>
+          </dd>
+          <dt>Committed</dt>
+          <dd>{stamp(build.committedAt)}</dd>
           <dt>{deployed}</dt>
           <dd>{stamp(build.builtAt)} ({formatAgo(Date.parse(build.builtAt))}){build.target === 'local' ? ', on a developer\'s machine' : `, to ${build.target === 'live' ? 'the live site' : build.target}`}</dd>
           <dt>Source</dt>

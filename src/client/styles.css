@@ -273,8 +273,9 @@ dialog.report .row button:first-child { flex: 1; }
 .notice .about-link { display: block; margin-top: 2rem; }
 .notice .about-link button.link { padding: 0; }
 dialog.about { text-align: left; }
-dialog.about .subject { margin: 0 0 6px; font-weight: 600; }
-dialog.about .body { margin: 0 0 12px; white-space: pre-line; color: var(--dim); font-size: 13px; max-height: 40vh; overflow: auto; }
+dialog.about .change { font-weight: 600; }
+dialog.about details.change summary { cursor: pointer; }
+dialog.about details.change p { margin: 6px 0 0; padding-left: 10px; border-left: 2px solid var(--line); font-weight: normal; white-space: pre-line; color: var(--dim); max-height: 40vh; overflow: auto; }
 dialog.about dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 13px; }
 dialog.about dt { color: var(--dim); }
 dialog.about dd { margin: 0; }
