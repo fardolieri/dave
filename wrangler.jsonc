@@ -30,7 +30,17 @@
       "vars": { "TURN_KEY_ID": "d3d456166c56302f67957272a1ff9ba5" },
       "durable_objects": { "bindings": [{ "name": "ROOM", "class_name": "Room" }] },
       // Its own rate-limit namespace: ids are per account, so sharing 1001 would count prod and nightly attempts together.
-      "ratelimits": [{ "name": "UPGRADE_LIMIT", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } }]
+      // Higher than prod's 10: the browser suite (`pnpm e2e:nightly`, e2e.yml after each deploy) opens a few dozen sockets a
+      // minute from one runner IP. The Room's per-socket limits still apply.
+      "ratelimits": [{ "name": "UPGRADE_LIMIT", "namespace_id": "1002", "simple": { "limit": 120, "period": 60 } }]
+    },
+    // Local only, never deployed: the build the Playwright suite runs against (CLOUDFLARE_ENV=e2e, see playwright.config.ts).
+    // No upgrade limit, because every browser in a run connects from 127.0.0.1 and the suite reconnects on purpose.
+    "e2e": {
+      "name": "dave-e2e",
+      "vars": { "TURN_KEY_ID": "d3d456166c56302f67957272a1ff9ba5" },
+      "durable_objects": { "bindings": [{ "name": "ROOM", "class_name": "Room" }] },
+      "ratelimits": []
     }
   }
 }

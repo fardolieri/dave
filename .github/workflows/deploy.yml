@@ -11,6 +11,8 @@ jobs:
     env:
       # Picks the Wrangler environment when the Vite plugin writes the deploy config; empty means the top-level Worker.
       CLOUDFLARE_ENV: ${{ github.ref_name == 'master' && 'nightly' || '' }}
+      # Nightly carries the inspection hooks (src/client/hooks.ts) so the browser suite can run in full against it; prod does not.
+      VITE_E2E: ${{ github.ref_name == 'master' && '1' || '' }}
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4

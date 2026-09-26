@@ -5,6 +5,7 @@ import { armSound, playCue } from './sound';
 import { getPicture } from './invite';
 import type { createRoom } from './room';
 import type { createCall } from './call';
+import { exposeHooks } from './hooks';
 
 /** One room this browser is connected to, with its call. The list changes as rooms are added and left. */
 export type RoomLink = { room: ReturnType<typeof createRoom>; call: ReturnType<typeof createCall> };
@@ -65,7 +66,7 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
     const stops = rooms.map((room) => room.onText(() => { cues++; playCue(MESSAGE_CUE); }));
     return () => { for (const stop of stops) stop(); };
   });
-  if (import.meta.env.DEV) (window as unknown as { __daveCues?: () => number }).__daveCues = () => cues;
+  if (exposeHooks) (window as unknown as { __daveCues?: () => number }).__daveCues = () => cues;
 
   // ---- wake lock while watching at least one live share, serialised so overlapping triggers cannot double-request
   let sentinel: WakeLockSentinel | null = null;

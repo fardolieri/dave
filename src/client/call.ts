@@ -2,6 +2,7 @@ import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
 import { distinctFormats, type VideoFormat } from '../core/format';
 import { stuckDelay, transportPolicyFor } from '../core/mesh';
 import posthog from './posthog';
+import { exposeHooks } from './hooks';
 import { isFreshConnection, signDescription, verifyDescription } from '../core/dtls';
 import type { LocalIdentity } from './identity';
 import {
@@ -1106,10 +1107,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     audioCtx?.close();
   });
 
-  // Dev aid for scripts/drive.mjs: inspect the mesh from the DevTools protocol. Absent in production builds.
+  // Inspection hook for the Playwright suite (e2e/) and the dev server. Absent in the builds friends get.
   // Every room has a call object; the hook follows the one you joined last.
   const exposeDevHook = () => {
-    if (!import.meta.env.DEV) return;
+    if (!exposeHooks) return;
     (window as unknown as { __dave?: unknown }).__dave = {
       peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, relayOnly: p.relayOnly, generation: p.generation, stuck: stuckAttempts.get(p.key) ?? 0, audioBytesIn: p.view.audioBytesIn, videoBytesIn: p.videoBytesIn, watching: p.view.watching, shareLive: p.view.shareLive, subscribedToMe: p.viewsMyShare, transceivers: p.pc.getTransceivers().length })),
       share: () => untrack(() => ({
