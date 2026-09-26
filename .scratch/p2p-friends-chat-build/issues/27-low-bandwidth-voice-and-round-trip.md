@@ -1,6 +1,6 @@
 # 27 · Low bandwidth voice and the round trip beside each name
 
-Status: on master 2026-09-26 (not pushed, so not on nightly or prod yet)
+Status: shipped 2026-09-27 to nightly and prod (f5931f6)
 Asked for 2026-09-26: a friend's internet is so bad "we can barely understand what he is saying", and then "is there
 at least something we can do to reduce the latency? Currently it's like 10 seconds". The bug report of 21:21 UTC
 (category audio) could not show it: problem reports carried video stats only. Ten seconds is no jitter buffer; packets
