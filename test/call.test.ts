@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { generateIdentityKeyPair } from '../src/core/identity';
 import type { IceServer, Person, ServerMessage } from '../src/core/protocol';
 import { CLOSE_SILENT, SILENT_TIMEOUT_MS } from '../src/worker/room';
-import { CLOSE_SUPERSEDED } from '../src/core/protocol';
+import { CLOSE_SUPERSEDED, MAX_MESSAGE_BYTES } from '../src/core/protocol';
 import { roomIdOf } from '../src/core/rooms';
 import { authFrame, openRoomSocket, type Challenge, type Keys } from './harness';
 
@@ -97,7 +97,7 @@ describe('signaling relay', () => {
     send(a, { t: 'signal', to: b.you.publicKey, data: { description: { type: 'answer', sdp: 'v=0' }, sig: 'c2ln' } });
     expect(await b.next((m) => m.t === 'signal')).toEqual({ t: 'signal', from: a.you.publicKey, data: { description: { type: 'answer', sdp: 'v=0' }, sig: 'c2ln' } });
     send(a, { t: 'signal', to: b.you.publicKey, data: { description: { type: 'answer', sdp: 'v=0' }, sig: 'not base64!' } });
-    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'unrecognised message' });
+    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'unrecognised message', ref: 'signal' });
     send(a, { t: 'signal', to: b.you.publicKey, data: { candidates: [{ candidate: 'x' }, null] } });
     expect(await b.next((m) => m.t === 'signal')).toEqual({ t: 'signal', from: a.you.publicKey, data: { candidates: [{ candidate: 'x' }, null] } });
     send(a, { t: 'signal', to: v.you.publicKey, data: { candidates: [null] } });
@@ -105,6 +105,19 @@ describe('signaling relay', () => {
     send(v, { t: 'signal', to: a.you.publicKey, data: { candidates: [null] } });
     expect(await v.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'not in the call', ref: 'signal' });
     a.ws.close(1000); b.ws.close(1000); v.ws.close(1000);
+  });
+
+  it('relays a description far beyond 16 KB; one beyond the cap comes back as a dropped signal, not a text (ticket 30)', async () => {
+    const a = await attach('Alice');
+    const b = await attach('Bob');
+    send(a, { t: 'join', muted: false }); await a.next((m) => m.t === 'call');
+    send(b, { t: 'join', muted: false }); await b.next((m) => m.t === 'call');
+    const sdp = `v=0\r\n${'a=candidate:1 1 udp 41885439 203.0.113.7 3478 typ relay raddr 0.0.0.0 rport 0 generation 0\r\n'.repeat(300)}`;
+    send(a, { t: 'signal', to: b.you.publicKey, data: { description: { type: 'offer', sdp } } });
+    expect(((await b.next((m) => m.t === 'signal')) as { data: { description: { sdp: string } } }).data.description.sdp).toBe(sdp);
+    send(a, { t: 'signal', to: b.you.publicKey, data: { description: { type: 'offer', sdp: 'x'.repeat(MAX_MESSAGE_BYTES) } } });
+    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'message too large', ref: 'signal' });
+    a.ws.close(1000); b.ws.close(1000);
   });
 });
 

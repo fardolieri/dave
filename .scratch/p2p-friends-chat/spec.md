@@ -82,6 +82,7 @@ Everything is JSON over the one WebSocket. Message set (§4 and §2.2):
 - Client to server: `text` (relayed to all), `join` with the muted flag (reply `call` carries join sequence and `iceServers`), `leave`, `mute`, `ice` (fresh TURN credentials, reply `ice`), `ping`.
 - Point to point between participants, relayed by the server by target public key: `signal` (description or candidate), `subscribe`, `unsubscribe`.
 - Errors carry `reason` and, when known, `ref`, the client message type that was rejected.
+- Frames are capped at 512 Ki UTF-16 units (texts, names and pictures have their own, much smaller caps). A refused frame names its claimed type in `ref` even when it could not be parsed or was too large; the chat only says so for texts and room actions, never for signaling or unattributed frames. The server logs every malformed or oversized frame to the Worker logs and as `server_frame_rejected` in PostHog. (Amended 2026-09-27, ticket 30: an offer over the old 16 KB cap was dropped on a flaky line and showed in the chat as "Not sent: unrecognised message".)
 (Amended 2026-09-06 while building ticket 04.)
 - Not over the socket, ever: speaking indicators (computed locally from received audio, §6.1) and typing indicators (do not exist).
 Every relayed message is tagged by the server with the sender's public key (§3). Signaling messages are delivered only to participants.

@@ -6,6 +6,7 @@ import { cloudflareTest } from '@cloudflare/vitest-plugin';
 export default defineConfig({
   test: { include: ['test/**/*.test.ts'] },
   plugins: [
-    cloudflareTest({ wrangler: { configPath: './wrangler.jsonc' } }),
+    // No PostHog from the Room under test: the suite rejects frames on purpose.
+    cloudflareTest({ wrangler: { configPath: './wrangler.jsonc' }, miniflare: { bindings: { POSTHOG_KEY: '', POSTHOG_HOST: '' } } }),
   ],
 });

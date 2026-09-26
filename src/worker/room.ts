@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { CHALLENGE_TIMEOUT_MS, challengeExpired, onMessage, openSocket, presenceSnapshot, type Outcome, type SocketState } from '../core/room';
 import { CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, PING_FRAME, PONG_FRAME, type Person, type ServerMessage } from '../core/protocol';
 import { mintIceServers, revokeIce } from './turn';
+import { logRejected } from './telemetry';
 
 /** A socket whose last sign of life is older than this is dropped by the sweep (spec §4). */
 export const SILENT_TIMEOUT_MS = 90_000;
@@ -109,6 +110,7 @@ export class Room extends DurableObject<Env> {
     if (outcome.presenceChanged) this.broadcastPresence(...superseded);
     if (outcome.revokeTurn) this.ctx.waitUntil(revokeIce(this.env, outcome.revokeTurn));
     if (outcome.close) ws.close(outcome.close.code, outcome.close.reason);
+    if (outcome.rejected) logRejected(this.env, this.ctx, outcome.rejected);
     if (outcome.after) {
       // State is already stored; other messages may interleave with this I/O safely.
       const { replies, patch } = await outcome.after();

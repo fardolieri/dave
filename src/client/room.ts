@@ -113,10 +113,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
         case 'error':
           if (you()) {
             // After the welcome an error means a frame of ours was dropped. Chat-related ones are said in the chat;
-            // signaling ones are a developer concern and would only confuse in the chat.
+            // signaling ones, and any the server cannot attribute, are a developer concern and would only confuse in the
+            // chat: an oversized signal once showed as "Not sent" (ticket 30).
             posthog.capture('frame_dropped', { ref: m.ref ?? 'unknown', reason: m.reason });
-            if (m.ref === 'signal' || m.ref === 'ice') console.warn('dropped', m.ref, m.reason);
-            else push({ kind: 'system', text: `${m.ref === 'text' || !m.ref ? 'Not sent' : 'Dropped'}: ${m.reason}.`, at: Date.now() });
+            if (!m.ref || m.ref === 'signal' || m.ref === 'ice') console.warn('dropped', m.ref ?? 'unknown', m.reason);
+            else push({ kind: 'system', text: `${m.ref === 'text' ? 'Not sent' : 'Dropped'}: ${m.reason}.`, at: Date.now() });
           } else if (status().kind !== 'refused') {
             // A wrong answer during the handshake: our stored secret is wrong. Retrying cannot help.
             setStatus({ kind: 'refused', reason: m.reason });

@@ -40,6 +40,12 @@ export type Outcome = {
   /** A TURN credential to revoke (participant left). */
   revokeTurn?: string;
   close?: { code: number; reason: string };
+  /**
+   * An authenticated frame the server refused as malformed or oversized: a client bug or a limit worth knowing about,
+   * so the adapter logs it where the sender's own analytics cannot lose it (ticket 30). Rate limited frames are not
+   * listed; a flood would log a flood. The rate limit bounds these too, since every frame takes a token first.
+   */
+  rejected?: { from: string; reason: string; ref?: ClientMessage['t']; length: number };
 };
 
 export type RoomContext = {
@@ -133,16 +139,19 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     return { state, replies: [{ t: 'error', reason: 'invalid socket state' }], close: { code: CLOSE_AUTH_FAILED, reason: 'invalid socket state' } };
   }
 
+  const error = (reason: string, ref: ClientMessage['t'] | undefined): ServerMessage => (ref ? { t: 'error', reason, ref } : { t: 'error', reason });
+
   // Rate limit every authenticated frame, parseable or not. Signaling has its own generous bucket (see ratelimit.ts).
   let next: SocketState;
   if (msg.t === 'signal') {
     const taken = takeToken(state.signalBucket ?? newBucket(ctx.now, SIGNAL_BURST), ctx.now, SIGNAL_RATE_PER_SECOND, SIGNAL_BURST);
     next = { ...state, signalBucket: taken.bucket };
-    if (!taken.ok) return { state: next, replies: [{ t: 'error', reason: 'rate limited', ref: 'signal' }] };
+    if (!taken.ok) return { state: next, replies: [error('rate limited', 'signal')] };
   } else {
     const taken = takeToken(state.bucket, ctx.now);
     next = { ...state, bucket: taken.bucket };
-    if (!taken.ok) return { state: next, replies: [{ t: 'error', reason: 'rate limited', ref: msg.t === 'invalid' ? undefined : msg.t }] };
+    const ref = msg.t === 'invalid' ? msg.ref : msg.t;
+    if (!taken.ok) return { state: next, replies: [error('rate limited', ref)] };
   }
   const notInCall = (ref: ClientMessage['t']): Outcome => ({ state: next, replies: [{ t: 'error', reason: 'not in the call', ref }] });
   // Any participant entry for the key counts, whatever else is listed under it.
@@ -150,7 +159,11 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
 
   switch (msg.t) {
     case 'invalid':
-      return { state: next, replies: [{ t: 'error', reason: msg.reason }] };
+      return {
+        state: next,
+        replies: [error(msg.reason, msg.ref)],
+        rejected: { from: state.person.publicKey, reason: msg.reason, ...(msg.ref ? { ref: msg.ref } : {}), length: typeof raw === 'string' ? raw.length : raw instanceof ArrayBuffer ? raw.byteLength : 0 },
+      };
     case 'auth':
       return { state: next, replies: [{ t: 'error', reason: 'already authenticated', ref: 'auth' }] };
     case 'ping':

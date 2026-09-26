@@ -6,7 +6,10 @@
   "observability": { "enabled": true },
   "vars": {
     // TURN key ID is not secret (it only identifies the key). The API token is a Worker secret.
-    "TURN_KEY_ID": "d3d456166c56302f67957272a1ff9ba5"
+    "TURN_KEY_ID": "d3d456166c56302f67957272a1ff9ba5",
+    // The same public PostHog project token the client uses (.env). The Room logs frames it refuses (ticket 30).
+    "POSTHOG_KEY": "phc_qN9fsscYFP3YPfBdoNu4gyK2VsqGaXzALoASMUfJqm7q",
+    "POSTHOG_HOST": "https://eu.i.posthog.com"
   },
   "durable_objects": {
     "bindings": [{ "name": "ROOM", "class_name": "Room" }]
@@ -27,7 +30,7 @@
     // inherited from the top level by Wrangler, so they are repeated here; keep them in step with the ones above.
     "nightly": {
       "name": "dave-nightly",
-      "vars": { "TURN_KEY_ID": "d3d456166c56302f67957272a1ff9ba5" },
+      "vars": { "TURN_KEY_ID": "d3d456166c56302f67957272a1ff9ba5", "POSTHOG_KEY": "phc_qN9fsscYFP3YPfBdoNu4gyK2VsqGaXzALoASMUfJqm7q", "POSTHOG_HOST": "https://eu.i.posthog.com" },
       "durable_objects": { "bindings": [{ "name": "ROOM", "class_name": "Room" }] },
       // Its own rate-limit namespace: ids are per account, so sharing 1001 would count prod and nightly attempts together.
       // Higher than prod's 10: the browser suite (`pnpm e2e:nightly`, e2e.yml after each deploy) opens a few dozen sockets a

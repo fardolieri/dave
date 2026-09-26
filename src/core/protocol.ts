@@ -79,8 +79,12 @@ export const PING_FRAME = '{"t":"ping"}';
 export const PONG_FRAME = '{"t":"pong"}';
 export const PING_INTERVAL_MS = 30_000;
 
-/** Frame cap in UTF-16 units. Generous so a 2,000-character text survives JSON escaping. */
-export const MAX_MESSAGE_BYTES = 16384;
+/**
+ * Frame cap in UTF-16 units. Sized for signaling, not text (texts, names and pictures have their own caps): a description
+ * lists every candidate gathered so far, and one from a friend on a flaky line with many relay and IPv6 candidates went
+ * over the old 16 KB and was dropped, so that renegotiation never arrived (ticket 30). Well under Cloudflare's frame limit.
+ */
+export const MAX_MESSAGE_BYTES = 512 * 1024;
 export const MAX_NAME_LENGTH = 32;
 export const MAX_TEXT_LENGTH = 2000;
 /** Longest RGI emoji is a four-person family: 7 code points, 11 UTF-16 units. A little slack for a variation selector. */
@@ -112,12 +116,40 @@ export function normalisePicture(raw: string): string | null {
   return picture.length <= MAX_PICTURE_LENGTH && isSingleEmoji(picture) ? picture : null;
 }
 
-/** Not a wire message: the parser's way of saying why a frame was rejected. */
-export type Invalid = { t: 'invalid'; reason: string };
+/** Not a wire message: the parser's way of saying why a frame was rejected, and of which type it claimed to be when that is known. */
+export type Invalid = { t: 'invalid'; reason: string; ref?: ClientMessage['t'] };
 const invalid = (reason: string): Invalid => ({ t: 'invalid', reason });
 
+const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'text', 'join', 'leave', 'mute', 'name', 'picture', 'signal', 'ice', 'share', 'subscribe']);
+const isClientType = (v: unknown): v is ClientMessage['t'] => typeof v === 'string' && CLIENT_TYPES.has(v);
+
+/**
+ * A rejected frame carries the type it claimed, so the sender can tell a dropped text from a dropped signal (ticket 30:
+ * an oversized signal showed as "Not sent" in the chat). A frame too large to parse is read by its prefix; the client's
+ * JSON.stringify always writes `t` first.
+ */
 export function parseClientMessage(raw: unknown): ClientMessage | Invalid {
-  if (typeof raw !== 'string' || raw.length > MAX_MESSAGE_BYTES) return invalid('unrecognised message');
+  if (typeof raw === 'string' && raw.length > MAX_MESSAGE_BYTES) {
+    const claimed = /^\{"t":"([a-z]+)"/.exec(raw.slice(0, 32))?.[1];
+    return isClientType(claimed) ? { ...invalid('message too large'), ref: claimed } : invalid('message too large');
+  }
+  const parsed = parseFrame(raw);
+  if (parsed.t !== 'invalid') return parsed;
+  const claimed = typeof raw === 'string' ? safeType(raw) : undefined;
+  return isClientType(claimed) ? { ...parsed, ref: claimed } : parsed;
+}
+
+function safeType(raw: string): unknown {
+  try {
+    const v: unknown = JSON.parse(raw);
+    return typeof v === 'object' && v !== null && 't' in v ? v.t : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseFrame(raw: unknown): ClientMessage | Invalid {
+  if (typeof raw !== 'string') return invalid('unrecognised message');
   let value: unknown;
   try {
     value = JSON.parse(raw);

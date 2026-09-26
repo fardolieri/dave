@@ -7,20 +7,29 @@ describe('protocol', () => {
     expect(parseClientMessage(JSON.stringify({ t: 'ping' }))).toEqual({ t: 'ping' });
     expect(parseClientMessage(JSON.stringify({ t: 'text', text: ' x ' }))).toEqual({ t: 'text', text: 'x' });
     const bad = { t: 'invalid', reason: 'unrecognised message' };
-    expect(parseClientMessage(JSON.stringify({ t: 'text' }))).toEqual(bad);
+    expect(parseClientMessage(JSON.stringify({ t: 'text' }))).toEqual({ ...bad, ref: 'text' });
     expect(parseClientMessage(JSON.stringify({ t: 'nope' }))).toEqual(bad);
     expect(parseClientMessage('{')).toEqual(bad);
     expect(parseClientMessage(new ArrayBuffer(4))).toEqual(bad);
-    expect(parseClientMessage('x'.repeat(MAX_MESSAGE_BYTES + 1))).toEqual(bad);
-    expect(parseClientMessage(JSON.stringify({ t: 'text', text: '  ' }))).toEqual({ t: 'invalid', reason: 'empty message' });
+    expect(parseClientMessage('x'.repeat(MAX_MESSAGE_BYTES + 1))).toEqual({ t: 'invalid', reason: 'message too large' });
+    expect(parseClientMessage(JSON.stringify({ t: 'text', text: '  ' }))).toEqual({ t: 'invalid', reason: 'empty message', ref: 'text' });
+  });
+
+  it('takes a signal far beyond 16 KB and names the type of a frame too large even for that (ticket 30)', () => {
+    const to = 'a'.repeat(87);
+    const sdp = `v=0\r\n${'a=candidate:1 1 udp 2122260223 2001:db8::1 54321 typ host generation 0\r\n'.repeat(400)}`;
+    expect(sdp.length).toBeGreaterThan(16384);
+    expect(parseClientMessage(JSON.stringify({ t: 'signal', to, data: { description: { type: 'offer', sdp } } }))).toMatchObject({ t: 'signal' });
+    const huge = JSON.stringify({ t: 'signal', to, data: { description: { type: 'offer', sdp: 'x'.repeat(MAX_MESSAGE_BYTES) } } });
+    expect(parseClientMessage(huge)).toEqual({ t: 'invalid', reason: 'message too large', ref: 'signal' });
   });
 
   it('validates auth fields', () => {
     const ok = { t: 'auth', publicKey: 'AbC-_', name: '  Dave  Smith ', hmac: 'aa', signature: 'bb' };
     expect(parseClientMessage(JSON.stringify(ok))).toEqual({ ...ok, name: 'Dave Smith' });
     expect(parseClientMessage(JSON.stringify({ ...ok, publicKey: 'not base64url!' }))).toMatchObject({ t: 'invalid' });
-    expect(parseClientMessage(JSON.stringify({ ...ok, name: '   ' }))).toEqual({ t: 'invalid', reason: 'invalid name' });
-    expect(parseClientMessage(JSON.stringify({ ...ok, name: 'x'.repeat(33) }))).toEqual({ t: 'invalid', reason: 'invalid name' });
+    expect(parseClientMessage(JSON.stringify({ ...ok, name: '   ' }))).toEqual({ t: 'invalid', reason: 'invalid name', ref: 'auth' });
+    expect(parseClientMessage(JSON.stringify({ ...ok, name: 'x'.repeat(33) }))).toEqual({ t: 'invalid', reason: 'invalid name', ref: 'auth' });
     const authKey = 'a'.repeat(43);
     expect(parseClientMessage(JSON.stringify({ ...ok, authKey }))).toEqual({ ...ok, name: 'Dave Smith', authKey });
     expect(parseClientMessage(JSON.stringify({ ...ok, authKey: 'short' }))).toMatchObject({ t: 'invalid' });
@@ -31,14 +40,14 @@ describe('protocol', () => {
     const ok = { t: 'auth', publicKey: 'AbC-_', name: 'Dave', hmac: 'aa', signature: 'bb' };
     expect(parseClientMessage(JSON.stringify({ ...ok, picture: ' 🐱 ' }))).toEqual({ ...ok, picture: '🐱' });
     expect(parseClientMessage(JSON.stringify({ ...ok, picture: null }))).toEqual(ok);
-    expect(parseClientMessage(JSON.stringify({ ...ok, picture: 'ab' }))).toEqual({ t: 'invalid', reason: 'invalid picture' });
-    expect(parseClientMessage(JSON.stringify({ ...ok, picture: '🐱🐱' }))).toEqual({ t: 'invalid', reason: 'invalid picture' });
-    expect(parseClientMessage(JSON.stringify({ ...ok, picture: 7 }))).toEqual({ t: 'invalid', reason: 'unrecognised message' });
+    expect(parseClientMessage(JSON.stringify({ ...ok, picture: 'ab' }))).toEqual({ t: 'invalid', reason: 'invalid picture', ref: 'auth' });
+    expect(parseClientMessage(JSON.stringify({ ...ok, picture: '🐱🐱' }))).toEqual({ t: 'invalid', reason: 'invalid picture', ref: 'auth' });
+    expect(parseClientMessage(JSON.stringify({ ...ok, picture: 7 }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'auth' });
     expect(parseClientMessage(JSON.stringify({ t: 'picture', picture: '👨‍👩‍👧‍👦' }))).toEqual({ t: 'picture', picture: '👨‍👩‍👧‍👦' });
     expect(parseClientMessage(JSON.stringify({ t: 'picture', picture: null }))).toEqual({ t: 'picture', picture: null });
-    expect(parseClientMessage(JSON.stringify({ t: 'picture', picture: '' }))).toEqual({ t: 'invalid', reason: 'unrecognised message' });
-    expect(parseClientMessage(JSON.stringify({ t: 'picture', picture: 'x' }))).toEqual({ t: 'invalid', reason: 'invalid picture' });
-    expect(parseClientMessage(JSON.stringify({ t: 'picture' }))).toEqual({ t: 'invalid', reason: 'unrecognised message' });
+    expect(parseClientMessage(JSON.stringify({ t: 'picture', picture: '' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'picture' });
+    expect(parseClientMessage(JSON.stringify({ t: 'picture', picture: 'x' }))).toEqual({ t: 'invalid', reason: 'invalid picture', ref: 'picture' });
+    expect(parseClientMessage(JSON.stringify({ t: 'picture' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'picture' });
     expect(normalisePicture('☠')).toBeNull(); // text-presentation symbol without the emoji selector
     expect(normalisePicture('🇩🇪')).toBe('🇩🇪');
   });

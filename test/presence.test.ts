@@ -84,7 +84,7 @@ describe('presence', () => {
     b.ws.send(JSON.stringify({ t: 'text', text: 'hi' }));
     expect(((await a.next((m) => m.t === 'text')) as unknown as { from: Person }).from.name).toBe('Robert');
     b.ws.send(JSON.stringify({ t: 'name', name: '   ' }));
-    expect(await b.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'invalid name' });
+    expect(await b.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'invalid name', ref: 'name' });
     a.ws.close(1000, 'bye');
     b.ws.close(1000, 'bye');
   });
@@ -106,7 +106,7 @@ describe('presence', () => {
     const cleared = await a.next((m) => bobs(m).length === 1 && !('picture' in bobs(m)[0]!));
     expect(bobs(cleared)[0]).not.toHaveProperty('picture');
     b.ws.send(JSON.stringify({ t: 'picture', picture: 'Bob' }));
-    expect(await b.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'invalid picture' });
+    expect(await b.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'invalid picture', ref: 'picture' });
     a.ws.close(1000, 'bye');
     b.ws.close(1000, 'bye');
   });
@@ -162,7 +162,7 @@ describe('text', () => {
   it('rejects empty and over-long text', async () => {
     const a = await attach('Alice');
     a.ws.send(JSON.stringify({ t: 'text', text: '   ' }));
-    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'empty message' });
+    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'empty message', ref: 'text' });
     a.ws.send(JSON.stringify({ t: 'text', text: 'x'.repeat(MAX_TEXT_LENGTH + 1) }));
     expect((await a.next((m) => m.t === 'error')) as { reason: string }).toMatchObject({ reason: expect.stringContaining('longer than') });
     a.ws.close(1000, 'bye');
