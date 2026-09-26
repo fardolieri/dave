@@ -29,4 +29,6 @@ export default defineConfig({
   define: { __BUILD__: JSON.stringify(buildInfo()) },
   // Source maps ship to production on purpose: this is a friends app and a readable stack in a friend's console is worth more than hiding code.
   build: { target: 'esnext', sourcemap: true },
+  // The voice worklet (client/voice.worklet.ts) is bundled like a worker; a worklet loads ES modules only.
+  worker: { format: 'es' },
 });

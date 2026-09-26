@@ -91,3 +91,11 @@ _Avoid_: Badge, bubble, icon
 **Acknowledged**:
 An identity this browser has seen and clicked once. Until then it wears a "new" badge and its fingerprint. Acknowledging or nicknaming a friend records the key in the browser's address book.
 _Avoid_: Trusted, verified, known (in UI copy; fine in code)
+
+**Noise removal**:
+RNNoise running on your outgoing voice in your own browser: it takes keyboard clicks, fans and other noise out before anything is sent, and feeds the voice gate. On by default; the browser's own noise suppression steps aside while it runs.
+_Avoid_: Noise suppression (the browser's built-in filter, a different thing), noise cancellation, denoiser (in UI copy)
+
+**Voice gate**:
+What lets your voice out only while you speak: it opens when RNNoise's voice probability passes the threshold on the Audio panel's slider and holds open briefly after. Below it friends receive silence, and your speaking ring follows it.
+_Avoid_: Noise gate (that one goes by loudness), voice activity detection (the measurement, not the gate), input sensitivity

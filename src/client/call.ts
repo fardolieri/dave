@@ -10,15 +10,18 @@ import {
 } from '../core/mesh';
 import type { IceServer, Person, ServerMessage, SignalData } from '../core/protocol';
 import {
-  SMALL_SCREEN_QUERY, clampVolume, contentHint, parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes, shareEncoding, trackConstraints, withChange,
+  SMALL_SCREEN_QUERY, captureProcessing, clampVolume, contentHint, parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes, shareEncoding, trackConstraints, withChange,
   type AudioSettings, type ShareSettings, type ViewerSettings,
 } from '../core/settings';
 import { REJOIN_HEARTBEAT_MS, parseRejoinMarker, rejoinFor, type RejoinMarker } from '../core/rejoin';
 import type { createRoom } from './room';
 import { tryUnlockSound } from './sound';
 import { local } from './storage';
+import { canRemoveNoise, createVoiceProcessor, type VoiceLevel, type VoiceProcessor } from './voice';
 
 export type ConnState = 'connecting' | 'direct' | 'relayed' | 'reconnecting' | 'unreachable';
+/** Noise removal as the Audio panel shows it (ticket 26): `starting` until the processed voice is what peers get. */
+export type NoiseRemovalState = 'off' | 'starting' | 'on' | 'unavailable';
 
 /** My own share as the sharer sees it: total upload, the distinct encoded formats, how many watch. */
 export type OutgoingShare = { kbps: number; formats: VideoFormat[]; viewers: number };
@@ -195,7 +198,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   // ---- media
   /** Takes the settings explicitly where they were just written: a signal written in this run still reads the old value. */
   function microphoneConstraints(a: AudioSettings = untrack(audioSettings)): MediaTrackConstraints {
-    const c: MediaTrackConstraints = { echoCancellation: a.echoCancellation, noiseSuppression: a.noiseSuppression, autoGainControl: a.autoGainControl };
+    const c: MediaTrackConstraints = captureProcessing(a, a.noiseRemoval && canRemoveNoise() && !removalUnavailable);
     // `ideal`, not `exact`: a remembered microphone that is unplugged must not lock anyone out of the call.
     if (a.microphoneId) c.deviceId = { ideal: a.microphoneId };
     return c;
@@ -209,7 +212,77 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     // With the microphone live, Chromium and Firefox let the context run without a gesture (research: rejoin without a click).
     if (audioCtx.state === 'suspended') void audioCtx.resume().catch(() => {});
     localAnalyser = analyserFor('me', localStream);
+    sendVoice();
+    void startNoiseRemoval(); // not awaited: the microphone goes out as it is until RNNoise runs
     void refreshDevices();
+  }
+
+  // ---- noise removal (ticket 26)
+  let voice: VoiceProcessor | null = null;
+  let voiceReady = false;
+  /** Bumped by every start and stop, so a setup that finishes after a newer one gives up. */
+  let voiceGeneration = 0;
+  /** Once it failed in this tab the browser's own noise suppression stays in charge, until the setting is toggled. */
+  let removalUnavailable = false;
+  let lastLevel: VoiceLevel = { voice: 0, open: false };
+  const [noiseRemoval, setNoiseRemoval] = createSignal<NoiseRemovalState>('off');
+  const [voiceLevel, setVoiceLevel] = createSignal<VoiceLevel>(lastLevel);
+  const onVoiceLevel = (l: VoiceLevel) => { lastLevel = l; setVoiceLevel(l); };
+
+  /** What peers get: the processed voice once RNNoise runs and its context plays, the microphone's own track until then. */
+  const outgoingVoice = (): MediaStreamTrack | null => (voice && voiceReady && voice.running() ? voice.track : voiceTrack);
+  let sentVoice: MediaStreamTrack | null = null;
+  function sendVoice(): void {
+    const track = outgoingVoice();
+    if (track === sentVoice) return;
+    sentVoice = track;
+    for (const p of peers.values()) p.tx[SLOT_INDEX.voice]?.sender.replaceTrack(track).catch((e) => console.warn('replaceTrack voice', e));
+  }
+  const showRemoval = () => setNoiseRemoval(voice && voiceReady ? (voice.running() ? 'on' : 'starting') : untrack(noiseRemoval));
+
+  /** Takes the settings explicitly where they were just written. */
+  async function startNoiseRemoval(a: AudioSettings = untrack(audioSettings)): Promise<void> {
+    if (!a.noiseRemoval || !localStream || voice) return;
+    const generation = ++voiceGeneration;
+    if (!canRemoveNoise()) { removalFailed('unsupported'); return; }
+    setNoiseRemoval('starting');
+    // The context can report its state while it is still being set up, before `v` is assigned.
+    let v: VoiceProcessor | null = null;
+    const onRunning = () => { if (v && voice === v) { sendVoice(); showRemoval(); } };
+    try {
+      v = await createVoiceProcessor(localStream, a.voiceThreshold, { level: onVoiceLevel, running: onRunning });
+      if (generation !== voiceGeneration) { v.close(); return; }
+      voice = v;
+      v.track.enabled = !muted();
+      await v.ready;
+      if (generation !== voiceGeneration) return;
+      voiceReady = true;
+      sendVoice();
+      showRemoval();
+    } catch (e) {
+      if (generation === voiceGeneration) removalFailed(e instanceof Error ? e.message : String(e));
+    }
+  }
+  function dropVoice(): void {
+    voiceGeneration++;
+    voiceReady = false;
+    const v = voice;
+    voice = null;
+    sendVoice(); // back to the microphone before the processed track goes away
+    v?.close();
+    onVoiceLevel({ voice: 0, open: false });
+  }
+  function stopNoiseRemoval(): void {
+    dropVoice();
+    setNoiseRemoval('off');
+  }
+  function removalFailed(reason: string): void {
+    dropVoice();
+    removalUnavailable = true;
+    setNoiseRemoval('unavailable');
+    posthog.capture('noise_removal_unavailable', { reason });
+    // It was off for RNNoise: the browser's own noise suppression takes over again.
+    void voiceTrack?.applyConstraints(microphoneConstraints()).catch((e) => console.warn('applyConstraints audio', e));
   }
   async function refreshDevices(): Promise<void> {
     try {
@@ -269,15 +342,23 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       const track = stream.getAudioTracks()[0];
       if (track) {
         track.enabled = !muted();
-        await Promise.all([...peers.values()].map((p) => p.tx[SLOT_INDEX.voice]?.sender.replaceTrack(track)));
-        voiceTrack.stop();
+        const old = voiceTrack;
         voiceTrack = track;
         localStream = stream;
+        voice?.setInput(stream); // the processed track stays the same; only while the microphone goes out as it is does a sender change
+        sentVoice = outgoingVoice();
+        await Promise.all([...peers.values()].map((p) => p.tx[SLOT_INDEX.voice]?.sender.replaceTrack(sentVoice)));
+        old.stop();
         localAnalyser = analyserFor('me', stream);
       }
     } else {
       storeAudioSettings(next);
-      const processingChanged = (['echoCancellation', 'noiseSuppression', 'autoGainControl'] as const).some((k) => next[k] !== prev[k]);
+      if (next.noiseRemoval !== prev.noiseRemoval) {
+        removalUnavailable = false; // switching it on again tries again
+        if (next.noiseRemoval) void startNoiseRemoval(next); else stopNoiseRemoval();
+      }
+      if (next.voiceThreshold !== prev.voiceThreshold) voice?.setThreshold(next.voiceThreshold);
+      const processingChanged = (['echoCancellation', 'noiseSuppression', 'autoGainControl', 'noiseRemoval'] as const).some((k) => next[k] !== prev[k]);
       if (voiceTrack && processingChanged) await voiceTrack.applyConstraints(microphoneConstraints(next)).catch((e) => console.warn('applyConstraints audio', e));
     }
     if (next.speakerId !== prev.speakerId) for (const p of peers.values()) { void applySink(p.audio); void applySink(p.shareAudio); }
@@ -345,7 +426,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       if (an && gate && levelOf(an) > SPEAK_THRESHOLD) lastLoud.set(key, now);
       return now - (lastLoud.get(key) ?? 0) < SPEAK_HOLD_MS;
     };
-    setSpeakingSelf(loud('me', localAnalyser, !muted()));
+    // While the processed voice goes out, my ring shows what friends hear: the gate being open.
+    setSpeakingSelf(voice && sentVoice === voice.track ? !muted() && lastLevel.open : loud('me', localAnalyser, !muted()));
     let changed = false;
     for (const p of peers.values()) {
       const s = loud(p.key, p.analyser, true);
@@ -462,12 +544,14 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   function unblockAudio(): void {
     setAudioBlocked(false);
     void audioCtx?.resume().catch(() => {});
+    voice?.resume();
     for (const p of peers.values()) for (const el of [p.keepAlive, p.audio, p.shareAudio]) if (el.srcObject) el.play().catch(refused);
   }
 
   function attachLocalTracks(peer: Peer): void {
     const voiceSender = peer.tx[SLOT_INDEX.voice]?.sender;
-    if (voiceSender && voiceTrack) voiceSender.replaceTrack(voiceTrack).catch((e) => console.warn('replaceTrack voice', e));
+    const voiceOut = outgoingVoice();
+    if (voiceSender && voiceOut) voiceSender.replaceTrack(voiceOut).catch((e) => console.warn('replaceTrack voice', e));
     if (shareVideo) {
       // A share flows to nobody until they subscribe: deactivate both share senders as soon as the
       // answer has produced encodings. Both replaceTrack calls settle before the encoding is applied.
@@ -704,11 +788,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   /** Everything a problem report wants to know about the call (ticket 12). */
   async function diagnostics(): Promise<CallDiagnostics> {
-    const { echoCancellation, noiseSuppression, autoGainControl } = untrack(audioSettings);
+    const { echoCancellation, noiseSuppression, autoGainControl, voiceThreshold } = untrack(audioSettings);
     return {
       inCall: joined, muted: untrack(muted), joinSeq: myJoinSeq,
       sharing: shareVideo ? { ...shareVideo.getSettings(), readyState: shareVideo.readyState, contentHint: shareVideo.contentHint } : null,
-      outgoing: untrack(outgoing), shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl },
+      outgoing: untrack(outgoing), shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl, noiseRemoval: untrack(noiseRemoval), voiceThreshold },
       ice: { servers: iceServers.length, turn: hasTurn(), ageMinutes: iceIssuedAt ? Math.round((Date.now() - iceIssuedAt) / 60000) : null },
       peers: await Promise.all([...peers.values()].map(peerDiag)),
     };
@@ -1083,6 +1167,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     setAudioBlocked(false);
     setInCall(false);
     myJoinSeq = null;
+    stopNoiseRemoval();
+    sentVoice = null;
     voiceTrack?.stop();
     localStream?.getTracks().forEach((t) => t.stop());
     sources.get('me')?.disconnect(); sources.delete('me');
@@ -1094,6 +1180,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     setMutedSignal(m);
     local.set('muted', String(m));
     if (voiceTrack) voiceTrack.enabled = !m;
+    if (voice) voice.track.enabled = !m;
     if (joined) room.send({ t: 'mute', muted: m });
     posthog.capture('mute_toggled', { muted: m });
   }
@@ -1119,7 +1206,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         track: shareVideo ? { ...shareVideo.getSettings(), contentHint: shareVideo.contentHint } : null,
         senders: [...peers.values()].map((p) => { const params = p.tx[SLOT_INDEX.shareVideo]?.sender.getParameters(); const e = params?.encodings?.[0]; return { name: p.name, active: e?.active, maxBitrate: e?.maxBitrate, maxFramerate: e?.maxFramerate, scale: e?.scaleResolutionDownBy, degradation: (params as { degradationPreference?: string } | undefined)?.degradationPreference }; }),
       })),
-      audio: () => untrack(() => ({ settings: audioSettings(), track: voiceTrack?.getSettings() ?? null })),
+      audio: () => untrack(() => ({
+        settings: audioSettings(), track: voiceTrack?.getSettings() ?? null, noiseRemoval: noiseRemoval(),
+        sending: !sentVoice ? null : sentVoice === voice?.track ? 'processed' : 'microphone', level: lastLevel,
+      })),
       playback: () => untrack(() => ({ context: audioCtx?.state ?? null, blocked: audioBlocked(), paused: [...peers.values()].map((p) => ({ name: p.name, voice: p.audio.paused, keepAlive: p.keepAlive.paused })) })),
       volumes: () => ({ master: untrack(audioSettings).masterVolume, peers: [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })) }),
       dropSocket: () => room.dropSocket(),
@@ -1140,6 +1230,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   return {
     inCall, muted, views, speakingSelf, joinError, join: () => join(), leave, setMuted, myJoinSeq: () => myJoinSeq, audioBlocked, unblockAudio,
+    noiseRemoval, voiceLevel,
     sharing, shareError, outgoing, startShare, stopShare, watch, watchOnly, shareStreamOf,
     shareSettings, changeShare, audioSettings, changeAudio, viewerSettings, setViewerSettings, devices, refreshDevices, canPickSpeaker,
     setVolume, canPickSpeakerDialog, pickSpeaker,

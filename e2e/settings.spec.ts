@@ -8,12 +8,45 @@ test('turning audio processing off warns, and the change reaches the microphone 
   await alice.selectedRoom.getByTitle('Audio settings').click();
   const panel = alice.page.locator('.panel');
   await expect(panel.locator('.hint', { hasText: 'usually makes you sound worse' })).toBeVisible();
+  // Noise removal (ticket 26) stands in for the browser's noise suppression, whose box is off limits while it runs.
+  await expect(panel.getByLabel('Noise suppression')).toBeDisabled();
+  await panel.getByLabel('Noise removal').uncheck();
+  await expect(panel.locator('.warn')).toHaveCount(0);
   await panel.getByLabel('Noise suppression').uncheck();
   await expect(panel.locator('.warn')).toContainText('Audio processing is off');
   await needHooks(alice);
   await expect.poll(async () => (await alice.hook<{ settings: { noiseSuppression: boolean } }>('audio')).settings.noiseSuppression).toBe(false);
   await panel.getByLabel('Noise suppression').check();
   await expect(panel.locator('.warn')).toHaveCount(0);
+});
+
+test('noise removal runs on the outgoing voice, the gate follows its slider, and switching it off sends the microphone again', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  type Audio = { noiseRemoval: string; sending: string | null; settings: { voiceThreshold: number }; track: { noiseSuppression?: boolean } | null; level: { voice: number; open: boolean } };
+  const audio = () => alice.hook<Audio>('audio');
+  await expect.poll(async () => (await audio()).noiseRemoval, { message: 'RNNoise runs' }).toBe('on');
+  expect((await audio()).sending).toBe('processed');
+  expect((await audio()).track?.noiseSuppression).not.toBe(true); // the browser's own suppression stepped aside
+  await bob.hearing('Alice');
+
+  await alice.selectedRoom.getByTitle('Audio settings').click();
+  const gate = alice.page.locator('.panel').getByLabel('Voice gate');
+  await gate.fill('0'); // all the way left: everything goes through
+  await expect.poll(async () => (await audio()).settings.voiceThreshold).toBe(0);
+  await expect.poll(async () => (await audio()).level.open, { message: 'the gate stands open' }).toBe(true);
+  await gate.fill('100'); // the fake microphone beeps; no beep is a voice
+  await expect.poll(async () => (await audio()).settings.voiceThreshold).toBe(0.95);
+  await expect.poll(async () => (await audio()).level.open, { message: 'the gate shuts on a beep' }).toBe(false);
+
+  await alice.page.locator('.panel').getByLabel('Noise removal').uncheck();
+  await expect.poll(async () => (await audio()).sending).toBe('microphone');
+  expect((await audio()).noiseRemoval).toBe('off');
+  await bob.hearing('Alice');
 });
 
 test('a friend\'s volume and the master volume multiply, and survive a reload', async ({ crowd }) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SHARE, contentHint, parseSettings, shareEncoding, trackConstraints, withChange, DEFAULT_AUDIO, parseShareSettings, parseAudioSettings, mbpsToBps } from '../src/core/settings';
+import { DEFAULT_SHARE, contentHint, parseSettings, shareEncoding, trackConstraints, withChange, DEFAULT_AUDIO, parseShareSettings, parseAudioSettings, mbpsToBps, captureProcessing, processingIsDefault } from '../src/core/settings';
 
 describe('share settings', () => {
   it('starts at native resolution and 60 fps, and a change touches only the named knob', () => {
@@ -51,5 +51,29 @@ describe('local volume', () => {
     expect(parseAudioSettings('{"masterVolume":7}').masterVolume).toBe(1); // out of range falls back rather than blasting
     expect(parseAudioSettings('{"masterVolume":"loud"}').masterVolume).toBe(1);
     expect(parseAudioSettings('{"speakerId":"abc"}')).toEqual({ ...DEFAULT_AUDIO, speakerId: 'abc' }); // older blobs without the field
+  });
+});
+
+describe('noise removal (ticket 26)', () => {
+  it('is on by default with the gate at 0.5, and older blobs without the fields get both', () => {
+    expect(DEFAULT_AUDIO).toMatchObject({ noiseRemoval: true, voiceThreshold: 0.5 });
+    expect(parseAudioSettings('{"echoCancellation":false}')).toEqual({ ...DEFAULT_AUDIO, echoCancellation: false });
+  });
+  it('keeps the threshold within the slider range', () => {
+    expect(parseAudioSettings('{"voiceThreshold":0}').voiceThreshold).toBe(0);
+    expect(parseAudioSettings('{"voiceThreshold":0.8}').voiceThreshold).toBe(0.8);
+    expect(parseAudioSettings('{"voiceThreshold":1.5}').voiceThreshold).toBe(0.5);
+    expect(parseAudioSettings('{"voiceThreshold":-1}').voiceThreshold).toBe(0.5);
+  });
+  it('switches the browser noise suppression off only while noise removal runs', () => {
+    expect(captureProcessing(DEFAULT_AUDIO, true)).toEqual({ echoCancellation: true, noiseSuppression: false, autoGainControl: true });
+    expect(captureProcessing(DEFAULT_AUDIO, false)).toEqual({ echoCancellation: true, noiseSuppression: true, autoGainControl: true });
+    expect(captureProcessing({ ...DEFAULT_AUDIO, noiseSuppression: false }, false).noiseSuppression).toBe(false);
+  });
+  it('counts noise removal as the noise suppression when judging whether processing is at its default', () => {
+    expect(processingIsDefault({ ...DEFAULT_AUDIO, noiseSuppression: false })).toBe(true);
+    expect(processingIsDefault({ ...DEFAULT_AUDIO, noiseRemoval: false })).toBe(true);
+    expect(processingIsDefault({ ...DEFAULT_AUDIO, noiseRemoval: false, noiseSuppression: false })).toBe(false);
+    expect(processingIsDefault({ ...DEFAULT_AUDIO, echoCancellation: false })).toBe(false);
   });
 });

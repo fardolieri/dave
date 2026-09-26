@@ -38,6 +38,10 @@ export function environmentNoise(engine: Engine): RegExp[] {
     /Cookie “dmn_chk_[^”]*” has been rejected for invalid domain/,
     // A deployed copy hands out STUN plus Cloudflare's TURN URLs, six in all. A real hint, kept as a follow-up, not a test failure.
     /Using five or more STUN\/TURN servers slows down discovery/,
+    // A page that reloads or navigates away while the voice worklet renders (ticket 26): Firefox interrupts the worklet in
+    // the teardown and says so. Only ever on leaving the page: 60 s of steady processing logged none, 5 of 8 navigations did.
+    // Closing the context or stopping process() on pagehide does not win that race.
+    /Script terminated by timeout at:\s*process@\S*voice\.worklet/,
     // Icons on the plain-http network address Firefox was told to treat as secure (local runs only).
     ...(target ? [] : [/Mixed Content: Upgrading insecure display request/]),
   ];

@@ -59,9 +59,25 @@ export type AudioSettings = {
   speakerId: string;
   /** Master volume for everyone's voice and share audio, 0 to MAX_VOLUME; multiplied with each participant's local volume. */
   masterVolume: number;
+  /** RNNoise on the outgoing voice, with the voice gate after it (ticket 26). */
+  noiseRemoval: boolean;
+  /** RNNoise voice probability at which the gate opens, 0 to MAX_VOICE_THRESHOLD; 0 lets everything through. */
+  voiceThreshold: number;
 };
-export const DEFAULT_AUDIO: AudioSettings = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, microphoneId: '', speakerId: '', masterVolume: 1 };
-export const processingIsDefault = (a: AudioSettings): boolean => a.echoCancellation && a.noiseSuppression && a.autoGainControl;
+export const MAX_VOICE_THRESHOLD = 0.95;
+export const DEFAULT_VOICE_THRESHOLD = 0.5;
+export const DEFAULT_AUDIO: AudioSettings = {
+  echoCancellation: true, noiseSuppression: true, autoGainControl: true, microphoneId: '', speakerId: '', masterVolume: 1, noiseRemoval: true, voiceThreshold: DEFAULT_VOICE_THRESHOLD,
+};
+/** Noise removal stands in for the browser's own noise suppression, so either one counts. */
+export const processingIsDefault = (a: AudioSettings): boolean => a.echoCancellation && a.autoGainControl && (a.noiseRemoval || a.noiseSuppression);
+/**
+ * The browser's capture processing for the microphone. Its noise suppression steps aside while noise removal runs:
+ * both at once muffle the voice. `removing`: noise removal is on and this browser can run it.
+ */
+export const captureProcessing = (a: AudioSettings, removing: boolean): Pick<AudioSettings, 'echoCancellation' | 'noiseSuppression' | 'autoGainControl'> => ({
+  echoCancellation: a.echoCancellation, noiseSuppression: a.noiseSuppression && !removing, autoGainControl: a.autoGainControl,
+});
 
 export type ViewerSettings = {
   /** Low latency: a small jitter buffer target in ms on share receivers; 0 means browser default. */
@@ -101,7 +117,10 @@ export const parseShareSettings = (raw: string | null): ShareSettings =>
     ceilingBps: positive,
   });
 export const parseAudioSettings = (raw: string | null): AudioSettings =>
-  parseSettings(DEFAULT_AUDIO, raw, { masterVolume: (v): v is number => typeof v === 'number' && clampVolume(v) === v });
+  parseSettings(DEFAULT_AUDIO, raw, {
+    masterVolume: (v): v is number => typeof v === 'number' && clampVolume(v) === v,
+    voiceThreshold: (v): v is number => typeof v === 'number' && v >= 0 && v <= MAX_VOICE_THRESHOLD,
+  });
 export const parseViewerSettings = (raw: string | null): ViewerSettings =>
   parseSettings(DEFAULT_VIEWER, raw, { jitterBufferTargetMs: (v): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 });
 

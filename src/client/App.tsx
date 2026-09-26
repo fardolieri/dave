@@ -12,7 +12,7 @@ import { createAttention, type RoomLink } from './attention';
 import { contactOf, isKnown, markKnown, setNickname } from './contacts';
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, normaliseName, type Identity, type Person } from '../core/protocol';
 import { ambiguousNames, displayName, formatAgo, knownAgo, showsFingerprint } from '../core/names';
-import { LOW_LATENCY_MS, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
+import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatVideo } from '../core/format';
 import { collectReport, formatReport, sendReport, type Report } from './diagnostics';
 import { CATEGORIES, SEVERITIES, isCategory, isSeverity, type Category, type Severity } from '../core/report';
@@ -631,6 +631,8 @@ function AudioPanel(props: { call: Call }) {
   const set = (change: Partial<AudioSettings>) => void props.call.changeAudio(change);
   const label = (d: MediaDeviceInfo, i: number) => d.label || `${d.kind === 'audioinput' ? 'Microphone' : 'Speaker'} ${i + 1}`;
   const masterPercent = () => Math.round(a().masterVolume * 100);
+  /** Noise removal is on and has not given up in this browser: the gate shows, the browser's suppression steps aside. */
+  const removing = () => a().noiseRemoval && props.call.noiseRemoval() !== 'unavailable';
   return (
     <div class="panel">
       <label>Microphone <select class="picker" value={a().microphoneId} onChange={(e) => set({ microphoneId: e.currentTarget.value })}>
@@ -654,8 +656,26 @@ function AudioPanel(props: { call: Call }) {
       <div class={processingIsDefault(a()) ? 'hint' : 'warn'}>
         {processingIsDefault(a()) ? 'Turning these off usually makes you sound worse to others.' : 'Audio processing is off. Turn everything back on if friends complain.'}
       </div>
+      <label class="check" title="Takes keyboard clicks, fans and other noise out of your voice, and lets it through only while you speak.">
+        <input type="checkbox" checked={a().noiseRemoval} onChange={(e) => set({ noiseRemoval: e.currentTarget.checked })} /> Noise removal
+      </label>
+      <Show when={removing()}>
+        <div class="vgate" title="Your voice goes out while the bar passes the mark. Drag the mark left if your first words get cut off, right if noise still gets through; all the way left lets everything through. Double-click to reset.">
+          <span>Voice gate</span>
+          <span class="vtrack">
+            <span class="vmeter"><span class={`fill ${props.call.voiceLevel().open ? 'open' : ''}`} style={{ width: `${props.call.voiceLevel().voice * 100}%` }} /></span>
+            <input type="range" aria-label="Voice gate" min="0" max="100" step="5" value={Math.round(a().voiceThreshold * 100)}
+              onInput={(e) => set({ voiceThreshold: Math.min(MAX_VOICE_THRESHOLD, Number(e.currentTarget.value) / 100) })} onDblClick={() => set({ voiceThreshold: DEFAULT_VOICE_THRESHOLD })} />
+          </span>
+        </div>
+      </Show>
+      <Show when={a().noiseRemoval && props.call.noiseRemoval() === 'unavailable'}>
+        <div class="hint">Noise removal cannot run in this browser, so the browser's own noise suppression is used.</div>
+      </Show>
       <label class="check"><input type="checkbox" checked={a().echoCancellation} onChange={(e) => set({ echoCancellation: e.currentTarget.checked })} /> Echo cancellation</label>
-      <label class="check"><input type="checkbox" checked={a().noiseSuppression} onChange={(e) => set({ noiseSuppression: e.currentTarget.checked })} /> Noise suppression</label>
+      <label class="check" title={removing() ? 'Noise removal takes its place while it is on.' : undefined}>
+        <input type="checkbox" checked={a().noiseSuppression} disabled={removing()} onChange={(e) => set({ noiseSuppression: e.currentTarget.checked })} /> Noise suppression
+      </label>
       <label class="check"><input type="checkbox" checked={a().autoGainControl} onChange={(e) => set({ autoGainControl: e.currentTarget.checked })} /> Automatic gain</label>
       <label class="check"><input type="checkbox" checked={props.call.viewerSettings().jitterBufferTargetMs > 0} onChange={(e) => props.call.setViewerSettings({ jitterBufferTargetMs: e.currentTarget.checked ? LOW_LATENCY_MS : 0 })} /> Low latency when watching shares</label>
     </div>

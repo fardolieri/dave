@@ -162,6 +162,17 @@ button.unblock { background: #4a3a12; color: var(--warn); border-color: transpar
 .panel label.mvol input[type=range] { flex: 1 1 0; min-width: 0; width: 0; accent-color: var(--acc); }
 .panel label.mvol .dim { flex: none; min-width: 3.5em; text-align: right; }
 .panel input[type=number] { width: 4.5em; padding: 4px 6px; }
+.panel .vgate { display: flex; align-items: center; gap: 8px; }
+.panel .vgate .vtrack { position: relative; flex: 1 1 0; min-width: 0; display: flex; align-items: center; height: 22px; }
+.panel .vgate .vmeter { position: absolute; left: 0; right: 0; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; pointer-events: none; }
+.panel .vgate .vmeter .fill { display: block; height: 100%; background: var(--dim); transition: width 50ms linear; }
+.panel .vgate .vmeter .fill.open { background: var(--acc); }
+/* The slider's thumb is the mark on the meter behind it; no track of its own. */
+.panel .vgate input[type=range] { position: relative; width: 100%; height: 22px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
+.panel .vgate input[type=range]::-webkit-slider-runnable-track { height: 8px; background: transparent; }
+.panel .vgate input[type=range]::-moz-range-track { height: 8px; background: transparent; }
+.panel .vgate input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 4px; height: 18px; margin-top: -5px; border: 0; border-radius: 2px; background: var(--fg); }
+.panel .vgate input[type=range]::-moz-range-thumb { width: 4px; height: 18px; border: 0; border-radius: 2px; background: var(--fg); }
 /* Customizable select where supported (Chrome 135, Safari 27): radio-style items. Firefox falls back to the native picker. */
 select.picker, select.picker::picker(select) { appearance: base-select; }
 select.picker { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font: inherit; }
