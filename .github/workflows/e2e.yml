@@ -1,0 +1,57 @@
+name: e2e
+# The browser suite (e2e/, playwright.config.ts) in Chromium and Firefox, the only browser tests this repo has:
+#   - every pushed branch except master and prod: against a local build (Worker and Room in workerd, inspection hooks on)
+#   - after each successful master deploy: against nightly, which master builds with the same hooks
+#   - by hand from the Actions tab: local, nightly, or any deployed URL
+# The report and the traces of failures are kept as an artifact.
+on:
+  push:
+    branches-ignore: [master, prod]
+  workflow_run:
+    workflows: [deploy]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "local, nightly, or the URL of a deployed copy"
+        default: local
+        required: true
+concurrency:
+  group: e2e-${{ github.event_name == 'workflow_run' && 'nightly' || github.ref }}
+  cancel-in-progress: true
+jobs:
+  e2e:
+    # After a deploy, only when it succeeded; a failed deploy leaves nightly on the previous version.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium, firefox]
+    env:
+      # Empty means a local build; `nightly` is a shorthand the config understands.
+      E2E_URL: ${{ github.event_name == 'workflow_run' && 'nightly' || (inputs.target != 'local' && inputs.target || '') }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # After a deploy, test the commit that was deployed.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Both engines in both jobs: a few tests put a Chromium sharer in front of a Firefox viewer or mix engines in one call.
+      - run: pnpm exec playwright install --with-deps chromium firefox
+      - run: pnpm exec playwright test --project=${{ matrix.project }}
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-${{ matrix.project }}-${{ github.run_id }}
+          path: |
+            e2e-report
+            e2e-results
+          retention-days: 14

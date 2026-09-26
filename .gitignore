@@ -4,3 +4,5 @@
 dist/
 node_modules/
 .wrangler/
+e2e-results/
+e2e-report/

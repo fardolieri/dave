@@ -12,9 +12,11 @@
     "preview": "pnpm build && vite preview",
     "deploy": "pnpm build && wrangler deploy",
     "test": "node scripts/check-core-isolation.mjs && vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.e2e.json --noEmit",
     "types": "wrangler types",
-    "proto:room-ui": "cd prototypes/room-ui && pnpm install && pnpm dev"
+    "proto:room-ui": "cd prototypes/room-ui && pnpm install && pnpm dev",
+    "e2e": "playwright test",
+    "e2e:nightly": "E2E_URL=nightly playwright test"
   },
   "dependencies": {
     "@solidjs/signals": "2.0.0-rc.6",
@@ -25,7 +27,9 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.54.4",
     "@cloudflare/vitest-plugin": "1.1.4",
+    "@playwright/test": "1.63.0",
     "@solidjs/vite-plugin": "3.0.0-next.39",
+    "@types/node": "^24.13.6",
     "typescript": "5.9.3",
     "vite": "8.2.2",
     "vitest": "4.1.11",
