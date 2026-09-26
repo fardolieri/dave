@@ -1,6 +1,6 @@
 # 29 · No fingerprint beside names
 
-Status: built 2026-09-27, on nightly
+Status: shipped 2026-09-27 to nightly and prod (436d7d7)
 Asked for 2026-09-27 by Daniel: the fingerprint beside a name (for a key not yet acknowledged, and when two keys show
 the same name, issue #7) is just annoying. Friends switch between phone and PC a lot, each device its own identity
 under the same name, so the duplicate-name case fired all the time. Anyone who cares opens the profile card.
