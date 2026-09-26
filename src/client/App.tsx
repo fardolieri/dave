@@ -678,7 +678,7 @@ function AudioPanel(props: { call: Call }) {
         <input type="checkbox" checked={a().noiseSuppression} disabled={removing()} onChange={(e) => set({ noiseSuppression: e.currentTarget.checked })} /> Noise suppression
       </label>
       <label class="check"><input type="checkbox" checked={a().autoGainControl} onChange={(e) => set({ autoGainControl: e.currentTarget.checked })} /> Automatic gain</label>
-      <label class="check" title="For a slow or overloaded internet connection: your voice, and every voice sent to you, travels with about a third of the data, so it stops arriving seconds late. Voices sound a little duller. Switched on by the friend with the slow line, it helps all their connections; switched on by you, the one between you.">
+      <label class="check" title="For a slow or overloaded internet connection: your voice, and every voice sent to you, travels with about a third of the data, so it stops arriving seconds late, and friends' voices wait a moment longer before they play, which smooths out an uneven line. Voices sound a little duller. Switched on by the friend with the slow line, it helps all their connections; switched on by you, the one between you.">
         <input type="checkbox" checked={a().lowBandwidthVoice} onChange={(e) => set({ lowBandwidthVoice: e.currentTarget.checked })} /> Low bandwidth voice
       </label>
       <label class="check"><input type="checkbox" checked={props.call.viewerSettings().jitterBufferTargetMs > 0} onChange={(e) => props.call.setViewerSettings({ jitterBufferTargetMs: e.currentTarget.checked ? LOW_LATENCY_MS : 0 })} /> Low latency when watching shares</label>

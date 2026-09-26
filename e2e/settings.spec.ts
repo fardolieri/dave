@@ -67,7 +67,18 @@ test('low bandwidth voice caps the voice both ways from one side, and the delay 
   await expect(alice.selectedRoom.locator('li.prow', { hasText: 'Bob' }).locator('.lag')).toHaveText(/^\d+ ms$/);
 
   type Voice = { packetsSent?: number; bytesSent?: number };
-  type Diag = { lowBandwidthVoice: boolean; peers: Array<{ asksLowVoice: boolean; outboundVoice: Voice | null }> };
+  type Inbound = { jitterBufferTargetDelay?: number; jitterBufferEmittedCount?: number };
+  type Diag = { lowBandwidthVoice: boolean; peers: Array<{ asksLowVoice: boolean; outboundVoice: Voice | null; inboundVoice: Inbound | null }> };
+  /** The voice buffer (ticket 28): what the receiver was asked for, and the target the browser says it held over two seconds, in ms. */
+  const voiceBuffer = async (f: typeof alice) => {
+    const inbound = async () => (await f.hook<Diag>('diagnostics')).peers[0]?.inboundVoice ?? {};
+    const a = await inbound();
+    await f.page.waitForTimeout(2000);
+    const b = await inbound();
+    const n = (b.jitterBufferEmittedCount ?? 0) - (a.jitterBufferEmittedCount ?? 0);
+    const asked = (await f.hook<Array<{ voiceBufferMs: number | null }>>('peers'))[0]?.voiceBufferMs ?? null;
+    return { asked, targetMs: n > 0 ? (((b.jitterBufferTargetDelay ?? 0) - (a.jitterBufferTargetDelay ?? 0)) / n) * 1000 : 0 };
+  };
   const sent = async (f: typeof alice) => (await f.hook<Diag>('diagnostics')).peers[0]?.outboundVoice ?? {};
   /** What one friend's voice encoder puts out over two seconds: packets per second, payload kbps. Engine-neutral: Firefox's codec stats show its own fmtp, not the one it obeys. */
   const rate = async (f: typeof alice) => {
@@ -84,6 +95,9 @@ test('low bandwidth voice caps the voice both ways from one side, and the delay 
   await alice.page.locator('.panel').getByLabel('Low bandwidth voice').check();
   // Alice's own encoder follows the rewritten answer, Bob's the rewritten offer: Alice alone switched it on.
   for (const f of [alice, bob]) await expect.poll(() => rate(f).then(low), { message: `${f.name} sends low bandwidth voice` }).toBe(true);
+  // Both play the other's voice from a longer buffer. Firefox holds about half of it (100 ms of the 200 asked, 2026-09-27).
+  for (const f of [alice, bob]) await expect.poll(() => voiceBuffer(f), { message: `${f.name} buffers the voice longer` }).toMatchObject({ asked: 200, targetMs: expect.any(Number) });
+  for (const f of [alice, bob]) expect((await voiceBuffer(f)).targetMs).toBeGreaterThanOrEqual(150);
   expect((await bob.hook<Diag>('diagnostics')).peers[0]?.asksLowVoice).toBe(true);
   await bob.hearing('Alice');
   await alice.hearing('Bob');
@@ -95,6 +109,7 @@ test('low bandwidth voice caps the voice both ways from one side, and the delay 
   await alice.selectedRoom.getByTitle('Audio settings').click();
   await alice.page.locator('.panel').getByLabel('Low bandwidth voice').uncheck();
   for (const f of [alice, bob]) await expect.poll(() => rate(f).then(full), { message: `${f.name} is back to full voice` }).toBe(true);
+  for (const f of [alice, bob]) expect((await voiceBuffer(f)).asked).toBeNull();
   await bob.hearing('Alice');
 });
 

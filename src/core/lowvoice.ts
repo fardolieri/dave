@@ -7,6 +7,11 @@
 
 export const LOW_VOICE_BPS = 12_000;
 export const LOW_VOICE_PTIME_MS = 60;
+/**
+ * The least a friend's voice waits before it plays while low bandwidth voice holds between us (ticket 28). A line that
+ * queues delivers packets in bursts; the browser's own buffer stays as short as it can and runs dry in between.
+ */
+export const LOW_VOICE_BUFFER_MS = 200;
 /** Opus fmtp parameters for the voice: the bitrate cap, wideband playback (all 12 kbps carry), silence not sent. */
 const LOW_OPUS_PARAMS: Record<string, string> = { maxaveragebitrate: String(LOW_VOICE_BPS), maxplaybackrate: '16000', usedtx: '1' };
 

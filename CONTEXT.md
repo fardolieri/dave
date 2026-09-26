@@ -101,7 +101,7 @@ What lets your voice out only while you speak: it opens when RNNoise's voice pro
 _Avoid_: Noise gate (that one goes by loudness), voice activity detection (the measurement, not the gate), input sensitivity
 
 **Low bandwidth voice**:
-The setting for a slow or overloaded internet line: voices go at about a third of the data, sounding a little duller, so they stop arriving seconds late. Asked for by one side, it holds both ways between the two; at the slow end it covers all of that friend's connections.
+The setting for a slow or overloaded internet line: voices go at about a third of the data, sounding a little duller, so they stop arriving seconds late, and play from a slightly longer buffer, so an uneven line does not stutter. Asked for by one side, it holds both ways between the two; at the slow end it covers all of that friend's connections.
 _Avoid_: Low quality mode, data saver, low bitrate (in UI copy; fine in code)
 
 **Round trip**:

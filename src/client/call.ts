@@ -4,7 +4,7 @@ import { stuckDelay, transportPolicyFor } from '../core/mesh';
 import posthog from './posthog';
 import { exposeHooks } from './hooks';
 import { isFreshConnection, signDescription, verifyDescription } from '../core/dtls';
-import { asksLowVoice, lowVoiceSdp } from '../core/lowvoice';
+import { LOW_VOICE_BUFFER_MS, asksLowVoice, lowVoiceSdp } from '../core/lowvoice';
 import type { LocalIdentity } from './identity';
 import {
   ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
@@ -29,7 +29,7 @@ export type OutgoingShare = { kbps: number; formats: VideoFormat[]; viewers: num
 
 /** Snapshot for problem reports (ticket 12): states and counters, no names, no message texts. */
 export type PeerDiagnostics = {
-  fingerprint: string | null; polite: boolean; restarts: number; relayOnly: boolean; viewsMyShare: boolean; viewerScale: number; asksLowVoice: boolean;
+  fingerprint: string | null; polite: boolean; restarts: number; relayOnly: boolean; viewsMyShare: boolean; viewerScale: number; asksLowVoice: boolean; voiceBufferMs: number | null;
   view: Pick<PeerView, 'conn' | 'watching' | 'shareLive' | 'shareKbps' | 'shareFormat' | 'serverLost' | 'volume' | 'rttMs'>;
   pc: { connection: RTCPeerConnectionState; ice: RTCIceConnectionState; signaling: RTCSignalingState; gathering: RTCIceGatheringState; transceivers: number };
   shareTrack: { readyState: string; muted: boolean } | null;
@@ -321,6 +321,15 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     } catch { /* dismissed */ }
   }
 
+  /** A friend's voice waits at least LOW_VOICE_BUFFER_MS while either of us asks for low bandwidth voice (ticket 28). */
+  function applyVoiceBuffer(peer: Peer): void {
+    const receiver = peer.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver;
+    if (!receiver) return;
+    const ms = lowVoiceOn || peer.asksLowVoice ? LOW_VOICE_BUFFER_MS : null;
+    const r = receiver as RTCRtpReceiver & { jitterBufferTarget?: number | null };
+    try { if (r.jitterBufferTarget !== ms) r.jitterBufferTarget = ms; } catch { /* unsupported */ }
+  }
+
   function applyJitterTarget(receiver: RTCRtpReceiver): void {
     const ms = untrack(viewerSettings).jitterBufferTargetMs; // a snapshot: receivers are re-applied explicitly on change
     try { (receiver as RTCRtpReceiver & { jitterBufferTarget: number | null }).jitterBufferTarget = ms > 0 ? ms : null; } catch { /* unsupported */ }
@@ -376,7 +385,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (next.lowBandwidthVoice !== lowVoiceOn) {
       lowVoiceOn = next.lowBandwidthVoice;
       posthog.capture('low_bandwidth_voice_toggled', { on: lowVoiceOn, peers: peers.size });
-      for (const p of peers.values()) renegotiateVoice(p);
+      for (const p of peers.values()) { applyVoiceBuffer(p); renegotiateVoice(p); }
     }
   }
 
@@ -492,6 +501,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       const slot = pc.getTransceivers().indexOf(transceiver);
       if (track.kind === 'audio' && slot === SLOT_INDEX.voice) {
         wireRemoteAudio(peer, 'voice', new MediaStream([track]));
+        applyVoiceBuffer(peer);
       } else if (slot === SLOT_INDEX.shareVideo || slot === SLOT_INDEX.shareAudio) {
         // Share tracks exist from join time, muted and empty until the sharer sends. "Live" follows the
         // unmute/mute events, which is how a viewer knows frames are actually arriving (spec §6.5).
@@ -712,6 +722,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         peer.asksLowVoice = asksLowVoice(description.sdp ?? '');
         // My encoder reads its bitrate and packet length from this description: rewritten, it sends low bandwidth voice.
         await pc.setRemoteDescription(lowVoiceOn ? { type: description.type, sdp: lowVoiceSdp(description.sdp ?? '') } : description);
+        applyVoiceBuffer(peer); // they may have switched low bandwidth voice on or off
         peer.srdAnswerPending = false;
         if (description.type === 'offer') {
           if (peer.tx.length === 0) {
@@ -838,6 +849,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const { conn, watching, shareLive, shareKbps, shareFormat, serverLost, volume, rttMs } = peer.view;
     return {
       fingerprint: untrack(room.people).find((p) => p.publicKey === peer.key)?.fingerprint ?? null, polite: peer.polite, restarts: peer.restarts, relayOnly: peer.relayOnly, viewsMyShare: peer.viewsMyShare, viewerScale: peer.viewerScale, asksLowVoice: peer.asksLowVoice,
+      voiceBufferMs: (peer.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined)?.jitterBufferTarget ?? null,
       view: { conn, watching, shareLive, shareKbps, shareFormat, serverLost, volume, rttMs },
       pc: { connection: peer.pc.connectionState, ice: peer.pc.iceConnectionState, signaling: peer.pc.signalingState, gathering: peer.pc.iceGatheringState, transceivers: peer.pc.getTransceivers().length },
       shareTrack: track ? { readyState: track.readyState, muted: track.muted } : null,
@@ -1267,7 +1279,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   const exposeDevHook = () => {
     if (!exposeHooks) return;
     (window as unknown as { __dave?: unknown }).__dave = {
-      peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, relayOnly: p.relayOnly, generation: p.generation, stuck: stuckAttempts.get(p.key) ?? 0, audioBytesIn: p.view.audioBytesIn, videoBytesIn: p.videoBytesIn, watching: p.view.watching, shareLive: p.view.shareLive, subscribedToMe: p.viewsMyShare, transceivers: p.pc.getTransceivers().length, rttMs: p.view.rttMs, asksLowVoice: p.asksLowVoice })),
+      peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, relayOnly: p.relayOnly, generation: p.generation, stuck: stuckAttempts.get(p.key) ?? 0, audioBytesIn: p.view.audioBytesIn, videoBytesIn: p.videoBytesIn, watching: p.view.watching, shareLive: p.view.shareLive, subscribedToMe: p.viewsMyShare, transceivers: p.pc.getTransceivers().length, rttMs: p.view.rttMs, asksLowVoice: p.asksLowVoice,
+        voiceBufferMs: (p.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined)?.jitterBufferTarget ?? null })),
       share: () => untrack(() => ({
         settings: shareSettings(),
         outgoing: outgoing(),
