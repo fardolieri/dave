@@ -11,6 +11,21 @@ test('a text reaches everyone in the room, once, with the sender name', async ({
   for (const f of [alice, bob, carol]) await expect.poll(() => f.chat()).toEqual([{ from: 'Alice', text: 'hello from alice' }]);
 });
 
+test('texts in a row from one writer go under one name', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.say('one');
+  await alice.say('two');
+  await expect.poll(() => bob.chatTexts()).toEqual(['one', 'two']);
+  await bob.say('three');
+  await alice.say('four');
+  await expect.poll(() => bob.chatTexts()).toEqual(['one', 'two', 'three', 'four']);
+  await expect(bob.page.locator('.chat-log .msg-from')).toHaveCount(3); // Alice, Bob, Alice
+  expect(await bob.chat()).toEqual([
+    { from: 'Alice', text: 'one' }, { from: 'Alice', text: 'two' }, { from: 'Bob', text: 'three' }, { from: 'Alice', text: 'four' },
+  ]);
+});
+
 test('everyone sees the same order, even for texts sent at the same moment', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
@@ -93,8 +108,9 @@ test('regression: the chat keeps its place when the share strip comes and goes',
   await alice.join();
   await bob.join();
   await bob.connectedTo('Alice');
-  for (let i = 0; i < 14; i++) await alice.say(`filler line ${i}`);
-  await expect.poll(async () => (await bob.chatTexts()).length).toBe(14);
+  // Enough to overflow the log even without the strip; one writer's lines sit close together under one name.
+  for (let i = 0; i < 24; i++) await alice.say(`filler line ${i}`);
+  await expect.poll(async () => (await bob.chatTexts()).length).toBe(24);
   const log = bob.page.locator('.chat-log');
   const gap = () => log.evaluate((l) => Math.round(l.scrollHeight - l.clientHeight - l.scrollTop));
   await expect.poll(gap).toBeLessThan(8);

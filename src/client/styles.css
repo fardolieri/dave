@@ -81,6 +81,7 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .chat-new:hover { color: var(--fg); }
 .msg-from { font-weight: 600; } .msg-at { color: var(--dim); font-size: 11px; margin-left: 6px; }
 .msg-text { white-space: pre-wrap; word-break: break-word; }
+.msg-cont { margin-top: -8px; } /* a follow-on line from the same writer sits under their name: 2px apart instead of the log's 10px */
 .msg-sys { font-size: 12px; color: var(--dim); font-style: italic; } .msg-sys .msg-text { display: inline; }
 .chat-input { grid-column: 2; grid-row: 3; display: flex; gap: 6px; padding: 8px 14px 14px; }
 .chat-input > input { flex: 1; } /* the child selector keeps the rule off the picker's search field inside the form */

@@ -1077,16 +1077,20 @@ function ChatLog(props: { lines: ChatLine[]; jumpToken: number; label: (id: Iden
     <div class="chat">
       <div class="chat-log" ref={log} onScroll={onScroll}>
         <For each={props.lines}>
-          {(l) => (
+          {(l, i) => (
             <Switch>
               <Match when={l.kind === 'system' && l}>{(s) => <div class="msg msg-sys"><span class="msg-text">{s().text}</span><span class="msg-at">{when(s().at)}</span></div>}</Match>
               <Match when={l.kind === 'text' && l}>
                 {(m) => (
-                  <div class="msg">
-                    <span class="msg-from" title={props.label(m().from).title}>{props.label(m().from).shown} <Show when={props.label(m().from).fp}><code class="fp">{m().from.fingerprint}</code></Show></span>
-                    <span class="msg-at">{when(m().at)}</span>
-                    <div class="msg-text"><Linkified text={m().text} /></div>
-                  </div>
+                  <Show when={!continues(props.lines, i())} fallback={
+                    <div class="msg msg-cont" title={when(m().at)}><div class="msg-text"><Linkified text={m().text} /></div></div>
+                  }>
+                    <div class="msg">
+                      <span class="msg-from" title={props.label(m().from).title}>{props.label(m().from).shown} <Show when={props.label(m().from).fp}><code class="fp">{m().from.fingerprint}</code></Show></span>
+                      <span class="msg-at">{when(m().at)}</span>
+                      <div class="msg-text"><Linkified text={m().text} /></div>
+                    </div>
+                  </Show>
                 )}
               </Match>
             </Switch>
@@ -1097,6 +1101,14 @@ function ChatLog(props: { lines: ChatLine[]; jumpToken: number; label: (id: Iden
     </div>
   );
 }
+
+/** How long after a line the same writer's next one still joins it under one name. */
+const GROUP_MS = 5 * 60 * 1000;
+/** Whether line i follows straight on from the same writer's previous text, so it goes under that name without its own. */
+const continues = (lines: ChatLine[], i: number): boolean => {
+  const l = lines[i], prev = lines[i - 1];
+  return l?.kind === 'text' && prev?.kind === 'text' && prev.from.publicKey === l.from.publicKey && l.at - prev.at < GROUP_MS;
+};
 
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g;
 function Linkified(props: { text: string }) {

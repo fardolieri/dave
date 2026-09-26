@@ -178,12 +178,16 @@ export class Friend {
   async online(): Promise<string[]> { return (await this.page.locator('aside.side > ul.plist .nm').allInnerTexts()).map(clean); }
   /** Names in the selected room's call list, "(you)" stripped. */
   async inCall(): Promise<string[]> { return (await this.selectedRoom.locator('li.prow .nm').allInnerTexts()).map(clean); }
-  /** Chat lines of the room on screen: sender and text, system lines left out. */
+  /** Chat lines of the room on screen: sender and text, system lines left out. A follow-on line has no name of its own and takes the one above. */
   async chat(): Promise<Array<{ from: string; text: string }>> {
-    return this.page.locator('.chat-log .msg:not(.msg-sys)').evaluateAll((els) => els.map((e) => ({
-      from: (e.querySelector('.msg-from')?.firstChild?.textContent ?? '').trim(),
-      text: (e.querySelector('.msg-text') as HTMLElement | null)?.innerText.trim() ?? '',
-    })));
+    return this.page.locator('.chat-log .msg:not(.msg-sys)').evaluateAll((els) => {
+      let from = '';
+      return els.map((e) => {
+        const own = e.querySelector('.msg-from');
+        if (own) from = (own.firstChild?.textContent ?? '').trim();
+        return { from, text: (e.querySelector('.msg-text') as HTMLElement | null)?.innerText.trim() ?? '' };
+      });
+    });
   }
   async chatTexts(): Promise<string[]> { return (await this.chat()).map((l) => l.text); }
 
