@@ -957,9 +957,9 @@ function VersionDialog() {
   let dialog: HTMLDialogElement | undefined;
   const deployed = build.target === 'local' ? 'Built' : 'Deployed';
   return (
-    <div class="version">
+    <div class="about-link">
       <button class="link" title={`Version ${shortCommit(build.commit)}${build.dirty ? '+' : ''}, ${deployed.toLowerCase()} ${formatAgo(Date.parse(build.builtAt))}`} onClick={() => dialog?.showModal()}>About</button>
-      <dialog class="report version-dialog" ref={dialog}>
+      <dialog class="about" ref={dialog}>
         <h3>About dave</h3>
         <p class="subject">{build.subject || 'No commit message'}</p>
         <Show when={build.body}><p class="body">{build.body}</p></Show>

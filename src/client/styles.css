@@ -232,9 +232,9 @@ button.avatar.own:hover::after { color: var(--fg); }
 .chat-input .emoji-open:hover:not(:disabled) { filter: none; opacity: 1; border-color: var(--line); }
 
 /* problem reports */
-dialog.report { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: min(480px, 92vw); font-size: 14px; }
-dialog.report::backdrop { background: rgba(0,0,0,.55); }
-dialog.report h3 { margin: 0 0 10px; font-size: 15px; }
+dialog.report, dialog.about { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: min(480px, 92vw); font-size: 14px; }
+dialog.report::backdrop, dialog.about::backdrop { background: rgba(0,0,0,.55); }
+dialog.report h3, dialog.about h3 { margin: 0 0 10px; font-size: 15px; }
 dialog.report .field { display: block; margin: 0 0 10px; font-size: 13px; color: var(--dim); }
 dialog.report .field select { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
 dialog.report fieldset.field { border: 0; padding: 0; }
@@ -245,7 +245,7 @@ dialog.report textarea { width: 100%; box-sizing: border-box; background: var(--
 dialog.report .hint { margin: 8px 0 0; }
 dialog.report .ok { margin: 10px 0 0; font-size: 13px; color: var(--ok); }
 dialog.report .warn { margin: 10px 0 0; }
-dialog.report .row { display: flex; gap: 6px; margin-top: 12px; }
+dialog.report .row, dialog.about .row { display: flex; gap: 6px; margin-top: 12px; }
 dialog.report .row button:first-child { flex: 1; }
 
 /* Phone rules come last so they override every desktop placement above. */
@@ -268,13 +268,13 @@ dialog.report .row button:first-child { flex: 1; }
   .emoji-picker[popover] { width: calc(100vw - 16px); } /* the whole width: the finger is the pointer here */
 }
 
-/* "About": among the sidebar's rare actions and on the front page; the dialog borrows the report dialog's frame. */
-.version { display: contents; }
-.notice .version { display: block; margin-top: 2rem; }
-.notice .version button.link { padding: 0; }
-dialog.version-dialog { text-align: left; }
-dialog.version-dialog .subject { margin: 0 0 6px; font-weight: 600; }
-dialog.version-dialog .body { margin: 0 0 12px; white-space: pre-line; color: var(--dim); font-size: 13px; max-height: 40vh; overflow: auto; }
-dialog.version-dialog dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 13px; }
-dialog.version-dialog dt { color: var(--dim); }
-dialog.version-dialog dd { margin: 0; }
+/* "About": among the sidebar's rare actions and on the front page; its dialog shares the report dialog's frame. */
+.about-link { display: contents; }
+.notice .about-link { display: block; margin-top: 2rem; }
+.notice .about-link button.link { padding: 0; }
+dialog.about { text-align: left; }
+dialog.about .subject { margin: 0 0 6px; font-weight: 600; }
+dialog.about .body { margin: 0 0 12px; white-space: pre-line; color: var(--dim); font-size: 13px; max-height: 40vh; overflow: auto; }
+dialog.about dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 13px; }
+dialog.about dt { color: var(--dim); }
+dialog.about dd { margin: 0; }
