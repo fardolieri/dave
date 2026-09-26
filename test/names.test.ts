@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ambiguousNames, displayName, formatAgo, knownAgo, normaliseNickname, showsFingerprint } from '../src/core/names';
+import { displayName, formatAgo, knownAgo, normaliseNickname } from '../src/core/names';
 
 describe('displayName', () => {
   it('prefers the nickname this browser gave, else the self-declared name', () => {
@@ -17,31 +17,6 @@ describe('normaliseNickname', () => {
   });
   it('caps the length like a display name', () => {
     expect(normaliseNickname('x'.repeat(40))).toBe('x'.repeat(32));
-  });
-});
-
-describe('ambiguousNames', () => {
-  it('lists only names that more than one key shows', () => {
-    const set = ambiguousNames([
-      { publicKey: 'k1', shown: 'Bob' },
-      { publicKey: 'k2', shown: 'Bob' },
-      { publicKey: 'k3', shown: 'Alice' },
-    ]);
-    expect([...set]).toEqual(['Bob']);
-  });
-  it('does not count the same key twice, e.g. present and in the chat history', () => {
-    expect(ambiguousNames([{ publicKey: 'k1', shown: 'Bob' }, { publicKey: 'k1', shown: 'Bob' }]).size).toBe(0);
-  });
-  it("catches a nickname that collides with someone else's name", () => {
-    expect(ambiguousNames([{ publicKey: 'k1', shown: 'Bob' }, { publicKey: 'k2', shown: 'Bob' }]).has('Bob')).toBe(true);
-  });
-});
-
-describe('showsFingerprint', () => {
-  it('shows it for an unacknowledged key or an ambiguous name, hides it otherwise', () => {
-    expect(showsFingerprint(false, 'Bob', new Set())).toBe(true);
-    expect(showsFingerprint(true, 'Bob', new Set(['Bob']))).toBe(true);
-    expect(showsFingerprint(true, 'Bob', new Set(['Alice']))).toBe(false);
   });
 });
 

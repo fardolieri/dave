@@ -14,25 +14,6 @@ export function normaliseNickname(raw: string, max = 32): string | null {
   return nick.length >= 1 ? nick.slice(0, max) : null;
 }
 
-/** Shown names that more than one key uses. Those friends need their fingerprint next to the name; everyone else does not. */
-export function ambiguousNames(entries: Iterable<{ publicKey: string; shown: string }>): Set<string> {
-  const keysByName = new Map<string, Set<string>>();
-  for (const e of entries) {
-    const keys = keysByName.get(e.shown) ?? new Set<string>();
-    keys.add(e.publicKey);
-    keysByName.set(e.shown, keys);
-  }
-  return new Set([...keysByName].filter(([, keys]) => keys.size > 1).map(([name]) => name));
-}
-
-/**
- * Whether the fingerprint accompanies the name. It is there for exactly two situations: this browser has
- * never acknowledged the key, or someone else here shows the same name (issue #7).
- */
-export function showsFingerprint(known: boolean, shown: string, ambiguous: Set<string>): boolean {
-  return !known || ambiguous.has(shown);
-}
-
 /** How long ago this browser acknowledged the key, in calendar days: "today", "yesterday", "3 weeks ago". Undefined for a key never acknowledged. */
 export function knownAgo(contact: Contact | undefined, now = Date.now()): string | undefined {
   return contact ? formatAgo(contact.since, now) : undefined;

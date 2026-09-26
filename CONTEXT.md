@@ -57,7 +57,7 @@ The random string in a room's invite link that gates entry to that room. Everyon
 _Avoid_: Password, token, invite code
 
 **Fingerprint**:
-A short, human-comparable code derived from an identity's public key. Shown beside the name only while this browser has not acknowledged the key or while two identities show the same name; otherwise it lives in the hover title.
+A short, human-comparable code derived from an identity's public key. Never shown beside the name, even when two identities show the same one (friends switch between phone and PC, each its own identity); it lives in the hover title and the profile card.
 _Avoid_: Hash, ID, key ID
 
 **Nickname**:
@@ -89,7 +89,7 @@ The circle beside a name in the lists: the profile picture when there is one, el
 _Avoid_: Badge, bubble, icon
 
 **Acknowledged**:
-An identity this browser has seen and clicked once. Until then it wears a "new" badge and its fingerprint. Acknowledging or nicknaming a friend records the key in the browser's address book.
+An identity this browser has seen and clicked once. Until then it wears a "new" badge. Acknowledging or nicknaming a friend records the key in the browser's address book.
 _Avoid_: Trusted, verified, known (in UI copy; fine in code)
 
 **Noise removal**:

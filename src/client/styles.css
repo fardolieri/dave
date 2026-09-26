@@ -9,7 +9,6 @@ h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: v
 button { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; cursor: pointer; }
 button:disabled { opacity: .5; cursor: default; }
 input { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; }
-code.fp { font-size: 11px; color: var(--dim); }
 .dim { color: var(--dim); }
 .notice { max-width: 36rem; margin: 3rem auto; padding: 0 1rem; }
 .notice form { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
@@ -88,11 +87,9 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 
 /* call */
 .plist li { flex-wrap: nowrap; }
-/* The name never wraps: it truncates with an ellipsis while fingerprint and badges keep their width. */
+/* The name never wraps: it truncates with an ellipsis while the badges keep their width. */
 .plist .pname { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
 .plist .pname .nm { min-width: 8ch; overflow: hidden; text-overflow: ellipsis; }
-/* When space is tight the fingerprint gives way before the name; it is also in the row's hover title. */
-.plist .pname .fp { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .plist .pname .new { flex: none; }
 /* Badges give way before the name and wrap among themselves: "sharing", "via relay" and a set volume together
    are wider than the sidebar leaves (report of Sep 17: the labels ran out of the row). */

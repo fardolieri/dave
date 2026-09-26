@@ -11,7 +11,7 @@ import { createCall, type ConnState, type OutgoingShare, type PeerView } from '.
 import { createAttention, type RoomLink } from './attention';
 import { contactOf, isKnown, markKnown, setNickname } from './contacts';
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, normaliseName, type Identity, type Person } from '../core/protocol';
-import { ambiguousNames, displayName, formatAgo, knownAgo, showsFingerprint } from '../core/names';
+import { displayName, formatAgo, knownAgo } from '../core/names';
 import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatVideo } from '../core/format';
 import { formatDelay, lagLevel } from '../core/lowvoice';
@@ -240,18 +240,9 @@ function Workspace(props: WorkspaceProps) {
     }
     return [...byKey.values()];
   });
-  // Shown names that more than one key uses, among everyone present and everyone in the loaded history:
-  // only those get their fingerprint next to the name (issue #7).
-  const ambiguous = createMemo(() => {
-    const present = everyone().map((p) => ({ publicKey: p.publicKey, shown: displayName(p.name, contactOf(p.publicKey)) }));
-    const wrote = (current()?.room.lines() ?? []).flatMap((l) => (l.kind === 'text' ? [{ publicKey: l.from.publicKey, shown: displayName(l.from.name, contactOf(l.from.publicKey)) }] : []));
-    return ambiguousNames([...present, ...wrote]);
-  });
   /** A friend's current presence entry, from any room; a chat line keeps the name and picture they had when they wrote it. */
   const present = (publicKey: string): Person | undefined => everyone().find((p) => p.publicKey === publicKey);
-  const currentName = (publicKey: string): string | undefined => present(publicKey)?.name;
-  const myName = createMemo(() => currentName(me) ?? props.name);
-  /** How this browser shows a friend: the name, whether the fingerprint accompanies it, the picture, and the hover title with the rest. */
+  /** How this browser shows a friend: the name, the picture, and the hover title with the rest. The fingerprint is in the title and the profile card, never beside the name. */
   const labelOf = (id: Identity): Label => {
     const c = contactOf(id.publicKey);
     const isMe = id.publicKey === me;
@@ -261,7 +252,7 @@ function Workspace(props: WorkspaceProps) {
     const known = isMe || c !== undefined;
     const ago = knownAgo(c);
     const title = [c?.nick ? `calls themselves ${own}` : null, `fingerprint ${id.fingerprint}`, isMe ? null : ago ? `known since ${ago}` : 'first time this key shows up here'].filter(Boolean).join(' · ');
-    return { shown, fp: showsFingerprint(known, shown, ambiguous()), known, title, picture: now ? now.picture : id.picture };
+    return { shown, known, title, picture: now ? now.picture : id.picture };
   };
   // The profile card: which friend it is about and the avatar it hangs from. Opening it acknowledges the key.
   const [profile, setProfile] = createSignal<{ publicKey: string; anchor: HTMLElement } | null>(null);
@@ -286,7 +277,6 @@ function Workspace(props: WorkspaceProps) {
   const sharerKeys = createMemo<string[]>(() => sharers().map((p) => p.publicKey), { equals: sameKeys });
   const sharerOf = (key: string): Person => sharers().find((p) => p.publicKey === key) ?? sharers()[0]!;
   const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
-  const clash = createMemo(() => everyone().some((p) => p.publicKey !== me && p.name === myName()));
   const connected = () => current()?.room.status().kind === 'connected';
   // Bumped when I send or switch rooms: the log jumps to the newest line (the composer and the log are separate grid items).
   const [jumpToken, setJumpToken] = createSignal(0);
@@ -373,9 +363,6 @@ function Workspace(props: WorkspaceProps) {
                 </section>
               );
             }}</For>
-            <Show when={clash()}>
-              <div class="warn">Someone else here is also called {myName()}. Your fingerprint <code>{identity.fingerprint}</code> tells you apart.</div>
-            </Show>
             <div class="side-foot">
               <Show when={creating()} fallback={<button class="link" onClick={() => setCreating(true)}>New room</button>}>
                 <form class="newroom" onSubmit={createRoomFromDraft}>
@@ -476,7 +463,7 @@ function InvitePanel(props: { link: string; name: string }) {
 }
 
 /** How a friend is shown here, computed by the Workspace from the address book and who else is around. */
-type Label = { shown: string; fp: boolean; known: boolean; title: string; picture?: string };
+type Label = { shown: string; known: boolean; title: string; picture?: string };
 
 /** The avatar is the way into a friend's profile card. It shows the profile picture (issue #8), else the initial. */
 function Avatar(props: { initial: string; picture?: string; speaking?: boolean; title: string; onOpen: (anchor: HTMLElement) => void }) {
@@ -488,7 +475,7 @@ function PersonRow(props: { p: Person; isMe: boolean; label: Label; onProfile: (
   return (
     <li onClick={acknowledge} title={props.label.known ? props.label.title : `${props.label.title}. Click to acknowledge.`}>
       <Avatar initial={props.label.shown[0]!} picture={props.label.picture} title={props.isMe ? 'Your profile' : 'Profile'} onOpen={props.onProfile} />
-      <span class="pname"><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span> <Show when={props.label.fp}><code class="fp">{props.p.fingerprint}</code></Show>
+      <span class="pname"><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span>
         <Show when={!props.label.known}><b class="new">new</b></Show>
       </span>
     </li>
@@ -703,7 +690,7 @@ function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: 
   return (
     <li class="prow">
       <Avatar initial={props.label.shown[0]!} picture={props.label.picture} speaking={props.speaking} title={props.isMe ? 'Your profile' : 'Profile'} onOpen={props.onProfile} />
-      <span class="pname" title={props.label.title}><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span> <Show when={props.label.fp}><code class="fp">{props.p.fingerprint}</code></Show></span>
+      <span class="pname" title={props.label.title}><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span></span>
       <span class="pflags">
         <Show when={props.p.muted}><em>muted</em></Show>
         <Show when={props.p.sharing}><em>sharing</em></Show>
@@ -1103,7 +1090,7 @@ function ChatLog(props: { lines: ChatLine[]; jumpToken: number; label: (id: Iden
                     <div class="msg msg-cont" title={when(m().at)}><div class="msg-text"><Linkified text={m().text} /></div></div>
                   }>
                     <div class="msg">
-                      <span class="msg-from" title={props.label(m().from).title}>{props.label(m().from).shown} <Show when={props.label(m().from).fp}><code class="fp">{m().from.fingerprint}</code></Show></span>
+                      <span class="msg-from" title={props.label(m().from).title}>{props.label(m().from).shown}</span>
                       <span class="msg-at">{when(m().at)}</span>
                       <div class="msg-text"><Linkified text={m().text} /></div>
                     </div>

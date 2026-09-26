@@ -3,7 +3,7 @@ import { local } from './storage';
 import { normaliseNickname, type Contact } from '../core/names';
 
 // The keys this browser has acknowledged, with the name they used and an optional nickname (issues #6 and #7).
-// A key not in the book shows a "new" badge and its fingerprint until you acknowledge it (spec §3).
+// A key not in the book shows a "new" badge until you acknowledge it (spec §3).
 // Reactive, so a rename or an acknowledgement updates every row and chat line at once.
 // The storage key predates nicknames and is kept so already acknowledged friends stay acknowledged.
 type Book = Record<string, Contact>;
