@@ -29,6 +29,14 @@ test('noise removal runs on the outgoing voice, the gate follows its slider, and
   await needHooks(alice);
   type Audio = { noiseRemoval: string; sending: string | null; settings: { voiceThreshold: number }; track: { noiseSuppression?: boolean } | null; level: { voice: number; open: boolean } };
   const audio = () => alice.hook<Audio>('audio');
+  // Headless Firefox on a runner without a sound device never gets a running AudioContext (see the cue test): noise removal
+  // then waits, and what must hold is that the microphone goes out as it is.
+  const context = await alice.hook<{ context: string | null }>('playback').then((p) => p.context);
+  if (context !== 'running') {
+    await expect.poll(async () => (await audio()).sending).toBe('microphone');
+    await bob.hearing('Alice');
+    test.skip(true, `no running AudioContext here (${context}), so noise removal waits; the microphone goes out as it is`);
+  }
   await expect.poll(async () => (await audio()).noiseRemoval, { message: 'RNNoise runs' }).toBe('on');
   expect((await audio()).sending).toBe('processed');
   expect((await audio()).track?.noiseSuppression).not.toBe(true); // the browser's own suppression stepped aside

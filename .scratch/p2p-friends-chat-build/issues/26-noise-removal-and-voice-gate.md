@@ -1,6 +1,6 @@
 # 26 · Noise removal and the voice gate
 
-Status: built 2026-09-26 on build/26-noise-removal
+Status: shipped 2026-09-26 to nightly and prod (e96f579, CI test fix after)
 Asked for 2026-09-26: "Do we already have a custom minimum threshold of microphone activity in place? … How complicated
 is it to make it configurable for the user with live microphone feedback?" The only threshold was the speaking ring's
 RMS 0.02; nothing gated what was sent. Research (`docs/research/noise-suppression.md`, branch `research/noise-suppression`)
@@ -41,4 +41,7 @@ follows the gate; the raw microphone whenever it cannot run; the built wasm comm
   follows its slider, and switching it off sends the microphone again"; the processing-warning test updated.
 - WebKit (Playwright's build, in its container) against `pnpm dev`: joined, noise removal `on`, the processed track
   sent, the gate shut on the fake microphone's tone; that microphone runs at 44.1 kHz, so the 48 kHz context resamples.
+- Nightly e2e on the GitHub runner: Firefox there never gets a running AudioContext (no sound device, as the cue test
+  knows), so noise removal stayed `starting` with the microphone going out as it is, which is the fallback working. The
+  test now checks exactly that where no context runs and skips the rest.
 - Not tried: a real Safari, a phone (CPU there unmeasured).
