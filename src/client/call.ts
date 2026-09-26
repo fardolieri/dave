@@ -481,11 +481,13 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
    * (spec §6.4). Retries every 100 ms until the answer has produced encodings, for as long as the share
    * and the connection live (ADR 0001: deactivation must wait for the answer, never give up).
    */
-  function applyShareEncoding(peer: Peer): Promise<void> {
-    peer.encodingChain = peer.encodingChain.then(() => applyShareEncodingNow(peer)).catch((e) => console.warn('setParameters share', e));
+  function applyShareEncoding(peer: Peer, staleRetries = 0): Promise<void> {
+    peer.encodingChain = peer.encodingChain.then(() => applyShareEncodingNow(peer, staleRetries)).catch((e) => console.warn('setParameters share', e));
     return peer.encodingChain;
   }
-  async function applyShareEncodingNow(peer: Peer): Promise<void> {
+  /** How often parameters changed underneath a setParameters are read again before giving up with a warning. */
+  const STALE_PARAMETER_RETRIES = 5;
+  async function applyShareEncodingNow(peer: Peer, staleRetries: number): Promise<void> {
     if (!shareVideo || peer.pc.connectionState === 'closed') return;
     const viewers = [...peers.values()].filter((p) => p.viewsMyShare).length;
     const enc = shareEncoding(shareSettings(), viewers, peer.viewerScale);
@@ -502,7 +504,16 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         Object.assign(params.encodings[0]!, { maxBitrate: enc.maxBitrate, maxFramerate: enc.maxFramerate, scaleResolutionDownBy: enc.scaleResolutionDownBy });
         (params as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference = enc.degradationPreference;
       }
-      await sender.setParameters(params);
+      try {
+        await sender.setParameters(params);
+      } catch (e) {
+        // A negotiation changed the sender between getParameters and setParameters (seen when a participant rejoins
+        // mid-share, found by the e2e suite): read the parameters again shortly. A few times only, so an error that
+        // keeps coming back ends in the usual warning instead of a silent loop.
+        if ((e as DOMException).name !== 'InvalidModificationError' || staleRetries >= STALE_PARAMETER_RETRIES) throw e;
+        setTimeout(() => void applyShareEncoding(peer, staleRetries + 1), 100);
+        return;
+      }
     }
   }
 
