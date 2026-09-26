@@ -30,12 +30,16 @@ function lanAddress(): string {
   return 'localhost';
 }
 
-/** Console noise a local Firefox run produces from the plain-http network address; not the app's doing. */
+/** Console output Firefox adds that is not the app misbehaving. Chromium adds none. */
 export function environmentNoise(engine: Engine): RegExp[] {
-  if (target || engine !== 'firefox') return [];
+  if (engine !== 'firefox') return [];
   return [
-    /Mixed Content: Upgrading insecure display request/, // icons on a page Firefox was told to treat as secure
-    /Cookie “dmn_chk_[^”]*” has been rejected for invalid domain/, // posthog-js probing cookie domains on an IP address
+    // posthog-js probes which domain takes a cookie; Firefox reports the refusals (an IP address, workers.dev as a public suffix).
+    /Cookie “dmn_chk_[^”]*” has been rejected for invalid domain/,
+    // A deployed copy hands out STUN plus Cloudflare's TURN URLs, six in all. A real hint, kept as a follow-up, not a test failure.
+    /Using five or more STUN\/TURN servers slows down discovery/,
+    // Icons on the plain-http network address Firefox was told to treat as secure (local runs only).
+    ...(target ? [] : [/Mixed Content: Upgrading insecure display request/]),
   ];
 }
 

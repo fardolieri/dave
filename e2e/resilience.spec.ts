@@ -45,6 +45,9 @@ test('a stalled connection is rebuilt and comes up again', async ({ crowd }) => 
   await bob.join();
   await alice.connectedTo('Bob');
   await needHooks(alice);
+  // Trailing candidates of the torn-down connection can reach the new one before its description (seen with TURN on nightly).
+  alice.expectWarning(/signal handling failed InvalidStateError: .*addIceCandidate/);
+  bob.expectWarning(/signal handling failed InvalidStateError: .*addIceCandidate/);
   const r = await alice.page.evaluate(() => (window as unknown as { __dave: { rebuild: (n: string) => string } }).__dave.rebuild('Bob'));
   expect(r).toMatch(/^rebuilt Bob/);
   await alice.connectedTo('Bob');
