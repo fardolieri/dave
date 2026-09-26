@@ -992,7 +992,11 @@ function VersionDialog() {
   return (
     <div class="about-link">
       <button class="link" title={`Version ${shortCommit(build.commit)}${build.dirty ? '+' : ''}, ${deployed.toLowerCase()} ${formatAgo(Date.parse(build.builtAt))}`} onClick={() => dialog?.showModal()}>About</button>
-      <dialog class="about" ref={dialog}>
+      {/* A click on the backdrop reaches the dialog itself, outside its box; its padding is the dialog too, so the box decides. */}
+      <dialog class="about" ref={dialog} onClick={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        if (e.target === e.currentTarget && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) e.currentTarget.close();
+      }}>
         <h3>About dave</h3>
         <dl>
           <dt>Version</dt>
