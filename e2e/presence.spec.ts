@@ -48,8 +48,6 @@ test('a new name reaches everyone', async ({ crowd }) => {
 test('ticket 25: one tab at a time; the first keeps working, a second waits, takes over on request or when the first closes', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
-  // A friend who reloads mid-call is out of presence for a moment, so the server may turn down signaling to them.
-  for (const f of [alice, bob]) f.expectWarning(/dropped signal that participant is not in the call/);
   await alice.join();
   await bob.join();
   await bob.connectedTo('Alice');

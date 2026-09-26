@@ -70,6 +70,18 @@ export class Wire {
   }
 }
 
+/**
+ * Messages that come with ordinary churn once there is real latency (seen against nightly), not with a fault:
+ * - the server turns down signaling to a friend who has just left presence (leave, reload, dropped socket, rejoin)
+ * - the browser reports a socket that a reload or take-over closed while it was still connecting
+ * Anything else a test provokes on purpose it declares itself with `expectWarning`.
+ */
+const KNOWN_HARMLESS: RegExp[] = [
+  /dropped signal that participant is not in the call/,
+  /WebSocket is closed before the connection is established/, // Chromium
+  /can’t establish a connection to the server at wss:|was interrupted while the page was loading/, // Firefox
+];
+
 export type FriendOptions = {
   rooms: RoomSeed[];
   /** Display name, pre-seeded so the page skips the name form. Omit to land on the first-visit form. */
@@ -89,7 +101,7 @@ export type FriendOptions = {
 
 export class Friend {
   readonly wire = new Wire();
-  private expected: RegExp[] = [];
+  private expected: RegExp[] = [...KNOWN_HARMLESS];
   readonly problems: string[] = [];
   /** URLs of the PostHog requests this friend's pages made (answered locally, never sent). */
   readonly posthog: string[] = [];

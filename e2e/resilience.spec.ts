@@ -7,8 +7,6 @@ test('the call survives the server going away and coming back', async ({ crowd }
   await bob.join();
   await alice.connectedTo('Bob');
 
-  // While Alice is off the server she is out of presence, so the server turns down Bob's signaling to her.
-  bob.expectWarning(/dropped signal that participant is not in the call/);
   await alice.wire.cut();
   await expect(alice.banner).toContainText(/Reconnecting|Server unavailable/);
   // Voice keeps flowing peer to peer while the server is gone.
@@ -30,8 +28,6 @@ test('a friend whose socket drops without a goodbye is shown as lost, then recov
   await bob.join();
   await bob.connectedTo('Alice');
   await needHooks(alice);
-  // Until Alice's new socket is attached she is out of presence, so the server may turn down Bob's signaling to her.
-  bob.expectWarning(/dropped signal that participant is not in the call/);
   await alice.page.evaluate(() => (window as unknown as { __dave: { dropSocket: () => void } }).__dave.dropSocket());
   await alice.connected();
   await bob.connectedTo('Alice');
@@ -45,9 +41,9 @@ test('a stalled connection is rebuilt and comes up again', async ({ crowd }) => 
   await bob.join();
   await alice.connectedTo('Bob');
   await needHooks(alice);
-  // Trailing candidates of the torn-down connection can reach the new one before its description (seen with TURN on nightly).
-  alice.expectWarning(/signal handling failed InvalidStateError: .*addIceCandidate/);
-  bob.expectWarning(/signal handling failed InvalidStateError: .*addIceCandidate/);
+  // Trailing candidates of the torn-down connection can reach the new one before its description (seen with TURN on nightly;
+  // Firefox logs the error only as an object handle, so the pattern cannot name addIceCandidate).
+  for (const f of [alice, bob]) f.expectWarning(/signal handling failed/);
   const r = await alice.page.evaluate(() => (window as unknown as { __dave: { rebuild: (n: string) => string } }).__dave.rebuild('Bob'));
   expect(r).toMatch(/^rebuilt Bob/);
   await alice.connectedTo('Bob');

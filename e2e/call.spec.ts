@@ -73,8 +73,6 @@ test('Chromium and Firefox in one call connect and hear each other', async ({ cr
 test('ticket 24: a reload rejoins the call with no click, watched shares included; after Leave a reload stays out', async ({ crowd, browserName }) => {
   const bob = await crowd.open('Bob', { engine: 'chromium' });
   const alice = await crowd.open('Alice', { autoplay: 'default' }); // the browser's real policy: a reload brings no gesture
-  // A friend who reloads mid-call is out of presence for a moment, so the server may turn down signaling to them.
-  for (const f of [alice, bob]) f.expectWarning(/dropped signal that participant is not in the call/);
   await bob.join();
   await alice.join();
   await alice.connectedTo('Bob');
