@@ -1,6 +1,6 @@
 # 30 · Large signaling frames, and refused frames said honestly
 
-Status: built on build/30-large-signal-frames, not yet shipped
+Status: shipped 2026-09-27 to nightly and prod (80446b7)
 Asked for 2026-09-27: a friend on a flaky line saw "Not sent: unrecognised message." (23:57 on Sep 26) in his chat, Daniel
 did not. His problem report never arrived (his events stopped at 23:56). After the welcome, the server only answers
 "unrecognised message" without a `ref` to a frame over the 16,384-unit cap or one that is not JSON; every frame the
