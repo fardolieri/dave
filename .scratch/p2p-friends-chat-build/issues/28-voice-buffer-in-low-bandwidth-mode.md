@@ -1,6 +1,6 @@
 # 28 · A longer voice buffer in low bandwidth mode
 
-Status: built on build/28-voice-buffer
+Status: shipped 2026-09-27 to nightly and prod (1816f49)
 Asked for 2026-09-27: with low bandwidth voice (ticket 27) the friend on the bad line is "a bit better" to understand
 "but still very jitterish". Options weighed: RED (a repeat of the previous frame in every packet, against lost packets),
 a longer buffer (against packets arriving in bursts), longer packets (already 60 ms; longer only makes each loss a bigger
