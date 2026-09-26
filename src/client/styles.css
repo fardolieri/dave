@@ -267,3 +267,14 @@ dialog.report .row button:first-child { flex: 1; }
   .chat-input { grid-column: 1; grid-row: 2; border-top: 1px solid var(--line); padding: 8px 14px calc(8px + env(safe-area-inset-bottom)); }
   .emoji-picker[popover] { width: calc(100vw - 16px); } /* the whole width: the finger is the pointer here */
 }
+
+/* "About": among the sidebar's rare actions and on the front page; the dialog borrows the report dialog's frame. */
+.version { display: contents; }
+.notice .version { display: block; margin-top: 2rem; }
+.notice .version button.link { padding: 0; }
+dialog.version-dialog { text-align: left; }
+dialog.version-dialog .subject { margin: 0 0 6px; font-weight: 600; }
+dialog.version-dialog .body { margin: 0 0 12px; white-space: pre-line; color: var(--dim); font-size: 13px; max-height: 40vh; overflow: auto; }
+dialog.version-dialog dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 13px; }
+dialog.version-dialog dt { color: var(--dim); }
+dialog.version-dialog dd { margin: 0; }

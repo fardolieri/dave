@@ -12,6 +12,8 @@ The sidebar lists everyone online across your rooms, then each room by name with
 
 To rotate a room's secret: start a new room and send everyone its link.
 
+**About**, among the links at the bottom of the sidebar (and on the front page), says which version this is: the commit message, when it was committed and deployed, and links to the commit and the GitHub project.
+
 ## Developing
 
     pnpm install

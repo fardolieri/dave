@@ -11,7 +11,7 @@ import { createCall, type ConnState, type OutgoingShare, type PeerView } from '.
 import { createAttention, type RoomLink } from './attention';
 import { contactOf, isKnown, markKnown, setNickname } from './contacts';
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, normaliseName, type Identity, type Person } from '../core/protocol';
-import { ambiguousNames, displayName, knownAgo, showsFingerprint } from '../core/names';
+import { ambiguousNames, displayName, formatAgo, knownAgo, showsFingerprint } from '../core/names';
 import { LOW_LATENCY_MS, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatVideo } from '../core/format';
 import { collectReport, formatReport, sendReport, type Report } from './diagnostics';
@@ -19,6 +19,7 @@ import { CATEGORIES, SEVERITIES, isCategory, isSeverity, type Category, type Sev
 import { EmojiPicker } from './EmojiPicker';
 import { place } from './place';
 import { createTabLock } from './tablock';
+import { build, commitUrl, REPO_URL, shortCommit } from './version';
 
 export default function App() {
   // An invite link is consumed before anything else renders, so it never stays in the address bar.
@@ -101,6 +102,7 @@ export default function App() {
             Installed on an iPhone or iPad home screen? Tapped links open in Safari, which keeps its rooms to itself, so pasting is the only way in here.
             This copy of the app also starts with its own identity: friends will see you as new.
           </p>
+          <VersionDialog />
         </main>
       </Match>
       <Match when={!name()}>
@@ -387,6 +389,7 @@ function Workspace(props: WorkspaceProps) {
               <button class="link" title="Forget this room in this browser" onClick={() => leaveRoom(cur())}>Leave {cur().saved.name}</button>
               <ReportDialog collect={() => collectReport({ status: () => cur().room.status().kind, people: everyone, me: () => me, call: (active() ?? cur()).call.diagnostics })} />
               <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { if (confirm(`Clear this browser's chat history of ${cur().saved.name}? Nothing is stored on the server, so this cannot be undone.`)) void cur().room.clearHistory(); }}>Clear chat history</button>
+              <VersionDialog />
             </div>
           </aside>
           <ProfileCard open={profile()} people={everyone()} me={me} label={labelOf} onClose={() => setProfile(null)} onRenameSelf={renameSelf} onPictureSelf={pictureSelf} />
@@ -943,6 +946,34 @@ function ReportDialog(props: { collect: () => Promise<Report> }) {
         </div>
       </dialog>
     </>
+  );
+}
+
+/** Date and 24-hour clock time, always with the day: a version's age is the point. */
+const stamp = (iso: string): string => new Date(iso).toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
+/** Which version of dave this is: the commit it was built from, its message, when it was deployed, and where the code lives. */
+function VersionDialog() {
+  let dialog: HTMLDialogElement | undefined;
+  const deployed = build.target === 'local' ? 'Built' : 'Deployed';
+  return (
+    <div class="version">
+      <button class="link" title={`Version ${shortCommit(build.commit)}${build.dirty ? '+' : ''}, ${deployed.toLowerCase()} ${formatAgo(Date.parse(build.builtAt))}`} onClick={() => dialog?.showModal()}>About</button>
+      <dialog class="report version-dialog" ref={dialog}>
+        <h3>About dave</h3>
+        <p class="subject">{build.subject || 'No commit message'}</p>
+        <Show when={build.body}><p class="body">{build.body}</p></Show>
+        <dl>
+          <dt>Commit</dt>
+          <dd><a href={commitUrl(build.commit)} target="_blank" rel="noopener"><code>{shortCommit(build.commit)}</code></a>{build.dirty ? ' plus uncommitted changes' : ''}, committed {stamp(build.committedAt)}</dd>
+          <dt>{deployed}</dt>
+          <dd>{stamp(build.builtAt)} ({formatAgo(Date.parse(build.builtAt))}){build.target === 'local' ? ', on a developer\'s machine' : `, to ${build.target === 'live' ? 'the live site' : build.target}`}</dd>
+          <dt>Source</dt>
+          <dd><a href={REPO_URL} target="_blank" rel="noopener">{REPO_URL.replace(/^https:\/\//, '')}</a></dd>
+        </dl>
+        <div class="row"><button onClick={() => dialog?.close()}>Close</button></div>
+      </dialog>
+    </div>
   );
 }
 
