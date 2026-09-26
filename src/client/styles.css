@@ -107,6 +107,8 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .conn-relayed { color: var(--warn); }
 .conn-reconnecting { color: var(--warn); } .conn-reconnecting i { animation: pulse 1s infinite; }
 .conn-unreachable { color: var(--bad); }
+.lag { font-size: 11px; font-variant-numeric: tabular-nums; }
+.lag-ok { color: var(--dim); } .lag-warn { color: var(--warn); } .lag-bad { color: var(--bad); font-weight: 600; }
 @keyframes pulse { 50% { opacity: .2; } }
 .actions { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .actions button { width: 100%; }

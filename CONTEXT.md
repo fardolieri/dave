@@ -99,3 +99,11 @@ _Avoid_: Noise suppression (the browser's built-in filter, a different thing), n
 **Voice gate**:
 What lets your voice out only while you speak: it opens when RNNoise's voice probability passes the threshold on the Audio panel's slider and holds open briefly after. Below it friends receive silence, and your speaking ring follows it.
 _Avoid_: Noise gate (that one goes by loudness), voice activity detection (the measurement, not the gate), input sensitivity
+
+**Low bandwidth voice**:
+The setting for a slow or overloaded internet line: voices go at about a third of the data, sounding a little duller, so they stop arriving seconds late. Asked for by one side, it holds both ways between the two; at the slow end it covers all of that friend's connections.
+_Avoid_: Low quality mode, data saver, low bitrate (in UI copy; fine in code)
+
+**Round trip**:
+How long a packet takes to a friend and back, shown beside their name. You hear them about half of it late. A line that queues packets makes it seconds.
+_Avoid_: Ping, lag, latency (in UI copy; fine in code)

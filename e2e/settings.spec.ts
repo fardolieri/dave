@@ -57,6 +57,47 @@ test('noise removal runs on the outgoing voice, the gate follows its slider, and
   await bob.hearing('Alice');
 });
 
+test('low bandwidth voice caps the voice both ways from one side, and the delay to each friend shows beside the name', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  await expect(alice.selectedRoom.locator('li.prow', { hasText: 'Bob' }).locator('.lag')).toHaveText(/^\d+ ms$/);
+
+  type Voice = { packetsSent?: number; bytesSent?: number };
+  type Diag = { lowBandwidthVoice: boolean; peers: Array<{ asksLowVoice: boolean; outboundVoice: Voice | null }> };
+  const sent = async (f: typeof alice) => (await f.hook<Diag>('diagnostics')).peers[0]?.outboundVoice ?? {};
+  /** What one friend's voice encoder puts out over two seconds: packets per second, payload kbps. Engine-neutral: Firefox's codec stats show its own fmtp, not the one it obeys. */
+  const rate = async (f: typeof alice) => {
+    const a = await sent(f);
+    await f.page.waitForTimeout(2000);
+    const b = await sent(f);
+    return { pps: ((b.packetsSent ?? 0) - (a.packetsSent ?? 0)) / 2, kbps: (((b.bytesSent ?? 0) - (a.bytesSent ?? 0)) * 8) / 2000 };
+  };
+  const low = (r: { pps: number; kbps: number }) => r.pps < 20 && r.kbps <= 14; // 60 ms packets at 12 kbps, fewer still in silence
+  const full = (r: { pps: number; kbps: number }) => r.pps > 40; // 20 ms packets
+  await expect.poll(() => rate(alice).then(full), { message: 'full voice at first' }).toBe(true);
+
+  await alice.selectedRoom.getByTitle('Audio settings').click();
+  await alice.page.locator('.panel').getByLabel('Low bandwidth voice').check();
+  // Alice's own encoder follows the rewritten answer, Bob's the rewritten offer: Alice alone switched it on.
+  for (const f of [alice, bob]) await expect.poll(() => rate(f).then(low), { message: `${f.name} sends low bandwidth voice` }).toBe(true);
+  expect((await bob.hook<Diag>('diagnostics')).peers[0]?.asksLowVoice).toBe(true);
+  await bob.hearing('Alice');
+  await alice.hearing('Bob');
+
+  await alice.page.reload(); // the setting is remembered, and a fresh connection starts with it
+  await alice.connectedTo('Bob');
+  await expect.poll(() => rate(bob).then(low), { message: 'Bob sends low bandwidth voice to the reloaded Alice' }).toBe(true);
+
+  await alice.selectedRoom.getByTitle('Audio settings').click();
+  await alice.page.locator('.panel').getByLabel('Low bandwidth voice').uncheck();
+  for (const f of [alice, bob]) await expect.poll(() => rate(f).then(full), { message: `${f.name} is back to full voice` }).toBe(true);
+  await bob.hearing('Alice');
+});
+
 test('a friend\'s volume and the master volume multiply, and survive a reload', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');

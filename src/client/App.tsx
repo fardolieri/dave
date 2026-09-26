@@ -14,6 +14,7 @@ import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, normaliseName, type Identity, type Pe
 import { ambiguousNames, displayName, formatAgo, knownAgo, showsFingerprint } from '../core/names';
 import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatVideo } from '../core/format';
+import { formatDelay, lagLevel } from '../core/lowvoice';
 import { collectReport, formatReport, sendReport, type Report } from './diagnostics';
 import { CATEGORIES, SEVERITIES, isCategory, isSeverity, type Category, type Severity } from '../core/report';
 import { EmojiPicker } from './EmojiPicker';
@@ -677,12 +678,23 @@ function AudioPanel(props: { call: Call }) {
         <input type="checkbox" checked={a().noiseSuppression} disabled={removing()} onChange={(e) => set({ noiseSuppression: e.currentTarget.checked })} /> Noise suppression
       </label>
       <label class="check"><input type="checkbox" checked={a().autoGainControl} onChange={(e) => set({ autoGainControl: e.currentTarget.checked })} /> Automatic gain</label>
+      <label class="check" title="For a slow or overloaded internet connection: your voice, and every voice sent to you, travels with about a third of the data, so it stops arriving seconds late. Voices sound a little duller. Switched on by the friend with the slow line, it helps all their connections; switched on by you, the one between you.">
+        <input type="checkbox" checked={a().lowBandwidthVoice} onChange={(e) => set({ lowBandwidthVoice: e.currentTarget.checked })} /> Low bandwidth voice
+      </label>
       <label class="check"><input type="checkbox" checked={props.call.viewerSettings().jitterBufferTargetMs > 0} onChange={(e) => props.call.setViewerSettings({ jitterBufferTargetMs: e.currentTarget.checked ? LOW_LATENCY_MS : 0 })} /> Low latency when watching shares</label>
     </div>
   );
 }
 
 const CONN_LABEL: Record<ConnState, string> = { connecting: 'connecting…', direct: 'direct', relayed: 'via relay', reconnecting: 'reconnecting…', unreachable: 'unreachable' };
+
+/** The round trip to one friend (ticket 27): quiet while it is small, a warning once a call gets hard to follow. */
+function Lag(props: { ms: number }) {
+  const level = () => lagLevel(props.ms);
+  const title = () => `Round trip: ${formatDelay(props.ms)}. You hear them about half of that late.`
+    + (level() === 'ok' ? '' : ' A line this slow usually queues up at one end; Low bandwidth voice in the audio settings may help, on either side.');
+  return <span class={`lag lag-${level()}`} title={title()}>{formatDelay(props.ms)}</span>;
+}
 
 function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: PeerView; speaking: boolean; onVolume?: (v: number) => void; onProfile: (anchor: HTMLElement) => void }) {
   const [sliderOpen, setSliderOpen] = createSignal(false);
@@ -696,6 +708,7 @@ function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: 
         <Show when={props.p.muted}><em>muted</em></Show>
         <Show when={props.p.sharing}><em>sharing</em></Show>
         <Show when={props.view}>{(v) => <span class={`conn conn-${v().conn}`} title={CONN_LABEL[v().conn]}><i />{CONN_LABEL[v().conn]}</span>}</Show>
+        <Show when={props.view && props.view.rttMs !== null}><Lag ms={props.view!.rttMs!} /></Show>
         <Show when={props.onVolume && props.view}>
           <button class={`vol ${percent() !== 100 ? 'on' : ''}`} title={`Volume for you: ${percent()}%`} onClick={() => setSliderOpen(!sliderOpen())}>
             {percent() === 0 ? '🔇' : '🔊'}<Show when={percent() !== 100}><small>{percent()}%</small></Show>

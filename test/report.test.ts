@@ -50,7 +50,11 @@ describe('reportProperties', () => {
   });
   it('counts nothing when the tab is not in a call', () => {
     const idle = reportProperties({ text: 'x', category: 'other', severity: 'annoying' }, { ...report, call: { ...report.call, inCall: false, sharing: null, outgoing: null, peers: [] }, videoElements: [], log: [] });
-    expect(idle).toMatchObject({ in_call: false, sharing: false, share_viewers: 0, peers: 0, watching_count: 0, black_tiles: 0, warnings: 0, errors: 0 });
+    expect(idle).toMatchObject({ in_call: false, sharing: false, share_viewers: 0, peers: 0, watching_count: 0, black_tiles: 0, warnings: 0, errors: 0, max_rtt_ms: null, low_bandwidth_voice: false });
+  });
+  it('lifts the worst round trip and who asked for low bandwidth voice (ticket 27)', () => {
+    const slow = { ...report, call: { ...report.call, lowBandwidthVoice: true, peers: [peer({ rttMs: 80 }), { ...peer({ rttMs: 9400 }), asksLowVoice: true }, peer({ rttMs: null })] } };
+    expect(reportProperties({ text: 'x', category: 'audio', severity: 'blocking' }, slow)).toMatchObject({ max_rtt_ms: 9400, low_bandwidth_voice: true, peers_asking_low_voice: 1 });
   });
 });
 

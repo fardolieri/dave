@@ -63,11 +63,13 @@ export type AudioSettings = {
   noiseRemoval: boolean;
   /** RNNoise voice probability at which the gate opens, 0 to MAX_VOICE_THRESHOLD; 0 lets everything through. */
   voiceThreshold: number;
+  /** Voice at about a third of the data both ways, for a slow or overloaded line (ticket 27, core/lowvoice.ts). */
+  lowBandwidthVoice: boolean;
 };
 export const MAX_VOICE_THRESHOLD = 0.95;
 export const DEFAULT_VOICE_THRESHOLD = 0.5;
 export const DEFAULT_AUDIO: AudioSettings = {
-  echoCancellation: true, noiseSuppression: true, autoGainControl: true, microphoneId: '', speakerId: '', masterVolume: 1, noiseRemoval: true, voiceThreshold: DEFAULT_VOICE_THRESHOLD,
+  echoCancellation: true, noiseSuppression: true, autoGainControl: true, microphoneId: '', speakerId: '', masterVolume: 1, noiseRemoval: true, voiceThreshold: DEFAULT_VOICE_THRESHOLD, lowBandwidthVoice: false,
 };
 /** Noise removal stands in for the browser's own noise suppression, so either one counts. */
 export const processingIsDefault = (a: AudioSettings): boolean => a.echoCancellation && a.autoGainControl && (a.noiseRemoval || a.noiseSuppression);
