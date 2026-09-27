@@ -42,6 +42,9 @@ export function environmentNoise(engine: Engine): RegExp[] {
     // the teardown and says so. Only ever on leaving the page: 60 s of steady processing logged none, 5 of 8 navigations did.
     // Closing the context or stopping process() on pagehide does not win that race.
     /Script terminated by timeout at:\s*process@\S*voice\.worklet/,
+    // Playwright's own injected script ("debugger eval code") measuring an element while a reloaded page is still loading;
+    // seen once in three runs after the update bar's Reload (ticket 33). A forced layout in the app's code names its file.
+    /Layout was forced before the page was fully loaded.*file: "debugger eval code"/,
     // Icons on the plain-http network address Firefox was told to treat as secure (local runs only).
     ...(target ? [] : [/Mixed Content: Upgrading insecure display request/]),
   ];

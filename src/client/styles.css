@@ -10,13 +10,20 @@ button { background: var(--panel2); color: var(--fg); border: 1px solid var(--li
 button:disabled { opacity: .5; cursor: default; }
 input { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; }
 .dim { color: var(--dim); }
-.notice { max-width: 36rem; margin: 3rem auto; padding: 0 1rem; }
+.notice { width: 100%; max-width: 36rem; margin: 3rem auto; padding: 0 1rem; }
 .notice form { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .notice input { width: 100%; }
 
+/* The page is a column: the update bar (ticket 33), when there is one, then the screen below it, which takes the rest.
+   A row of its own, so the bar pushes everything down instead of covering the call buttons or the composer. */
+#app { display: flex; flex-direction: column; }
+.update { flex: none; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px 14px; padding: 8px 14px; background: var(--acc); color: #fff; font-weight: 600; text-align: center; }
+.update button { background: #fff; color: #1d2c6b; border: 0; font-weight: 700; padding: 6px 16px; }
+.update button:hover { background: #e6ebff; }
+
 /* One grid for the whole room: the sidebar spans every row on the left; shares, chat log and composer
    are rows of the right column. The composer being its own grid item is what lets phones pin it. */
-.app { --side-w: 300px; position: relative; height: 100%; display: grid; grid-template-columns: var(--side-w) 1fr; grid-template-rows: 0 minmax(0, 1fr) auto; }
+.app { --side-w: 300px; position: relative; flex: 1; min-height: 0; display: grid; grid-template-columns: var(--side-w) 1fr; grid-template-rows: 0 minmax(0, 1fr) auto; }
 .app.split { grid-template-rows: 52% minmax(0, 1fr) auto; }
 .app > *, .scroll > * { min-width: 0; min-height: 0; }
 /* On desktop the wrapper is invisible to layout (its children are grid items of .app); phones turn it into the scrolling part above the composer. */
@@ -302,7 +309,8 @@ dialog.report .row button:first-child { flex: 1; }
 }
 
 @media (max-width: 700px) {
-  .app { --side-w: 0px; height: 100dvh; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+  #app { height: 100dvh; }
+  .app { --side-w: 0px; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
   .app.split { grid-template-rows: minmax(0, 1fr) auto; }
   /* everything above the composer scrolls as one; the composer is the app's last row and can never cover a line */
   .scroll { display: grid; grid-template-columns: 1fr; grid-template-rows: auto auto minmax(180px, 1fr); grid-row: 1; overflow: auto; }

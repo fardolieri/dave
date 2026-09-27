@@ -2,8 +2,10 @@ import { render } from '@solidjs/web';
 import App from './App';
 import posthog from './posthog';
 import { installConsoleBuffer } from './log';
+import { watchForUpdates } from './update';
 
 installConsoleBuffer();
+watchForUpdates();
 
 // If the reactive system halts (an uncaught error inside an effect), the page silently stops updating.
 // Say so, loudly, with a reload, and keep the error visible in the console.

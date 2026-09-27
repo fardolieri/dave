@@ -22,6 +22,7 @@ import { EmojiPicker } from './EmojiPicker';
 import { place } from './place';
 import { createTabLock } from './tablock';
 import { build, commitUrl, REPO_URL, shortCommit } from './version';
+import { applyUpdate, updateReady } from './update';
 
 export default function App() {
   // An invite link is consumed before anything else renders, so it never stays in the address bar.
@@ -90,45 +91,60 @@ export default function App() {
   });
 
   return (
-    <Switch>
-      <Match when={rooms() === null}>
-        <Notice title="Loading…"> </Notice>
-      </Match>
-      <Match when={rooms()?.length === 0}>
-        <main class="notice">
-          <h1>dave</h1>
-          <h2>You need an invite link</h2>
-          <p>Open the link a friend sent you, or paste it here. Nothing else gets you in.</p>
-          <JoinLinkForm autofocus onJoin={join} />
-          <p class="dim">
-            Installed on an iPhone or iPad home screen? Tapped links open in Safari, which keeps its rooms to itself, so pasting is the only way in here.
-            This copy of the app also starts with its own identity: friends will see you as new.
-          </p>
-          <VersionDialog />
-        </main>
-      </Match>
-      <Match when={!name()}>
-        <NameForm onSubmit={rename} />
-      </Match>
-      <Match when={identityError()}>
-        <Notice title="No identity key">This browser could not create or load an identity key ({identityError()}). Private windows and blocked site data cause this.</Notice>
-      </Match>
-      <Match when={!identity()}>
-        <Notice title="Preparing your identity…"> </Notice>
-      </Match>
-      <Match when={tab.state().kind === 'checking'}>
-        <Notice title="Loading…"> </Notice>
-      </Match>
-      <Match when={tab.state().kind === 'waiting'}>
-        <main class="notice">
-          <h1>dave</h1>
-          <h2>Dave is already open in another tab</h2>
-          <p>That tab keeps working. {invite ? `${invite.name} was added to it. ` : ''}This one connects by itself once the other closes.</p>
-          <p><button onClick={tab.takeOver}>Use it here instead</button></p>
-        </main>
-      </Match>
-      <Match when={ready()}>{(r) => <Workspace {...r()} onStepBack={tab.onStepBack} onSelect={select} onCreate={create} onJoin={join} onForget={forget} onRename={rename} />}</Match>
-    </Switch>
+    <>
+      <Show when={tab.state().kind !== 'waiting'}><UpdateBar /></Show>
+      <Switch>
+        <Match when={rooms() === null}>
+          <Notice title="Loading…"> </Notice>
+        </Match>
+        <Match when={rooms()?.length === 0}>
+          <main class="notice">
+            <h1>dave</h1>
+            <h2>You need an invite link</h2>
+            <p>Open the link a friend sent you, or paste it here. Nothing else gets you in.</p>
+            <JoinLinkForm autofocus onJoin={join} />
+            <p class="dim">
+              Installed on an iPhone or iPad home screen? Tapped links open in Safari, which keeps its rooms to itself, so pasting is the only way in here.
+              This copy of the app also starts with its own identity: friends will see you as new.
+            </p>
+            <VersionDialog />
+          </main>
+        </Match>
+        <Match when={!name()}>
+          <NameForm onSubmit={rename} />
+        </Match>
+        <Match when={identityError()}>
+          <Notice title="No identity key">This browser could not create or load an identity key ({identityError()}). Private windows and blocked site data cause this.</Notice>
+        </Match>
+        <Match when={!identity()}>
+          <Notice title="Preparing your identity…"> </Notice>
+        </Match>
+        <Match when={tab.state().kind === 'checking'}>
+          <Notice title="Loading…"> </Notice>
+        </Match>
+        <Match when={tab.state().kind === 'waiting'}>
+          <main class="notice">
+            <h1>dave</h1>
+            <h2>Dave is already open in another tab</h2>
+            <p>That tab keeps working. {invite ? `${invite.name} was added to it. ` : ''}This one connects by itself once the other closes.</p>
+            <p><button onClick={tab.takeOver}>Use it here instead</button></p>
+          </main>
+        </Match>
+        <Match when={ready()}>{(r) => <Workspace {...r()} onStepBack={tab.onStepBack} onSelect={select} onCreate={create} onJoin={join} onForget={forget} onRename={rename} />}</Match>
+      </Switch>
+    </>
+  );
+}
+
+/** A newer version is installed and waiting (ticket 33). Over every screen, with no way to close it but the reload: a nag on purpose. */
+function UpdateBar() {
+  return (
+    <Show when={updateReady()}>
+      <div class="update" role="status">
+        <span>A new version of dave is ready.</span>
+        <button onClick={applyUpdate}>Reload</button>
+      </div>
+    </Show>
   );
 }
 
