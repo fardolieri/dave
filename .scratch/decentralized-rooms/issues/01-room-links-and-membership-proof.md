@@ -1,6 +1,6 @@
 # 01 · Room links between all members, with a peer membership proof
 
-Status: open
+Status: closed 2026-09-27, not planned: the owner is rethinking the motivation and goals first
 Blocked by: none
 Spec: [§3, §4](../spec.md)
 

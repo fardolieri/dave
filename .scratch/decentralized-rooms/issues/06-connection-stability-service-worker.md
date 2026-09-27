@@ -1,7 +1,7 @@
 # 06 · Can a service worker (or anything else) keep room links alive?
 
 Type: research
-Status: open
+Status: closed 2026-09-27, not planned: the owner is rethinking the motivation and goals first
 Blocked by: 01
 
 ## Question

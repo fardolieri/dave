@@ -1,6 +1,6 @@
 # 03 · Encrypted mailbox on the Room for offline delivery
 
-Status: open
+Status: closed 2026-09-27, not planned: the owner is rethinking the motivation and goals first
 Blocked by: 02
 Spec: [§5.4](../spec.md)
 

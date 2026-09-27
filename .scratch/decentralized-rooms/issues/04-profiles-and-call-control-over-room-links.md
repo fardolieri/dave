@@ -1,6 +1,6 @@
 # 04 · Profiles and call control over room links; server presence is keys only
 
-Status: open
+Status: closed 2026-09-27, not planned: the owner is rethinking the motivation and goals first
 Blocked by: 01
 Spec: [§6](../spec.md)
 

@@ -2,6 +2,8 @@
 
 Decided 2026-09-25 with the owner. Builds on [the P2P friends chat spec](../p2p-friends-chat/spec.md); glossary `CONTEXT.md`; ADRs `docs/adr/`.
 
+**Shelved 2026-09-27.** All tickets closed, not planned. The owner is rethinking the motivation and goals before committing to this design.
+
 ## 1. Goal and the claim
 
 The app should prove that a group chat needs no trusted server in the middle. Media already flows peer to peer and ADR 0004 keeps the server out of calls, but text, presence, names, and call control still travel through the Room, and clients trust the server's attribution (ADR 0003).

@@ -1,6 +1,6 @@
 # 02 · Signed text log over room links, synced on connect
 
-Status: open
+Status: closed 2026-09-27, not planned: the owner is rethinking the motivation and goals first
 Blocked by: 01
 Spec: [§5.1 to §5.3](../spec.md)
 

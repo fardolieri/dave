@@ -1,6 +1,6 @@
 # 05 · Encrypted signaling, telemetry opt-in, ADR 0005
 
-Status: open
+Status: closed 2026-09-27, not planned: the owner is rethinking the motivation and goals first
 Blocked by: 02, 03, 04
 Spec: [§7, §8](../spec.md)
 
