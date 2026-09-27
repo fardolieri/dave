@@ -162,6 +162,8 @@ Client keeps peer connections alive, reconnects with exponential backoff capped 
 
 The other participants keep their media connection to a friend who vanished from presence without an explicit `left` for a 60 s grace period, showing them dimmed as "connection to server lost", so the friend's reconnect does not interrupt voice. After the friend rejoins, connections that died meanwhile are rebuilt by the rejoiner, who now holds the highest join sequence. (Added 2026-09-06 while building ticket 04; confirmed by the owner the same day.)
 
+A connection that is up when the grace period ends is kept, dimmed as before, for as long as it stays up: the voice never needed the server. It ends like any other when its media disconnects or fails (next paragraph), or when the friend returns or says `left`. Only a connection that is still not up after 60 s is closed. (Amended 2026-09-27, ticket 31: a friend on a flaky line was hung up on after a minute while still clearly audible.)
+
 A peer that vanished from presence and whose media then fails or disconnects is closed at once rather than after the grace period: their socket is gone, so an ICE restart could not be signalled anyway and only produced "not in the call" errors. They re-offer when they return (2026-09-08).
 
 ### 8.1a Rejoin after a reload (2026-09-24, ticket 24)

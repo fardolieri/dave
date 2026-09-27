@@ -34,6 +34,26 @@ test('a friend whose socket drops without a goodbye is shown as lost, then recov
   await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
 });
 
+test('a friend cut off from the server stays in the call, dimmed, as long as the connection to them works (ticket 31)', async ({ crowd }) => {
+  test.slow(); // waits out the 60 s grace period that used to close a working connection
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await bob.connectedTo('Alice');
+  await alice.wire.cut();
+  const lost = bob.selectedRoom.locator('li.lost');
+  await expect(lost).toContainText('connection to server lost');
+  await bob.page.waitForTimeout(65_000);
+  await expect(lost).toContainText('Alice');
+  if (await bob.hasHooks()) await bob.hearing('Alice');
+  alice.wire.restore();
+  await alice.connected();
+  await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
+  await expect(lost).toHaveCount(0);
+  await bob.connectedTo('Alice');
+});
+
 test('a stalled connection is rebuilt and comes up again', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');

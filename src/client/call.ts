@@ -1045,7 +1045,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         stuckAttempts.delete(peer.key);
         if (ice === 'failed' || ice === 'closed' || ice === 'new') { closePeer(peer.key); continue; } // nothing worth keeping
         setView(peer, { serverLost: true });
-        peer.graceTimer = setTimeout(() => closePeer(peer.key), PEER_GRACE_MS);
+        // A connection that works is kept however long their socket stays away (ticket 31): the voice never needed the
+        // server. It ends when the browser says the link is gone (the disconnected and failed branches of onIceState),
+        // or here, when it still is not up after the grace period.
+        peer.graceTimer = setTimeout(() => { if (peer.pc.connectionState !== 'connected') closePeer(peer.key); }, PEER_GRACE_MS);
       }
     }
   }

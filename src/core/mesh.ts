@@ -21,7 +21,7 @@ export function nextJoinSeq(people: Iterable<Person>): number {
   return max + 1;
 }
 
-/** How long a peer connection is kept after its owner vanished from presence without saying "leave" (spec §8.1). */
+/** How long a peer connection that is not up is kept after its owner vanished from presence without saying "leave"; one that is up stays (spec §8.1, ticket 31). */
 export const PEER_GRACE_MS = 60_000;
 
 /** TURN credentials are minted with this TTL and refreshed when older than the refresh age. */
