@@ -1,6 +1,6 @@
 # 32 · PostHog only with consent
 
-Status: built on build/32, not yet deployed
+Status: shipped 2026-09-27 to nightly and prod (93aea52)
 Asked for 2026-09-27: Daniel: "Lets make the posthog telemetry an opt in feature. I dont want anyone to accuse me of
 'spying' on them without consent and rightly so." Until now every visitor got PostHog cookies, events, exception capture
 and a masked session replay from the first page load, unasked; the server also sent `server_frame_rejected` under the
@@ -46,7 +46,7 @@ shelved decentralized-rooms ticket 05.
   exactly one request to `/i/v0/e/`.
 - A yes while the challenge is held back: the room still connects and the auth carries it (fails on the unfixed client
   with exactly that refusal).
-- After deploy: in a fresh private window on prod, DevTools' network tab shows nothing to `posthog.com` until the yes.
+- After deploy: a fresh headless browser on prod made no PostHog request and stored nothing (landing page); both Workers serve the new bundle.
 
 ## Consequences
 - Expect far fewer events and replays; the friend from ticket 30 would now also have to opt in for `server_frame_rejected`
