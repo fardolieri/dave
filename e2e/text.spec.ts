@@ -1,7 +1,7 @@
 import { expect, newSecret, test } from './fixtures';
 
-// Text chat as it works today (server relay, history per browser). The decentralized-rooms tickets change the transport
-// underneath; these tests pin the behaviour friends see, so they must keep passing through that change.
+// Text chat as it works today (server relay, history per browser). These tests pin the behaviour friends see, so they
+// must keep passing through any change to the transport underneath.
 
 test('a text reaches everyone in the room, once, with the sender name', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
