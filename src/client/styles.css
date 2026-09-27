@@ -269,6 +269,38 @@ dialog.report .row button:first-child { flex: 1; }
    the chat row takes what is left of the screen, so the newest lines sit right above the composer without any
    scrolling and older lines scroll inside the log. Only when the lists are taller than the screen does that part
    scroll (a definite height lets the chat row be sized; an auto-height grid would grow with the log). */
+/* The one-time PostHog question (ticket 32): the mascot peeks up over the composer's top edge with a speech bubble, not
+   a modal; the room, the composer included, stays usable. It is placed inside the composer and anchored to its top edge,
+   so the mascot sits on it whatever height the composer has on a device. Sure and Maybe later look alike on purpose.
+   The bubble is a raised slate, lighter than the panels but not white. */
+.chat-input { position: relative; }
+.consent { --bubble: #343b4c; --bubble-fg: var(--fg); --bubble-dim: #a3aabb; --bubble-link: #9db0ff; --tail-w: 20px; --tail-h: 18px; --tail-y: 32px;
+  position: absolute; right: 12px; bottom: 100%; z-index: 30; display: flex; align-items: flex-end; gap: 4px; max-width: calc(100% - 24px); pointer-events: none; }
+.consent > * { pointer-events: auto; }
+/* The clip box ends at the composer's edge, so the mascot rises from behind it */
+.consent .peek { flex: none; width: 110px; overflow: hidden; }
+.consent .dino { display: block; width: 100%; margin-bottom: -8px; transform-origin: 50% 100%; animation: dino-peek .6s cubic-bezier(.3, 1.4, .5, 1) both; }
+.consent .bubble { position: relative; width: 340px; max-width: 100%; box-sizing: border-box; margin-bottom: 4px; background: var(--bubble); color: var(--bubble-fg); border-radius: 22px; padding: 16px 20px 10px; font-size: 13px; line-height: 1.45; box-shadow: 0 8px 28px rgba(0,0,0,.45); animation: bubble-pop .35s .45s cubic-bezier(.3, 1.4, .5, 1) both; transform-origin: 100% 80%; }
+/* The tail: a clipped box whose left third lies inside the bubble, so it can never come apart from it (a rotated border
+   triangle did, visibly on high-density screens). --tail-y puts its base centre above the rounded corner, level with
+   where the mascot's teeth are, above its microphone. */
+.consent .bubble::after { content: ''; position: absolute; right: calc(var(--tail-w) * -.65); bottom: calc(var(--tail-y) - var(--tail-h) / 2); width: var(--tail-w); height: var(--tail-h); background: var(--bubble); clip-path: polygon(0 0, 100% 50%, 0 100%); }
+.consent p { margin: 0 0 8px; }
+.consent .hello { font-size: 15px; font-weight: 600; }
+.consent .dim { color: var(--bubble-dim); }
+.consent .row { display: flex; gap: 22px; margin-top: 6px; }
+.consent .row button.link { color: var(--bubble-link); font-size: 14px; font-weight: 600; padding: 6px 0; text-decoration: none; }
+.consent .row button.link:hover { text-decoration: underline; }
+@keyframes dino-peek { from { transform: translateY(110%) rotate(-12deg); } to { transform: none; } }
+@keyframes bubble-pop { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .consent .dino, .consent .bubble { animation: none; } }
+@media (max-width: 700px) {
+  .consent { right: 6px; max-width: calc(100% - 12px); gap: 8px; --tail-w: 13px; --tail-h: 12px; --tail-y: 33px; } /* a smaller tail, clear of the smaller mascot */
+  .consent .peek { width: 90px; }
+  .consent .dino { margin-bottom: 0; } /* all of it above the composer */
+  .consent .bubble { margin-bottom: 4px; padding: 14px 16px 8px; }
+}
+
 @media (max-width: 700px) {
   .app { --side-w: 0px; height: 100dvh; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
   .app.split { grid-template-rows: minmax(0, 1fr) auto; }

@@ -1,5 +1,5 @@
 import { createSignal, onCleanup } from 'solid-js';
-import posthog from './posthog';
+import posthog, { onConsentChange, telemetryOn } from './posthog';
 import { buildAuthMessage } from '../core/identity';
 import {
   CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, PING_FRAME, PING_INTERVAL_MS,
@@ -51,6 +51,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   let attempt = 0;
   let downSince: number | null = null;
   let everConnected = false;
+  /** The PostHog opt-in the last auth carried (ticket 32). */
+  let authTelemetry = false;
   let stopped = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let pingTimer: ReturnType<typeof setInterval> | undefined;
@@ -80,13 +82,17 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           const auth = await buildAuthMessage({
             authKey: opts.authKey, nonce: m.nonce, publicKeyRaw: opts.identity.publicKeyRaw, privateKey: opts.identity.keys.privateKey, name, ...(picture ? { picture } : {}),
           });
-          // Nobody has entered this room yet: our answer also hands the server the verifier (ADR 0004).
-          socket.send(JSON.stringify(m.fresh ? { ...auth, authKey: opts.authKey } : auth));
+          // Nobody has entered this room yet: our answer also hands the server the verifier (ADR 0004). The PostHog
+          // opt-in rides along, so the server reports this socket's refused frames only with consent (ticket 32).
+          authTelemetry = telemetryOn();
+          socket.send(JSON.stringify({ ...auth, ...(m.fresh ? { authKey: opts.authKey } : {}), ...(authTelemetry ? { telemetry: true } : {}) }));
           return;
         }
         case 'welcome':
           attempt = 0;
           setYou(m.you);
+          // An answer changed while the handshake ran was not sent then (see onConsentChange below): say it now.
+          if (telemetryOn() !== authTelemetry) send({ t: 'telemetry', on: telemetryOn() });
           setStatus({ kind: 'connected' });
           if (everConnected) {
             // No line in the chat about it: the status pill already shows the outage live, and dated lines that stayed
@@ -163,7 +169,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   }
 
   open();
+  // Only once let in: before the welcome, any frame but the auth counts as a failed attempt, and the reply would read as
+  // a refusal. A change during the handshake goes out with the welcome instead.
+  const offConsent = onConsentChange((on) => { if (you()) send({ t: 'telemetry', on }); });
   onCleanup(() => {
+    offConsent();
     stopped = true;
     clearTimeout(reconnectTimer);
     clearTimeout(unavailableTimer);

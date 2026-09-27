@@ -2,11 +2,12 @@
  * Problem reports (ticket 12). A friend describes what went wrong; the report carries a technical
  * snapshot of this tab: connection states and media counters per peer, the share tiles' video
  * elements, recent console warnings. Never message texts or names, only fingerprints. It goes to
- * PostHog as one event, next to the masked session replay of the same tab, and can be copied as
- * text for browsers that block PostHog. The event's shape (category, severity, flat fields) lives in
+ * PostHog as one event, with or without the opt-in (sending it is the friend's own choice, ticket 32);
+ * with it, next to the masked session replay of the same tab. It can be copied as text for browsers
+ * that block PostHog. The event's shape (category, severity, flat fields) lives in
  * `core/report.ts`, which has no DOM or SDK dependency and is unit-tested.
  */
-import posthog from './posthog';
+import { captureOnce } from './posthog';
 import { recentLog } from './log';
 import type { CallDiagnostics } from './call';
 import { reportProperties, type ReportForm } from '../core/report';
@@ -64,5 +65,5 @@ export function videoElementStates(): Report['videoElements'] {
 
 /** One event: the friend's words and tags as properties, the snapshot as JSON, and the flat fields `reportProperties` lifts out of it. */
 export function sendReport(form: ReportForm, report: Report): void {
-  posthog.capture('bug_report', reportProperties(form, report));
+  captureOnce('bug_report', reportProperties(form, report));
 }

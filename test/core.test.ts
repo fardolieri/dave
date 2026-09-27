@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, type Person } from '../src/core/protocol';
-import { presenceSnapshot, type SocketState } from '../src/core/room';
+import { onMessage, presenceSnapshot, type SocketState } from '../src/core/room';
+import { newBucket } from '../src/core/ratelimit';
 
 describe('protocol', () => {
   it('parses known messages and rejects the rest', () => {
@@ -52,6 +53,14 @@ describe('protocol', () => {
     expect(normalisePicture('🇩🇪')).toBe('🇩🇪');
   });
 
+  it('takes the PostHog opt-in in auth and on its own (ticket 32)', () => {
+    const ok = { t: 'auth', publicKey: 'AbC-_', name: 'Dave', hmac: 'aa', signature: 'bb' };
+    expect(parseClientMessage(JSON.stringify({ ...ok, telemetry: true }))).toEqual({ ...ok, telemetry: true });
+    expect(parseClientMessage(JSON.stringify({ ...ok, telemetry: 'yes' }))).toEqual(ok);
+    expect(parseClientMessage(JSON.stringify({ t: 'telemetry', on: false }))).toEqual({ t: 'telemetry', on: false });
+    expect(parseClientMessage(JSON.stringify({ t: 'telemetry' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'telemetry' });
+  });
+
   it('normalises names', () => {
     expect(normaliseName(' a  b ')).toBe('a b');
     expect(normaliseName('')).toBeNull();
@@ -74,5 +83,25 @@ describe('presenceSnapshot', () => {
       null,
     ]);
     expect(snapshot.people.map((p) => [p.publicKey, p.name])).toEqual([['k-alice', 'Alice renamed'], ['k-bob', 'Bob']]);
+  });
+});
+
+describe('telemetry consent on the server (ticket 32)', () => {
+  const person: Person = { publicKey: 'k', fingerprint: 'f', name: 'Alice', role: 'visitor', joinSeq: null, sharing: false, muted: false };
+  const ctx = { authKey: 'a', now: 0, others: [], mintIce: async () => ({ iceServers: [], turnUser: null }) };
+  const attached: SocketState = { stage: 'attached', person, bucket: newBucket(0), attachedAt: 0 };
+
+  it('a refused frame says whether its sender opted in, and the opt-in follows the telemetry message', async () => {
+    expect((await onMessage(attached, '{', ctx)).rejected?.telemetry).toBe(false);
+    const on = await onMessage(attached, JSON.stringify({ t: 'telemetry', on: true }), ctx);
+    expect(on.replies).toEqual([]);
+    expect((await onMessage(on.state, '{', ctx)).rejected?.telemetry).toBe(true);
+    const off = await onMessage(on.state, JSON.stringify({ t: 'telemetry', on: false }), ctx);
+    expect((await onMessage(off.state, '{', ctx)).rejected?.telemetry).toBe(false);
+  });
+
+  it('never shows the opt-in in presence', async () => {
+    const on = await onMessage(attached, JSON.stringify({ t: 'telemetry', on: true }), ctx);
+    expect(presenceSnapshot([on.state]).people).toEqual([person]);
   });
 });

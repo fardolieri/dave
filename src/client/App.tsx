@@ -1,6 +1,7 @@
 import { createSignal, Switch, Match, createMemo, createEffect, For, Show, untrack, onCleanup, mapArray } from 'solid-js';
 import './styles.css';
-import posthog, { isTestAccount } from './posthog';
+import dino from './dino.svg';
+import posthog, { consent, isTestAccount, setConsent, telemetryOn } from './posthog';
 import { loadIdentity, type LocalIdentity } from './identity';
 import { getName, getPicture, inviteLinkFor, setName, setPicture, takeInviteLink } from './invite';
 import { addRoom, forgetRoom, getSelectedRoom, loadRooms, setSelectedRoom, type SavedRoom } from './rooms';
@@ -209,6 +210,7 @@ function Workspace(props: WorkspaceProps) {
   // Pseudonymous identity for analytics: the public key, nothing personal. The fingerprint is the
   // same code the profile card shows, so a report's person can be matched to a friend by eye. A
   // driver-seeded browser marks its person for the project's test-account filter. One-time read on purpose.
+  // Kept in memory; it reaches PostHog only once this browser opts in (ticket 32).
   const identity = untrack(() => props.identity);
   const me = identity.publicKey;
   posthog.identify(me, { fingerprint: identity.fingerprint, ...(isTestAccount ? { $internal_or_test_user: true } : {}) });
@@ -375,6 +377,7 @@ function Workspace(props: WorkspaceProps) {
                 <JoinLinkForm autofocus onJoin={(link) => { setJoining(false); props.onJoin(link); }} onCancel={() => setJoining(false)} />
               </Show>
               <button class="link" title="Forget this room in this browser" onClick={() => leaveRoom(cur())}>Leave {cur().saved.name}</button>
+              <button class="link" title={telemetryOn() ? 'This browser sends usage events, errors and a masked screen recording to PostHog. Click to stop.' : 'Send usage events, errors and a masked screen recording to PostHog, so bugs can be found'} onClick={() => setConsent(telemetryOn() ? 'off' : 'on')}>{telemetryOn() ? 'Stop helping find bugs' : 'Help find bugs'}</button>
               <ReportDialog collect={() => collectReport({ status: () => cur().room.status().kind, people: everyone, me: () => me, call: (active() ?? cur()).call.diagnostics })} />
               <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { if (confirm(`Clear this browser's chat history of ${cur().saved.name}? Nothing is stored on the server, so this cannot be undone.`)) void cur().room.clearHistory(); }}>Clear chat history</button>
               <VersionDialog />
@@ -405,7 +408,10 @@ function Workspace(props: WorkspaceProps) {
           )}</Show>
           <ChatLog lines={cur().room.lines()} jumpToken={jumpToken()} label={labelOf} />
         </div>
-        <Composer connected={connected()} roomName={cur().saved.name} onSend={(text) => { cur().room.sendText(text); setJumpToken((n) => n + 1); }} />
+        <Composer connected={connected()} roomName={cur().saved.name} onSend={(text) => { cur().room.sendText(text); setJumpToken((n) => n + 1); }}>
+          {/* Anchored to the composer's top edge, whatever its height on this device (ticket 32) */}
+          <Show when={consent() === null}><TelemetryNotice /></Show>
+        </Composer>
       </div>
     )}</Show>
   );
@@ -952,6 +958,31 @@ function Banner(props: { status: ServerStatus; onTakeOver: () => void }) {
 }
 
 /**
+ * The one-time question (ticket 32), asked by the dave mascot peeking in from the corner, after Josh Comeau's blog.
+ * Until it is answered, and after a no, nothing goes to PostHog. The answer can be changed any time in the sidebar.
+ */
+function TelemetryNotice() {
+  return (
+    <section class="consent" aria-label="Help find bugs">
+      <div class="bubble">
+        <p class="hello">Hi friend! Hope I didn't startle you. Want to help me find bugs?</p>
+        <p>
+          If you say yes, this browser sends usage events, errors, connection problems and a screen recording with every text and input blanked out
+          to PostHog, an analytics service with servers in the EU. Never your messages or names.
+        </p>
+        <p class="dim">Nothing is sent unless you say yes. You can change your mind any time at the bottom of the sidebar.</p>
+        <div class="row">
+          {/* type=button: the notice sits inside the composer's form, and must not send the draft */}
+          <button type="button" class="link" onClick={() => setConsent('on')}>Sure!</button>
+          <button type="button" class="link" onClick={() => setConsent('off')}>Maybe later</button>
+        </div>
+      </div>
+      <div class="peek"><img class="dino" src={dino} alt="" /></div>
+    </section>
+  );
+}
+
+/**
  * "Report a problem" (ticket 12): a category, a severity and a description plus a technical snapshot
  * go to the room's error log (PostHog), next to this tab's masked session replay. Copy is the fallback
  * for browsers that block it.
@@ -986,7 +1017,10 @@ function ReportDialog(props: { collect: () => Promise<Report> }) {
           )}</For>
         </fieldset>
         <textarea value={text()} onInput={(e) => setText(e.currentTarget.value)} placeholder="What went wrong, and what did you expect? When did it happen?" rows={4} />
-        <p class="hint">Your description is sent to this room's error log together with a technical snapshot of your connection: states and counters, never message texts or names. The last minutes of this tab are already kept as a masked session replay.</p>
+        <p class="hint">
+          Your description is sent to PostHog, the room's error log, together with a technical snapshot of your connection: states and counters, never message texts or names.
+          {telemetryOn() ? ' The last minutes of this tab are already kept as a masked session replay.' : ' Only this report goes, nothing before or after it.'}
+        </p>
         <Switch>
           <Match when={phase() === 'sent'}><p class="ok">Sent, thank you. Brave and strict tracking protection can block this silently: if in doubt, also use Copy and paste it to the person running this room.</p></Match>
           <Match when={phase() === 'copied'}><p class="ok">Copied. Paste it to the person running this room.</p></Match>
@@ -1051,7 +1085,7 @@ const when = (at: number): string => new Date(at).toLocaleString([], { hour: '2-
  * The message input. A separate grid item from the log so phones can keep it as the bottom row of the screen.
  * The emoji button opens the picker (issue #3); a pick lands at the caret and the picker stays for the next one.
  */
-function Composer(props: { connected: boolean; roomName: string; onSend: (text: string) => void }) {
+function Composer(props: { connected: boolean; roomName: string; onSend: (text: string) => void; children?: any }) {
   const [draft, setDraft] = createSignal('');
   let input: HTMLInputElement | undefined;
   let emojiButton: HTMLButtonElement | undefined;
@@ -1079,6 +1113,7 @@ function Composer(props: { connected: boolean; roomName: string; onSend: (text: 
       <input ref={input} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!props.connected} maxlength={MAX_TEXT_LENGTH}
              placeholder={props.connected ? `Message ${props.roomName}` : "Can't send while disconnected"} />
       <button disabled={!props.connected || !draft().trim()}>Send</button>
+      {props.children}
     </form>
   );
 }

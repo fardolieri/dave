@@ -35,8 +35,13 @@ export type SignalData = { description?: unknown; sig?: string; candidates?: unk
 export const MAX_CANDIDATES_PER_MESSAGE = 64;
 
 export type ClientMessage =
-  /** `authKey` is sent only in answer to a `fresh` challenge: it becomes the room's verifier (ADR 0004). */
-  | { t: 'auth'; publicKey: string; name: string; picture?: string; hmac: string; signature: string; authKey?: string }
+  /**
+   * `authKey` is sent only in answer to a `fresh` challenge: it becomes the room's verifier (ADR 0004).
+   * `telemetry` says this browser opted in to PostHog (ticket 32); only then may the server report about this socket there.
+   */
+  | { t: 'auth'; publicKey: string; name: string; picture?: string; hmac: string; signature: string; authKey?: string; telemetry?: true }
+  /** The PostHog opt-in changed while connected (ticket 32). Only the server keeps it; nobody else learns of it. */
+  | { t: 'telemetry'; on: boolean }
   | { t: 'ping' }
   | { t: 'text'; text: string }
   /** Enter the Call (or re-declare after a server reconnect). */
@@ -120,7 +125,7 @@ export function normalisePicture(raw: string): string | null {
 export type Invalid = { t: 'invalid'; reason: string; ref?: ClientMessage['t'] };
 const invalid = (reason: string): Invalid => ({ t: 'invalid', reason });
 
-const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'text', 'join', 'leave', 'mute', 'name', 'picture', 'signal', 'ice', 'share', 'subscribe']);
+const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'text', 'join', 'leave', 'mute', 'name', 'picture', 'signal', 'ice', 'share', 'subscribe', 'telemetry']);
 const isClientType = (v: unknown): v is ClientMessage['t'] => typeof v === 'string' && CLIENT_TYPES.has(v);
 
 /**
@@ -172,6 +177,7 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
         auth.picture = picture;
       }
       if (typeof m.authKey === 'string') auth.authKey = m.authKey;
+      if (m.telemetry === true) auth.telemetry = true;
       return auth;
     }
     case 'ping':
@@ -197,6 +203,8 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
       return { t: 'ice' };
     case 'share':
       return typeof m.on === 'boolean' ? { t: 'share', on: m.on } : invalid('unrecognised message');
+    case 'telemetry':
+      return typeof m.on === 'boolean' ? { t: 'telemetry', on: m.on } : invalid('unrecognised message');
     case 'subscribe': {
       if (!b64(m.to) || typeof m.on !== 'boolean') return invalid('unrecognised message');
       const scale = typeof m.scale === 'number' && m.scale >= 1 && m.scale <= 4 ? m.scale : undefined;

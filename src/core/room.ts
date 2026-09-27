@@ -13,7 +13,8 @@ export const CHALLENGE_TIMEOUT_MS = 10_000;
 
 export type SocketState =
   | { stage: 'challenge'; nonce: string; attempts: number; since: number }
-  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; attachedAt: number; turnUser?: string }
+  /** `telemetry`: the browser opted in to PostHog (ticket 32). Kept here, never in `person`, so presence does not carry it. */
+  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; attachedAt: number; turnUser?: string; telemetry?: true }
   /** Told to close (superseded, or silent too long) but still attached until the runtime finishes the handshake; invisible meanwhile. */
   | { stage: 'closing' };
 
@@ -44,8 +45,9 @@ export type Outcome = {
    * An authenticated frame the server refused as malformed or oversized: a client bug or a limit worth knowing about,
    * so the adapter logs it where the sender's own analytics cannot lose it (ticket 30). Rate limited frames are not
    * listed; a flood would log a flood. The rate limit bounds these too, since every frame takes a token first.
+   * `telemetry` is the sender's PostHog opt-in (ticket 32): without it the adapter logs, but sends nothing to PostHog.
    */
-  rejected?: { from: string; reason: string; ref?: ClientMessage['t']; length: number };
+  rejected?: { from: string; reason: string; ref?: ClientMessage['t']; length: number; telemetry: boolean };
 };
 
 export type RoomContext = {
@@ -124,7 +126,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     // A newer socket for a known identity wins: an older one is either a ghost the server has not
     // noticed dying (the client already reconnected) or another tab, which is told so.
     return {
-      state: { stage: 'attached', person, bucket: newBucket(ctx.now), attachedAt: ctx.now },
+      state: { stage: 'attached', person, bucket: newBucket(ctx.now), attachedAt: ctx.now, ...(msg.telemetry ? { telemetry: true as const } : {}) },
       replies: [{ t: 'welcome', you: person }],
       presenceChanged: true,
       supersede: msg.publicKey,
@@ -162,7 +164,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       return {
         state: next,
         replies: [error(msg.reason, msg.ref)],
-        rejected: { from: state.person.publicKey, reason: msg.reason, ...(msg.ref ? { ref: msg.ref } : {}), length: typeof raw === 'string' ? raw.length : raw instanceof ArrayBuffer ? raw.byteLength : 0 },
+        rejected: { from: state.person.publicKey, reason: msg.reason, ...(msg.ref ? { ref: msg.ref } : {}), length: typeof raw === 'string' ? raw.length : raw instanceof ArrayBuffer ? raw.byteLength : 0, telemetry: state.telemetry === true },
       };
     case 'auth':
       return { state: next, replies: [{ t: 'error', reason: 'already authenticated', ref: 'auth' }] };
@@ -207,6 +209,10 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       if ((state.person.picture ?? null) === msg.picture) return { state: next, replies: [] };
       const { picture: _old, ...person } = state.person;
       return { state: { ...next, person: msg.picture ? { ...person, picture: msg.picture } : person }, replies: [], presenceChanged: true };
+    }
+    case 'telemetry': {
+      const { telemetry: _was, ...rest } = next;
+      return { state: msg.on ? { ...rest, telemetry: true } : rest, replies: [] };
     }
     case 'ice': {
       if (state.person.role !== 'participant') return notInCall('ice');

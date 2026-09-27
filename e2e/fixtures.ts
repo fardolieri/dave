@@ -63,6 +63,9 @@ export class Wire {
 
   restore(): void { this.refusing = false; }
 
+  /** Sends a frame to the page as if the server had, e.g. one a `down` tamper held back earlier. */
+  deliver(frame: string): void { for (const { page } of this.routes) page.send(frame); }
+
   /** Parsed frames of one type in one direction, as seen by the proxy (before tampering). */
   frames<T = Record<string, unknown>>(dir: 'up' | 'down', t?: string): T[] {
     return this.log.filter((l) => l.dir === dir).map((l) => { try { return JSON.parse(l.frame) as T & { t?: string }; } catch { return null; } })
@@ -79,7 +82,7 @@ export class Wire {
 const KNOWN_HARMLESS: RegExp[] = [
   /dropped signal that participant is not in the call/,
   /WebSocket is closed before the connection is established/, // Chromium
-  /can’t establish a connection to the server at wss:|was interrupted while the page was loading/, // Firefox
+  /can’t establish a connection to the server at wss?:|was interrupted while the page was loading/, // Firefox (ws: on a local build)
 ];
 
 export type FriendOptions = {
@@ -97,6 +100,8 @@ export type FriendOptions = {
   picture?: string;
   /** Look like a normal browser, not "HeadlessChrome" or webdriver: posthog-js drops every event from what it takes for a bot. */
   plainUserAgent?: boolean;
+  /** This browser's answer to the PostHog question (ticket 32); null leaves it unasked, so the notice shows. Default: on. */
+  telemetry?: 'on' | 'off' | null;
 };
 
 export class Friend {
@@ -139,7 +144,8 @@ export class Friend {
       if (seed.name) localStorage.setItem('dave.name', seed.name);
       if (seed.muted) localStorage.setItem('dave.muted', 'true');
       if (seed.picture) localStorage.setItem('dave.picture', seed.picture);
-    }, { rooms: this.options.rooms, name: this.options.name === undefined ? this.name : this.options.name, muted: !!this.options.muted, picture: this.options.picture ?? null });
+      if (seed.telemetry) localStorage.setItem('dave.telemetry', seed.telemetry);
+    }, { telemetry: this.options.telemetry === undefined ? 'on' : this.options.telemetry, rooms: this.options.rooms, name: this.options.name === undefined ? this.name : this.options.name, muted: !!this.options.muted, picture: this.options.picture ?? null });
     // Every oscillator a page starts is recorded as "type Hz", so a test can tell which cue played (ticket 23).
     await this.context.addInitScript(() => {
       const played: string[] = [];
