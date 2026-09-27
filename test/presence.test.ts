@@ -180,11 +180,11 @@ describe('text', () => {
       vi.useRealTimers();
     }
     expect(err).toEqual({ t: 'error', reason: 'rate limited', ref: 'text' });
-    await new Promise((r) => setTimeout(r, 100));
-    const relayed = a.inbox.filter((m) => m.t === 'text').length;
-    const errors = a.inbox.filter((m) => m.t === 'error').length + 1;
-    expect(relayed).toBeGreaterThanOrEqual(BURST); // the burst went through (refill may let a few more pass)
-    expect(relayed + errors).toBe(BURST + extra); // nothing vanished silently
+    const relayed = () => a.inbox.filter((m) => m.t === 'text').length;
+    const errors = () => a.inbox.filter((m) => m.t === 'error').length + 1;
+    // Every frame gets an answer, but the last ones may still be on their way on a busy machine: wait for them, not a fixed pause.
+    await vi.waitFor(() => expect(relayed() + errors()).toBe(BURST + extra), { timeout: 2000 }); // nothing vanished silently
+    expect(relayed()).toBeGreaterThanOrEqual(BURST); // the burst went through (refill may let a few more pass)
     a.ws.close(1000, 'bye');
   });
 
