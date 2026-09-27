@@ -283,7 +283,7 @@ dialog.report .row button:first-child { flex: 1; }
 .consent .bubble { position: relative; width: 340px; max-width: 100%; box-sizing: border-box; margin-bottom: 4px; background: var(--bubble); color: var(--bubble-fg); border-radius: 22px; padding: 16px 20px 10px; font-size: 13px; line-height: 1.45; box-shadow: 0 8px 28px rgba(0,0,0,.45); animation: bubble-pop .35s .45s cubic-bezier(.3, 1.4, .5, 1) both; transform-origin: 100% 80%; }
 /* The tail: a clipped box whose left third lies inside the bubble, so it can never come apart from it (a rotated border
    triangle did, visibly on high-density screens). --tail-y puts its base centre above the rounded corner, level with
-   where the mascot's snout is. */
+   where the mascot's teeth are, above its microphone. */
 .consent .bubble::after { content: ''; position: absolute; right: calc(var(--tail-w) * -.65); bottom: calc(var(--tail-y) - var(--tail-h) / 2); width: var(--tail-w); height: var(--tail-h); background: var(--bubble); clip-path: polygon(0 0, 100% 50%, 0 100%); }
 .consent p { margin: 0 0 8px; }
 .consent .hello { font-size: 15px; font-weight: 600; }
