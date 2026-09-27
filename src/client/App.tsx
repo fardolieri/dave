@@ -266,10 +266,11 @@ function Workspace(props: WorkspaceProps) {
     posthog.capture('profile_opened', { own: p.publicKey === me });
   };
   // Online: friends who are in none of the calls, across all rooms; you are listed last (spec §7.1).
+  // Your own row follows this browser's call state, not the server's echo of it: a Leave moves you in one step, not two.
   const online = createMemo(() => {
     const others = everyone().filter((p) => p.role === 'visitor' && p.publicKey !== me).sort((a, b) => labelOf(a).shown.localeCompare(labelOf(b).shown));
     const self = everyone().find((p) => p.publicKey === me);
-    return self && self.role === 'visitor' ? [...others, self] : others;
+    return self && !active() ? [...others, self] : others;
   });
   const viewOf = (l: Link, key: string): PeerView | undefined => l.call.views().find((v) => v.publicKey === key);
   const [panel, setPanel] = createSignal<'audio' | 'share' | null>(null);
@@ -330,9 +331,10 @@ function Workspace(props: WorkspaceProps) {
               const selected = () => l === cur();
               const inThis = () => l.call.inCall();
               // Call list: you first, then by join order. Participants whose server socket dropped stay listed, dimmed, for the grace period.
+              // You are listed from this browser's call state, like in Online, so your row and the buttons change together.
               const participants = createMemo(() => {
                 const all = l.room.people().filter((p) => p.role === 'participant');
-                const self = all.find((p) => p.publicKey === me);
+                const self = inThis() ? all.find((p) => p.publicKey === me) ?? l.room.people().find((p) => p.publicKey === me) : undefined;
                 const others = all.filter((p) => p.publicKey !== me).sort((a, b) => (a.joinSeq ?? 0) - (b.joinSeq ?? 0));
                 const lost = l.call.views().filter((v) => v.serverLost && !all.some((p) => p.publicKey === v.publicKey));
                 return { self, others, lost };
