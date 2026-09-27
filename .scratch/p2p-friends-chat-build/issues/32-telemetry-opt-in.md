@@ -22,7 +22,8 @@ shelved decentralized-rooms ticket 05.
   headband, mirrored to face the bubble) rises
   from behind the composer's edge, and a slate speech bubble pops in beside it, its tail at the dino's mouth. "Sure!" and "Maybe later" alike; not a
   modal; no motion under `prefers-reduced-motion`. "Help find
-  bugs" / "Stop helping find bugs" at the bottom of the sidebar. The report dialog says it goes to PostHog, and without
+  bugs" / "Stop helping find bugs" at the bottom of the sidebar brings the mascot back (a second click puts it away), so
+  the answer is changed with what is sent in view; when on, the bubble says so and that Maybe later stops it. The report dialog says it goes to PostHog, and without
   the opt-in that only this report goes.
 - `client/diagnostics.ts`: reports through `captureOnce`.
 - `core/protocol.ts`, `core/room.ts`, `client/room.ts`: `auth` carries `telemetry: true` with consent; a new

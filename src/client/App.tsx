@@ -1,7 +1,7 @@
 import { createSignal, Switch, Match, createMemo, createEffect, For, Show, untrack, onCleanup, mapArray } from 'solid-js';
 import './styles.css';
 import dino from './dino.svg';
-import posthog, { consent, isTestAccount, setConsent, telemetryOn } from './posthog';
+import posthog, { consent, isTestAccount, setConsent, telemetryOn, type Consent } from './posthog';
 import { loadIdentity, type LocalIdentity } from './identity';
 import { getName, getPicture, inviteLinkFor, setName, setPicture, takeInviteLink } from './invite';
 import { addRoom, forgetRoom, getSelectedRoom, loadRooms, setSelectedRoom, type SavedRoom } from './rooms';
@@ -212,6 +212,8 @@ function Workspace(props: WorkspaceProps) {
   // driver-seeded browser marks its person for the project's test-account filter. One-time read on purpose.
   // Kept in memory; it reaches PostHog only once this browser opts in (ticket 32).
   const identity = untrack(() => props.identity);
+  /** The mascot asks again, from the sidebar, so the answer is changed with what is sent in view. */
+  const [askingConsent, setAskingConsent] = createSignal(false);
   const me = identity.publicKey;
   posthog.identify(me, { fingerprint: identity.fingerprint, ...(isTestAccount ? { $internal_or_test_user: true } : {}) });
   // Keyed by secret, not by the saved object: an invite link that renames a room already here (in this tab, or in a
@@ -377,7 +379,7 @@ function Workspace(props: WorkspaceProps) {
                 <JoinLinkForm autofocus onJoin={(link) => { setJoining(false); props.onJoin(link); }} onCancel={() => setJoining(false)} />
               </Show>
               <button class="link" title="Forget this room in this browser" onClick={() => leaveRoom(cur())}>Leave {cur().saved.name}</button>
-              <button class="link" title={telemetryOn() ? 'This browser sends usage events, errors and a masked screen recording to PostHog. Click to stop.' : 'Send usage events, errors and a masked screen recording to PostHog, so bugs can be found'} onClick={() => setConsent(telemetryOn() ? 'off' : 'on')}>{telemetryOn() ? 'Stop helping find bugs' : 'Help find bugs'}</button>
+              <button class={`link ${askingConsent() ? 'on' : ''}`} title={telemetryOn() ? 'This browser sends usage events, errors and a masked screen recording to PostHog. Click to read what is sent, or to stop.' : 'Send usage events, errors and a masked screen recording to PostHog, so bugs can be found. Click to read what is sent.'} onClick={() => setAskingConsent((a) => !a)}>{telemetryOn() ? 'Stop helping find bugs' : 'Help find bugs'}</button>
               <ReportDialog collect={() => collectReport({ status: () => cur().room.status().kind, people: everyone, me: () => me, call: (active() ?? cur()).call.diagnostics })} />
               <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { if (confirm(`Clear this browser's chat history of ${cur().saved.name}? Nothing is stored on the server, so this cannot be undone.`)) void cur().room.clearHistory(); }}>Clear chat history</button>
               <VersionDialog />
@@ -410,7 +412,7 @@ function Workspace(props: WorkspaceProps) {
         </div>
         <Composer connected={connected()} roomName={cur().saved.name} onSend={(text) => { cur().room.sendText(text); setJumpToken((n) => n + 1); }}>
           {/* Anchored to the composer's top edge, whatever its height on this device (ticket 32) */}
-          <Show when={consent() === null}><TelemetryNotice /></Show>
+          <Show when={consent() === null || askingConsent()}><TelemetryNotice onAnswer={(c) => { setConsent(c); setAskingConsent(false); }} /></Show>
         </Composer>
       </div>
     )}</Show>
@@ -958,10 +960,10 @@ function Banner(props: { status: ServerStatus; onTakeOver: () => void }) {
 }
 
 /**
- * The one-time question (ticket 32), asked by the dave mascot peeking in from the corner, after Josh Comeau's blog.
- * Until it is answered, and after a no, nothing goes to PostHog. The answer can be changed any time in the sidebar.
+ * The question (ticket 32), asked by the dave mascot peeking in from the corner, after Josh Comeau's blog: once on its
+ * own, then again whenever the sidebar's button is clicked. Until it is answered, and after a no, nothing goes to PostHog.
  */
-function TelemetryNotice() {
+function TelemetryNotice(props: { onAnswer: (c: Consent) => void }) {
   return (
     <section class="consent" aria-label="Help find bugs">
       <div class="bubble">
@@ -970,11 +972,13 @@ function TelemetryNotice() {
           If you say yes, this browser sends usage events, errors, connection problems and a screen recording with every text and input blanked out
           to PostHog, an analytics service with servers in the EU. Never your messages or names.
         </p>
-        <p class="dim">Nothing is sent unless you say yes. You can change your mind any time at the bottom of the sidebar.</p>
+        <p class="dim">
+          {telemetryOn() ? 'You are helping right now, thank you! Maybe later stops it.' : 'Nothing is sent unless you say yes.'} You can change your mind any time at the bottom of the sidebar.
+        </p>
         <div class="row">
           {/* type=button: the notice sits inside the composer's form, and must not send the draft */}
-          <button type="button" class="link" onClick={() => setConsent('on')}>Sure!</button>
-          <button type="button" class="link" onClick={() => setConsent('off')}>Maybe later</button>
+          <button type="button" class="link" onClick={() => props.onAnswer('on')}>Sure!</button>
+          <button type="button" class="link" onClick={() => props.onAnswer('off')}>Maybe later</button>
         </div>
       </div>
       <div class="peek"><img class="dino" src={dino} alt="" /></div>

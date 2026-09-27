@@ -55,6 +55,9 @@ function start(): void {
       defaults: '2026-05-30',
       capture_exceptions: true,
       person_profiles: 'identified_only',
+      // Opted out, it keeps its state in memory only: it would otherwise write it again after the removal below, as a
+      // session persistence it builds anew when its remote config arrives (ticket 32)
+      opt_out_persistence_by_default: true,
       session_recording: {
         maskAllInputs: true,
         maskTextSelector: '*', // chat, names, fingerprints: never in a recording

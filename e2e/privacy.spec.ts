@@ -6,7 +6,7 @@ import { expect, test } from './fixtures';
 const posthogStorage = (page: Page) => page.evaluate(() => [...Object.keys(localStorage), ...Object.keys(sessionStorage), ...document.cookie.split(';').map((c) => c.split('=')[0]!.trim())]
   .filter((k) => k.startsWith('ph_') || k.startsWith('__ph_')));
 
-test('a fresh browser is asked once, and sends nothing to PostHog before a yes or after a no', async ({ crowd }) => {
+test('a fresh browser is asked once, again only from the sidebar, and sends nothing to PostHog before a yes or after a no', async ({ crowd }) => {
   const alice = await crowd.open('Alice', { telemetry: null, plainUserAgent: true });
   const notice = alice.page.getByRole('region', { name: 'Help find bugs' });
   await expect(notice).toContainText('Want to help me find bugs?');
@@ -19,7 +19,11 @@ test('a fresh browser is asked once, and sends nothing to PostHog before a yes o
   await expect(notice).not.toBeVisible();
   await alice.page.reload();
   await alice.connected();
-  await expect(notice).not.toBeVisible(); // asked once
+  await expect(notice).not.toBeVisible(); // asked once on its own
+  await alice.page.getByRole('button', { name: 'Help find bugs', exact: true }).click(); // and again from the sidebar
+  await expect(notice).toContainText('Nothing is sent unless you say yes');
+  await alice.page.getByRole('button', { name: 'Help find bugs', exact: true }).click(); // a second click puts it away
+  await expect(notice).not.toBeVisible();
   await alice.say('after the no');
   expect(alice.posthog, 'no request to PostHog after a no').toEqual([]);
   expect(alice.wire.frames('up', 'auth').every((a) => !('telemetry' in a)), 'the server was never told to report on her').toBe(true);
@@ -34,7 +38,12 @@ test('a yes starts PostHog and tells the server; stopping forgets it again', asy
   await alice.connected();
   await expect.poll(() => alice.wire.frames('up', 'auth').at(-1)?.['telemetry']).toBe(true);
 
+  // The sidebar asks again, with what is sent in view, rather than switching it off unread
   await alice.page.getByRole('button', { name: 'Stop helping find bugs' }).click();
+  const notice = alice.page.getByRole('region', { name: 'Help find bugs' });
+  await expect(notice).toContainText('You are helping right now');
+  await notice.getByRole('button', { name: 'Maybe later' }).click();
+  await expect(notice).not.toBeVisible();
   await expect(alice.page.getByRole('button', { name: 'Help find bugs', exact: true })).toBeVisible();
   await expect.poll(() => alice.wire.frames('up', 'telemetry').at(-1)).toEqual({ t: 'telemetry', on: false });
   await expect.poll(() => posthogStorage(alice.page)).toEqual([]);
