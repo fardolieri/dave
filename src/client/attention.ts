@@ -25,15 +25,17 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
 
   // Participants are keyed per room, so a friend in two calls at once counts twice: two things are happening.
   const tag = (roomId: string, publicKey: string) => `${roomId} ${publicKey}`;
-  const others = () => new Set(links().flatMap((l) => l.room.people().filter((p) => p.role === 'participant' && p.publicKey !== myKey).map((p) => tag(l.room.roomId, p.publicKey))));
+  const participants = (except?: string) => new Set(links().flatMap((l) => l.room.people().filter((p) => p.role === 'participant' && p.publicKey !== except).map((p) => tag(l.room.roomId, p.publicKey))));
+  const inCall = () => participants();
+  const others = () => participants(myKey);
   const held = () => new Set(links().flatMap((l) => l.call.views().filter((v) => v.serverLost).map((v) => tag(l.room.roomId, v.publicKey))));
   /** Profile pictures by participant tag; a leaver is gone from presence, so theirs is read from the previous snapshot. */
   const pictures = () => new Map(links().flatMap((l) => l.room.people().map((p) => [tag(l.room.roomId, p.publicKey), p.picture] as const)));
   /** Rooms whose first real snapshot (one that includes me) has arrived; nothing before it is a join. */
   const seeded = () => new Set(links().filter((l) => l.room.people().some((p) => p.publicKey === myKey)).map((l) => l.room.roomId));
 
-  // ---- title badge
-  createEffect(() => titleFor(others().size, unfocused()), (title) => { document.title = title; });
+  // ---- title badge: everyone in the call, you included, so a one-on-one reads "2 in call"
+  createEffect(() => titleFor(inCall().size, unfocused()), (title) => { document.title = title; });
 
   // ---- chimes: each friend's own cue from their profile picture (ticket 23)
   const disarm = armSound();

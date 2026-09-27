@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { callDiff, titleFor } from '../src/core/attention';
 
 describe('attention cues', () => {
-  it('badges the title only while hidden and while friends are in the call', () => {
+  it('badges the title only while hidden and while someone is in the call', () => {
     expect(titleFor(0, true)).toBe('dave');
     expect(titleFor(3, false)).toBe('dave');
     expect(titleFor(3, true)).toBe('(3 in call) dave');

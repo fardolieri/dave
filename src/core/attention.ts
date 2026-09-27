@@ -2,7 +2,7 @@
 
 export const APP_TITLE = 'dave';
 
-/** Title shown while the tab is unfocused: a badge with how many friends are in the Call. */
+/** Title shown while the tab is unfocused: a badge with how many people are in the Call, you included. */
 export function titleFor(participantsInCall: number, unfocused: boolean): string {
   return unfocused && participantsInCall > 0 ? `(${participantsInCall} in call) ${APP_TITLE}` : APP_TITLE;
 }
