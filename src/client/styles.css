@@ -16,7 +16,7 @@ input { background: var(--panel2); color: var(--fg); border: 1px solid var(--lin
 
 /* One grid for the whole room: the sidebar spans every row on the left; shares, chat log and composer
    are rows of the right column. The composer being its own grid item is what lets phones pin it. */
-.app { --side-w: 260px; position: relative; height: 100%; display: grid; grid-template-columns: var(--side-w) 1fr; grid-template-rows: 0 minmax(0, 1fr) auto; }
+.app { --side-w: 300px; position: relative; height: 100%; display: grid; grid-template-columns: var(--side-w) 1fr; grid-template-rows: 0 minmax(0, 1fr) auto; }
 .app.split { grid-template-rows: 52% minmax(0, 1fr) auto; }
 .app > *, .scroll > * { min-width: 0; min-height: 0; }
 /* On desktop the wrapper is invisible to layout (its children are grid items of .app); phones turn it into the scrolling part above the composer. */
@@ -87,18 +87,27 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 
 /* call */
 .plist li { flex-wrap: nowrap; }
-/* The name never wraps: it truncates with an ellipsis while the badges keep their width. */
-.plist .pname { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+/* A participant line: avatar, name, badges, all on one line; the volume slider opens on a line of its own below.
+   While the badges fit whole beside a name of 8ch, only the name gives way. When they do not (the script sets
+   .tight), the connection keeps its dot and drops its word, its title still naming it; if that is still too wide,
+   the name and the muted/sharing labels shrink together, the name ten times as fast. */
+.plist li.prow { flex-direction: column; align-items: stretch; }
+.plist .pline { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.plist .pname { flex: 1 10 auto; min-width: 0; display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
 .plist .pname .nm { min-width: 8ch; overflow: hidden; text-overflow: ellipsis; }
+.plist .tight .pname .nm { min-width: 3ch; }
 .plist .pname .new { flex: none; }
-/* Badges give way before the name and wrap among themselves: "sharing", "via relay" and a set volume together
-   are wider than the sidebar leaves (report of Sep 17: the labels ran out of the row). */
-.plist .pflags { flex: 0 1 auto; min-width: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px 6px; align-items: center; }
+.plist .pflags { flex: 0 1 auto; min-width: 0; display: flex; justify-content: flex-end; gap: 6px; align-items: center; white-space: nowrap; }
+.plist .pflags > * { flex: none; }
+.plist .tight .pflags > em { flex-shrink: 1; min-width: 2ch; overflow: hidden; text-overflow: ellipsis; }
+.plist .tight .pflags > .conn { width: 8px; overflow: hidden; }
 .plist li.lost { opacity: .5; }
 .avatar.speaking { box-shadow: 0 0 0 2px var(--ok); }
 .plist em { font-style: normal; font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+/* Centred on the line box the dot rode above the lowercase letters; nudged down it sits level with them.
+   The margins keep the line as tall as the text's when the list shows the dot alone. */
 .conn { font-size: 11px; display: inline-flex; align-items: center; gap: 4px; }
-.conn i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: currentColor; }
+.conn i { flex: none; width: 8px; height: 8px; margin: 4px 0; transform: translateY(.1em); border-radius: 50%; display: inline-block; background: currentColor; }
 .conn-connecting { color: var(--dim); } .conn-connecting i { animation: pulse 1s infinite; }
 .conn-direct { color: var(--ok); }
 .conn-relayed { color: var(--warn); }
@@ -184,12 +193,7 @@ select.picker option::checkmark { order: 1; margin-left: auto; }
 /* local volume per participant */
 .vol { padding: 2px 6px; font-size: 12px; display: inline-flex; gap: 4px; align-items: center; }
 .vol small { font-size: 10px; }
-.volrow { flex-basis: 100%; display: flex; align-items: center; gap: 8px; padding-left: 36px; }
-/* A participant row is a grid: avatar, name, badges, and the volume row on a line of its own. The name column
-   floors at 8ch and the badges column takes what is left and wraps inside it. As a wrapping flex row the badges
-   jumped to a second line as a block, or, kept on the line, squeezed the name to nothing and painted over it. */
-.plist li.prow { display: grid; grid-template-columns: auto minmax(8ch, 1fr) auto; align-items: center; }
-.plist li.prow > .volrow { grid-column: 1 / -1; }
+.volrow { display: flex; align-items: center; gap: 8px; padding-left: 36px; }
 /* Firefox keeps a range input at its intrinsic width unless told it may shrink. */
 .volrow input[type=range] { flex: 1 1 0; min-width: 0; width: 0; accent-color: var(--acc); }
 .volrow .dim { flex: none; min-width: 3.5em; text-align: right; }

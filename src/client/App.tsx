@@ -683,18 +683,50 @@ function Lag(props: { ms: number }) {
   return <span class={`lag lag-${level()}`} title={title()}>{formatDelay(props.ms)}</span>;
 }
 
+const NAME_FLOOR_CH = 8;
+let measureCtx: CanvasRenderingContext2D | null | undefined;
+/** Whether a participant line holds every badge at full width beside a name of at least NAME_FLOOR_CH characters.
+ *  Measured from the badges' natural widths, so the answer does not depend on whether the line is tight right now. */
+function badgesFitWhole(line: HTMLElement): boolean {
+  const [avatar, name, flags] = [...line.children] as HTMLElement[];
+  if (!avatar || !name || !flags) return true;
+  const gap = (el: HTMLElement) => parseFloat(getComputedStyle(el).columnGap) || 0;
+  let need = 0;
+  for (const badge of flags.children as HTMLCollectionOf<HTMLElement>) {
+    const label = badge.querySelector<HTMLElement>('.conn-label');
+    const dot = badge.querySelector<HTMLElement>('i');
+    need += label && dot ? dot.offsetWidth + gap(badge) + label.offsetWidth : badge.scrollWidth + badge.offsetWidth - badge.clientWidth;
+  }
+  need += gap(flags) * Math.max(0, flags.children.length - 1);
+  measureCtx ??= document.createElement('canvas').getContext('2d');
+  if (measureCtx) measureCtx.font = getComputedStyle(name).font;
+  const floor = (measureCtx?.measureText('0').width ?? 8) * NAME_FLOOR_CH;
+  return avatar.offsetWidth + floor + need + 2 * gap(line) <= line.clientWidth;
+}
+
 function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: PeerView; speaking: boolean; onVolume?: (v: number) => void; onProfile: (anchor: HTMLElement) => void }) {
   const [sliderOpen, setSliderOpen] = createSignal(false);
   const volume = () => props.view?.volume ?? 1;
   const percent = () => Math.round(volume() * 100);
+  const [tight, setTight] = createSignal(false);
+  let watcher: { disconnect(): void }[] = [];
+  onCleanup(() => watcher.forEach((w) => w.disconnect()));
+  const watchFit = (line: HTMLDivElement) => {
+    const check = () => setTight(!badgesFitWhole(line));
+    const resize = new ResizeObserver(check), mutation = new MutationObserver(check);
+    resize.observe(line);
+    mutation.observe(line, { childList: true, subtree: true, characterData: true });
+    watcher = [resize, mutation];
+  };
   return (
     <li class="prow">
+      <div class={`pline ${tight() ? 'tight' : ''}`} ref={watchFit}>
       <Avatar initial={props.label.shown[0]!} picture={props.label.picture} speaking={props.speaking} title={props.isMe ? 'Your profile' : 'Profile'} onOpen={props.onProfile} />
       <span class="pname" title={props.label.title}><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span></span>
       <span class="pflags">
         <Show when={props.p.muted}><em>muted</em></Show>
         <Show when={props.p.sharing}><em>sharing</em></Show>
-        <Show when={props.view}>{(v) => <span class={`conn conn-${v().conn}`} title={CONN_LABEL[v().conn]}><i />{CONN_LABEL[v().conn]}</span>}</Show>
+        <Show when={props.view}>{(v) => <span class={`conn conn-${v().conn}`} title={CONN_LABEL[v().conn]}><i /><span class="conn-label">{CONN_LABEL[v().conn]}</span></span>}</Show>
         <Show when={props.view && props.view.rttMs !== null}><Lag ms={props.view!.rttMs!} /></Show>
         <Show when={props.onVolume && props.view}>
           <button class={`vol ${percent() !== 100 ? 'on' : ''}`} title={`Volume for you: ${percent()}%`} onClick={() => setSliderOpen(!sliderOpen())}>
@@ -702,6 +734,7 @@ function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: 
           </button>
         </Show>
       </span>
+      </div>
       <Show when={sliderOpen() && props.onVolume}>
         <label class="volrow">
           <input type="range" min="0" max={MAX_VOLUME * 100} step="5" value={percent()} onInput={(e) => props.onVolume?.(Number(e.currentTarget.value) / 100)} title="Double-click to reset" onDblClick={() => props.onVolume?.(1)} />
