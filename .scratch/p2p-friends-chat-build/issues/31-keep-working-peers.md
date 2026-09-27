@@ -1,6 +1,6 @@
 # 31 · A friend who loses the server stays while the connection to them works
 
-Status: built on build/31-keep-working-peers, not yet shipped
+Status: shipped 2026-09-27 to nightly and prod (0815d20)
 Asked for 2026-09-27: Daniel's report of Sep 26 ("the UI showed that he is offline but we were still connected to him
 and could hear him … once he wasn't shown at all … but we still heard something"). A friend whose server socket
 drops is shown dimmed as "connection to server lost" and his connection was closed after 60 s whatever its state,
