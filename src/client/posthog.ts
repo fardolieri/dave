@@ -55,14 +55,18 @@ function start(): void {
       defaults: '2026-05-30',
       capture_exceptions: true,
       person_profiles: 'identified_only',
-      // Opted out, it keeps its state in memory only: it would otherwise write it again after the removal below, as a
-      // session persistence it builds anew when its remote config arrives (ticket 32)
+      // A no must leave nothing behind (forgetStoredData). Its own opt-in record goes too, after which it would count as
+      // opted in again: without a record it is opted out, so the yes is given below explicitly, and opted out it keeps
+      // its state in memory only. Saves are not debounced (the defaults' 250 ms), or one still pending lands after the removal.
+      opt_out_capturing_by_default: true,
       opt_out_persistence_by_default: true,
+      persistence_save_debounce_ms: 0,
       session_recording: {
         maskAllInputs: true,
         maskTextSelector: '*', // chat, names, fingerprints: never in a recording
       },
     });
+    if (!ph.has_opted_in_capturing()) ph.opt_in_capturing({ captureEventName: false });
     if (isTestAccount) ph.register({ is_test_account: true });
     if (person) ph.identify(person.id, person.props);
     sdk = ph;
@@ -80,8 +84,8 @@ function stop(): void {
   queue = [];
   if (sdk) {
     sdk.stopSessionRecording();
+    sdk.opt_out_capturing(); // before the reset, which drops that record again: opted out by default, it stays out
     sdk.reset();
-    sdk.opt_out_capturing();
   }
   forgetStoredData();
 }

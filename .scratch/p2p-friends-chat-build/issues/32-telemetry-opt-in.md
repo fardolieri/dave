@@ -33,6 +33,10 @@ shelved decentralized-rooms ticket 05.
   but the auth counts as a failed attempt, and the reply read as a refusal of the room); a change during the handshake
   goes out with the welcome. A posthog-js load that fails (blocker, dropped line) resets so a later yes retries; the
   pre-load queue is bounded and skipped when PostHog is not configured.
+- Later fix: stopping a fully loaded posthog-js could leave `ph_<key>_posthog = "{}"` in sessionStorage (a save debounced
+  by the defaults' 250 ms, and the SDK counting as opted in again once its own opt-in record was removed). Now
+  `opt_out_capturing_by_default` with an explicit opt-in after init, `opt_out_persistence_by_default`, no save debounce,
+  and the opt-out before the reset.
 - Spec §7.7 added, §4 frame caps and §7.5 amended.
 - e2e fixtures seed `on` by default (the suite behaved like that before); `telemetry: null | 'off'` for the new tests.
   Without posthog-js parsed at startup the app opens its socket sooner, and Firefox's "can't establish a connection"

@@ -33,6 +33,7 @@ test('a yes starts PostHog and tells the server; stopping forgets it again', asy
   const alice = await crowd.open('Alice', { telemetry: null, plainUserAgent: true });
   await alice.page.getByRole('region', { name: 'Help find bugs' }).getByRole('button', { name: 'Sure!' }).click();
   await expect.poll(() => alice.posthog.length, { message: 'PostHog started after the yes' }).toBeGreaterThan(0);
+  await expect.poll(() => alice.posthog.some((u) => /\/e\/(\?|$)/.test(u)), { message: 'and sends events: opted in, not only loaded' }).toBe(true);
   await expect.poll(() => alice.wire.frames('up', 'telemetry')).toEqual([{ t: 'telemetry', on: true }]);
   await alice.page.reload();
   await alice.connected();
