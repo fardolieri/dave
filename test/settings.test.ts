@@ -54,6 +54,16 @@ describe('local volume', () => {
   });
 });
 
+describe('voice repair (ticket 34)', () => {
+  it('defaults to the browsers\' own FEC, takes the three modes, and drops anything else', () => {
+    expect(DEFAULT_AUDIO.voiceRepair).toBe('fec');
+    expect(parseAudioSettings('{"voiceRepair":"red"}').voiceRepair).toBe('red');
+    expect(parseAudioSettings('{"voiceRepair":"off"}').voiceRepair).toBe('off');
+    expect(parseAudioSettings('{"voiceRepair":"ulp"}').voiceRepair).toBe('fec');
+    expect(parseAudioSettings('{"lowBandwidthVoice":true}').voiceRepair).toBe('fec'); // older blobs without the field
+  });
+});
+
 describe('noise removal (ticket 26)', () => {
   it('is on by default with the gate at 0.5, and older blobs without the fields get both', () => {
     expect(DEFAULT_AUDIO).toMatchObject({ noiseRemoval: true, voiceThreshold: 0.5 });

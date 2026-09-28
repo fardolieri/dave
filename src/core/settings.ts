@@ -1,6 +1,7 @@
 // Share, audio, and viewer settings (spec §6.1, §6.3, §6.4): plain data, defaults,
 // and the WebRTC parameters derived from them. Runtime-neutral so it can be unit-tested.
 import { SHARE_BUDGET_BPS, SHARE_CEILING_BPS, perViewerBitrate } from './mesh';
+import { DEFAULT_VOICE_REPAIR, VOICE_REPAIRS, type VoiceRepair } from './voicerepair';
 
 export type Degradation = 'balanced' | 'maintain-framerate' | 'maintain-resolution';
 export type FrameRate = 15 | 30 | 60;
@@ -65,11 +66,13 @@ export type AudioSettings = {
   voiceThreshold: number;
   /** Voice at about a third of the data both ways, for a slow or overloaded line (ticket 27, core/lowvoice.ts). */
   lowBandwidthVoice: boolean;
+  /** How lost voice packets are made up for, both ways (ticket 34, core/voicerepair.ts). */
+  voiceRepair: VoiceRepair;
 };
 export const MAX_VOICE_THRESHOLD = 0.95;
 export const DEFAULT_VOICE_THRESHOLD = 0.5;
 export const DEFAULT_AUDIO: AudioSettings = {
-  echoCancellation: true, noiseSuppression: true, autoGainControl: true, microphoneId: '', speakerId: '', masterVolume: 1, noiseRemoval: true, voiceThreshold: DEFAULT_VOICE_THRESHOLD, lowBandwidthVoice: false,
+  echoCancellation: true, noiseSuppression: true, autoGainControl: true, microphoneId: '', speakerId: '', masterVolume: 1, noiseRemoval: true, voiceThreshold: DEFAULT_VOICE_THRESHOLD, lowBandwidthVoice: false, voiceRepair: DEFAULT_VOICE_REPAIR,
 };
 /** Noise removal stands in for the browser's own noise suppression, so either one counts. */
 export const processingIsDefault = (a: AudioSettings): boolean => a.echoCancellation && a.autoGainControl && (a.noiseRemoval || a.noiseSuppression);
@@ -122,6 +125,7 @@ export const parseAudioSettings = (raw: string | null): AudioSettings =>
   parseSettings(DEFAULT_AUDIO, raw, {
     masterVolume: (v): v is number => typeof v === 'number' && clampVolume(v) === v,
     voiceThreshold: (v): v is number => typeof v === 'number' && v >= 0 && v <= MAX_VOICE_THRESHOLD,
+    voiceRepair: oneOf<VoiceRepair>(...VOICE_REPAIRS),
   });
 export const parseViewerSettings = (raw: string | null): ViewerSettings =>
   parseSettings(DEFAULT_VIEWER, raw, { jitterBufferTargetMs: (v): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 });

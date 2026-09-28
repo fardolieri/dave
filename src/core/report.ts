@@ -9,8 +9,8 @@ export type ReportShape = {
   page: { online: boolean; visible: boolean; viewport: string };
   server: { status: string; visitors: number; participants: number; me: string | null };
   call: {
-    inCall: boolean; muted: boolean; sharing: unknown; outgoing: { viewers: number } | null; ice: { turn: boolean }; lowBandwidthVoice?: boolean;
-    peers: Array<{ view: { conn: string; watching: boolean; shareLive: boolean; rttMs?: number | null }; asksLowVoice?: boolean }>;
+    inCall: boolean; muted: boolean; sharing: unknown; outgoing: { viewers: number } | null; ice: { turn: boolean }; lowBandwidthVoice?: boolean; voiceRepair?: string;
+    peers: Array<{ view: { conn: string; watching: boolean; shareLive: boolean; rttMs?: number | null }; asksLowVoice?: boolean; sendsRed?: boolean; voiceBuffer?: { adaptiveMs: number | null } }>;
   };
   videoElements: Array<{ hidden: boolean; width: number; frames: number | null; paused: boolean }>;
   log: Array<{ level: 'warn' | 'error' }>;
@@ -80,6 +80,10 @@ export function reportProperties(form: ReportForm, report: ReportShape): Record<
     max_rtt_ms: peers.reduce<number | null>((max, p) => (typeof p.view.rttMs === 'number' ? Math.max(max ?? 0, p.view.rttMs) : max), null),
     low_bandwidth_voice: report.call.lowBandwidthVoice ?? false,
     peers_asking_low_voice: peers.filter((p) => p.asksLowVoice).length,
+    // Voice repair and the buffer that follows the line (ticket 34)
+    voice_repair: report.call.voiceRepair ?? 'fec',
+    peers_sending_red: peers.filter((p) => p.sendsRed).length,
+    max_adaptive_buffer_ms: peers.reduce<number | null>((max, p) => (typeof p.voiceBuffer?.adaptiveMs === 'number' ? Math.max(max ?? 0, p.voiceBuffer.adaptiveMs) : max), null),
     black_tiles: report.videoElements.filter(isBlackTile).length,
     // Recent console noise
     warnings: report.log.filter((e) => e.level === 'warn').length,

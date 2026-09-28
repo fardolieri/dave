@@ -166,3 +166,75 @@ test('phone width: one column, the composer pinned to the bottom of the screen a
   await bob.say('from the phone');
   await expect.poll(() => alice.chatTexts()).toContain('from the phone');
 });
+
+test('voice repair: RED chosen by one side doubles the voice packets both ways, off drops the FEC flag, and a browser without RED keeps plain Opus', async ({ crowd, browserName }) => {
+  // In the Firefox project Alice runs Firefox, which has no RED (2026-09-28), against a Chromium Bob: her choice must change nothing.
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob', browserName === 'firefox' ? { engine: 'chromium' } : {});
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+
+  type Voice = { packetsSent?: number; bytesSent?: number; fmtp?: string };
+  type Diag = { voiceRepair: string; peers: Array<{ sendsRed: boolean; sendsFec: boolean; outboundVoice: Voice | null }> };
+  const sent = async (f: typeof alice) => (await f.hook<Diag>('diagnostics')).peers[0]?.outboundVoice ?? {};
+  /** Bytes per voice packet one friend sends over two seconds: about 80 with plain Opus, about 140 with RED (a copy of the previous packet rides along). */
+  const bytesPerPacket = async (f: typeof alice) => {
+    const a = await sent(f);
+    await f.page.waitForTimeout(2000);
+    const b = await sent(f);
+    const n = (b.packetsSent ?? 0) - (a.packetsSent ?? 0);
+    return n > 0 ? ((b.bytesSent ?? 0) - (a.bytesSent ?? 0)) / n : 0;
+  };
+  // Sizes depend on the engine and on what the fake microphone gives the gate (about 43 bytes of near-silence in Chromium, 35 in
+  // Firefox), so each friend is judged against their own start: RED carries the previous packet along, so packets grow by half at least.
+  const baseline = new Map<string, number>();
+  for (const f of [alice, bob]) { const b = await bytesPerPacket(f); expect(b, `${f.name} sends voice at first`).toBeGreaterThan(20); baseline.set(f.name, b); }
+  const plain = (f: typeof alice) => async () => { const b = await bytesPerPacket(f); return b > baseline.get(f.name)! * 0.6 && b < baseline.get(f.name)! * 1.4; };
+  const red = (f: typeof alice) => async () => (await bytesPerPacket(f)) >= baseline.get(f.name)! * 1.5;
+  expect((await alice.hook<Diag>('diagnostics')).voiceRepair).toBe('fec');
+
+  await alice.selectedRoom.getByTitle('Audio settings').click();
+  await alice.page.locator('.panel').getByLabel('RED').check();
+  if (browserName === 'firefox') {
+    await alice.page.waitForTimeout(3000); // the offer goes round; nothing about RED can change
+    for (const f of [alice, bob]) expect(await red(f)(), `${f.name} still sends plain Opus`).toBe(false);
+    for (const f of [alice, bob]) expect((await f.hook<Diag>('diagnostics')).peers[0]?.sendsRed).toBe(false);
+  } else {
+    for (const f of [alice, bob]) await expect.poll(red(f), { message: `${f.name} sends RED` }).toBe(true);
+    for (const f of [alice, bob]) expect((await f.hook<Diag>('diagnostics')).peers[0]?.sendsRed).toBe(true);
+  }
+  await bob.hearing('Alice');
+  await alice.hearing('Bob');
+
+  await alice.page.locator('.panel').getByLabel('Off').check();
+  // Each side's encoder reads the flag from its remote description, as applied; the stats' codec line is not a reliable mirror
+  // of it (Chromium showed the answerer's own fmtp there, 2026-09-28), so the description itself is checked.
+  for (const f of [alice, bob]) await expect.poll(plain(f), { message: `${f.name} is back to plain Opus` }).toBe(true);
+  for (const f of [alice, bob]) await expect.poll(() => f.hook<Diag>('diagnostics').then((d) => d.peers[0]?.sendsFec), { message: `${f.name} sends without FEC` }).toBe(false);
+  for (const f of [alice, bob]) expect((await f.hook<Diag>('diagnostics')).peers[0]?.sendsRed).toBe(false);
+  await bob.hearing('Alice');
+
+  await alice.page.locator('.panel').getByLabel('Opus FEC').check();
+  for (const f of [alice, bob]) await expect.poll(() => f.hook<Diag>('diagnostics').then((d) => d.peers[0]?.sendsFec), { message: `${f.name} sends with FEC again` }).toBe(true);
+  await bob.hearing('Alice');
+});
+
+test('the voice is measured every five seconds, and a clean line leaves the buffer to the browser', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  type PeerHook = { lastWindow: { seconds: number; packets: number; concealedPct: number; jitterMs: number; bufferMs: number } | null; adaptiveMs: number | null; voiceBufferMs: number | null };
+  const measured = async () => (await alice.hook<PeerHook[]>('peers'))[0] ?? null;
+  await expect.poll(async () => (await measured())?.lastWindow?.packets ?? 0, { message: 'a 5 s window of Bob\'s voice', timeout: 15_000 }).toBeGreaterThan(40);
+  const p = (await measured())!;
+  expect(p.lastWindow).toMatchObject({ seconds: expect.any(Number), jitterMs: expect.any(Number), bufferMs: expect.any(Number) });
+  expect(p.lastWindow!.seconds).toBeGreaterThanOrEqual(4);
+  expect(p.lastWindow!.concealedPct).toBeLessThan(3);
+  expect(p.adaptiveMs).toBeNull();
+  expect(p.voiceBufferMs).toBeNull();
+});

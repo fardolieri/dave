@@ -55,6 +55,10 @@ describe('reportProperties', () => {
   it('lifts the worst round trip and who asked for low bandwidth voice (ticket 27)', () => {
     const slow = { ...report, call: { ...report.call, lowBandwidthVoice: true, peers: [peer({ rttMs: 80 }), { ...peer({ rttMs: 9400 }), asksLowVoice: true }, peer({ rttMs: null })] } };
     expect(reportProperties({ text: 'x', category: 'audio', severity: 'blocking' }, slow)).toMatchObject({ max_rtt_ms: 9400, low_bandwidth_voice: true, peers_asking_low_voice: 1 });
+    // Voice repair and the buffer that follows the line (ticket 34); a report from before them reads as the defaults.
+    expect(reportProperties({ text: 'x', category: 'audio', severity: 'blocking' }, slow)).toMatchObject({ voice_repair: 'fec', peers_sending_red: 0, max_adaptive_buffer_ms: null });
+    const repaired = { ...report, call: { ...report.call, voiceRepair: 'red', peers: [{ ...peer({ rttMs: 80 }), sendsRed: true, voiceBuffer: { adaptiveMs: 400 } }, { ...peer({ rttMs: 90 }), voiceBuffer: { adaptiveMs: null } }] } };
+    expect(reportProperties({ text: 'x', category: 'audio', severity: 'blocking' }, repaired)).toMatchObject({ voice_repair: 'red', peers_sending_red: 1, max_adaptive_buffer_ms: 400 });
   });
 });
 

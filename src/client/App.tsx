@@ -16,6 +16,7 @@ import { displayName, formatAgo, knownAgo } from '../core/names';
 import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatVideo } from '../core/format';
 import { formatDelay, lagLevel } from '../core/lowvoice';
+import { VOICE_REPAIRS, type VoiceRepair } from '../core/voicerepair';
 import { collectReport, formatReport, sendReport, type Report } from './diagnostics';
 import { CATEGORIES, SEVERITIES, isCategory, isSeverity, type Category, type Severity } from '../core/report';
 import { EmojiPicker } from './EmojiPicker';
@@ -696,10 +697,18 @@ function AudioPanel(props: { call: Call }) {
       <label class="check" title="For a slow or overloaded internet connection: your voice, and every voice sent to you, travels with about a third of the data, so it stops arriving seconds late, and friends' voices wait a moment longer before they play, which smooths out an uneven line. Voices sound a little duller. Switched on by the friend with the slow line, it helps all their connections; switched on by you, the one between you.">
         <input type="checkbox" checked={a().lowBandwidthVoice} onChange={(e) => set({ lowBandwidthVoice: e.currentTarget.checked })} /> Low bandwidth voice
       </label>
+      <div class="vrepair" role="radiogroup" aria-label="Voice repair" title="How lost bits of voice are made up for. Opus FEC, the usual: a rough copy of each packet rides in the next one, at little extra data. RED: a full copy of the previous packet in every packet, about double the voice data, for a line that drops many. Chosen by either side, it holds both ways between the two; off on either side switches both off.">
+        <span>Voice repair</span>
+        <For each={VOICE_REPAIRS}>{(mode) => (
+          <label class="check"><input type="radio" name="vrepair" value={mode} checked={a().voiceRepair === mode} onChange={() => set({ voiceRepair: mode })} /> {VOICE_REPAIR_LABEL[mode]}</label>
+        )}</For>
+      </div>
       <label class="check"><input type="checkbox" checked={props.call.viewerSettings().jitterBufferTargetMs > 0} onChange={(e) => props.call.setViewerSettings({ jitterBufferTargetMs: e.currentTarget.checked ? LOW_LATENCY_MS : 0 })} /> Low latency when watching shares</label>
     </div>
   );
 }
+
+const VOICE_REPAIR_LABEL: Record<VoiceRepair, string> = { off: 'Off', fec: 'Opus FEC', red: 'RED' };
 
 const CONN_LABEL: Record<ConnState, string> = { connecting: 'connecting…', direct: 'direct', relayed: 'via relay', reconnecting: 'reconnecting…', unreachable: 'unreachable' };
 

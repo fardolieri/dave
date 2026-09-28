@@ -107,3 +107,11 @@ _Avoid_: Low quality mode, data saver, low bitrate (in UI copy; fine in code)
 **Round trip**:
 How long a packet takes to a friend and back, shown beside their name. You hear them about half of it late. A line that queues packets makes it seconds.
 _Avoid_: Ping, lag, latency (in UI copy; fine in code)
+
+**Voice buffer**:
+How long a friend's voice waits in this browser before it plays, so packets that arrive unevenly still play evenly. The browser sets it; low bandwidth voice holds it at 200 ms at least; and it rises by itself, to 200 then 400 ms, when a friend's voice measures rough (made-up stretches or jitter past the marks, judged every 5 s), and falls a step after a clean minute. Per friend, local only.
+_Avoid_: Jitter buffer (in UI copy; fine in code), delay, latency
+
+**Voice repair**:
+How lost bits of a friend's voice are made up for between two friends, an Audio panel choice. Opus FEC, the usual: a rough copy of each packet rides in the next one. RED: a full copy of the previous packet in every packet, about double the voice data. Off: neither. Chosen by either side it holds both ways; off on either side switches both off.
+_Avoid_: Redundancy (alone), error correction, packet loss concealment (that is what the browser makes up by itself)

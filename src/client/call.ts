@@ -5,6 +5,7 @@ import posthog from './posthog';
 import { exposeHooks } from './hooks';
 import { isFreshConnection, signDescription, verifyDescription } from '../core/dtls';
 import { LOW_VOICE_BUFFER_MS, asksLowVoice, lowVoiceSdp } from '../core/lowvoice';
+import { asksFec, sendsRed, voiceRepairSdp, type VoiceRepair } from '../core/voicerepair';
 import { INITIAL_BUFFER, VOICE_REPORT_EVERY, VOICE_SAMPLE_MS, bufferMs, nextBuffer, voiceWindow, type BufferState, type VoiceCounters, type VoiceWindow } from '../core/voicequality';
 import type { LocalIdentity } from './identity';
 import {
@@ -31,6 +32,9 @@ export type OutgoingShare = { kbps: number; formats: VideoFormat[]; viewers: num
 /** Snapshot for problem reports (ticket 12): states and counters, no names, no message texts. */
 export type PeerDiagnostics = {
   fingerprint: string | null; polite: boolean; restarts: number; relayOnly: boolean; viewsMyShare: boolean; viewerScale: number; asksLowVoice: boolean; voiceBufferMs: number | null;
+  /** My voice to them goes as RED, or with Opus FEC: their description, as applied, lists RED first, or asks for FEC (ticket 34). */
+  sendsRed: boolean;
+  sendsFec: boolean;
   /** The buffer that follows the line (ticket 34): what it asks for now, and the last 5 s window it judged. */
   voiceBuffer: { adaptiveMs: number | null; level: number; lastWindow: VoiceWindow | null };
   view: Pick<PeerView, 'conn' | 'watching' | 'shareLive' | 'shareKbps' | 'shareFormat' | 'serverLost' | 'volume' | 'rttMs'>;
@@ -45,7 +49,7 @@ export type PeerDiagnostics = {
 };
 export type CallDiagnostics = {
   inCall: boolean; muted: boolean; joinSeq: number | null; sharing: Record<string, unknown> | null; outgoing: OutgoingShare | null;
-  shareSettings: unknown; viewerSettings: unknown; audioProcessing: unknown; lowBandwidthVoice: boolean; ice: { servers: number; turn: boolean; ageMinutes: number | null };
+  shareSettings: unknown; viewerSettings: unknown; audioProcessing: unknown; lowBandwidthVoice: boolean; voiceRepair: VoiceRepair; ice: { servers: number; turn: boolean; ageMinutes: number | null };
   peers: PeerDiagnostics[];
 };
 const sameFormat = (a: VideoFormat | null, b: VideoFormat | null): boolean => a === b || (!!a && !!b && a.width === b.width && a.height === b.height && Math.round(a.fps) === Math.round(b.fps));
@@ -105,6 +109,9 @@ type Peer = {
   viewerScale: number;
   /** Their last description asked for low bandwidth voice (ticket 27). Reports only: my side follows it by itself. */
   asksLowVoice: boolean;
+  /** Their description as applied lists RED first, or asks for Opus FEC: my encoder obeys it (ticket 34). Reports only. */
+  sendsRed: boolean;
+  sendsFec: boolean;
   /** The voice receiver's counters at the last 5 s sample and at the last `voice_quality` event (ticket 34). */
   voiceLast: VoiceCounters | null;
   voiceReported: VoiceCounters | null;
@@ -179,6 +186,9 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   const [viewerSettings, storeViewerSettings] = persisted('viewerSettings', parseViewerSettings);
   /** Plain mirror of the low bandwidth voice setting (ticket 27), read while descriptions go out and come in. */
   let lowVoiceOn = untrack(audioSettings).lowBandwidthVoice;
+  let voiceRepair = untrack(audioSettings).voiceRepair;
+  /** Every description crosses this on its way out and on its way in: low bandwidth voice (ticket 27), then voice repair (ticket 34). */
+  const voiceSdp = (sdp: string): string => voiceRepairSdp(lowVoiceOn ? lowVoiceSdp(sdp) : sdp, voiceRepair);
   const [devices, setDevices] = createSignal<{ microphones: MediaDeviceInfo[]; speakers: MediaDeviceInfo[] }>({ microphones: [], speakers: [] });
   const canPickSpeaker = typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype;
   const smallScreen = () => typeof matchMedia !== 'undefined' && matchMedia(SMALL_SCREEN_QUERY).matches;
@@ -400,6 +410,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       posthog.capture('low_bandwidth_voice_toggled', { on: lowVoiceOn, peers: peers.size });
       for (const p of peers.values()) { applyVoiceBuffer(p); renegotiateVoice(p); }
     }
+    if (next.voiceRepair !== voiceRepair) {
+      voiceRepair = next.voiceRepair;
+      posthog.capture('voice_repair_changed', { mode: voiceRepair, peers: peers.size });
+      for (const p of peers.values()) renegotiateVoice(p);
+    }
   }
 
   /** What a participant's gain nodes are set to: the master volume times their own local volume. */
@@ -487,7 +502,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const peer: Peer = {
       key, name, pc, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, keepAlive, audioNodes: [], restarts: 0, relayOnly, generation: ++generation,
       view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1, rttMs: null },
-      viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
+      viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, sendsRed: false, sendsFec: true, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
     };
     earlyViewers.delete(key);
@@ -660,12 +675,12 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   /**
    * Send my current local description with its DTLS fingerprints signed by my identity key, bound to this peer (ADR 0004).
-   * With low bandwidth voice on, the copy sent asks for it; my own connection keeps the description as the browser made it.
+   * The copy sent asks for low bandwidth voice and the voice repair chosen here; my own connection keeps the description as the browser made it.
    */
   async function sendDescription(peer: Peer): Promise<void> {
     const own = peer.pc.localDescription;
     if (!own) return;
-    const description = { type: own.type, sdp: lowVoiceOn ? lowVoiceSdp(own.sdp) : own.sdp };
+    const description = { type: own.type, sdp: voiceSdp(own.sdp) };
     const sig = await signDescription({ privateKey: identity.keys.privateKey, from: myKey, to: peer.key, sdp: description.sdp });
     if (!sig) {
       // Never happens with a real browser description; if it did, the other side would refuse it anyway.
@@ -736,8 +751,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         if (peer.ignoreOffer) return;
         peer.srdAnswerPending = description.type === 'answer';
         peer.asksLowVoice = asksLowVoice(description.sdp ?? '');
-        // My encoder reads its bitrate and packet length from this description: rewritten, it sends low bandwidth voice.
-        await pc.setRemoteDescription(lowVoiceOn ? { type: description.type, sdp: lowVoiceSdp(description.sdp ?? '') } : description);
+        // My encoder reads its bitrate, packet length, FEC flag and codec order from this description: rewritten, it obeys my settings too.
+        const applied = { type: description.type, sdp: voiceSdp(description.sdp ?? '') };
+        await pc.setRemoteDescription(applied);
+        peer.sendsRed = sendsRed(applied.sdp);
+        peer.sendsFec = asksFec(applied.sdp);
         applyVoiceBuffer(peer); // they may have switched low bandwidth voice on or off
         peer.srdAnswerPending = false;
         if (description.type === 'offer') {
@@ -865,7 +883,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const track = peer.remoteShare.getVideoTracks()[0];
     const { conn, watching, shareLive, shareKbps, shareFormat, serverLost, volume, rttMs } = peer.view;
     return {
-      fingerprint: untrack(room.people).find((p) => p.publicKey === peer.key)?.fingerprint ?? null, polite: peer.polite, restarts: peer.restarts, relayOnly: peer.relayOnly, viewsMyShare: peer.viewsMyShare, viewerScale: peer.viewerScale, asksLowVoice: peer.asksLowVoice,
+      fingerprint: untrack(room.people).find((p) => p.publicKey === peer.key)?.fingerprint ?? null, polite: peer.polite, restarts: peer.restarts, relayOnly: peer.relayOnly, viewsMyShare: peer.viewsMyShare, viewerScale: peer.viewerScale, asksLowVoice: peer.asksLowVoice, sendsRed: peer.sendsRed, sendsFec: peer.sendsFec,
       voiceBufferMs: (peer.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined)?.jitterBufferTarget ?? null,
       voiceBuffer: { adaptiveMs: bufferMs(peer.buffer), level: peer.buffer.level, lastWindow: peer.lastWindow },
       view: { conn, watching, shareLive, shareKbps, shareFormat, serverLost, volume, rttMs },
@@ -916,7 +934,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       peer.voiceReported = cur;
       if (w) {
         const target = (peer.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined)?.jitterBufferTarget ?? null;
-        posthog.capture('voice_quality', { peer: fingerprintOf(peer), conn: peer.view.conn, rtt_ms: peer.view.rttMs, buffer_target_ms: target, adaptive_ms: bufferMs(peer.buffer), low_voice: lowVoiceOn || peer.asksLowVoice, ...windowProps(w) });
+        posthog.capture('voice_quality', { peer: fingerprintOf(peer), conn: peer.view.conn, rtt_ms: peer.view.rttMs, buffer_target_ms: target, adaptive_ms: bufferMs(peer.buffer), low_voice: lowVoiceOn || peer.asksLowVoice, voice_repair: voiceRepair, sends_red: peer.sendsRed, sends_fec: peer.sendsFec, ...windowProps(w) });
       }
     }
   }
@@ -928,7 +946,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     return {
       inCall: joined, muted: untrack(muted), joinSeq: myJoinSeq,
       sharing: shareVideo ? { ...shareVideo.getSettings(), readyState: shareVideo.readyState, contentHint: shareVideo.contentHint } : null,
-      outgoing: untrack(outgoing), shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl, noiseRemoval: untrack(noiseRemoval), voiceThreshold }, lowBandwidthVoice: lowVoiceOn,
+      outgoing: untrack(outgoing), shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl, noiseRemoval: untrack(noiseRemoval), voiceThreshold }, lowBandwidthVoice: lowVoiceOn, voiceRepair,
       ice: { servers: iceServers.length, turn: hasTurn(), ageMinutes: iceIssuedAt ? Math.round((Date.now() - iceIssuedAt) / 60000) : null },
       peers: await Promise.all([...peers.values()].map(peerDiag)),
     };
@@ -1348,7 +1366,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   const exposeDevHook = () => {
     if (!exposeHooks) return;
     (window as unknown as { __dave?: unknown }).__dave = {
-      peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, relayOnly: p.relayOnly, generation: p.generation, stuck: stuckAttempts.get(p.key) ?? 0, audioBytesIn: p.view.audioBytesIn, videoBytesIn: p.videoBytesIn, watching: p.view.watching, shareLive: p.view.shareLive, subscribedToMe: p.viewsMyShare, transceivers: p.pc.getTransceivers().length, rttMs: p.view.rttMs, asksLowVoice: p.asksLowVoice,
+      peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, relayOnly: p.relayOnly, generation: p.generation, stuck: stuckAttempts.get(p.key) ?? 0, audioBytesIn: p.view.audioBytesIn, videoBytesIn: p.videoBytesIn, watching: p.view.watching, shareLive: p.view.shareLive, subscribedToMe: p.viewsMyShare, transceivers: p.pc.getTransceivers().length, rttMs: p.view.rttMs, asksLowVoice: p.asksLowVoice, sendsRed: p.sendsRed,
         voiceBufferMs: (p.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined)?.jitterBufferTarget ?? null, adaptiveMs: bufferMs(p.buffer), lastWindow: p.lastWindow })),
       share: () => untrack(() => ({
         settings: shareSettings(),

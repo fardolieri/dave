@@ -92,6 +92,8 @@ export type FriendOptions = {
   /** Join calls muted. */
   muted?: boolean;
   viewport?: { width: number; height: number };
+  /** A phone's pixel density for screenshots; default 1. */
+  deviceScaleFactor?: number;
   /** Run this friend in another engine than the test's project, e.g. a Chromium sharer for a Firefox viewer. */
   engine?: Engine;
   /** Autoplay policy of this friend's browser; `blocked` is Brave's and Firefox's "Block" setting. Default: allowed. */
@@ -122,7 +124,7 @@ export class Friend {
     const userAgent = probe ? (await probe.evaluate(() => navigator.userAgent)).replace('HeadlessChrome', 'Chrome') : undefined;
     await probe?.close();
     // Contexts made by hand do not inherit the config's `use`, so the target URL is passed on explicitly.
-    this.context = await browser.newContext({ baseURL, viewport: this.options.viewport ?? { width: 1200, height: 800 }, ...(userAgent ? { userAgent } : {}) });
+    this.context = await browser.newContext({ baseURL, viewport: this.options.viewport ?? { width: 1200, height: 800 }, ...(this.options.deviceScaleFactor ? { deviceScaleFactor: this.options.deviceScaleFactor } : {}), ...(userAgent ? { userAgent } : {}) });
     // Nothing goes to PostHog from a test: answer its requests locally so the SDK stays quiet and nothing is recorded.
     // What would have gone is kept, so a test can check that an event was sent.
     await this.context.route(/posthog\.com/, (r) => { this.posthog.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }); });

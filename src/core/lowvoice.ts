@@ -16,7 +16,7 @@ export const LOW_VOICE_BUFFER_MS = 200;
 const LOW_OPUS_PARAMS: Record<string, string> = { maxaveragebitrate: String(LOW_VOICE_BPS), maxplaybackrate: '16000', usedtx: '1' };
 
 /** The voice section's line range [start, end) and its Opus payload type, or null when there is none. */
-function voiceSection(lines: string[]): { start: number; end: number; pt: string } | null {
+export function voiceSection(lines: string[]): { start: number; end: number; pt: string } | null {
   const start = lines.findIndex((l) => l.startsWith('m=audio '));
   if (start < 0) return null;
   let end = lines.findIndex((l, i) => i > start && l.startsWith('m='));
@@ -28,32 +28,43 @@ function voiceSection(lines: string[]): { start: number; end: number; pt: string
   return null;
 }
 
-/** The SDP with its voice section asking for low bandwidth voice. Unchanged when it has no Opus voice section. */
-export function lowVoiceSdp(sdp: string): string {
+/**
+ * The SDP with its voice section's lines replaced by what `edit` makes of them (given the section's Opus payload type).
+ * Line endings and a trailing newline are kept as they were; an SDP without an Opus voice section is returned as is.
+ */
+export function rewriteVoice(sdp: string, edit: (body: string[], pt: string) => string[]): string {
   const eol = sdp.includes('\r\n') ? '\r\n' : '\n';
   const trailing = sdp.endsWith(eol);
   const lines = (trailing ? sdp.slice(0, -eol.length) : sdp).split(eol);
   const section = voiceSection(lines);
   if (!section) return sdp;
   const { start, end, pt } = section;
-  const fmtpPrefix = `a=fmtp:${pt} `;
-  const body = lines.slice(start, end).filter((l) => !l.startsWith('a=ptime:') && !l.startsWith('a=maxptime:'));
-  const fmtpAt = body.findIndex((l) => l.startsWith(fmtpPrefix));
-  const params = new Map<string, string>();
-  if (fmtpAt >= 0) {
-    for (const part of body[fmtpAt]!.slice(fmtpPrefix.length).split(';')) {
-      const [k, ...v] = part.trim().split('=');
-      if (k) params.set(k, v.join('='));
-    }
-  }
-  for (const [k, v] of Object.entries(LOW_OPUS_PARAMS)) params.set(k, v);
-  const fmtp = fmtpPrefix + [...params].map(([k, v]) => `${k}=${v}`).join(';');
-  if (fmtpAt >= 0) body[fmtpAt] = fmtp;
-  else body.splice(body.findIndex((l) => l.startsWith(`a=rtpmap:${pt} `)) + 1, 0, fmtp);
-  body.push(`a=ptime:${LOW_VOICE_PTIME_MS}`);
-  const out = [...lines.slice(0, start), ...body, ...lines.slice(end)].join(eol);
+  const out = [...lines.slice(0, start), ...edit(lines.slice(start, end), pt), ...lines.slice(end)].join(eol);
   return trailing ? out + eol : out;
 }
+
+/** The section with `params` set on the fmtp line of payload type `pt`, added after its rtpmap when it has none. */
+export function withFmtpParams(body: string[], pt: string, params: Record<string, string>): string[] {
+  const fmtpPrefix = `a=fmtp:${pt} `;
+  const out = [...body];
+  const fmtpAt = out.findIndex((l) => l.startsWith(fmtpPrefix));
+  const map = new Map<string, string>();
+  if (fmtpAt >= 0) {
+    for (const part of out[fmtpAt]!.slice(fmtpPrefix.length).split(';')) {
+      const [k, ...v] = part.trim().split('=');
+      if (k) map.set(k, v.join('='));
+    }
+  }
+  for (const [k, v] of Object.entries(params)) map.set(k, v);
+  const fmtp = fmtpPrefix + [...map].map(([k, v]) => `${k}=${v}`).join(';');
+  if (fmtpAt >= 0) out[fmtpAt] = fmtp;
+  else out.splice(out.findIndex((l) => l.startsWith(`a=rtpmap:${pt} `)) + 1, 0, fmtp);
+  return out;
+}
+
+/** The SDP with its voice section asking for low bandwidth voice. Unchanged when it has no Opus voice section. */
+export const lowVoiceSdp = (sdp: string): string =>
+  rewriteVoice(sdp, (body, pt) => [...withFmtpParams(body.filter((l) => !l.startsWith('a=ptime:') && !l.startsWith('a=maxptime:')), pt, LOW_OPUS_PARAMS), `a=ptime:${LOW_VOICE_PTIME_MS}`]);
 
 /** Does this description ask for low bandwidth voice (its voice section caps Opus at or below our rate)? For reports. */
 export function asksLowVoice(sdp: string): boolean {
