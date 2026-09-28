@@ -1,6 +1,6 @@
 # 34 · Voice quality every 30 s, a buffer that follows the jitter, and voice repair (FEC, RED)
 
-Status: in progress 2026-09-28
+Status: shipped 2026-09-29 to nightly and prod (fbb5373)
 Asked for 2026-09-28: a friend on his phone "sounds weird stutterish". The two audio reports of Sep 26 predate the
 voice stats in problem reports (ticket 27), so nothing measured it. Ticket 28 left the 200 ms buffer tied to low
 bandwidth voice and named RED as the next step if a report showed lost packets. Decided with Daniel: three things, the
@@ -52,3 +52,7 @@ applied (the way low bandwidth voice rewrites the fmtp) makes it hold both ways 
 - Not tried: a real rough line. The policy's marks (3 percent, 50 ms) come from what ticket 28 measured on clean lines
   (about 0.2 percent, under 10 ms) and from what is plainly audible; the first `voice_quality` rows from a stuttering
   friend will say whether they sit right. RED on a real phone browser: Chrome on Android lists it; Safari untested.
+- Nightly (2026-09-28 21:46 UTC): 96 green in Firefox; in Chromium "a stalled connection is rebuilt and comes up again"
+  (resilience, ticket 22's relay-only rebuild) stayed at "connecting…" twice, then passed on a rerun of the job. Not this
+  ticket: the test passed locally in both engines and in Firefox on nightly, and touches nothing the sampler or the
+  rewrite changes. The relay rebuild on nightly flakes; worth a look if it shows again.
