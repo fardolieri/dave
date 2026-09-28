@@ -56,4 +56,9 @@ purpose a nag, and it takes room in the layout instead of floating over the call
   (debugger eval code), once in three runs; added to the known Firefox noise, matched on that file only.
 - Screenshots of the bar in a call, desktop 1440×900 at 2× and phone 390×844 at 3×: the page starts below it, the
   composer still ends at the bottom edge, nothing overflows.
+- First e2e run on nightly (2026-09-28): a reload served by the worker is quick enough to meet the trickle of ICE candidates
+  from the connection the friend is tearing down; Firefox rejected them ("InvalidStateError: No remoteDescription",
+  2 in 16 against nightly, the volume-and-reload test). `client/call.ts` now drops candidates that arrive before any
+  description: the real ones always follow theirs. The offline test waits for the server's echo before the cut (a
+  line is kept only then), and the worklet-timeout noise pattern takes any top frame of the worklet.
 - After deploy, still to do: a real deploy (new bytes, not another URL) shows the bar on an open nightly tab.

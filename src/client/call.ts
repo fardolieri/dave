@@ -706,6 +706,9 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       peer = undefined;
     }
     if (!peer) {
+      // Candidates come after the description they belong to, in order: without one they are left over from a
+      // connection the sender has torn down (a reload served by the service worker is quick enough to meet them).
+      if (!data.description) return;
       // Match the participant entry: a ghost of the same identity may still be listed as a visitor.
       const person = room.people().find((p) => p.publicKey === from && p.role === 'participant');
       if (!person) { posthog.capture('signal_dropped', { reason: 'sender not a participant', offer: isOffer }); return; }
@@ -736,6 +739,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         }
       }
       if (data.candidates) {
+        if (!pc.remoteDescription) return; // left over from their torn-down connection, as above
         for (const c of data.candidates) {
           try {
             await pc.addIceCandidate((c as RTCIceCandidateInit | null) ?? undefined);
