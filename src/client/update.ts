@@ -1,7 +1,5 @@
 import { createSignal } from 'solid-js';
 import posthog from './posthog';
-import { exposeHooks } from './hooks';
-import { local } from './storage';
 
 /**
  * New versions (ticket 33). A deploy changes /sw.js (client/sw.ts); the browser installs the new service worker beside
@@ -10,17 +8,10 @@ import { local } from './storage';
  * app shows the bar (ticket 25); a tab waiting behind it keeps its old version and gets the bar if it takes over.
  * Reloading every tab at once would race them for the tab lock, and a waiting tab could end up with the app, or even
  * Rejoin the call, instead of the tab that was in it.
+ * The browser suite stages a deploy at the preview server (vite.config.ts, `e2eServer`) and asks for the check itself
+ * through `navigator.serviceWorker`; nothing here is for tests.
  */
 const CHECK_MS = 5 * 60 * 1000;
-/**
- * The service worker's URL. A test's pretend deploy (`__daveNextDeploy`) moves it, and it has to stay there across
- * reloads: registering the plain URL again would be one more new version.
- */
-const DEPLOY_KEY = 'e2e-deploy';
-const scriptUrl = (): string => {
-  const tag = exposeHooks ? local.get(DEPLOY_KEY) : null;
-  return tag ? `/sw.js?deploy=${encodeURIComponent(tag)}` : '/sw.js';
-};
 /** Tells the waiting service worker to take over; the same string is in sw.ts. */
 const SKIP_WAITING = 'skip-waiting';
 
@@ -29,10 +20,12 @@ export const updateReady = ready;
 let registration: ServiceWorkerRegistration | undefined;
 /** This tab's Reload was clicked: the new service worker taking over is the moment to reload. */
 let applying = false;
+let offered = false;
 
-function offer(): void {
-  if (ready()) return;
-  setReady(true);
+/** The bar is on screen (App.tsx): counted once per page, and not for a tab that only learned of the version. */
+export function noteOffered(): void {
+  if (offered) return;
+  offered = true;
   posthog.capture('update_offered');
 }
 
@@ -46,20 +39,17 @@ export function watchForUpdates(): void {
   let controlled = container.controller !== null;
   container.addEventListener('controllerchange', () => {
     if (applying) location.reload();
-    else if (controlled) offer();
+    else if (controlled) setReady(true);
     controlled = true;
   });
-  container.register(scriptUrl()).then((reg) => {
+  container.register('/sw.js').then((reg) => {
     registration = reg;
-    const offerWaiting = () => { if (reg.waiting && container.controller) offer(); };
+    const offerWaiting = () => { if (reg.waiting && container.controller) setReady(true); };
     offerWaiting();
     reg.addEventListener('updatefound', () => {
       const incoming = reg.installing;
       incoming?.addEventListener('statechange', () => { if (incoming.state === 'installed') offerWaiting(); });
     });
-    // A deploy, as far as the browser can tell: the worker under another script URL counts as a new version, even with the
-    // same bytes, and installs and waits like one. Playwright cannot serve a changed /sw.js: the browser fetches it past its routes.
-    if (exposeHooks) (window as unknown as { __daveNextDeploy?: (tag: string) => Promise<unknown> }).__daveNextDeploy = (tag) => { local.set(DEPLOY_KEY, tag); return container.register(scriptUrl()); };
     const check = () => { reg.update().catch(() => {}); }; // offline, or the server down: the next check tries again
     setInterval(check, CHECK_MS);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });

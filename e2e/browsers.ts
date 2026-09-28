@@ -77,7 +77,10 @@ export function launchOptions(engine: Engine, opts: { autoplay?: Autoplay } = {}
         'media.peerconnection.ice.relay_only': false,
         'media.peerconnection.ice.loopback': true,
         'media.peerconnection.ice.link_local': true,
-        ...(target ? {} : { 'dom.securecontext.allowlist': new URL(originFor('firefox')).hostname }),
+        // The local server is plain http on the network address: a secure context by allowlist, so the service worker
+        // registers, and the Cache API open to the page as well (the allowlist alone leaves it "insecure"), so a test
+        // can list the versions the worker keeps (update.spec.ts).
+        ...(target ? {} : { 'dom.securecontext.allowlist': new URL(originFor('firefox')).hostname, 'dom.caches.testing.enabled': true }),
       },
     };
   }

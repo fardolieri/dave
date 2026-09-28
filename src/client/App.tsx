@@ -22,7 +22,7 @@ import { EmojiPicker } from './EmojiPicker';
 import { place } from './place';
 import { createTabLock } from './tablock';
 import { build, commitUrl, REPO_URL, shortCommit } from './version';
-import { applyUpdate, updateReady } from './update';
+import { applyUpdate, noteOffered, updateReady } from './update';
 
 export default function App() {
   // An invite link is consumed before anything else renders, so it never stays in the address bar.
@@ -92,7 +92,7 @@ export default function App() {
 
   return (
     <>
-      <Show when={tab.state().kind !== 'waiting'}><UpdateBar /></Show>
+      <Show when={updateReady() && tab.state().kind === 'held'}><UpdateBar /></Show>
       <Switch>
         <Match when={rooms() === null}>
           <Notice title="Loading…"> </Notice>
@@ -136,15 +136,17 @@ export default function App() {
   );
 }
 
-/** A newer version is installed and waiting (ticket 33). Over every screen, with no way to close it but the reload: a nag on purpose. */
+/**
+ * A newer version is installed and waiting (ticket 33). Over every screen of the tab that runs the app, with no way to
+ * close it but the reload: a nag on purpose. A tab behind another (ticket 25) is not asked until it takes over.
+ */
 function UpdateBar() {
+  noteOffered();
   return (
-    <Show when={updateReady()}>
-      <div class="update" role="status">
-        <span>A new version of dave is ready.</span>
-        <button onClick={applyUpdate}>Reload</button>
-      </div>
-    </Show>
+    <div class="update" role="status">
+      <span>A new version of dave is ready.</span>
+      <button onClick={applyUpdate}>Reload</button>
+    </div>
   );
 }
 
