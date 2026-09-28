@@ -87,6 +87,8 @@ test('ticket 33: with the server gone the app still opens, from the service work
   const alice = await crowd.open('Alice');
   await controlled(alice.page);
   await alice.say('before the outage');
+  // A line is kept once the server sends it back (client/history.ts); on a deployed copy that takes a moment.
+  await expect(alice.page.locator('.msg-text', { hasText: 'before the outage' })).toBeVisible();
 
   // Every request that reaches the network fails, and the socket with it: a page that loads came from the service worker.
   // (Not setOffline: Firefox's offline mode refuses the navigation before a service worker is asked.)

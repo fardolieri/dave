@@ -40,8 +40,8 @@ export function environmentNoise(engine: Engine): RegExp[] {
     /Using five or more STUN\/TURN servers slows down discovery/,
     // A page that reloads or navigates away while the voice worklet renders (ticket 26): Firefox interrupts the worklet in
     // the teardown and says so. Only ever on leaving the page: 60 s of steady processing logged none, 5 of 8 navigations did.
-    // Closing the context or stopping process() on pagehide does not win that race.
-    /Script terminated by timeout at:\s*process@\S*voice\.worklet/,
+    // Closing the context or stopping process() on pagehide does not win that race. The stack's top frame may be any function of the worklet.
+    /Script terminated by timeout at:\s*\S*@\S*voice\.worklet/,
     // Playwright's own injected script ("debugger eval code") measuring an element while a reloaded page is still loading;
     // seen once in three runs after the update bar's Reload (ticket 33). A forced layout in the app's code names its file.
     /Layout was forced before the page was fully loaded.*file: "debugger eval code"/,

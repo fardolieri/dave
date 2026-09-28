@@ -48,7 +48,8 @@ test('a friend cut off from the server stays in the call, dimmed, as long as the
   await expect(lost).toContainText('Alice');
   if (await bob.hasHooks()) await bob.hearing('Alice');
   alice.wire.restore();
-  await alice.connected();
+  // After a minute away, the next attempt comes 15 to 30 s later (client/room.ts, BACKOFF_MAX_MS with jitter).
+  await expect(alice.composer).toBeEnabled({ timeout: 35_000 });
   await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
   await expect(lost).toHaveCount(0);
   await bob.connectedTo('Alice');
