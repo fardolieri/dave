@@ -5,6 +5,7 @@ import posthog from './posthog';
 import { exposeHooks } from './hooks';
 import { isFreshConnection, signDescription, verifyDescription } from '../core/dtls';
 import { LOW_VOICE_BUFFER_MS, asksLowVoice, lowVoiceSdp } from '../core/lowvoice';
+import { INITIAL_BUFFER, VOICE_REPORT_EVERY, VOICE_SAMPLE_MS, bufferMs, nextBuffer, voiceWindow, type BufferState, type VoiceCounters, type VoiceWindow } from '../core/voicequality';
 import type { LocalIdentity } from './identity';
 import {
   ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
@@ -30,6 +31,8 @@ export type OutgoingShare = { kbps: number; formats: VideoFormat[]; viewers: num
 /** Snapshot for problem reports (ticket 12): states and counters, no names, no message texts. */
 export type PeerDiagnostics = {
   fingerprint: string | null; polite: boolean; restarts: number; relayOnly: boolean; viewsMyShare: boolean; viewerScale: number; asksLowVoice: boolean; voiceBufferMs: number | null;
+  /** The buffer that follows the line (ticket 34): what it asks for now, and the last 5 s window it judged. */
+  voiceBuffer: { adaptiveMs: number | null; level: number; lastWindow: VoiceWindow | null };
   view: Pick<PeerView, 'conn' | 'watching' | 'shareLive' | 'shareKbps' | 'shareFormat' | 'serverLost' | 'volume' | 'rttMs'>;
   pc: { connection: RTCPeerConnectionState; ice: RTCIceConnectionState; signaling: RTCSignalingState; gathering: RTCIceGatheringState; transceivers: number };
   shareTrack: { readyState: string; muted: boolean } | null;
@@ -102,6 +105,13 @@ type Peer = {
   viewerScale: number;
   /** Their last description asked for low bandwidth voice (ticket 27). Reports only: my side follows it by itself. */
   asksLowVoice: boolean;
+  /** The voice receiver's counters at the last 5 s sample and at the last `voice_quality` event (ticket 34). */
+  voiceLast: VoiceCounters | null;
+  voiceReported: VoiceCounters | null;
+  voiceSamples: number;
+  /** The buffer that follows the line, and the window it last judged. */
+  buffer: BufferState;
+  lastWindow: VoiceWindow | null;
   /** Outgoing ICE candidates are batched for a moment to cut message count (each is a relay request). */
   outgoingCandidates: unknown[];
   candidateTimer?: ReturnType<typeof setTimeout>;
@@ -321,11 +331,14 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     } catch { /* dismissed */ }
   }
 
-  /** A friend's voice waits at least LOW_VOICE_BUFFER_MS while either of us asks for low bandwidth voice (ticket 28). */
+  /**
+   * A friend's voice waits at least LOW_VOICE_BUFFER_MS while either of us asks for low bandwidth voice (ticket 28), and
+   * at least what the buffer that follows the line asks for (ticket 34); the larger of the two.
+   */
   function applyVoiceBuffer(peer: Peer): void {
     const receiver = peer.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver;
     if (!receiver) return;
-    const ms = lowVoiceOn || peer.asksLowVoice ? LOW_VOICE_BUFFER_MS : null;
+    const ms = Math.max(lowVoiceOn || peer.asksLowVoice ? LOW_VOICE_BUFFER_MS : 0, bufferMs(peer.buffer) ?? 0) || null;
     const r = receiver as RTCRtpReceiver & { jitterBufferTarget?: number | null };
     try { if (r.jitterBufferTarget !== ms) r.jitterBufferTarget = ms; } catch { /* unsupported */ }
   }
@@ -474,7 +487,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const peer: Peer = {
       key, name, pc, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, keepAlive, audioNodes: [], restarts: 0, relayOnly, generation: ++generation,
       view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1, rttMs: null },
-      viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
+      viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
     };
     earlyViewers.delete(key);
@@ -854,12 +867,60 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     return {
       fingerprint: untrack(room.people).find((p) => p.publicKey === peer.key)?.fingerprint ?? null, polite: peer.polite, restarts: peer.restarts, relayOnly: peer.relayOnly, viewsMyShare: peer.viewsMyShare, viewerScale: peer.viewerScale, asksLowVoice: peer.asksLowVoice,
       voiceBufferMs: (peer.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined)?.jitterBufferTarget ?? null,
+      voiceBuffer: { adaptiveMs: bufferMs(peer.buffer), level: peer.buffer.level, lastWindow: peer.lastWindow },
       view: { conn, watching, shareLive, shareKbps, shareFormat, serverLost, volume, rttMs },
       pc: { connection: peer.pc.connectionState, ice: peer.pc.iceConnectionState, signaling: peer.pc.signalingState, gathering: peer.pc.iceGatheringState, transceivers: peer.pc.getTransceivers().length },
       shareTrack: track ? { readyState: track.readyState, muted: track.muted } : null,
       inboundVideo, outboundVideo, inboundVoice, outboundVoice, pair,
     };
   }
+
+  const VOICE_COUNTER_KEYS = ['packetsReceived', 'packetsLost', 'bytesReceived', 'jitter', 'totalSamplesReceived', 'concealedSamples', 'silentConcealedSamples', 'concealmentEvents', 'insertedSamplesForDeceleration', 'removedSamplesForAcceleration', 'jitterBufferDelay', 'jitterBufferEmittedCount', 'fecPacketsReceived'];
+  /** The voice receiver's cumulative counters, or null before their voice arrives or once the connection is closed. */
+  async function readVoice(peer: Peer): Promise<VoiceCounters | null> {
+    const receiver = peer.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver;
+    if (!receiver || peer.pc.connectionState === 'closed') return null;
+    let out: VoiceCounters | null = null;
+    try {
+      (await receiver.getStats()).forEach((r) => { if (r.type === 'inbound-rtp') out = { at: Date.now(), ...(pick(r as unknown as Record<string, unknown>, VOICE_COUNTER_KEYS) as Partial<VoiceCounters>) }; });
+    } catch { /* closed meanwhile */ }
+    return out;
+  }
+  const windowProps = (w: VoiceWindow) => ({ seconds: w.seconds, packets: w.packets, lost_pct: w.lostPct, concealed_pct: w.concealedPct, concealment_events: w.concealmentEvents, jitter_ms: w.jitterMs, buffer_ms: w.bufferMs, decel_pct: w.decelPct, accel_pct: w.accelPct, fec_packets: w.fecPackets, bytes_per_packet: w.bytesPerPacket });
+  const fingerprintOf = (peer: Peer) => untrack(room.people).find((p) => p.publicKey === peer.key)?.fingerprint ?? null;
+  /**
+   * Every VOICE_SAMPLE_MS per friend (ticket 34): the window since the last sample feeds the buffer that follows the
+   * line, and every VOICE_REPORT_EVERY samples the window since the last event goes to PostHog as `voice_quality`, so a
+   * stuttering voice is measured without anyone filing a report. Silence between samples (no packet) says nothing.
+   */
+  async function sampleVoice(peer: Peer): Promise<void> {
+    const cur = await readVoice(peer);
+    if (!cur || peers.get(peer.key) !== peer) return;
+    if (peer.voiceLast) {
+      const w = voiceWindow(peer.voiceLast, cur);
+      if (w) {
+        peer.lastWindow = w;
+        const next = nextBuffer(peer.buffer, w);
+        const changed = bufferMs(next) !== bufferMs(peer.buffer);
+        peer.buffer = next;
+        if (changed) {
+          applyVoiceBuffer(peer);
+          posthog.capture('voice_buffer_adapted', { peer: fingerprintOf(peer), adaptive_ms: bufferMs(next), ...windowProps(w) });
+        }
+      }
+    }
+    peer.voiceLast = cur;
+    peer.voiceReported ??= cur;
+    if (++peer.voiceSamples % VOICE_REPORT_EVERY === 0) {
+      const w = voiceWindow(peer.voiceReported, cur);
+      peer.voiceReported = cur;
+      if (w) {
+        const target = (peer.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined)?.jitterBufferTarget ?? null;
+        posthog.capture('voice_quality', { peer: fingerprintOf(peer), conn: peer.view.conn, rtt_ms: peer.view.rttMs, buffer_target_ms: target, adaptive_ms: bufferMs(peer.buffer), low_voice: lowVoiceOn || peer.asksLowVoice, ...windowProps(w) });
+      }
+    }
+  }
+  const voiceTimer = setInterval(() => { for (const p of peers.values()) void sampleVoice(p); }, VOICE_SAMPLE_MS);
 
   /** Everything a problem report wants to know about the call (ticket 12). */
   async function diagnostics(): Promise<CallDiagnostics> {
@@ -1276,6 +1337,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     unsubscribe();
     window.removeEventListener('pagehide', onPageHide);
     clearInterval(statsTimer);
+    clearInterval(voiceTimer);
     clearInterval(speakingTimer);
     leave();
     audioCtx?.close();
@@ -1287,7 +1349,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (!exposeHooks) return;
     (window as unknown as { __dave?: unknown }).__dave = {
       peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, relayOnly: p.relayOnly, generation: p.generation, stuck: stuckAttempts.get(p.key) ?? 0, audioBytesIn: p.view.audioBytesIn, videoBytesIn: p.videoBytesIn, watching: p.view.watching, shareLive: p.view.shareLive, subscribedToMe: p.viewsMyShare, transceivers: p.pc.getTransceivers().length, rttMs: p.view.rttMs, asksLowVoice: p.asksLowVoice,
-        voiceBufferMs: (p.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined)?.jitterBufferTarget ?? null })),
+        voiceBufferMs: (p.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined)?.jitterBufferTarget ?? null, adaptiveMs: bufferMs(p.buffer), lastWindow: p.lastWindow })),
       share: () => untrack(() => ({
         settings: shareSettings(),
         outgoing: outgoing(),
