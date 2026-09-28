@@ -75,5 +75,9 @@ purpose a nag, and it takes room in the layout instead of floating over the call
   description: the real ones always follow theirs. The offline test waits for the server's echo before the cut (a
   line is kept only then), and the worklet-timeout noise pattern takes any top frame of the worklet.
 - Review of 2026-09-28 (Claude, `/code-review`): the eight findings above the line were fixed the same day, update spec
-  3/3 in Chromium and Firefox, plus a full Chromium run. Still to do after deploy: a real deploy shows the bar on an open
-  nightly tab, and the nightly cache from before the stamp (`dave-<hash>`, no second dash) is deleted as older.
+  3/3 in Chromium and Firefox, plus a full Chromium run (47 passed).
+- Confirmed on nightly the same evening with a real deploy: a headless Chromium parked on nightly (served by
+  `dave-tm3cen-…`), the deploy workflow re-run, and 3 minutes later the tab's own check found the new worker, the bar
+  read "A new version of dave is ready. Reload" with both caches present, and the Reload left one cache, the new one
+  (`dave-tm3cj8-…`), no bar. Not observed: a browser still holding the cache from before the stamp (`dave-<hash>`, no
+  second dash); by the rule in `sw.ts` it has no build time and is deleted as older.
