@@ -1,0 +1,53 @@
+# 35 · The flaky browser tests: find each cause, make the test or the app robust
+
+Status: open 2026-09-29
+Asked for 2026-09-29: "Create a ticket that should investigate the flaky tests and make them more robust." Prompted by
+the nightly run after ticket 34 (2026-09-28 21:46 UTC, run 36488333876), where one Chromium test failed twice and then
+passed on a rerun of the job, delaying the release. Every test below passed locally in both engines the same day, so
+these are timing, network or ordering flakes, not steady failures. Three from green master, in the last two days:
+
+## The flakes seen (GitHub Actions, workflow e2e, against nightly unless said)
+1. `resilience.spec.ts` "a stalled connection is rebuilt and comes up again" (ticket 22): Chromium, 2026-09-28 21:46,
+   twice (retry included), the badge stayed at "connecting…" for the full expect timeout after `__dave.rebuild`; the
+   Firefox job of the same run passed; the rerun passed. The rebuild is relay-only (`iceTransportPolicy: 'relay'`),
+   so on nightly it depends on Cloudflare TURN credentials and the relay path, which no local run exercises (the
+   local build has STUN only, see memory of 2026-09-23). Questions: did the relay candidates gather at all (the
+   `relay_candidate_gathered` event, `peer_connecting_slow` with its counts)? Does the stuck-connecting watchdog fire
+   inside the test's timeout, and does the test wait for its second attempt? Is 20 s enough for an ICE restart over
+   TURN, or should the test's expect for a relay-only rebuild be longer, or read the hook instead of the badge?
+2. `settings.spec.ts` "a friend's volume and the master volume multiply, and survive a reload": Firefox, 2026-09-27
+   02:32 (run 36288825461) and 2026-09-28 18:55 (run 36468561834, twice): the assertion itself passed and the test
+   failed on an unexpected console line, `Alice: warning: signal handling failed JSHandle@object`. That is a late
+   candidate or description from the connection torn down by Alice's reload reaching the new one (the same race
+   ticket 22's test expects with `expectWarning(/signal handling failed/)`, and f05a9c5 dropped candidates before any
+   description for). Either the app should not log it as a warning when it is expected (a candidate for a connection
+   that no longer exists is not a problem), or the fixture should count it as environment noise after a reload.
+3. `update.spec.ts` "ticket 33: with the server gone the app still opens, from the service worker": Firefox,
+   2026-09-28 18:55, twice: the text "before the outage" never showed after the offline reload (`element(s) not
+   found`). Ticket 33's own notes say the offline test "waits for the echo" (1c187c3); on nightly the echo may not
+   be the last thing before the outage, or Firefox's service worker may not have taken control before the reload.
+   Questions: was the worker controlling the page (`navigator.serviceWorker.controller`) when the socket was cut? Is
+   the history written before the reload? Does the test need to wait for `controllerchange` explicitly on Firefox?
+
+Not flakes but worth knowing: `privacy.spec.ts` "a yes starts PostHog and tells the server" failed on every push of
+2026-09-27 03:36 to 04:59; those were ticket 32's own iterations, green since 05:05. On the same pushes
+`resilience.spec.ts` "the call survives the server going away" and "a friend cut off from the server stays in the
+call" (ticket 31) failed once each in Chromium; keep an eye on them, they share the server-outage machinery with
+flake 3.
+
+## Approach
+- For each: pull the run's trace (`gh run download <id>`, the `e2e-results` artifact, `playwright show-trace`) and
+  read the console and network of the failing attempt before changing anything.
+- Make the app quieter where the noise is expected (flake 2) rather than widening the fixture's allowlist, unless
+  the line really is environment noise (`environmentNoise` in `e2e/browsers.ts`).
+- Where the test waits on a UI badge for a network process (flake 1), wait on the state the app itself reports
+  (`__dave.peers()`, the connection state) with a timeout that fits a relay rebuild, and record in the test why.
+- Run each fixed test 10 times against nightly (`E2E_URL=nightly pnpm exec playwright test -g "<title>" --repeat-each 10`)
+  in both engines before calling it robust; note the pass counts here.
+- If a cause turns out to be the nightly environment (TURN quota, a cold Durable Object), say so here and decide
+  with Daniel whether the suite should retry that test, skip it on nightly, or the app should cope.
+
+## Done when
+- The three tests above pass 10 of 10 repeats against nightly in Chromium and Firefox, with the cause of each flake
+  written under the test in the spec file.
+- A nightly run after a master push has been green without a rerun three times in a row.
