@@ -1131,10 +1131,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         // A connection that works is kept however long their socket stays away (ticket 31): the voice never needed the
         // server. It ends when the browser says the link is gone (the disconnected and failed branches of onIceState),
         // or here, when it still is not up after the grace period.
-        peer.graceTimer = setTimeout(() => { if (peer.pc.connectionState !== 'connected') closePeer(peer.key); }, PEER_GRACE_MS);
+        peer.graceTimer = setTimeout(() => graceEnded(peer), PEER_GRACE_MS);
       }
     }
   }
+  function graceEnded(peer: Peer): void { if (peer.pc.connectionState !== 'connected') closePeer(peer.key); }
   createEffect(() => room.people(), (people) => { reconcile(people); }); // block body: never return a value from an effect callback
 
   // Re-declare after our own server reconnect (spec §8.1): peer connections stay, join sequence is fresh.
@@ -1389,6 +1390,14 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         stuckAttempts.set(peer.key, stalled);
         createPeer(peer.key, peer.name, true);
         return `rebuilt ${name}, relayOnly=${peers.get(peer.key)?.relayOnly}`;
+      },
+      /** The end of the grace period for a friend who lost the server (ticket 31), on demand instead of after PEER_GRACE_MS: 'kept' or 'closed'. */
+      expireGrace: (name: string) => {
+        const peer = [...peers.values()].find((p) => p.name === name);
+        if (!peer?.view.serverLost) return 'not lost';
+        clearTimeout(peer.graceTimer);
+        graceEnded(peer);
+        return peers.has(peer.key) ? 'kept' : 'closed';
       },
       diagnostics,
       state: () => ({ inCall: joined, joining, joinError: untrack(joinError), myJoinSeq, role: untrack(me)?.role ?? null, participants: untrack(room.people).filter((p) => p.role === 'participant').map((p) => `${p.name}#${p.joinSeq}`) }),

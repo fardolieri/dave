@@ -35,7 +35,6 @@ test('a friend whose socket drops without a goodbye is shown as lost, then recov
 });
 
 test('a friend cut off from the server stays in the call, dimmed, as long as the connection to them works (ticket 31)', async ({ crowd }) => {
-  test.slow(); // waits out the 60 s grace period that used to close a working connection
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   await alice.join();
@@ -44,11 +43,15 @@ test('a friend cut off from the server stays in the call, dimmed, as long as the
   await alice.wire.cut();
   const lost = bob.selectedRoom.locator('li.lost');
   await expect(lost).toContainText('connection to server lost');
-  await bob.page.waitForTimeout(65_000);
+  // The end of the 60 s grace period is what used to close a working connection. With the hooks it is run at once, the
+  // same code the timer runs; without them (or on a deployed copy older than the hook) the test waits it out.
+  const canExpire = await bob.page.evaluate(() => typeof (window as unknown as { __dave?: { expireGrace?: unknown } }).__dave?.expireGrace === 'function');
+  if (canExpire) expect(await bob.hook<string>('expireGrace', 'Alice')).toBe('kept');
+  else { test.slow(); await bob.page.waitForTimeout(65_000); }
   await expect(lost).toContainText('Alice');
   if (await bob.hasHooks()) await bob.hearing('Alice');
   alice.wire.restore();
-  // After a minute away, the next attempt comes 15 to 30 s later (client/room.ts, BACKOFF_MAX_MS with jitter).
+  // The next attempt comes after the back-off (client/room.ts): a few seconds here, 15 to 30 s after a minute away.
   await expect(alice.composer).toBeEnabled({ timeout: 35_000 });
   await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
   await expect(lost).toHaveCount(0);
