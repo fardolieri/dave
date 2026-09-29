@@ -4,7 +4,7 @@ Status: open 2026-09-29
 Asked for 2026-09-29: "Create a ticket that should investigate the flaky tests and make them more robust." Prompted by
 the nightly run after ticket 34 (2026-09-28 21:46 UTC, run 36488333876), where one Chromium test failed twice and then
 passed on a rerun of the job, delaying the release. Every test below passed locally in both engines the same day, so
-these are timing, network or ordering flakes, not steady failures. Three from green master, in the last two days:
+these are timing, network or ordering flakes, not steady failures. Three from green master, in the last two days, and a fourth from the first sharded run:
 
 ## The flakes seen (GitHub Actions, workflow e2e, against nightly unless said)
 1. `resilience.spec.ts` "a stalled connection is rebuilt and comes up again" (ticket 22): Chromium, 2026-09-28 21:46,
@@ -29,6 +29,15 @@ these are timing, network or ordering flakes, not steady failures. Three from gr
    Questions: was the worker controlling the page (`navigator.serviceWorker.controller`) when the socket was cut? Is
    the history written before the reload? Does the test need to wait for `controllerchange` explicitly on Firefox?
 
+4. `text.spec.ts` "texts in a row from one writer go under one name": Firefox, 2026-09-29 18:40 (run 36613285178,
+   the sharded suite against nightly, shard 4, one worker), once; the retry passed. Bob sent "three", then Alice sent
+   "four", and Bob's chat held one, two, four, three for the whole 20 s poll: a lasting order, not a slow one. `say`
+   (fixtures.ts) only waits for the composer to empty, not for the server to take the text, so Alice's "four" can
+   reach the Room first when Bob's socket is slower; on nightly, over the real network, that is milliseconds apart.
+   Questions: is the order Bob shows the Room's order (then the test races, and should wait for Bob's own "three"
+   to come back before Alice writes), or does Bob place his own text where he sent it and the others where they
+   arrived (then the order differs between friends, which "everyone sees the same order" is meant to rule out)?
+
 Not flakes but worth knowing: `privacy.spec.ts` "a yes starts PostHog and tells the server" failed on every push of
 2026-09-27 03:36 to 04:59; those were ticket 32's own iterations, green since 05:05. On the same pushes
 `resilience.spec.ts` "the call survives the server going away" and "a friend cut off from the server stays in the
@@ -48,6 +57,6 @@ flake 3.
   with Daniel whether the suite should retry that test, skip it on nightly, or the app should cope.
 
 ## Done when
-- The three tests above pass 10 of 10 repeats against nightly in Chromium and Firefox, with the cause of each flake
+- The four tests above pass 10 of 10 repeats against nightly in Chromium and Firefox, with the cause of each flake
   written under the test in the spec file.
 - A nightly run after a master push has been green without a rerun three times in a row.
