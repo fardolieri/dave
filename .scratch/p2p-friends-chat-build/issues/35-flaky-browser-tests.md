@@ -1,6 +1,6 @@
 # 35 · The flaky browser tests: find each cause, make the test or the app robust
 
-Status: open 2026-09-29; all four flakes found and fixed 2026-09-29, waiting for the third clean nightly
+Status: done 2026-09-29: all four flakes found and fixed, three clean nightly runs in a row
 Asked for 2026-09-29: "Create a ticket that should investigate the flaky tests and make them more robust." Prompted by
 the nightly run after ticket 34 (2026-09-28 21:46 UTC, run 36488333876), where one Chromium test failed twice and then
 passed on a rerun of the job, delaying the release. Every test below passed locally in both engines the same day, so
@@ -67,7 +67,7 @@ these are timing, network or ordering flakes, not steady failures. Three from gr
   server (local builds only) and 1c187c3 made it wait for the echo. The current test: 20 of 20 in Chromium and in
   Firefox against a local build, first try (run 36626632785, 2026-09-29). Not seen, kept in mind: the history write
   (client/history.ts, IndexedDB) finishes a moment after the line shows, so a reload in that moment loses the line.
-- Nightly after a master push, no test retried: 36620955719 (9febe7d) and 36625769455 (aced2d9). One more to go.
+- Nightly after a master push, no test retried: 36620955719 (9febe7d), 36625769455 (aced2d9), 36627157164 (6b1ae18).
 
 Not flakes but worth knowing: `privacy.spec.ts` "a yes starts PostHog and tells the server" failed on every push of
 2026-09-27 03:36 to 04:59; those were ticket 32's own iterations, green since 05:05. On the same pushes
