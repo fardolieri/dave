@@ -74,3 +74,26 @@ test('a stalled connection is rebuilt and comes up again', async ({ crowd }) => 
   await bob.connectedTo('Alice');
   await alice.hearing('Bob');
 });
+
+test('after a stalled attempt the rebuild goes through the TURN relay, and both sides take it (ticket 22)', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  for (const f of [alice, bob]) f.expectWarning(/signal handling failed/);
+  // One attempt already counted as stalled: what the watchdog does after the first 15 s without a connection.
+  const r = await alice.page.evaluate(() => (window as unknown as { __dave: { rebuild: (n: string, stalled: number) => string } }).__dave.rebuild('Bob', 1));
+  // A local build hands out STUN only (.dev.vars carries a placeholder TURN token), so the policy stays `all` there by design.
+  test.skip(r === 'rebuilt Bob, relayOnly=false', 'no TURN server behind this copy: run it against nightly');
+  expect(r).toBe('rebuilt Bob, relayOnly=true');
+  // Only Alice's side is relay-only, and her relay candidates alone put the pair through the TURN server: Bob reads it too.
+  // A relay allocation adds round trips to the TURN server before the first check, so the wait is the watchdog's own 15 s
+  // stretched, not the default.
+  await expect(alice.badge('Bob')).toHaveText('via relay', { timeout: 45_000 });
+  await expect(bob.badge('Alice')).toHaveText('via relay', { timeout: 45_000 });
+  expect((await alice.peers()).find((p) => p.name === 'Bob')?.relayOnly).toBe(true);
+  await alice.hearing('Bob');
+  await bob.hearing('Alice');
+});
