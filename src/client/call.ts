@@ -4,10 +4,12 @@ import { stuckDelay, transportPolicyFor } from '../core/mesh';
 import posthog from './posthog';
 import { exposeHooks } from './hooks';
 import { isFreshConnection, signDescription, verifyDescription } from '../core/dtls';
+import { CLOSED, closeLatch, keyedChain, unlessClosed } from '../core/signalchain';
 import { LOW_VOICE_BUFFER_MS, asksLowVoice, lowVoiceSdp } from '../core/lowvoice';
 import { asksFec, sendsRed, voiceRepairSdp, type VoiceRepair } from '../core/voicerepair';
 import { INITIAL_BUFFER, VOICE_REPORT_EVERY, VOICE_SAMPLE_MS, bufferMs, nextBuffer, voiceWindow, type BufferState, type VoiceCounters, type VoiceWindow } from '../core/voicequality';
 import type { LocalIdentity } from './identity';
+import { candidateCounts, reportStats, summarise, voiceCounters, windowProps } from './peerstats';
 import {
   ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
 } from '../core/mesh';
@@ -502,8 +504,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const keepAlive = new Audio();
     keepAlive.autoplay = true;
     keepAlive.muted = true;
-    let markClosed!: () => void;
-    const closed = new Promise<void>((r) => { markClosed = r; });
+    const { closed, close: markClosed } = closeLatch();
     const peer: Peer = {
       key, name, pc, closed, markClosed, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, keepAlive, audioNodes: [], restarts: 0, relayOnly, generation: ++generation,
       view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1, rttMs: null },
@@ -705,24 +706,9 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (peer.outgoingCandidates.length) peer.candidateTimer = setTimeout(() => flushCandidates(peer), 0);
   }
 
-  /**
-   * Signals from one participant are applied in arrival order, one at a time, keyed by identity rather
-   * than by connection object: the very first offer creates the connection while awaiting
-   * setRemoteDescription, and the candidates behind it must wait for that, not race past it.
-   */
-  const signalChains = new Map<string, Promise<void>>();
-  /**
-   * A setRemoteDescription or addIceCandidate still running when its connection is closed never settles (WebRTC spec;
-   * Chromium, 2026-09-29), and the chain above outlives the connection: one close at the wrong moment (the watchdog, a
-   * rebuild, an ICE failure) would hold every later signal from that friend, the new connection's answer too, for good.
-   * Ticket 35, flake 1. So each step on a connection ends when it does.
-   */
-  const CLOSED = Symbol('connection closed');
-  const unlessClosed = <T>(peer: Peer, step: Promise<T>): Promise<T> => Promise.race([step, peer.closed.then((): never => { throw CLOSED; })]);
-  function onSignal(from: string, data: SignalData): void {
-    const chain = (signalChains.get(from) ?? Promise.resolve()).then(() => onSignalNow(from, data)).catch((e) => console.warn('signal handling failed', e));
-    signalChains.set(from, chain);
-  }
+  /** Signals from one participant are applied in arrival order, one at a time, keyed by identity (core/signalchain.ts). */
+  const signalChain = keyedChain((e) => console.warn('signal handling failed', e));
+  const onSignal = (from: string, data: SignalData): void => void signalChain(from, () => onSignalNow(from, data));
 
   async function onSignalNow(from: string, data: SignalData): Promise<void> {
     if (!joined) return;
@@ -766,7 +752,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         peer.asksLowVoice = asksLowVoice(description.sdp ?? '');
         // My encoder reads its bitrate, packet length, FEC flag and codec order from this description: rewritten, it obeys my settings too.
         const applied = { type: description.type, sdp: voiceSdp(description.sdp ?? '') };
-        await unlessClosed(peer, pc.setRemoteDescription(applied));
+        await unlessClosed(peer.closed, pc.setRemoteDescription(applied));
         peer.sendsRed = sendsRed(applied.sdp);
         peer.sendsFec = asksFec(applied.sdp);
         applyVoiceBuffer(peer); // they may have switched low bandwidth voice on or off
@@ -778,7 +764,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
             for (const t of peer.tx) t.direction = 'sendrecv';
             attachLocalTracks(peer);
           }
-          await unlessClosed(peer, pc.setLocalDescription());
+          await unlessClosed(peer.closed, pc.setLocalDescription());
           await sendDescription(peer);
         }
       }
@@ -786,7 +772,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         if (!pc.remoteDescription) return; // left over from their torn-down connection, as above
         for (const c of data.candidates) {
           try {
-            await unlessClosed(peer, pc.addIceCandidate((c as RTCIceCandidateInit | null) ?? undefined));
+            await unlessClosed(peer.closed, pc.addIceCandidate((c as RTCIceCandidateInit | null) ?? undefined));
           } catch (e) {
             if (e === CLOSED || !peer.ignoreOffer) throw e;
           }
@@ -842,58 +828,9 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     }
   }
 
-  const pick = (r: Record<string, unknown>, keys: string[]): Record<string, unknown> => Object.fromEntries(keys.filter((k) => r[k] !== undefined).map((k) => [k, r[k]]));
-
   /** One peer as a problem report sees it: states, the share track, decoder and encoder counters, the selected pair (ticket 12). */
   async function peerDiag(peer: Peer): Promise<PeerDiagnostics> {
-    let inboundVideo: Record<string, unknown> | null = null;
-    let outboundVideo: Record<string, unknown> | null = null;
-    let inboundVoice: Record<string, unknown> | null = null;
-    let outboundVoice: Record<string, unknown> | null = null;
-    let pair: PeerDiagnostics['pair'] = null;
-    try {
-      const st = await peer.pc.getStats();
-      st.forEach((r) => {
-        const rec = r as unknown as Record<string, unknown>;
-        if (r.type === 'inbound-rtp' && rec['kind'] === 'video') {
-          inboundVideo = pick(rec, ['bytesReceived', 'packetsReceived', 'packetsLost', 'framesReceived', 'framesDecoded', 'framesDropped', 'keyFramesDecoded', 'framesPerSecond', 'frameWidth', 'frameHeight', 'pliCount', 'firCount', 'nackCount', 'freezeCount', 'totalFreezesDuration', 'pauseCount', 'jitterBufferDelay', 'jitterBufferEmittedCount', 'decoderImplementation', 'powerEfficientDecoder', 'lastPacketReceivedTimestamp']);
-          const codec = rec['codecId'] ? (st.get(rec['codecId'] as string) as unknown as Record<string, unknown> | undefined) : undefined;
-          if (codec) inboundVideo['codec'] = codec['mimeType'];
-        } else if (r.type === 'outbound-rtp' && rec['kind'] === 'video') {
-          outboundVideo = pick(rec, ['bytesSent', 'packetsSent', 'framesEncoded', 'keyFramesEncoded', 'framesSent', 'framesPerSecond', 'frameWidth', 'frameHeight', 'qualityLimitationReason', 'qualityLimitationDurations', 'encoderImplementation', 'targetBitrate', 'pliCount', 'firCount', 'nackCount', 'active']);
-        } else if (r.type === 'transport' && (r as RTCTransportStats).selectedCandidatePairId) {
-          const cp = st.get((r as RTCTransportStats).selectedCandidatePairId!) as RTCIceCandidatePairStats | undefined;
-          if (cp) {
-            const local = st.get(cp.localCandidateId) as unknown as Record<string, unknown> | undefined;
-            const remote = st.get(cp.remoteCandidateId) as unknown as Record<string, unknown> | undefined;
-            pair = {
-              local: String(local?.['candidateType'] ?? '?'), remote: String(remote?.['candidateType'] ?? '?'), state: cp.state,
-              rttMs: cp.currentRoundTripTime !== undefined ? Math.round(cp.currentRoundTripTime * 1000) : null,
-              outgoingKbps: cp.availableOutgoingBitrate !== undefined ? Math.round(cp.availableOutgoingBitrate / 1000) : null,
-            };
-          }
-        }
-      });
-      // The voice slot's own stats: a connection carries a second audio stream, the share's.
-      const voiceTx = peer.tx[SLOT_INDEX.voice];
-      if (voiceTx) {
-        const codecOf = (st: RTCStatsReport, rec: Record<string, unknown>) => {
-          const codec = rec['codecId'] ? (st.get(rec['codecId'] as string) as unknown as Record<string, unknown> | undefined) : undefined;
-          return codec ? { codec: codec['mimeType'], fmtp: codec['sdpFmtpLine'] } : {};
-        };
-        const rx = await voiceTx.receiver.getStats();
-        rx.forEach((r) => {
-          const rec = r as unknown as Record<string, unknown>;
-          if (r.type === 'inbound-rtp') inboundVoice = { ...pick(rec, ['bytesReceived', 'packetsReceived', 'packetsLost', 'packetsDiscarded', 'jitter', 'jitterBufferDelay', 'jitterBufferTargetDelay', 'jitterBufferEmittedCount', 'totalSamplesReceived', 'concealedSamples', 'silentConcealedSamples', 'concealmentEvents', 'insertedSamplesForDeceleration', 'removedSamplesForAcceleration', 'fecPacketsReceived', 'fecPacketsDiscarded', 'totalAudioEnergy', 'lastPacketReceivedTimestamp']), ...codecOf(rx, rec) };
-        });
-        const tx = await voiceTx.sender.getStats();
-        tx.forEach((r) => {
-          const rec = r as unknown as Record<string, unknown>;
-          if (r.type === 'outbound-rtp') outboundVoice = { ...outboundVoice, ...pick(rec, ['bytesSent', 'packetsSent', 'targetBitrate', 'retransmittedPacketsSent', 'active']), ...codecOf(tx, rec) };
-          else if (r.type === 'remote-inbound-rtp') outboundVoice = { ...outboundVoice, remote: pick(rec, ['packetsLost', 'fractionLost', 'jitter', 'roundTripTime', 'totalRoundTripTime', 'roundTripTimeMeasurements']) };
-        });
-      }
-    } catch { /* connection closed meanwhile */ }
+    const { inboundVideo, outboundVideo, inboundVoice, outboundVoice, pair } = await reportStats(peer.pc, peer.tx[SLOT_INDEX.voice]);
     const track = peer.remoteShare.getVideoTracks()[0];
     const { conn, watching, shareLive, shareKbps, shareFormat, serverLost, volume, rttMs } = peer.view;
     return {
@@ -907,18 +844,12 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     };
   }
 
-  const VOICE_COUNTER_KEYS = ['packetsReceived', 'packetsLost', 'bytesReceived', 'jitter', 'totalSamplesReceived', 'concealedSamples', 'silentConcealedSamples', 'concealmentEvents', 'insertedSamplesForDeceleration', 'removedSamplesForAcceleration', 'jitterBufferDelay', 'jitterBufferEmittedCount', 'fecPacketsReceived'];
   /** The voice receiver's cumulative counters, or null before their voice arrives or once the connection is closed. */
   async function readVoice(peer: Peer): Promise<VoiceCounters | null> {
     const receiver = peer.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver;
     if (!receiver || peer.pc.connectionState === 'closed') return null;
-    let out: VoiceCounters | null = null;
-    try {
-      (await receiver.getStats()).forEach((r) => { if (r.type === 'inbound-rtp') out = { at: Date.now(), ...(pick(r as unknown as Record<string, unknown>, VOICE_COUNTER_KEYS) as Partial<VoiceCounters>) }; });
-    } catch { /* closed meanwhile */ }
-    return out;
+    return voiceCounters(receiver);
   }
-  const windowProps = (w: VoiceWindow) => ({ seconds: w.seconds, packets: w.packets, lost_pct: w.lostPct, concealed_pct: w.concealedPct, concealment_events: w.concealmentEvents, jitter_ms: w.jitterMs, buffer_ms: w.bufferMs, decel_pct: w.decelPct, accel_pct: w.accelPct, fec_packets: w.fecPackets, bytes_per_packet: w.bytesPerPacket });
   const fingerprintOf = (peer: Peer) => untrack(room.people).find((p) => p.publicKey === peer.key)?.fingerprint ?? null;
   /**
    * Every VOICE_SAMPLE_MS per friend (ticket 34): the window since the last sample feeds the buffer that follows the
@@ -993,13 +924,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   async function connectWatchdog(peer: Peer, initiator: boolean, attempt: number): Promise<void> {
     const stillStuck = () => peers.get(peer.key) === peer && peer.view.conn === 'connecting' && peer.pc.connectionState !== 'closed';
     if (!stillStuck()) return;
-    const counts = { candidates_local: 0, candidates_remote: 0, candidates_relay: 0 };
-    try {
-      (await peer.pc.getStats()).forEach((r) => {
-        if (r.type === 'local-candidate') { counts.candidates_local++; if ((r as { candidateType?: string }).candidateType === 'relay') counts.candidates_relay++; }
-        else if (r.type === 'remote-candidate') counts.candidates_remote++;
-      });
-    } catch { /* closed meanwhile */ }
+    const counts = await candidateCounts(peer.pc);
     posthog.capture('peer_connecting_slow', {
       attempt, initiator, polite: peer.polite, relay_only: peer.relayOnly, signaling: peer.pc.signalingState, ice: peer.pc.iceConnectionState, gathering: peer.pc.iceGatheringState,
       remote_description: peer.pc.remoteDescription !== null, local_description: peer.pc.localDescription !== null, peers: peers.size, ...counts,
@@ -1026,29 +951,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   async function refreshStats(peer: Peer): Promise<void> {
     if (peer.pc.connectionState === 'closed') return;
-    const st = await peer.pc.getStats();
-    let audioBytesIn = 0;
-    let videoBytesIn = 0;
-    let videoBytesOut = 0;
-    let inFormat: VideoFormat | null = null;
-    let outFormat: VideoFormat | null = null;
-    /** RTCP's view of the round trip, from the receiver reports on what I send; seconds. */
-    let rtcpRtt: number | undefined;
-    type VideoRtp = { frameWidth?: number; frameHeight?: number; framesPerSecond?: number };
-    const formatOf = (r: VideoRtp): VideoFormat | null => (r.frameWidth && r.frameHeight ? { width: r.frameWidth, height: r.frameHeight, fps: r.framesPerSecond ?? 0 } : null);
-    st.forEach((r) => {
-      if (r.type === 'inbound-rtp') {
-        const rtp = r as RTCInboundRtpStreamStats & VideoRtp;
-        if (rtp.kind === 'audio') audioBytesIn += rtp.bytesReceived ?? 0;
-        if (rtp.kind === 'video') { videoBytesIn += rtp.bytesReceived ?? 0; inFormat = formatOf(rtp) ?? inFormat; }
-      } else if (r.type === 'outbound-rtp') {
-        const rtp = r as RTCOutboundRtpStreamStats & VideoRtp;
-        if (rtp.kind === 'video') { videoBytesOut += rtp.bytesSent ?? 0; outFormat = formatOf(rtp) ?? outFormat; }
-      } else if (r.type === 'remote-inbound-rtp') {
-        const rtt = (r as { roundTripTime?: number }).roundTripTime;
-        if (rtt !== undefined) rtcpRtt = Math.max(rtcpRtt ?? 0, rtt);
-      }
-    });
+    const { audioBytesIn, videoBytesIn, videoBytesOut, inFormat, outFormat, rttMs, relayed } = summarise(await peer.pc.getStats());
     if (audioBytesIn !== peer.view.audioBytesIn) peer.view.audioBytesIn = audioBytesIn;
     const now = Date.now();
     // Only rate over a meaningful window; onIceState and the 2 s timer can call this back to back.
@@ -1066,19 +969,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       peer.videoBytesOut = videoBytesOut;
       peer.videoBytesAt = now;
     }
-    let pair: RTCIceCandidatePairStats | undefined;
-    st.forEach((r) => { if (r.type === 'transport' && (r as RTCTransportStats).selectedCandidatePairId) pair = st.get((r as RTCTransportStats).selectedCandidatePairId!) as RTCIceCandidatePairStats; });
-    if (!pair) st.forEach((r) => { if (r.type === 'candidate-pair' && (r as RTCIceCandidatePairStats).state === 'succeeded' && (r as RTCIceCandidatePairStats & { selected?: boolean }).selected) pair = r as RTCIceCandidatePairStats; });
-    // A line that queues packets delays STUN checks and RTCP alike; the larger of the two is the honest one (ticket 27).
-    const rtts = [pair?.currentRoundTripTime, rtcpRtt].filter((t): t is number => t !== undefined);
-    const rttMs = rtts.length ? Math.round(Math.max(...rtts) * 1000) : null;
     if (rttMs !== peer.view.rttMs) setView(peer, { rttMs });
-    if (!pair) return;
-    type CandidateStats = { candidateType?: string };
-    const local = st.get(pair.localCandidateId) as CandidateStats | undefined;
-    const remote = st.get(pair.remoteCandidateId) as CandidateStats | undefined;
-    const relayed = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
-    if (peer.pc.connectionState === 'connected' && peer.view.conn !== (relayed ? 'relayed' : 'direct')) setView(peer, { conn: relayed ? 'relayed' : 'direct' });
+    if (relayed !== null && peer.pc.connectionState === 'connected' && peer.view.conn !== (relayed ? 'relayed' : 'direct')) setView(peer, { conn: relayed ? 'relayed' : 'direct' });
   }
   const statsTimer = setInterval(() => { for (const p of peers.values()) void refreshStats(p); }, 2000);
 
