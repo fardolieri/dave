@@ -42,10 +42,12 @@ these are timing, network or ordering flakes, not steady failures. Three from gr
 - Flake 4, outcome 1 (the test): every chat line, your own too, is shown when the Room's broadcast comes back
   (`client/room.ts`, no optimistic line), so every friend shows the Room's order. Bob's "three" after Alice's "four"
   means the Room took them that way: `say` returned on an empty composer, before Bob's text had reached it. `say` now
-  waits for its own text to come back (fixtures.ts), which is what every test using it assumed.
+  waits for its own text to come back (fixtures.ts), which is what every test using it assumed. Done: 20 of 20 against
+  nightly in Chromium and in Firefox, first try (run 36619412001, 2026-09-29).
 - Flake 2, probably fixed by f05a9c5 already (outcome 4, the app): both runs that saw it (36288825461, 36468561834)
   predate that commit, which drops candidates that arrive without a description. In the 10 e2e runs since, 16 runs of
-  the test in both engines, it did not come back; before, 2 in 16 in Firefox. Not proven: repeat it against nightly.
+  the test in both engines, it did not come back; before, 2 in 16 in Firefox. Done: 20 of 20 against nightly in
+  Chromium and in Firefox, first try (run 36619412001, 2026-09-29); at the old rate 0 in 20 would be a 7 % chance.
   Its traces only said `JSHandle@object`: the fixture now reads out an error object Firefox logs that way, so a next
   report names the error.
 - Flake 1 is the one to take next: it failed in Chromium on nightly in runs 36488333876 and 36490689930, both times
