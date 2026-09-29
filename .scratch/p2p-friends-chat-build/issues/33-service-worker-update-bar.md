@@ -1,6 +1,6 @@
 # 33 · The app from a service worker, and a bar that asks for the update
 
-Status: built 2026-09-27, not yet deployed
+Status: shipped 2026-09-28 to nightly and prod (349151d, review fix a45dc27; prod at 9c91060)
 Asked for 2026-09-27: Daniel, first of seven goals (people list, encrypted history, direct messages, file offers, push,
 signaling without Cloudflare follow): "I want a service worker that caches the app" and "The service worker should detect
 new versions and offer a little banner where the user can click to update/reload the page." Decided with Daniel after
