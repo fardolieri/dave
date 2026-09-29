@@ -50,8 +50,16 @@ these are timing, network or ordering flakes, not steady failures. Three from gr
   Chromium and in Firefox, first try (run 36619412001, 2026-09-29); at the old rate 0 in 20 would be a 7 % chance.
   Its traces only said `JSHandle@object`: the fixture now reads out an error object Firefox logs that way, so a next
   report names the error.
-- Flake 1 is the one to take next: it failed in Chromium on nightly in runs 36488333876 and 36490689930, both times
-  retry included.
+- Flake 1, outcome 2 (the app): a signal from one friend could hold every later signal from them for good. Signals
+  are applied one at a time on a chain keyed by identity, which outlives the connection on purpose (ticket 22). A
+  setRemoteDescription or addIceCandidate still running when its connection is closed never settles: per the WebRTC
+  spec, and Chromium does exactly that (probed 2026-09-29: both still pending 3 s after close; Firefox settles them).
+  On nightly, Bob's relay candidates trickle in late, right when the test calls `rebuild`; the close stalled the chain,
+  the new connection's answer never got applied (Alice's ICE stayed "new", nothing logged), the watchdog's relay-only
+  retry hung behind it too. Friends met the same: the watchdog, an ICE failure or a lost server close a connection
+  outside the chain, and that friend could not connect again until a reload. Each step on a connection now ends when
+  closePeer closes it (`unlessClosed`, client/call.ts). Before: 5 of 20 failed in Chromium against nightly, 2 of them
+  on the retry too, all with Alice at ICE "new", relay-only, third connection; Firefox 20 of 20 (run 36622849661).
 
 Not flakes but worth knowing: `privacy.spec.ts` "a yes starts PostHog and tells the server" failed on every push of
 2026-09-27 03:36 to 04:59; those were ticket 32's own iterations, green since 05:05. On the same pushes
