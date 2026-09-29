@@ -1,6 +1,6 @@
 # 22 · Relay fallback after a stalled attempt; a fresh offer starts a fresh connection
 
-Status: built 2026-09-23, relay path awaiting a TURN-enabled check
+Status: shipped 2026-09-23 to nightly and prod; relay path confirmed on nightly 2026-09-29 (run 36642017442)
 Reported 2026-09-23 18:05 UTC through the in-app problem report: "A friend cannot connect... It stays at the connecting
 phase". PostHog showed, from the reporter's Chrome: signalling stable with both descriptions, ICE "connected", the DTLS
 handshake never completing, selected pair host to host, three watchdog attempts (15, 30, 60 s) in the identical state.
@@ -37,3 +37,9 @@ Daniel notes the friend has flaky internet in general; the two changes here make
 - Open: the local `.dev.vars` carries the TURN placeholder, so the dev server hands out STUN only and the relay-only
   rebuild reads `relayOnly=false` by design. With a real `TURN_KEY_API_TOKEN` in `.dev.vars` the same driver run should
   print `rebuilt Bob, relayOnly=true` and both badges `via relay` with audio flowing. The rule itself is unit-tested.
+- Closed 2026-09-29: `resilience.spec.ts` "after a stalled attempt the rebuild goes through the TURN relay, and both
+  sides take it" does against nightly what the open item above asked of a TURN-enabled dev server: `rebuild('Bob', 1)`
+  reads `rebuilt Bob, relayOnly=true`, both badges turn `via relay`, audio flows both ways. 10 of 10 in Chromium and in
+  Firefox, first try (e2e workflow by hand, target nightly, repeat 10, run 36642017442). It skips itself where the copy
+  has no TURN server, so local builds and CI branch runs pass it by. Only possible since ticket 35's flake 1 fix: before
+  it, a close during the late trickle of relay candidates could stall the rebuilt connection's answer.
