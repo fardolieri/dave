@@ -92,6 +92,9 @@ type Peer = {
   relayOnly: boolean;
   /** Which RTCPeerConnection of this tab this is (dev hook). */
   generation: number;
+  /** Settles when closePeer closes the connection; see `unlessClosed`. */
+  closed: Promise<void>;
+  markClosed: () => void;
   view: PeerView;
   /** They asked to receive my share (they are a Viewer of it). */
   viewsMyShare: boolean;
@@ -499,8 +502,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const keepAlive = new Audio();
     keepAlive.autoplay = true;
     keepAlive.muted = true;
+    let markClosed!: () => void;
+    const closed = new Promise<void>((r) => { markClosed = r; });
     const peer: Peer = {
-      key, name, pc, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, keepAlive, audioNodes: [], restarts: 0, relayOnly, generation: ++generation,
+      key, name, pc, closed, markClosed, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, keepAlive, audioNodes: [], restarts: 0, relayOnly, generation: ++generation,
       view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1, rttMs: null },
       viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, sendsRed: false, sendsFec: true, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
@@ -706,6 +711,14 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
    * setRemoteDescription, and the candidates behind it must wait for that, not race past it.
    */
   const signalChains = new Map<string, Promise<void>>();
+  /**
+   * A setRemoteDescription or addIceCandidate still running when its connection is closed never settles (WebRTC spec;
+   * Chromium, 2026-09-29), and the chain above outlives the connection: one close at the wrong moment (the watchdog, a
+   * rebuild, an ICE failure) would hold every later signal from that friend, the new connection's answer too, for good.
+   * Ticket 35, flake 1. So each step on a connection ends when it does.
+   */
+  const CLOSED = Symbol('connection closed');
+  const unlessClosed = <T>(peer: Peer, step: Promise<T>): Promise<T> => Promise.race([step, peer.closed.then((): never => { throw CLOSED; })]);
   function onSignal(from: string, data: SignalData): void {
     const chain = (signalChains.get(from) ?? Promise.resolve()).then(() => onSignalNow(from, data)).catch((e) => console.warn('signal handling failed', e));
     signalChains.set(from, chain);
@@ -753,7 +766,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         peer.asksLowVoice = asksLowVoice(description.sdp ?? '');
         // My encoder reads its bitrate, packet length, FEC flag and codec order from this description: rewritten, it obeys my settings too.
         const applied = { type: description.type, sdp: voiceSdp(description.sdp ?? '') };
-        await pc.setRemoteDescription(applied);
+        await unlessClosed(peer, pc.setRemoteDescription(applied));
         peer.sendsRed = sendsRed(applied.sdp);
         peer.sendsFec = asksFec(applied.sdp);
         applyVoiceBuffer(peer); // they may have switched low bandwidth voice on or off
@@ -765,7 +778,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
             for (const t of peer.tx) t.direction = 'sendrecv';
             attachLocalTracks(peer);
           }
-          await pc.setLocalDescription();
+          await unlessClosed(peer, pc.setLocalDescription());
           await sendDescription(peer);
         }
       }
@@ -773,13 +786,14 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         if (!pc.remoteDescription) return; // left over from their torn-down connection, as above
         for (const c of data.candidates) {
           try {
-            await pc.addIceCandidate((c as RTCIceCandidateInit | null) ?? undefined);
+            await unlessClosed(peer, pc.addIceCandidate((c as RTCIceCandidateInit | null) ?? undefined));
           } catch (e) {
-            if (!peer.ignoreOffer) throw e;
+            if (e === CLOSED || !peer.ignoreOffer) throw e;
           }
         }
       }
     } catch (e) {
+      if (e === CLOSED) return; // closed on purpose; what follows belongs to the next connection
       console.warn('signal handling failed', e);
     }
   }
@@ -1086,6 +1100,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (!peer) return;
     clearTimeout(peer.disconnectTimer); clearTimeout(peer.restartTimer); clearTimeout(peer.graceTimer); clearTimeout(peer.candidateTimer); clearTimeout(peer.connectTimer);
     peer.pc.close();
+    peer.markClosed();
     peer.audio.srcObject = null;
     peer.shareAudio.srcObject = null;
     peer.keepAlive.srcObject = null;
