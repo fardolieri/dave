@@ -20,6 +20,12 @@ on:
         description: "local, nightly, or the URL of a deployed copy"
         default: local
         required: true
+      grep:
+        description: "only the tests whose title matches (Playwright's -g), e.g. to check a flake"
+        default: ""
+      repeat:
+        description: "runs of each test (--repeat-each), spread over the shards"
+        default: "1"
 concurrency:
   group: e2e-${{ github.event_name == 'workflow_run' && 'nightly' || github.ref }}
   cancel-in-progress: true
@@ -50,7 +56,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Both engines in both jobs: a few tests put a Chromium sharer in front of a Firefox viewer or mix engines in one call.
       - run: pnpm exec playwright install --with-deps chromium firefox
-      - run: pnpm exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}/8
+      - run: pnpm exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}/8 --repeat-each=${{ inputs.repeat || 1 }} ${{ inputs.grep && '-g "$E2E_GREP" --pass-with-no-tests' || '' }}
+        env:
+          E2E_GREP: ${{ inputs.grep }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

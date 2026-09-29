@@ -110,6 +110,8 @@ export class Friend {
   readonly wire = new Wire();
   private expected: RegExp[] = [...KNOWN_HARMLESS];
   readonly problems: string[] = [];
+  /** Console arguments still being read out (see `watch`); settled before the problems are judged. */
+  private reading: Promise<void>[] = [];
   /** URLs of the PostHog requests this friend's pages made (answered locally, never sent). */
   readonly posthog: string[] = [];
   page!: Page;
@@ -161,13 +163,25 @@ export class Friend {
 
   /** Collects console warnings, errors and exceptions of a page of this friend. */
   watch(page: Page): void {
-    page.on('console', (m) => { if (m.type() === 'warning' || m.type() === 'error') this.problems.push(`${m.type()}: ${m.text()}`); });
+    page.on('console', (m) => {
+      if (m.type() !== 'warning' && m.type() !== 'error') return;
+      const i = this.problems.push(`${m.type()}: ${m.text()}`) - 1;
+      // Firefox gives an error object as "JSHandle@object", which says nothing about the failure: read it out, so a
+      // flake's report names the error (ticket 35). Patterns still match: the message's own text comes first.
+      if (m.text().includes('JSHandle@')) {
+        this.reading.push(Promise.all(m.args().map((a) => a.evaluate((v) => (v && typeof v === 'object' && 'message' in v ? `${(v as Error).name}: ${(v as Error).message}` : typeof v === 'object' ? JSON.stringify(v) : String(v)))))
+          .then((parts) => { this.problems[i] = `${m.type()}: ${parts.join(' ')}`; }, () => {}));
+      }
+    });
     page.on('pageerror', (e) => this.problems.push(`exception: ${e.message}`));
   }
 
   /** Declares console output this test provokes on purpose, so it does not fail the test. */
   expectWarning(pattern: RegExp): void { this.expected.push(pattern); }
-  unexpectedProblems(): string[] { return this.problems.filter((p) => !this.expected.some((re) => re.test(p))); }
+  async unexpectedProblems(): Promise<string[]> {
+    await Promise.all(this.reading);
+    return this.problems.filter((p) => !this.expected.some((re) => re.test(p)));
+  }
 
   /** Opens the app and waits until the selected room is connected (the composer is enabled). */
   async open(path = '/'): Promise<this> {
@@ -199,10 +213,17 @@ export class Friend {
   }
   async chatTexts(): Promise<string[]> { return (await this.chat()).map((l) => l.text); }
 
+  /**
+   * Sends a text and waits for it to come back from the server, which shows every line, your own too, in the order the Room
+   * took them: whatever anyone sends afterwards comes after it. An empty composer alone does not say that (ticket 35, flake 4).
+   */
   async say(text: string): Promise<void> {
+    const copies = async () => (await this.chatTexts()).filter((t) => t === text).length;
+    const before = await copies();
     await this.composer.fill(text);
     await this.composer.press('Enter');
     await expect(this.composer).toHaveValue('');
+    await expect.poll(copies, { message: `${this.name}'s "${text}" comes back from the server` }).toBeGreaterThan(before);
   }
 
   async selectRoom(name: string): Promise<void> {
@@ -315,7 +336,7 @@ export const test = base.extend<{ crowd: Crowd }>({
         writeFileSync(testInfo.outputPath(`${f.name}-wire.json`), JSON.stringify({ peers, problems: f.problems, frames: f.wire.log }, null, 1));
       }
     }
-    const problems = friends.flatMap((f) => f.unexpectedProblems().map((p) => `${f.name}: ${p}`));
+    const problems = (await Promise.all(friends.map(async (f) => (await f.unexpectedProblems()).map((p) => `${f.name}: ${p}`)))).flat();
     if (problems.length) await testInfo.attach('console problems', { body: problems.join('\n'), contentType: 'text/plain' });
     await Promise.all(friends.map((f) => f.close()));
     await Promise.all([...extra.values()].map(async (b) => (await b).close()));
