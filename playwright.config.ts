@@ -19,7 +19,9 @@ export default defineConfig({
   testDir: 'e2e',
   timeout: 120_000 * slow,
   expect: { timeout: 20_000 * slow },
-  fullyParallel: false,
+  // Every test gets rooms of its own (fixtures.ts) and stages deploys through its own cookies (update.spec.ts), so any two can
+  // run at once. It also lets --shard (e2e.yml) split the suite by test instead of by file.
+  fullyParallel: true,
   // A deployed Worker limits socket upgrades per IP (see wrangler.jsonc): one test at a time there.
   workers: Number(process.env['E2E_WORKERS']) || (ci && !target ? 2 : 1),
   retries: ci ? 1 : 0,
