@@ -4,8 +4,9 @@ name: e2e
 #   - after each successful master deploy: against nightly, which master builds with the same hooks
 #   - by hand from the Actions tab: local, nightly, or any deployed URL
 # Each engine is split into shards on runners of their own (Playwright's --shard): the whole suite on one runner took
-# about 7 minutes. More shards, faster, down to the slowest single test (about 1.5 min). A runner has its own IP, so
-# nightly's upgrade limit sees one shard, not the suite. The report and the traces of failures are kept as an artifact.
+# about 7 minutes. Eight per engine: 16 jobs stay under the 20 a free account runs at once, and beyond that each runner's
+# ~40 s of setup outweighs its share of the tests. A runner has its own IP, so nightly's upgrade limit sees one shard.
+# The report and the traces of failures are kept as an artifact.
 on:
   push:
     branches-ignore: [master, prod]
@@ -32,7 +33,7 @@ jobs:
       fail-fast: false
       matrix:
         project: [chromium, firefox]
-        shard: [1, 2, 3, 4] # the total is written out again in the test step below
+        shard: [1, 2, 3, 4, 5, 6, 7, 8] # the total is written out again in the test step below
     env:
       # Empty means a local build; `nightly` is a shorthand the config understands.
       E2E_URL: ${{ github.event_name == 'workflow_run' && 'nightly' || (inputs.target != 'local' && inputs.target || '') }}
@@ -49,7 +50,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Both engines in both jobs: a few tests put a Chromium sharer in front of a Firefox viewer or mix engines in one call.
       - run: pnpm exec playwright install --with-deps chromium firefox
-      - run: pnpm exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}/4
+      - run: pnpm exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}/8
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
