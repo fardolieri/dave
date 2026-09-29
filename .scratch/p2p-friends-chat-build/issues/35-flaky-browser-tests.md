@@ -38,13 +38,39 @@ these are timing, network or ordering flakes, not steady failures. Three from gr
    to come back before Alice writes), or does Bob place his own text where he sent it and the others where they
    arrived (then the order differs between friends, which "everyone sees the same order" is meant to rule out)?
 
+## Findings
+- Flake 4, outcome 1 (the test): every chat line, your own too, is shown when the Room's broadcast comes back
+  (`client/room.ts`, no optimistic line), so every friend shows the Room's order. Bob's "three" after Alice's "four"
+  means the Room took them that way: `say` returned on an empty composer, before Bob's text had reached it. `say` now
+  waits for its own text to come back (fixtures.ts), which is what every test using it assumed.
+- Flake 2, probably fixed by f05a9c5 already (outcome 4, the app): both runs that saw it (36288825461, 36468561834)
+  predate that commit, which drops candidates that arrive without a description. In the 10 e2e runs since, 16 runs of
+  the test in both engines, it did not come back; before, 2 in 16 in Firefox. Not proven: repeat it against nightly.
+  Its traces only said `JSHandle@object`: the fixture now reads out an error object Firefox logs that way, so a next
+  report names the error.
+- Flake 1 is the one to take next: it failed in Chromium on nightly in runs 36488333876 and 36490689930, both times
+  retry included.
+
 Not flakes but worth knowing: `privacy.spec.ts` "a yes starts PostHog and tells the server" failed on every push of
 2026-09-27 03:36 to 04:59; those were ticket 32's own iterations, green since 05:05. On the same pushes
 `resilience.spec.ts` "the call survives the server going away" and "a friend cut off from the server stays in the
 call" (ticket 31) failed once each in Chromium; keep an eye on them, they share the server-outage machinery with
 flake 3.
 
+## The rule (decided with Daniel, 2026-09-29)
+A flaky test is a question, and a retry that turns it green hides the answer. Each flake ends with its cause found and
+one of four outcomes, written under the test:
+1. The test is wrong, the feature is fine: fix the test.
+2. The feature is wrong: fix the app. If the promise is not worth keeping, drop the feature claim and its test together,
+   decided with Daniel; never the test alone.
+3. The environment is wrong (nightly's TURN relay, a slow runner): the test stops depending on it, by waiting on the
+   state the app reports, or by running only where the environment is ours.
+4. The test is stricter than the feature: a console line the app should not print. Quiet the app, not the test.
+Never a longer timeout or another retry without the cause.
+
 ## Approach
+- Check a fix against nightly with the e2e workflow by hand: target `nightly`, `grep` the title, `repeat` 20. The
+  repeats spread over the 8 shards, so 20 take about as long as a normal run. This VM runs no Firefox.
 - For each: pull the run's trace (`gh run download <id>`, the `e2e-results` artifact, `playwright show-trace`) and
   read the console and network of the failing attempt before changing anything.
 - Make the app quieter where the noise is expected (flake 2) rather than widening the fixture's allowlist, unless
