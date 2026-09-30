@@ -42,6 +42,12 @@ export function clearHistory(roomId: string): Promise<void> {
   return chain;
 }
 
+/** Leaving a room: its history goes with it, as the leave dialog says. The link brings the room back, not the lines. */
+export function forgetHistory(roomId: string): Promise<void> {
+  chain = chain.then(() => idbDelete(keyFor(roomId))).catch((e) => console.warn('history delete failed', e));
+  return chain;
+}
+
 /** One-time: the history from before rooms belongs to the room the old single secret became. */
 export function adoptLegacyHistory(roomId: string): Promise<void> {
   chain = chain.then(async () => {

@@ -71,6 +71,23 @@ test('received history survives a reload, and "Clear chat history" empties it', 
   expect(await alice.chatTexts()).toEqual(['one', 'two']);
 });
 
+test('leaving a room forgets its history: the link brings the room back, not the lines', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob', { rooms: [crowd.room, other] });
+  await alice.say('before');
+  await expect.poll(() => bob.chatTexts()).toEqual(['before']);
+  bob.page.once('dialog', (d) => void d.accept());
+  await bob.page.getByRole('button', { name: `Leave ${crowd.room.name}` }).click();
+  await expect(bob.page.locator('button.room-name', { hasText: crowd.room.name })).toHaveCount(0);
+  await bob.page.goto(`/#${crowd.room.secret}/${encodeURIComponent(crowd.room.name)}`);
+  await bob.connected();
+  await expect(bob.selectedRoom.locator('.room-title')).toHaveText(crowd.room.name);
+  // A live line after the rejoin: the history, loaded first, would have come before it.
+  await alice.say('after');
+  await expect.poll(() => bob.chatTexts()).toEqual(['after']);
+});
+
 test('a text in a room not on screen counts as unread and chimes; own texts never chime', async ({ crowd }) => {
   const other = { secret: newSecret(), name: 'Other' };
   const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });

@@ -1,5 +1,5 @@
 import { authKeyOf, DEFAULT_ROOM_NAME, roomIdOf, type InviteLink } from '../core/rooms';
-import { adoptLegacyHistory } from './history';
+import { adoptLegacyHistory, forgetHistory } from './history';
 import { local } from './storage';
 
 /**
@@ -54,6 +54,7 @@ export async function addRoom(rooms: SavedRoom[], link: InviteLink): Promise<Sav
 export function forgetRoom(rooms: SavedRoom[], secret: string): SavedRoom[] {
   const next = rooms.filter((r) => r.secret !== secret);
   write(next);
+  for (const r of rooms) if (r.secret === secret) void forgetHistory(r.id);
   return next;
 }
 

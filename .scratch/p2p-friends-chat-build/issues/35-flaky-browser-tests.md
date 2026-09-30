@@ -67,6 +67,9 @@ these are timing, network or ordering flakes, not steady failures. Three from gr
   server (local builds only) and 1c187c3 made it wait for the echo. The current test: 20 of 20 in Chromium and in
   Firefox against a local build, first try (run 36626632785, 2026-09-29). Not seen, kept in mind: the history write
   (client/history.ts, IndexedDB) finishes a moment after the line shows, so a reload in that moment loses the line.
+  Accepted as it is (decided with Daniel, 2026-09-30): the line is lost only as if the reload had come a moment
+  earlier, and the sender still has it; a second store to close the gap was built and dropped as not worth its code.
+  Found alongside and fixed: leaving a room never deleted its history.
 - Nightly after a master push, no test retried: 36620955719 (9febe7d), 36625769455 (aced2d9), 36627157164 (6b1ae18).
 
 Not flakes but worth knowing: `privacy.spec.ts` "a yes starts PostHog and tells the server" failed on every push of
