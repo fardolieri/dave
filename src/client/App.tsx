@@ -1,4 +1,4 @@
-import { createSignal, Switch, Match, createMemo, createEffect, For, Show, untrack, onCleanup, mapArray } from 'solid-js';
+import { createSignal, Switch, Match, createMemo, createEffect, For, Show, untrack, onCleanup, onSettled, mapArray } from 'solid-js';
 import './styles.css';
 import dino from './dino.svg';
 import posthog, { consent, isTestAccount, setConsent, telemetryOn, type Consent } from './posthog';
@@ -24,6 +24,7 @@ import { place } from './place';
 import { createTabLock } from './tablock';
 import { build, commitUrl, REPO_URL, shortCommit } from './version';
 import { applyUpdate, noteOffered, updateReady } from './update';
+import { reveal, waitForReveal } from './boot';
 
 export default function App() {
   // An invite link is consumed before anything else renders, so it never stays in the address bar.
@@ -35,6 +36,7 @@ export default function App() {
   const [name, setNameSignal] = createSignal(getName());
   const [identity, setIdentity] = createSignal<LocalIdentity | null>(null);
   const [identityError, setIdentityError] = createSignal<string | null>(null);
+  const [roomsError, setRoomsError] = createSignal<string | null>(null);
 
   loadIdentity().then(setIdentity, (e: unknown) => setIdentityError(e instanceof Error ? e.message : String(e)));
   /** Only the tab holding the lock opens sockets; another tab of this browser shows a notice (ticket 25). */
@@ -49,7 +51,7 @@ export default function App() {
     posthog.capture('room_entered_by_link', { known, via });
     return next;
   };
-  void loadRooms().then(async (list) => setRooms(invite ? await enter(list, invite, 'opened') : list));
+  loadRooms().then(async (list) => setRooms(invite ? await enter(list, invite, 'opened') : list), (e: unknown) => setRoomsError(e instanceof Error ? e.message : String(e)));
   // A link opened in a tab that already shows the app only changes the fragment: no load, so it is read here.
   window.addEventListener('hashchange', () => {
     const link = takeInviteLink();
@@ -91,13 +93,19 @@ export default function App() {
     return list && list.length > 0 && name() && identity() && t.kind === 'held' ? { rooms: list, selected: selected(), created: created(), name: name()!, identity: identity()!, mayRejoin: t.mayRejoin } : null;
   });
 
+  // The logo goes once there is a screen to show (boot.ts): one that asks something of you, or the workspace (below).
+  // Whatever still holds the start up after a while, the page underneath is better than a logo that never goes.
+  createEffect(() => !!roomsError() || (rooms() !== null && (rooms()!.length === 0 || !name() || !!identityError() || tab.state().kind === 'waiting')), (asks) => { if (asks) reveal(); });
+  setTimeout(reveal, REVEAL_AT_LATEST_MS);
+
   return (
     <>
       <Show when={updateReady() && tab.state().kind === 'held'}><UpdateBar /></Show>
       <Switch>
-        <Match when={rooms() === null}>
-          <Notice title="Loading…"> </Notice>
+        <Match when={roomsError()}>
+          <Notice title="Your rooms could not be loaded">This browser could not read the rooms it saved ({roomsError()}). Blocked site data or an old browser cause this.</Notice>
         </Match>
+        <Match when={rooms() === null}>{null}</Match>
         <Match when={rooms()?.length === 0}>
           <main class="notice">
             <h1>dave</h1>
@@ -117,12 +125,8 @@ export default function App() {
         <Match when={identityError()}>
           <Notice title="No identity key">This browser could not create or load an identity key ({identityError()}). Private windows and blocked site data cause this.</Notice>
         </Match>
-        <Match when={!identity()}>
-          <Notice title="Preparing your identity…"> </Notice>
-        </Match>
-        <Match when={tab.state().kind === 'checking'}>
-          <Notice title="Loading…"> </Notice>
-        </Match>
+        <Match when={!identity()}>{null}</Match>
+        <Match when={tab.state().kind === 'checking'}>{null}</Match>
         <Match when={tab.state().kind === 'waiting'}>
           <main class="notice">
             <h1>dave</h1>
@@ -285,11 +289,22 @@ function Workspace(props: WorkspaceProps) {
     posthog.capture('profile_opened', { own: p.publicKey === me });
   };
   // Online: friends who are in none of the calls, across all rooms; you are listed last (spec §7.1).
+  // Friends in the order they came, the newest on top: each one slides in from above and pushes the rest down. One who
+  // leaves the list (offline, or into a call) and comes back counts as new.
   // Your own row follows this browser's call state, not the server's echo of it: a Leave moves you in one step, not two.
+  // Until the server's first presence it is drawn from what this browser knows, so it is on screen from the start.
+  const localSelf = (): Person => ({ publicKey: me, fingerprint: identity.fingerprint, name: props.name, ...(getPicture() ? { picture: getPicture()! } : {}), role: 'visitor', joinSeq: null, sharing: false, muted: false });
+  /** Everyone, and you before the server has you: what the lists and the profile card show. */
+  const withMe = createMemo(() => (everyone().some((p) => p.publicKey === me) ? everyone() : [...everyone(), localSelf()]));
+  const cameAt = new Map<string, number>();
+  let came = 0;
   const online = createMemo(() => {
-    const others = everyone().filter((p) => p.role === 'visitor' && p.publicKey !== me).sort((a, b) => labelOf(a).shown.localeCompare(labelOf(b).shown));
-    const self = everyone().find((p) => p.publicKey === me);
-    return self && !active() ? [...others, self] : others;
+    const others = withMe().filter((p) => p.role === 'visitor' && p.publicKey !== me);
+    for (const key of cameAt.keys()) if (!others.some((p) => p.publicKey === key)) cameAt.delete(key);
+    for (const p of others) if (!cameAt.has(p.publicKey)) cameAt.set(p.publicKey, came++);
+    others.sort((a, b) => cameAt.get(b.publicKey)! - cameAt.get(a.publicKey)!);
+    const self = withMe().find((p) => p.publicKey === me)!;
+    return !active() ? [...others, self] : others;
   });
   const viewOf = (l: Link, key: string): PeerView | undefined => l.call.views().find((v) => v.publicKey === key);
   const [panel, setPanel] = createSignal<'audio' | 'share' | null>(null);
@@ -298,10 +313,19 @@ function Workspace(props: WorkspaceProps) {
   // Tiles are keyed by public key, not by Person object: every presence frame (a join, a leave, a mute, a rename)
   // replaces every Person, and a tile recreated for that would lose its video element and its fullscreen.
   const sameKeys = (a: string[], b: string[]): boolean => a.length === b.length && a.every((k, i) => k === b[i]);
+  // The Online rows are keyed the same way, so a friend's row is made once, when they come online, and slides in then.
+  const onlineKeys = createMemo<string[]>(() => online().map((p) => p.publicKey), { equals: sameKeys });
   const sharerKeys = createMemo<string[]>(() => sharers().map((p) => p.publicKey), { equals: sameKeys });
   const sharerOf = (key: string): Person => sharers().find((p) => p.publicKey === key) ?? sharers()[0]!;
   const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
   const connected = () => current()?.room.status().kind === 'connected';
+  // The room is on screen: the logo can go (boot.ts). The first connection gets a moment before the pill says so: your
+  // own row, dimmed until the room is connected, already tells.
+  onSettled(reveal);
+  const [firstConnect, setFirstConnect] = createSignal(true);
+  const quietTimer = setTimeout(() => setFirstConnect(false), QUIET_CONNECT_MS);
+  onCleanup(() => clearTimeout(quietTimer));
+  const bannerStatus = (l: Link): ServerStatus => (firstConnect() && l.room.status().kind === 'connecting' ? { kind: 'connected' } : l.room.status());
   // Bumped when I send or switch rooms: the log jumps to the newest line (the composer and the log are separate grid items).
   const [jumpToken, setJumpToken] = createSignal(0);
   // The room on screen has nothing unread, however many lines arrive while it is up.
@@ -343,7 +367,14 @@ function Workspace(props: WorkspaceProps) {
           <aside class="side">
             <h2>Online</h2>
             <ul class="plist">
-              <For each={online()}>{(p) => <PersonRow p={p} isMe={p.publicKey === me} label={labelOf(p)} onProfile={(el) => openProfile(p, el)} />}</For>
+              <For each={onlineKeys()}>{(key) => {
+                // The latest entry; the last one seen while the row is on its way out.
+                let last = untrack(() => online().find((p) => p.publicKey === key)!);
+                const p = () => (last = online().find((q) => q.publicKey === key) ?? last);
+                return key === me
+                  ? <PersonRow p={p()} isMe label={labelOf(p())} pending={!connected()} onProfile={(el) => openProfile(p(), el)} />
+                  : <PersonRow p={p()} isMe={false} label={labelOf(p())} arrive onProfile={(el) => openProfile(p(), el)} />;
+              }}</For>
               <Show when={online().length === 0}><li class="dim">nobody yet</li></Show>
             </ul>
             <For each={links()}>{(l) => {
@@ -406,8 +437,8 @@ function Workspace(props: WorkspaceProps) {
               <VersionDialog />
             </div>
           </aside>
-          <ProfileCard open={profile()} people={everyone()} me={me} label={labelOf} onClose={() => setProfile(null)} onRenameSelf={renameSelf} onPictureSelf={pictureSelf} />
-          <Banner status={cur().room.status()} onTakeOver={() => { for (const l of links()) l.room.takeOver(); }} />
+          <ProfileCard open={profile()} people={withMe()} me={me} label={labelOf} onClose={() => setProfile(null)} onRenameSelf={renameSelf} onPictureSelf={pictureSelf} />
+          <Banner status={bannerStatus(cur())} onTakeOver={() => { for (const l of links()) l.room.takeOver(); }} />
           <Show when={sharers().length > 0 && stage()}>{(s) => (
             <section class="shares" style={`grid-template-columns: repeat(${sharers().length}, 1fr)`}>
               <For each={sharerKeys()}>
@@ -499,10 +530,51 @@ function Avatar(props: { initial: string; picture?: string; speaking?: boolean; 
   return <button class={`avatar ${props.picture ? 'pic' : ''} ${props.speaking ? 'speaking' : ''}`} title={props.title} onClick={(e) => { e.stopPropagation(); props.onOpen(e.currentTarget); }}>{props.picture ?? props.initial}</button>;
 }
 
-function PersonRow(props: { p: Person; isMe: boolean; label: Label; onProfile: (anchor: HTMLElement) => void }) {
+/** How long the first connection may take before the room shows the "Connecting…" pill. */
+const QUIET_CONNECT_MS = 2500;
+/** The logo goes by then at the latest (boot.ts), even if nothing has said it may. */
+const REVEAL_AT_LATEST_MS = 8000;
+/** Rows arriving together follow each other this far apart; from the fifth on they come with the fourth. */
+const STAGGER_MS = 160;
+const MAX_STAGGER = 3;
+
+/**
+ * A row arriving in a list slides down into place, pushing the rows below it down, as if from above. Rows arriving
+ * together come one after the other from the bottom up, so each lands on top of the one before; none comes before the
+ * logo has gone (boot.ts).
+ */
+let arriving: HTMLElement[] = [];
+function slideIn(el: HTMLElement): void {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  arriving.push(el);
+  if (arriving.length > 1) return;
+  // Measured once laid out. A hidden tab gets no frame until it is shown, and rows may come and go meanwhile: only
+  // those still on screen open, the lowest first.
+  requestAnimationFrame(() => {
+    const rows = arriving.filter((r) => r.isConnected).sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? 1 : -1));
+    arriving = [];
+    const wait = waitForReveal();
+    rows.forEach((row, i) => open(row, wait + Math.min(i, MAX_STAGGER) * STAGGER_MS));
+  });
+}
+
+/** The row opens, and what is in it comes down from behind the row above: it never covers the list's heading. */
+function open(el: HTMLElement, delay: number): void {
+  const list = el.parentElement;
+  if (!list) return;
+  const height = el.offsetHeight;
+  const gap = parseFloat(getComputedStyle(list).rowGap) || 0; // taken back by the margin, so nothing moves before the slide
+  const timing: KeyframeAnimationOptions = { duration: 460, delay, easing: 'cubic-bezier(.2, .8, .2, 1)', fill: 'backwards' };
+  el.style.overflow = 'hidden';
+  const opening = el.animate([{ height: '0px', marginTop: `${-gap}px` }, { height: `${height}px`, marginTop: '0px' }], timing);
+  for (const child of el.children) child.animate([{ transform: `translateY(${-height}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }], timing);
+  opening.finished.then(() => { el.style.overflow = ''; }, () => {});
+}
+
+function PersonRow(props: { p: Person; isMe: boolean; label: Label; onProfile: (anchor: HTMLElement) => void; pending?: boolean; arrive?: boolean }) {
   const acknowledge = () => { if (!props.label.known) { markKnown(props.p.publicKey, props.p.name); posthog.capture('new_key_acknowledged'); } };
   return (
-    <li onClick={acknowledge} title={props.label.known ? props.label.title : `${props.label.title}. Click to acknowledge.`}>
+    <li ref={(el) => { if (untrack(() => props.arrive)) slideIn(el); }} class={props.pending ? 'pending' : undefined} onClick={acknowledge} title={props.label.known ? props.label.title : `${props.label.title}. Click to acknowledge.`}>
       <Avatar initial={props.label.shown[0]!} picture={props.label.picture} title={props.isMe ? 'Your profile' : 'Profile'} onOpen={props.onProfile} />
       <span class="pname"><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span>
         <Show when={!props.label.known}><b class="new">new</b></Show>

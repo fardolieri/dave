@@ -18,7 +18,8 @@ test('presence lists everyone online and drops a friend who closes the page', as
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   const carol = await crowd.open('Carol');
-  await expect.poll(() => alice.online()).toEqual(['Bob', 'Carol', 'Alice']);
+  // Friends in the order they came, the newest on top; you last.
+  await expect.poll(() => alice.online()).toEqual(['Carol', 'Bob', 'Alice']);
   await carol.close();
   await expect.poll(() => alice.online()).toEqual(['Bob', 'Alice']);
   await expect.poll(() => bob.online()).toEqual(['Alice', 'Bob']);

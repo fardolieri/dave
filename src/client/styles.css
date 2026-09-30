@@ -109,6 +109,11 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .plist .tight .pflags > em { flex-shrink: 1; min-width: 2ch; overflow: hidden; text-overflow: ellipsis; }
 .plist .tight .pflags > .conn { width: 8px; overflow: hidden; }
 .plist li.lost { opacity: .5; }
+/* Your own row in Online is there from the start, dimmed until the room is connected (App.tsx). Every row fades
+   when its opacity changes: yours as it lights up, a dropped participant's as it dims. */
+.plist li { transition: opacity .4s ease-out; }
+.plist li.pending { opacity: .45; }
+@media (prefers-reduced-motion: reduce) { .plist li { transition: none; } }
 .avatar.speaking { box-shadow: 0 0 0 2px var(--ok); }
 .plist em { font-style: normal; font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 /* Centred on the line box the dot rode above the lowercase letters; nudged down it sits level with them.
