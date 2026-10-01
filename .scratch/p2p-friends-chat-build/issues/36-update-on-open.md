@@ -1,6 +1,6 @@
 # 36 · A new version found as the app opens is taken by itself, behind a thin progress line
 
-Status: built 2026-10-01, not yet deployed
+Status: shipped 2026-10-01 (prod d46467c, nightly e2e green first)
 Asked for 2026-10-01: Daniel: "When opening the app though it feels weird to immediately manually reload the page when I
 just opened it." A new version found as the app opens freezes the app (Join disabled, as while it connects), shows a slim
 download progress line at the top and reloads by itself when the download is done. Online friends may show meanwhile;
