@@ -23,7 +23,7 @@ import { EmojiPicker } from './EmojiPicker';
 import { place } from './place';
 import { createTabLock } from './tablock';
 import { build, commitUrl, REPO_URL, shortCommit } from './version';
-import { applyUpdate, holding, noteOffered, openingUpdate, tabSettled, updateReady } from './update';
+import { applyUpdate, downloadProgress, holding, noteOffered, tabSettled, updateReady } from './update';
 
 export default function App() {
   // An invite link is consumed before anything else renders, so it never stays in the address bar.
@@ -96,7 +96,7 @@ export default function App() {
   return (
     <>
       <Show when={updateReady() && tab.state().kind === 'held'}><UpdateBar /></Show>
-      <Show when={openingUpdate().kind === 'downloading' && tab.state().kind !== 'waiting'}><UpdateLine /></Show>
+      <Show when={downloadProgress() && tab.state().kind !== 'waiting'}><UpdateLine /></Show>
       <Switch>
         <Match when={roomsError()}>
           <Notice title="Your rooms could not be loaded">This browser could not read the rooms it saved ({roomsError()}). Blocked site data or an old browser cause this.</Notice>
@@ -152,11 +152,11 @@ function UpdateBar() {
 }
 
 /**
- * The new version found as the app opened, downloading (ticket 36): a thin line over the top edge of the page, so
- * nothing moves, and nothing to click. The page reloads by itself once it is in.
+ * A new version downloading (ticket 36): a thin line over the top edge of the page, so nothing moves, and nothing to
+ * click. One found as the app opened reloads the page once it is in; one found later ends in the update bar.
  */
 function UpdateLine() {
-  const percent = () => { const o = openingUpdate(); return o.kind === 'downloading' && o.total > 0 ? Math.round((o.done / o.total) * 100) : 0; };
+  const percent = () => { const d = downloadProgress(); return d && d.total > 0 ? Math.round((d.done / d.total) * 100) : 0; };
   return (
     <div class="update-line" role="progressbar" aria-label="Downloading the new version of dave" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent()}>
       <div style={{ width: `${Math.max(percent(), 3)}%` }} />
@@ -253,7 +253,7 @@ function Workspace(props: WorkspaceProps) {
   const links = mapArray(() => props.rooms.map((r) => r.secret), (secret): Link => {
     let last = untrack(() => props.rooms.find((r) => r.secret === secret)!);
     // A deliberate one-time snapshot of name and picture: the socket is created once; changes go through `rename` and `setPicture`.
-    const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, name: untrack(() => props.name), picture: getPicture() });
+    const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, name: untrack(() => props.name), picture: getPicture(), hold: holding });
     const call = createCall(room, identity, { mayRejoin: untrack(() => props.mayRejoin), holdRejoin: holding });
     posthog.capture('room_entered');
     // The latest saved entry; the last one seen while the room is being forgotten and its link disposed.
@@ -333,7 +333,9 @@ function Workspace(props: WorkspaceProps) {
   // before the pill says so: your own row, dimmed until the room is connected, already tells.
   onSettled(() => { roomShownAt = performance.now(); });
   const [firstConnect, setFirstConnect] = createSignal(true);
-  const quietTimer = setTimeout(() => setFirstConnect(false), QUIET_CONNECT_MS);
+  // Counted from when the rooms may connect: not while they wait for a new version found as the app opened (ticket 36).
+  let quietTimer: ReturnType<typeof setTimeout> | undefined;
+  createEffect(() => holding(), (held) => { if (!held && !quietTimer) quietTimer = setTimeout(() => setFirstConnect(false), QUIET_CONNECT_MS); });
   onCleanup(() => clearTimeout(quietTimer));
   const bannerStatus = (l: Link): ServerStatus => (firstConnect() && l.room.status().kind === 'connecting' ? { kind: 'connected' } : l.room.status());
   // Bumped when I send or switch rooms: the log jumps to the newest line (the composer and the log are separate grid items).

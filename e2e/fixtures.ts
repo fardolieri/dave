@@ -32,6 +32,8 @@ export class Wire {
   down: Tamper | null = null;
   /** Every frame seen, both directions, for assertions about what the server gets to see. */
   readonly log: Array<{ dir: 'up' | 'down'; frame: string }> = [];
+  /** Sockets open to the server right now. */
+  get open(): number { return this.routes.size; }
 
   attach(route: WebSocketRoute): void {
     if (this.refusing) { void route.close({ code: 1011, reason: 'e2e: server down' }); return; }

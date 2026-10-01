@@ -57,6 +57,30 @@ half-typed line would be lost to the reload), and the line lies over the page, n
   version activated by 1.1 s at worst.
 - Spec §2.5 extended.
 
+## Changed the same day: no friends while it downloads, and the line for every download
+Daniel, after the videos: "Lets not show friends during the page-load-download (either dont connect or just dont show
+in list, whatever is easier to implement). I think this will reduce the stutter and layout shift." From nobody →
+download with friends → reload → nobody → friends, to nobody → download → reload → nobody → friends. And: "lets keep
+showing the download bar even when we exceeded the 10 second period to be consistent with always showing the download
+progress", which takes in the line for downloads a later check starts (asked about just before).
+- `client/room.ts`: `hold` option; the first `open()` waits until it is false. The rooms pass `holding`, so while the
+  app checks or downloads at the opening no socket opens: no friends, no Join, no Rejoin, and friends do not see this
+  browser come, go and come back. Not connecting was as easy as hiding the lists and saves that blink too.
+- The rooms now wait for the opening check on every load, not only with a new version: `OPEN_CHECK_MS` 3 s → 1.5 s
+  (Daniel). Usually one small request; master's quiet first connection (2.5 s before the pill) now counts from when
+  the rooms may connect, so a long download never shows "Connecting…".
+- `client/update.ts`: `downloadProgress`, its own signal, apart from `opening` (now `'checking' | 'downloading' |
+  'over'`). Set by the progress reports while a worker installs, whatever found it; cleared at `installed` (the bar asks)
+  or `redundant`; kept full for the opening update until its reload. The line (`App.tsx`) shows it in any tab but a
+  waiting one, so past the 10 s it goes on over the app connected, and a later check's download shows it during a call.
+- Found in the new videos: the first install, on a page nothing served before, set the line and never cleared it (a
+  first install never waits, so nothing reached the clearing). It is no new version: `downloading` ignores an install
+  into an uncontrolled page, and `installed` clears the line unless the opening takes it. Ticket 33's test now also
+  checks that the first install shows no line.
+- Tests: the opening test checks no socket is open while it downloads (`Wire.open`) and no friend shows; the 10 s test
+  that the line goes on past the hold and goes when the bar comes; a new test for a later check's download (the line,
+  the app not frozen, then the bar, no reload). Videos re-recorded, with a sixth: a later check during a call.
+
 ## Verify
 - `pnpm typecheck`, `pnpm test`; `e2e/update.spec.ts` in Chromium and Firefox: before the rebase 3× (36/36), after it
   and the fallback fix 2× (24/24). Before the rebase the full suite in both engines had two failures: this ticket's

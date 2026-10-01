@@ -1,4 +1,4 @@
-import { createSignal, onCleanup } from 'solid-js';
+import { createEffect, createSignal, onCleanup } from 'solid-js';
 import posthog, { onConsentChange, telemetryOn } from './posthog';
 import { buildAuthMessage } from '../core/identity';
 import {
@@ -29,7 +29,7 @@ const BACKOFF_MAX_MS = 30_000;
  * reconnection with exponential backoff (spec §8.1), presence snapshots, and
  * ephemeral text. The call (WebRTC) is layered on top by createCall.
  */
-export function createRoom(opts: { identity: LocalIdentity; roomId: string; authKey: string; name: string; picture: string | null }) {
+export function createRoom(opts: { identity: LocalIdentity; roomId: string; authKey: string; name: string; picture: string | null; hold?: () => boolean }) {
   // The self-declared name and picture: sent at every (re)connect, changeable live through `rename` and `setPicture`.
   let name = opts.name;
   let picture = opts.picture;
@@ -85,6 +85,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           // Nobody has entered this room yet: our answer also hands the server the verifier (ADR 0004). The PostHog
           // opt-in rides along, so the server reports this socket's refused frames only with consent (ticket 32).
           authTelemetry = telemetryOn();
+          // Closed while signing (the page reloading, another tab taking over): nothing to answer.
+          if (socket.readyState !== WebSocket.OPEN) return;
           socket.send(JSON.stringify({ ...auth, ...(m.fresh ? { authKey: opts.authKey } : {}), ...(authTelemetry ? { telemetry: true } : {}) }));
           return;
         }
@@ -168,7 +170,13 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     };
   }
 
-  open();
+  // The first connection waits while `hold` says so: a new version downloading as the app opens (ticket 36) would only
+  // show friends to take them away again with its reload, and they would see this browser come, go and come back.
+  if (!opts.hold) open();
+  else {
+    let begun = false;
+    createEffect(() => opts.hold!(), (held) => { if (!held && !begun) { begun = true; open(); } });
+  }
   // Only once let in: before the welcome, any frame but the auth counts as a failed attempt, and the reply would read as
   // a refusal. A change during the handshake goes out with the welcome instead.
   const offConsent = onConsentChange((on) => { if (you()) send({ t: 'telemetry', on }); });

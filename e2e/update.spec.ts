@@ -47,6 +47,7 @@ test('ticket 33: a new version waits behind a bar that stays until Reload, which
   const bob = await crowd.open('Bob');
   await controlled(alice.page);
   await expect(bar(alice.page), 'the first install is no update').toHaveCount(0);
+  await expect(line(alice.page), 'and shows no download').toHaveCount(0);
   await alice.join();
   await bob.join();
   await alice.connectedTo('Bob');
@@ -130,7 +131,7 @@ test('ticket 33: with the server gone the app still opens, from the service work
   await alice.connected();
 });
 
-test('ticket 36: a new version found as the app opens downloads behind a line, the app frozen, and the page reloads onto it and back into the call', async ({ crowd }) => {
+test('ticket 36: a new version found as the app opens downloads behind a line, the rooms not yet connected, and the page reloads onto it and back into the call', async ({ crowd }) => {
   needPreview();
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
@@ -145,8 +146,11 @@ test('ticket 36: a new version found as the app opens downloads behind a line, t
   await expect(line(alice.page), 'the download shows').toBeVisible();
   await expect(alice.button('Join'), 'no Rejoin while it downloads, and no Join').toBeDisabled();
   await expect(alice.composer).toBeDisabled();
-  await expect.poll(() => alice.inCall(), { message: 'friends show meanwhile' }).toEqual(['Bob']);
+  await expect.poll(() => alice.wire.open, { message: 'the room does not connect while it downloads' }).toBe(0);
+  expect(await alice.inCall(), 'so no friends show, to be taken away again by the reload').toEqual([]);
   await expect(bar(alice.page), 'nothing to click').toHaveCount(0);
+  await expect(line(alice.page)).toBeVisible();
+  expect(alice.wire.open, 'still not connected').toBe(0);
 
   await expect.poll(() => versionsNow(alice.page), { message: 'the page reloaded onto the new version by itself', timeout: 30_000 }).toEqual(['next']);
   await alice.connected();
@@ -174,7 +178,7 @@ test('ticket 36: a version left waiting behind the bar is taken by the next relo
   await expect(line(alice.page)).toHaveCount(0);
 });
 
-test('ticket 36: a download past 10 s unfreezes the app on the version it has, and the bar asks once it is in', async ({ crowd }) => {
+test('ticket 36: a download past 10 s unfreezes the app on the version it has, the line goes on, and the bar asks once it is in', async ({ crowd }) => {
   needPreview();
   const alice = await crowd.open('Alice');
   await controlled(alice.page);
@@ -189,12 +193,31 @@ test('ticket 36: a download past 10 s unfreezes the app on the version it has, a
   await expect(alice.button('Join'), 'unfrozen after 10 s').toBeEnabled({ timeout: 20_000 });
   expect(Date.now() - reloaded, 'not before').toBeGreaterThan(9_000);
   await alice.connected();
-  await expect(line(alice.page)).toHaveCount(0);
+  await expect(line(alice.page), 'the download goes on, and shows').toBeVisible();
 
-  await expect(bar(alice.page), 'the download went on, and the bar asks').toBeVisible({ timeout: 40_000 });
+  await expect(bar(alice.page), 'once it is in, the bar asks').toBeVisible({ timeout: 40_000 });
+  await expect(line(alice.page)).toHaveCount(0);
   expect(count.loads, 'no reload of its own').toBe(1);
   expect(await versions(alice.page)).toEqual(['before', 'next']);
   await reloadFromBar(alice.page);
   await alice.connected();
   expect(await versions(alice.page)).toEqual(['next']);
+});
+
+test('ticket 36: a new version found by a later check shows its download as the line too, the app not frozen, then the bar', async ({ crowd }) => {
+  needPreview();
+  const alice = await crowd.open('Alice');
+  await controlled(alice.page);
+  const count = countLoads(alice.page);
+
+  await stageBigDeploy(alice, 1_500_000);
+  await alice.page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r?.update()));
+  await expect(line(alice.page)).toBeVisible();
+  await expect(alice.composer, 'nothing waits for it').toBeEnabled();
+  await expect(alice.button('Join')).toBeEnabled();
+  await expect(bar(alice.page)).toHaveCount(0);
+
+  await expect(bar(alice.page), 'once it is in, the bar asks').toBeVisible({ timeout: 30_000 });
+  await expect(line(alice.page)).toHaveCount(0);
+  expect(count.loads, 'no reload of its own').toBe(0);
 });

@@ -29,8 +29,8 @@ test('1-desktop-big-update-on-open', async ({ crowd }) => {
   await bob.join();
   const alice = await crowd.open('Alice', { ...DESKTOP, video: out('1-desktop-big-update-on-open') });
   await controlled(alice.page);
-  await stage(alice, { bytesPerSecond: 1_200_000 });
   await pause(alice.page, 1500);
+  await stage(alice, { bytesPerSecond: 1_200_000 });
   // Alice opens dave again: a new version is out, with a big file in it.
   await alice.page.goto('/');
   await newVersion(alice.page);
@@ -43,8 +43,8 @@ test('2-phone-big-update-on-open', async ({ crowd }) => {
   await bob.join();
   const alice = await crowd.open('Alice', { ...PHONE, video: out('2-phone-big-update-on-open') });
   await controlled(alice.page);
-  await stage(alice, { bytesPerSecond: 1_200_000 });
   await pause(alice.page, 1500);
+  await stage(alice, { bytesPerSecond: 1_200_000 });
   await alice.page.goto('/');
   await newVersion(alice.page);
   await alice.connected();
@@ -58,8 +58,8 @@ test('3-desktop-reload-in-call-rejoins', async ({ crowd }) => {
   await bob.join();
   await alice.connectedTo('Bob');
   await controlled(alice.page);
-  await stage(alice, { bytesPerSecond: 1_200_000 });
   await pause(alice.page, 1500);
+  await stage(alice, { bytesPerSecond: 1_200_000 });
   await alice.page.reload();
   await newVersion(alice.page);
   await expect(alice.button('Leave')).toBeVisible();
@@ -72,8 +72,8 @@ test('4-desktop-typical-small-update', async ({ crowd }) => {
   await bob.join();
   const alice = await crowd.open('Alice', { ...DESKTOP, video: out('4-desktop-typical-small-update') });
   await controlled(alice.page);
-  await stage(alice, null);
   await pause(alice.page, 1500);
+  await stage(alice, null);
   await alice.page.goto('/');
   await newVersion(alice.page);
   await alice.connected();
@@ -85,8 +85,8 @@ test('5-desktop-slow-line-gives-up-after-10s', async ({ crowd }) => {
   await bob.join();
   const alice = await crowd.open('Alice', { ...DESKTOP, video: out('5-desktop-slow-line-gives-up-after-10s') });
   await controlled(alice.page);
-  await stage(alice, { bytesPerSecond: 350_000 });
   await pause(alice.page, 1500);
+  await stage(alice, { bytesPerSecond: 350_000 });
   await alice.page.goto('/');
   await expect(alice.page.locator('.update'), 'the bar asks once the download is in').toBeVisible({ timeout: 40_000 });
   await pause(alice.page, 2000);
@@ -94,4 +94,19 @@ test('5-desktop-slow-line-gives-up-after-10s', async ({ crowd }) => {
   await newVersion(alice.page);
   await alice.connected();
   await pause(alice.page, 2000);
+});
+
+test('6-desktop-later-check-in-a-call', async ({ crowd }) => {
+  const bob = await crowd.open('Bob');
+  const alice = await crowd.open('Alice', { ...DESKTOP, video: out('6-desktop-later-check-in-a-call') });
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await controlled(alice.page);
+  await stage(alice, { bytesPerSecond: 1_200_000 });
+  await pause(alice.page, 1500);
+  // The check the app makes every few minutes, asked for now.
+  await alice.page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r?.update()));
+  await expect(alice.page.locator('.update')).toBeVisible({ timeout: 30_000 });
+  await pause(alice.page, 2500);
 });
