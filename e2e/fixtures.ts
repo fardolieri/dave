@@ -104,6 +104,8 @@ export type FriendOptions = {
   plainUserAgent?: boolean;
   /** This browser's answer to the PostHog question (ticket 32); null leaves it unasked, so the notice shows. Default: on. */
   telemetry?: 'on' | 'off' | null;
+  /** Records this friend's pages as video into this folder, at the viewport's size (CSS pixels: the screencast ignores the density). For showing a change, not for asserting. */
+  video?: string;
 };
 
 export class Friend {
@@ -126,7 +128,7 @@ export class Friend {
     const userAgent = probe ? (await probe.evaluate(() => navigator.userAgent)).replace('HeadlessChrome', 'Chrome') : undefined;
     await probe?.close();
     // Contexts made by hand do not inherit the config's `use`, so the target URL is passed on explicitly.
-    this.context = await browser.newContext({ baseURL, viewport: this.options.viewport ?? { width: 1200, height: 800 }, ...(this.options.deviceScaleFactor ? { deviceScaleFactor: this.options.deviceScaleFactor } : {}), ...(userAgent ? { userAgent } : {}) });
+    this.context = await browser.newContext({ baseURL, viewport: this.options.viewport ?? { width: 1200, height: 800 }, ...(this.options.deviceScaleFactor ? { deviceScaleFactor: this.options.deviceScaleFactor } : {}), ...(userAgent ? { userAgent } : {}), ...(this.options.video ? { recordVideo: { dir: this.options.video, size: this.options.viewport ?? { width: 1200, height: 800 } } } : {}) });
     // Nothing goes to PostHog from a test: answer its requests locally so the SDK stays quiet and nothing is recorded.
     // What would have gone is kept, so a test can check that an event was sent.
     await this.context.route(/posthog\.com/, (r) => { this.posthog.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }); });

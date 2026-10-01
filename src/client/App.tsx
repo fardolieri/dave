@@ -23,7 +23,7 @@ import { EmojiPicker } from './EmojiPicker';
 import { place } from './place';
 import { createTabLock } from './tablock';
 import { build, commitUrl, REPO_URL, shortCommit } from './version';
-import { applyUpdate, noteOffered, updateReady } from './update';
+import { applyUpdate, holding, noteOffered, openingUpdate, tabSettled, updateReady } from './update';
 
 export default function App() {
   // An invite link is consumed before anything else renders, so it never stays in the address bar.
@@ -40,6 +40,7 @@ export default function App() {
   loadIdentity().then(setIdentity, (e: unknown) => setIdentityError(e instanceof Error ? e.message : String(e)));
   /** Only the tab holding the lock opens sockets; another tab of this browser shows a notice (ticket 25). */
   const tab = createTabLock();
+  createEffect(() => tab.state().kind, (kind) => { if (kind !== 'checking') tabSettled(kind === 'held'); });
 
   const select = (secret: string) => { setSelectedRoom(secret); setSelected(secret); };
   /** The room from a link joins the list (or takes the link's name if already known) and comes on screen. */
@@ -95,6 +96,7 @@ export default function App() {
   return (
     <>
       <Show when={updateReady() && tab.state().kind === 'held'}><UpdateBar /></Show>
+      <Show when={openingUpdate().kind === 'downloading' && tab.state().kind !== 'waiting'}><UpdateLine /></Show>
       <Switch>
         <Match when={roomsError()}>
           <Notice title="Your rooms could not be loaded">This browser could not read the rooms it saved ({roomsError()}). Blocked site data or an old browser cause this.</Notice>
@@ -145,6 +147,19 @@ function UpdateBar() {
     <div class="update" role="status">
       <span>A new version of dave is ready.</span>
       <button onClick={applyUpdate}>Reload</button>
+    </div>
+  );
+}
+
+/**
+ * The new version found as the app opened, downloading (ticket 36): a thin line over the top edge of the page, so
+ * nothing moves, and nothing to click. The page reloads by itself once it is in.
+ */
+function UpdateLine() {
+  const percent = () => { const o = openingUpdate(); return o.kind === 'downloading' && o.total > 0 ? Math.round((o.done / o.total) * 100) : 0; };
+  return (
+    <div class="update-line" role="progressbar" aria-label="Downloading the new version of dave" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent()}>
+      <div style={{ width: `${Math.max(percent(), 3)}%` }} />
     </div>
   );
 }
@@ -239,7 +254,7 @@ function Workspace(props: WorkspaceProps) {
     let last = untrack(() => props.rooms.find((r) => r.secret === secret)!);
     // A deliberate one-time snapshot of name and picture: the socket is created once; changes go through `rename` and `setPicture`.
     const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, name: untrack(() => props.name), picture: getPicture() });
-    const call = createCall(room, identity, { mayRejoin: untrack(() => props.mayRejoin) });
+    const call = createCall(room, identity, { mayRejoin: untrack(() => props.mayRejoin), holdRejoin: holding });
     posthog.capture('room_entered');
     // The latest saved entry; the last one seen while the room is being forgotten and its link disposed.
     return { get saved() { return (last = props.rooms.find((r) => r.secret === secret) ?? last); }, room, call };
@@ -312,7 +327,8 @@ function Workspace(props: WorkspaceProps) {
   const sharerKeys = createMemo<string[]>(() => sharers().map((p) => p.publicKey), { equals: sameKeys });
   const sharerOf = (key: string): Person => sharers().find((p) => p.publicKey === key) ?? sharers()[0]!;
   const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
-  const connected = () => current()?.room.status().kind === 'connected';
+  // Held for the new version found as the app opened (ticket 36), the composer waits too: a reload is coming.
+  const connected = () => current()?.room.status().kind === 'connected' && !holding();
   // The room is on screen; friends arriving now let the phone's splash fade first. The first connection gets a moment
   // before the pill says so: your own row, dimmed until the room is connected, already tells.
   onSettled(() => { roomShownAt = performance.now(); });
@@ -386,7 +402,7 @@ function Workspace(props: WorkspaceProps) {
               const elsewhere = () => { const a = active(); return a && a !== l ? a : null; };
               const inviteOpen = () => inviteFor() === l.saved.secret;
               return (
-                <section class={`room ${selected() ? 'selected' : ''} ${l.room.status().kind === 'connected' ? '' : 'frozen'}`}>
+                <section class={`room ${selected() ? 'selected' : ''} ${l.room.status().kind === 'connected' && !holding() ? '' : 'frozen'}`}>
                   <div class="room-head">
                     <button class="room-name" onClick={() => props.onSelect(l.saved.secret)} title={selected() ? 'This room is on screen' : `Read ${l.saved.name}`}>
                       <span class="room-title">{l.saved.name}</span>
@@ -404,7 +420,7 @@ function Workspace(props: WorkspaceProps) {
                   <Show when={selected() || inThis()}>
                     <div class="actions">
                       <Show when={!inThis()} fallback={<CallControls call={l.call} panel={panel()} onPanel={setPanel} canShare={canShare} />}>
-                        <button class="join" disabled={l.room.status().kind !== 'connected'} title={elsewhere() ? `Leaves the call in ${elsewhere()!.saved.name}` : undefined} onClick={() => joinCall(l)}>Join</button>
+                        <button class="join" disabled={l.room.status().kind !== 'connected' || holding()} title={holding() ? 'A new version of dave is loading' : elsewhere() ? `Leaves the call in ${elsewhere()!.saved.name}` : undefined} onClick={() => joinCall(l)}>Join</button>
                       </Show>
                       <Show when={l.call.joinError()}>{(e) => <div class="warn">{e()}</div>}</Show>
                       <Show when={l.call.shareError()}>{(e) => <div class="warn">{e()}</div>}</Show>
@@ -1211,7 +1227,7 @@ function Composer(props: { connected: boolean; roomName: string; onSend: (text: 
       <button type="button" class="emoji-open" ref={emojiButton} popovertarget="composer-emoji" disabled={!props.connected} title="Emoji" aria-label="Emoji">🙂</button>
       <EmojiPicker id="composer-emoji" anchor={() => emojiButton} onPick={insert} />
       <input ref={input} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!props.connected} maxlength={MAX_TEXT_LENGTH}
-             placeholder={props.connected ? `Message ${props.roomName}` : "Can't send while disconnected"} />
+             placeholder={props.connected ? `Message ${props.roomName}` : holding() ? 'A new version of dave is loading…' : "Can't send while disconnected"} />
       <button disabled={!props.connected || !draft().trim()}>Send</button>
       {props.children}
     </form>

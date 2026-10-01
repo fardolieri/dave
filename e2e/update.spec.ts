@@ -18,6 +18,26 @@ const deploy = async (friend: Friend, tag: string) => {
   await friend.page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r?.update()));
 };
 const bar = (page: Page) => page.locator('.update');
+/** The opening update's progress line (ticket 36). */
+const line = (page: Page) => page.locator('.update-line');
+/**
+ * A deploy that changed RNNoise (5.7 MB), staged for the next page load: the file goes from the running version's cache,
+ * so the new one has to download it, and every answer of the server trickles at `bytesPerSecond`.
+ */
+const stageBigDeploy = async (friend: Friend, bytesPerSecond: number) => {
+  await friend.page.evaluate(async () => {
+    for (const key of await caches.keys()) {
+      const cache = await caches.open(key);
+      for (const req of await cache.keys()) if (/rnnoise.*\.wasm$/.test(req.url)) await cache.delete(req);
+    }
+  });
+  await cookie(friend, 'e2e-throttle', String(bytesPerSecond));
+  await cookie(friend, 'e2e-deploy', 'next');
+};
+/** Counts the page loads of `page` from now on. */
+const countLoads = (page: Page) => { const n = { loads: 0 }; page.on('load', () => n.loads++); return n; };
+/** `versions`, or null while the page is between two loads. */
+const versionsNow = (page: Page) => versions(page).catch(() => null);
 /** Clicks the bar's Reload and waits for the page it loads. */
 const reloadFromBar = async (page: Page) => { await Promise.all([page.waitForEvent('load'), bar(page).getByRole('button', { name: 'Reload' }).click()]); };
 
@@ -35,13 +55,6 @@ test('ticket 33: a new version waits behind a bar that stays until Reload, which
   await expect(bar(alice.page)).toHaveText(/A new version of dave is ready\.\s*Reload/);
   await expect(bar(alice.page).getByRole('button'), 'nothing to close it with').toHaveCount(1);
   expect(await versions(alice.page), 'the new version installed into a cache of its own, beside the running one').toEqual(['before', 'next']);
-
-  // A reload of her own is not the update: the running version answers it, and the bar is back.
-  await alice.page.reload();
-  await alice.connected();
-  await expect(alice.button('Leave')).toBeVisible();
-  await expect(bar(alice.page)).toBeVisible();
-  expect(await versions(alice.page)).toEqual(['before', 'next']);
 
   await reloadFromBar(alice.page);
   await alice.connected();
@@ -115,4 +128,73 @@ test('ticket 33: with the server gone the app still opens, from the service work
   await alice.context.clearCookies({ name: 'e2e-outage' });
   alice.wire.restore();
   await alice.connected();
+});
+
+test('ticket 36: a new version found as the app opens downloads behind a line, the app frozen, and the page reloads onto it and back into the call', async ({ crowd }) => {
+  needPreview();
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await controlled(alice.page);
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+
+  await stageBigDeploy(alice, 1_500_000);
+  const count = countLoads(alice.page);
+  await alice.page.reload();
+  await expect(line(alice.page), 'the download shows').toBeVisible();
+  await expect(alice.button('Join'), 'no Rejoin while it downloads, and no Join').toBeDisabled();
+  await expect(alice.composer).toBeDisabled();
+  await expect.poll(() => alice.inCall(), { message: 'friends show meanwhile' }).toEqual(['Bob']);
+  await expect(bar(alice.page), 'nothing to click').toHaveCount(0);
+
+  await expect.poll(() => versionsNow(alice.page), { message: 'the page reloaded onto the new version by itself', timeout: 30_000 }).toEqual(['next']);
+  await alice.connected();
+  expect(count.loads, 'her reload, then the one for the update').toBe(2);
+  await expect(line(alice.page)).toHaveCount(0);
+  await expect(bar(alice.page)).toHaveCount(0);
+  await expect(alice.button('Leave'), 'rejoined (ticket 24)').toBeVisible();
+  await alice.connectedTo('Bob');
+  await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
+});
+
+test('ticket 36: a version left waiting behind the bar is taken by the next reload', async ({ crowd }) => {
+  needPreview();
+  const alice = await crowd.open('Alice');
+  await controlled(alice.page);
+  await deploy(alice, 'next');
+  await expect(bar(alice.page)).toBeVisible();
+
+  // Chromium answers the reload from the running version, which takes the waiting one and loads again; Firefox lets the
+  // waiting one take over during the reload, as its last page went away, and gets there in one load. Either way:
+  await alice.page.reload();
+  await expect.poll(() => versionsNow(alice.page), { message: 'the reload ended on the new version' }).toEqual(['next']);
+  await alice.connected();
+  await expect(bar(alice.page)).toHaveCount(0);
+  await expect(line(alice.page)).toHaveCount(0);
+});
+
+test('ticket 36: a download past 10 s unfreezes the app on the version it has, and the bar asks once it is in', async ({ crowd }) => {
+  needPreview();
+  const alice = await crowd.open('Alice');
+  await controlled(alice.page);
+
+  // RNNoise at 350 kB/s takes about 16 s.
+  await stageBigDeploy(alice, 350_000);
+  const count = countLoads(alice.page);
+  const reloaded = Date.now();
+  await alice.page.reload();
+  await expect(line(alice.page)).toBeVisible();
+  await expect(alice.button('Join')).toBeDisabled();
+  await expect(alice.button('Join'), 'unfrozen after 10 s').toBeEnabled({ timeout: 20_000 });
+  expect(Date.now() - reloaded, 'not before').toBeGreaterThan(9_000);
+  await alice.connected();
+  await expect(line(alice.page)).toHaveCount(0);
+
+  await expect(bar(alice.page), 'the download went on, and the bar asks').toBeVisible({ timeout: 40_000 });
+  expect(count.loads, 'no reload of its own').toBe(1);
+  expect(await versions(alice.page)).toEqual(['before', 'next']);
+  await reloadFromBar(alice.page);
+  await alice.connected();
+  expect(await versions(alice.page)).toEqual(['next']);
 });

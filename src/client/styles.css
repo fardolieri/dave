@@ -20,6 +20,9 @@ input { background: var(--panel2); color: var(--fg); border: 1px solid var(--lin
 .update { flex: none; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px 14px; padding: 8px 14px; background: var(--acc); color: #fff; font-weight: 600; text-align: center; }
 .update button { background: #fff; color: #1d2c6b; border: 0; font-weight: 700; padding: 6px 16px; }
 .update button:hover { background: #e6ebff; }
+/* The new version found as the app opened, downloading (ticket 36): over the page's top edge, out of the layout. */
+.update-line { position: fixed; top: 0; left: 0; right: 0; z-index: 900; height: 3px; background: color-mix(in srgb, var(--acc) 25%, transparent); pointer-events: none; }
+.update-line > div { height: 100%; background: var(--acc); transition: width .2s ease-out; }
 
 /* One grid for the whole room: the sidebar spans every row on the left; shares, chat log and composer
    are rows of the right column. The composer being its own grid item is what lets phones pin it. */

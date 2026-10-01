@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
+import type { ServerResponse } from 'node:http';
 import { join, relative, resolve } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 import solid from '@solidjs/vite-plugin';
@@ -26,7 +27,7 @@ function buildInfo(): BuildInfo {
 }
 
 /** The built worker's first line, which the e2e preview server (`e2eServer`) rewrites: `var __PRECACHE__=<json>;`. */
-const precacheLine = (precache: { version: string; urls: string[] }): string => `var __PRECACHE__=${JSON.stringify(precache)};`;
+const precacheLine = (precache: { version: string; urls: string[]; sizes: number[] }): string => `var __PRECACHE__=${JSON.stringify(precache)};`;
 
 /**
  * The service worker (ticket 33): src/client/sw.ts becomes a second entry of the client build, emitted unhashed at the
@@ -65,7 +66,9 @@ function serviceWorker(build: BuildInfo): Plugin {
       const urls = precacheUrls([...contents.keys()]);
       const hash = createHash('sha256');
       for (const file of [...contents.keys()].sort()) if (urls.includes(file === 'index.html' ? '/' : `/${file}`)) hash.update(file).update(contents.get(file)!);
-      sw.code = `${precacheLine({ version: cacheVersion(build.builtAt, hash.digest('hex').slice(0, 16)), urls })}\n${sw.code}`;
+      // Each file's size, for the install's progress (ticket 36).
+      const sizes = urls.map((url) => { const c = contents.get(url === '/' ? 'index.html' : url.slice(1))!; return typeof c === 'string' ? Buffer.byteLength(c) : c.byteLength; });
+      sw.code = `${precacheLine({ version: cacheVersion(build.builtAt, hash.digest('hex').slice(0, 16)), urls, sizes })}\n${sw.code}`;
       // An empty first line in the mappings: every generated line is one further down than the map was made for.
       const map = bundle[`${SW_FILE}.map`];
       if (map?.type === 'asset' && typeof map.source === 'string') {
@@ -87,6 +90,8 @@ function serviceWorker(build: BuildInfo): Plugin {
  * - `e2e-outage=1`: every request's connection is cut before an answer, the server as good as gone. A page that still
  *   loads came from the service worker; a file it missed fails the page, which Playwright's routes cannot promise, as
  *   a fetch from inside the worker passes them by.
+ * - `e2e-throttle=<bytes per second>`: every answer trickles out at that rate, a slow line, so the download of a new
+ *   version takes long enough to watch (ticket 36). Playwright's own throttling does not reach the service worker.
  * Preview only: a deploy never runs this.
  */
 function e2eServer(): Plugin {
@@ -99,17 +104,51 @@ function e2eServer(): Plugin {
       server.middlewares.use((req, res, next) => {
         const cookies = new Map((req.headers.cookie ?? '').split(';').map((c) => c.trim().split('=') as [string, string]));
         if (cookies.get('e2e-outage')) { req.socket.destroy(); return; }
+        const rate = Number(cookies.get('e2e-throttle'));
+        if (rate > 0) throttle(res, rate);
         const tag = cookies.get('e2e-deploy');
         if (!tag || req.url?.split('?')[0] !== `/${SW_FILE}`) { next(); return; }
         const code = readFileSync(swPath, 'utf8');
         const rest = code.slice(code.indexOf('\n'));
-        const precache = JSON.parse(code.slice('var __PRECACHE__='.length, code.indexOf('\n') - 1)) as { version: string; urls: string[] };
+        const precache = JSON.parse(code.slice('var __PRECACHE__='.length, code.indexOf('\n') - 1)) as { version: string; urls: string[]; sizes: number[] };
         res.setHeader('Content-Type', 'text/javascript');
         res.setHeader('Cache-Control', 'no-store');
         res.end(precacheLine({ ...precache, version: laterVersion(precache.version, tag) }) + rest);
       });
     },
   };
+}
+
+/** Sends whatever `res` is given at `bytesPerSecond`, in slices of a tenth of a second's worth. For the e2e server only. */
+function throttle(res: ServerResponse, bytesPerSecond: number): void {
+  const write = res.write.bind(res) as (chunk: Buffer) => boolean;
+  const end = res.end.bind(res) as () => ServerResponse;
+  const step = Math.max(1, Math.round(bytesPerSecond / 10));
+  let queue = Promise.resolve();
+  let started = 0;
+  let sent = 0;
+  const send = (chunk: unknown, encoding: unknown) => {
+    if (chunk == null || typeof chunk === 'function') return;
+    const bytes = typeof chunk === 'string' ? Buffer.from(chunk, typeof encoding === 'string' ? (encoding as BufferEncoding) : 'utf8') : Buffer.from(chunk as Uint8Array);
+    queue = queue.then(async () => {
+      started ||= Date.now();
+      for (let i = 0; i < bytes.length; i += step) {
+        const slice = bytes.subarray(i, i + step);
+        write(slice);
+        sent += slice.length;
+        // Each slice waits for its turn by the clock, so the rate holds whatever size the chunks come in.
+        await new Promise((r) => setTimeout(r, Math.max(0, started + (sent / bytesPerSecond) * 1000 - Date.now())));
+      }
+    });
+  };
+  const callback = (...args: unknown[]) => args.find((a): a is () => void => typeof a === 'function');
+  res.write = ((chunk: unknown, ...rest: unknown[]) => { send(chunk, rest[0]); callback(...rest)?.(); return true; }) as typeof res.write;
+  res.end = ((chunk?: unknown, ...rest: unknown[]) => {
+    send(chunk, rest[0]);
+    const done = callback(chunk, ...rest);
+    queue = queue.then(() => { end(); done?.(); });
+    return res;
+  }) as typeof res.end;
 }
 
 // One dev server for both halves: Vite serves the Solid SPA with HMR and runs the

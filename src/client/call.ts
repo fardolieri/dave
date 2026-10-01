@@ -138,7 +138,7 @@ const SPEAK_HOLD_MS = 300;
  * participant, three fixed transceivers, perfect negotiation with polite = lower key,
  * newcomer initiates, all control over the room socket. Voice and one Share per participant.
  */
-export function createCall(room: ReturnType<typeof createRoom>, identity: LocalIdentity, opts: { mayRejoin: boolean } = { mayRejoin: true }) {
+export function createCall(room: ReturnType<typeof createRoom>, identity: LocalIdentity, opts: { mayRejoin: boolean; holdRejoin?: () => boolean } = { mayRejoin: true }) {
   const myKey = identity.publicKey;
   const [inCall, setInCallSignal] = createSignal(false);
   // Solid 2 stages signal writes to a microtask, so code that runs right after a write still reads the old
@@ -1049,7 +1049,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   createEffect(() => room.status().kind, (kind, prev) => {
     if (kind === 'connected' && prev !== undefined && prev !== 'connected' && joined) void redeclareAfterReconnect();
     if (kind === 'elsewhere' && joined) leave(); // another tab took over; this one is no longer in the call, and the marker goes
-    if (kind === 'connected' && pendingRejoin) { const r = pendingRejoin; pendingRejoin = null; void join(r); }
+  });
+  // A Rejoin waits while the app is held for a new version found as it opened (ticket 36): the reload for it rejoins instead.
+  createEffect(() => room.status().kind === 'connected' && !opts.holdRejoin?.(), (go) => {
+    if (go && pendingRejoin) { const r = pendingRejoin; pendingRejoin = null; void join(r); }
   });
 
   /** Not a Rejoin: the page never reloaded, only the server socket came back. */
