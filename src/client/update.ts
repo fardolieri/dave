@@ -17,15 +17,19 @@ const CHECK_MS = 5 * 60 * 1000;
 const SKIP_WAITING = 'skip-waiting';
 /** What the installing service worker sends about its download; the same string is in sw.ts. */
 const PROGRESS = 'install-progress';
+/** How long the bar's Reload waits for the new worker to take over before reloading anyway (ticket 33). */
+const TAKE_OVER_FALLBACK_MS = 5000;
 /**
- * How long a Reload waits for the new worker to take over before reloading anyway. Chromium holds the activation back
- * while the version before still counts as busy from serving the page load, and checks again only at a navigation:
- * right after a load (the opening update, ticket 36) controllerchange came half the time, and otherwise only with the
- * reload, which a 5 s wait made a frozen page for 5 s. A reload from 500 ms after the load on was always served by the
- * new version (2026-10-01, measured on the preview server). One too early is served by the old one, whose opening check
- * then takes the waiting version again.
+ * The same wait for the opening update (ticket 36). Chromium holds the activation back while the version before still
+ * counts as busy from serving the page load, and checks again only at a navigation: right after a load controllerchange
+ * came half the time, and otherwise only with the reload, which 5 s made a page held for 5 s. A reload from 500 ms after
+ * the load on was always served by the new version (2026-10-01, measured on the preview server). One too early is
+ * served by the old one, whose opening check takes the waiting version once more (`OPEN_TAKES`).
  */
-const TAKE_OVER_FALLBACK_MS = 1000;
+const OPEN_TAKE_OVER_FALLBACK_MS = 1000;
+/** At most this many opening updates taken in a row within `OPEN_FREEZE_MS` of each other; past that the bar asks. */
+const OPEN_TAKES = 2;
+const TAKEN_KEY = 'dave.update-taken';
 /** How long the opening check may take before the app goes on without its answer: the rooms wait for it (Daniel, 2026-10-01). */
 const OPEN_CHECK_MS = 1500;
 /** How long, from the page load, the app may stay frozen for a new version (Daniel, 2026-10-01). */
@@ -81,14 +85,22 @@ export function tabSettled(held: boolean): void {
 function endOpening(): void {
   if (opening() === 'over') return;
   setOpening('over');
-  // Installed meanwhile but not taken (this tab waits behind another): the bar asks, once this tab runs the app.
+  // Installed meanwhile but not taken (this tab waits behind another, or took it too often): its full line goes, and
+  // the bar asks, once this tab runs the app.
+  if (installed) { installed = false; setDownload(null); }
   if (registration?.waiting) setReady(true);
 }
 
 function takeOpeningUpdate(): void {
   if (opening() === 'over' || applying) return;
+  // Each take is a reload; should they keep landing on the old version, stop and let the bar ask instead of looping.
+  const now = Date.now();
+  let recent: number[] = [];
+  try { recent = (JSON.parse(sessionStorage.getItem(TAKEN_KEY) ?? '[]') as number[]).filter((t) => now - t < OPEN_FREEZE_MS); } catch { /* storage blocked */ }
+  if (recent.length >= OPEN_TAKES) { posthog.capture('update_on_open_gave_up'); endOpening(); return; }
+  try { sessionStorage.setItem(TAKEN_KEY, JSON.stringify([...recent, now])); } catch { /* storage blocked */ }
   posthog.capture('update_taken_on_open', { ms: Math.round(performance.now()) });
-  takeOver();
+  takeOver(OPEN_TAKE_OVER_FALLBACK_MS);
 }
 
 /** Registers the service worker and watches for a newer one: at start, every few minutes, and when the page comes back into view. */
@@ -99,6 +111,8 @@ export function watchForUpdates(): void {
   // The first visit has nothing older to be frozen in; every later page load starts on the version it has, and asks.
   if (container.controller) {
     setOpening('checking');
+    // Counted from the page load: registering can wait behind the browser's own check, which may be the slow one.
+    setTimeout(() => { if (opening() === 'checking') endOpening(); }, Math.max(0, OPEN_CHECK_MS - performance.now()));
     setTimeout(() => {
       if (installed || opening() === 'over') return;
       if (opening() === 'downloading') posthog.capture('update_on_open_too_slow');
@@ -136,8 +150,10 @@ export function watchForUpdates(): void {
       if (opening() === 'checking') setOpening('downloading');
       worker.addEventListener('statechange', () => {
         if (worker.state !== 'installed' && worker.state !== 'redundant') return;
-        if (incoming === worker) incoming = null;
+        const current = incoming === worker;
+        if (current) incoming = null;
         if (worker.state === 'installed') { offerWaiting(); if (!installed) setDownload(null); return; }
+        if (!current) return; // replaced by a newer one, which the line now follows
         // The download failed: the line goes, and the next check retries.
         setDownload(null);
         if (!installed) endOpening();
@@ -147,9 +163,7 @@ export function watchForUpdates(): void {
     downloading(reg.installing); // the browser's own check at the page load may have found it already
     reg.addEventListener('updatefound', () => downloading(reg.installing));
     if (opening() === 'checking') {
-      const slow = setTimeout(() => { if (opening() === 'checking') endOpening(); }, OPEN_CHECK_MS);
       void reg.update().catch(() => {}).then(() => {
-        clearTimeout(slow);
         if (opening() === 'checking' && !reg.installing && !reg.waiting) endOpening(); // nothing new
       });
     }
@@ -163,16 +177,16 @@ export function watchForUpdates(): void {
 /** The update bar's Reload. A reload in a call rejoins it (ticket 24). */
 export function applyUpdate(): void {
   posthog.capture('update_applied');
-  takeOver();
+  takeOver(TAKE_OVER_FALLBACK_MS);
 }
 
 /** Lets the waiting version take over and reloads this tab on it. */
-function takeOver(): void {
+function takeOver(fallbackMs: number): void {
   const waiting = registration?.waiting;
   // None waiting: another tab's Reload already made the new version the running one, and this tab only has to load it.
   if (!waiting) { location.reload(); return; }
   applying = true;
   waiting.postMessage(SKIP_WAITING);
   // controllerchange reloads; should it not come soon, the reload still happens, and the new worker takes over at it.
-  setTimeout(() => location.reload(), TAKE_OVER_FALLBACK_MS);
+  setTimeout(() => location.reload(), fallbackMs);
 }

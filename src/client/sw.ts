@@ -46,10 +46,16 @@ sw.addEventListener('install', (e) => {
     const total = urls.reduce((sum, _, i) => (earlier[i] ? sum : sum + sizes[i]!), 0);
     let done = 0;
     let reported = 0;
-    const report = async (last: boolean) => {
-      if (!last && Date.now() - reported < 100) return;
+    // One report after another, so a slow one never lands after a later one and moves the line back.
+    let reports = Promise.resolve();
+    const report = (last: boolean) => {
+      if (!last && Date.now() - reported < 100) return reports;
       reported = Date.now();
-      for (const page of await sw.clients.matchAll({ type: 'window', includeUncontrolled: true })) page.postMessage({ type: PROGRESS, done: Math.min(done, total), total });
+      const at = Math.min(done, total);
+      reports = reports.then(async () => {
+        for (const page of await sw.clients.matchAll({ type: 'window', includeUncontrolled: true })) page.postMessage({ type: PROGRESS, done: at, total });
+      }).catch(() => {});
+      return reports;
     };
     void report(false);
     await Promise.all(urls.map(async (url, i) => {
@@ -58,11 +64,12 @@ sw.addEventListener('install', (e) => {
       // Past the HTTP cache, so the file is this deploy's. One failed file fails the install; the next update check retries.
       const res = await fetch(url, { cache: 'reload' });
       if (!res.ok) throw new Error(`${url}: ${res.status}`);
-      // Counted as it streams in, on a copy, while the original goes into the cache.
+      // Counted as it streams in, on a copy, while the original goes into the cache; a break fails both, and the install.
       const counted = res.clone().body?.getReader();
-      const stored = own.put(url, res);
-      for (let chunk = await counted?.read(); chunk && !chunk.done; chunk = await counted!.read()) { done += chunk.value.byteLength; void report(false); }
-      await stored;
+      const count = async () => {
+        for (let chunk = await counted?.read(); chunk && !chunk.done; chunk = await counted!.read()) { done += chunk.value.byteLength; void report(false); }
+      };
+      await Promise.all([own.put(url, res), count()]);
     }));
     await report(true);
   })());

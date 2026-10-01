@@ -38,9 +38,9 @@ half-typed line would be lost to the reload), and the line lies over the page, n
   events, a `progressbar` role with the percentage; shown while `downloading`, not in a tab that waits. While
   `holding()`: rooms get `frozen` (as while connecting), Join is disabled with the title "A new version of dave is
   loading", the composer is disabled with that as its placeholder.
-- `client/call.ts`: `holdRejoin` option; the Rejoin after a reload waits until the room is connected and nothing holds
-  it. The reload for the update then rejoins: the marker is at most a few seconds plus the 10 s freeze old, inside
-  `REJOIN_WINDOW_MS` (30 s).
+- The Rejoin after a reload (ticket 24) waits for the room to connect, which waits for the opening (below), so the
+  reload for the update rejoins: the marker is at most a few seconds plus the 10 s hold old, inside `REJOIN_WINDOW_MS`
+  (30 s). (A `holdRejoin` option in `call.ts` did this before the rooms waited; dropped in review.)
 - Browser suite: the preview server takes `e2e-throttle=<bytes per second>` (`vite.config.ts`, `throttle`: by the clock,
   so the rate holds whatever size the chunks come in; the first cut slept per chunk and ran at 650 kB/s instead of
   1.5 MB/s). A big deploy is staged by deleting RNNoise from the running version's cache, so the new one downloads it.
@@ -52,9 +52,8 @@ half-typed line would be lost to the reload), and the line lies over the page, n
   got `skip-waiting` at about 80 ms and called `skipWaiting()`, but Chromium held the activation back while the version
   before still counted as busy from the page load, and checked again only at the 5 s fallback reload. Half of the runs.
   Reloading on an answer from the worker at once was too early (served by the old version, a third load); a reload from
-  500 ms on was always served by the new one. `TAKE_OVER_FALLBACK_MS` is now 1 s for both paths, the bar's Reload too
-  (mid-session the old worker is idle, `controllerchange` comes first). Six runs: one `skip-waiting` each, the new
-  version activated by 1.1 s at worst.
+  500 ms on was always served by the new one. `OPEN_TAKE_OVER_FALLBACK_MS` is 1 s for the opening update; the bar's
+  Reload keeps 5 s (review). Six runs: one `skip-waiting` each, the new version activated by 1.1 s at worst.
 - Spec §2.5 extended.
 
 ## Changed the same day: no friends while it downloads, and the line for every download
@@ -81,12 +80,27 @@ progress", which takes in the line for downloads a later check starts (asked abo
   that the line goes on past the hold and goes when the bar comes; a new test for a later check's download (the line,
   the app not frozen, then the bar, no reload). Videos re-recorded, with a sixth: a later check during a call.
 
+## Review (2026-10-01, `/code-review` of both commits, findings checked by hand)
+Fixed: (1) a tab that found a waiting version while the tab lock decided, then waited behind another, kept a full line
+for good once it took over: `endOpening` now clears an opening update not taken. (2) Opening takes are counted in
+sessionStorage (`dave.update-taken`): at most two within 10 s, then the bar asks, so reloads that keep landing on the
+old version cannot loop. (3) The bar's Reload keeps its 5 s fallback; the 1 s is the opening's only. (4) A worker
+replaced by a newer one going `redundant` no longer clears the newer one's line or ends the opening. (5) The 1.5 s
+check limit counts from the page load, not from `register()`, which can wait behind the browser's own check. (6) The
+worker's progress reports go out one after another, and a download that breaks mid-file fails the install without an
+unhandled rejection. (8) `holdRejoin` and the `!holding()` checks on Join, the composer and `frozen` were dead once
+the rooms wait: removed; the title and placeholder still say a new version is loading.
+Not changed: the explicit `reg.update()` beside the browser's own check at the load (no other way to learn that nothing
+is new, and the 1.5 s was agreed), and the demo's copies of the test helpers (a scratch folder, outside the suite).
+
 ## Verify
 - `pnpm typecheck`, `pnpm test`; `e2e/update.spec.ts` in Chromium and Firefox: before the rebase 3× (36/36), after it
   and the fallback fix 2× (24/24). Before the rebase the full suite in both engines had two failures: this ticket's
   one-load Firefox reload (fixed above) and ticket 23's join cue in Firefox, which also fails 1 in 3 alone and is
   known Firefox noise (ticket 33's notes). After the rebase and the fix, the full suite in both engines: 103 passed,
   6 skipped, 1 failed, the same ticket 23 cue in Firefox, which fails 1 in 3 on master too.
+- After the second round and the review fixes: `e2e/update.spec.ts` 3× then 2× in both engines (42/42, 28/28), and the
+  full suite in both engines: 106 passed, 6 skipped, none failed.
 - Videos (`.scratch/p2p-friends-chat-build/demo-36`, `pnpm exec playwright test -c` that folder; the videos stay out of
   git): a big update on desktop and on a phone, a reload in a call that rejoins, a typical small update, and a slow
   line that gives up after 10 s and ends in the bar.

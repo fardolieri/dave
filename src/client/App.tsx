@@ -254,7 +254,7 @@ function Workspace(props: WorkspaceProps) {
     let last = untrack(() => props.rooms.find((r) => r.secret === secret)!);
     // A deliberate one-time snapshot of name and picture: the socket is created once; changes go through `rename` and `setPicture`.
     const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, name: untrack(() => props.name), picture: getPicture(), hold: holding });
-    const call = createCall(room, identity, { mayRejoin: untrack(() => props.mayRejoin), holdRejoin: holding });
+    const call = createCall(room, identity, { mayRejoin: untrack(() => props.mayRejoin) });
     posthog.capture('room_entered');
     // The latest saved entry; the last one seen while the room is being forgotten and its link disposed.
     return { get saved() { return (last = props.rooms.find((r) => r.secret === secret) ?? last); }, room, call };
@@ -327,8 +327,7 @@ function Workspace(props: WorkspaceProps) {
   const sharerKeys = createMemo<string[]>(() => sharers().map((p) => p.publicKey), { equals: sameKeys });
   const sharerOf = (key: string): Person => sharers().find((p) => p.publicKey === key) ?? sharers()[0]!;
   const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
-  // Held for the new version found as the app opened (ticket 36), the composer waits too: a reload is coming.
-  const connected = () => current()?.room.status().kind === 'connected' && !holding();
+  const connected = () => current()?.room.status().kind === 'connected';
   // The room is on screen; friends arriving now let the phone's splash fade first. The first connection gets a moment
   // before the pill says so: your own row, dimmed until the room is connected, already tells.
   onSettled(() => { roomShownAt = performance.now(); });
@@ -404,7 +403,7 @@ function Workspace(props: WorkspaceProps) {
               const elsewhere = () => { const a = active(); return a && a !== l ? a : null; };
               const inviteOpen = () => inviteFor() === l.saved.secret;
               return (
-                <section class={`room ${selected() ? 'selected' : ''} ${l.room.status().kind === 'connected' && !holding() ? '' : 'frozen'}`}>
+                <section class={`room ${selected() ? 'selected' : ''} ${l.room.status().kind === 'connected' ? '' : 'frozen'}`}>
                   <div class="room-head">
                     <button class="room-name" onClick={() => props.onSelect(l.saved.secret)} title={selected() ? 'This room is on screen' : `Read ${l.saved.name}`}>
                       <span class="room-title">{l.saved.name}</span>
@@ -422,7 +421,7 @@ function Workspace(props: WorkspaceProps) {
                   <Show when={selected() || inThis()}>
                     <div class="actions">
                       <Show when={!inThis()} fallback={<CallControls call={l.call} panel={panel()} onPanel={setPanel} canShare={canShare} />}>
-                        <button class="join" disabled={l.room.status().kind !== 'connected' || holding()} title={holding() ? 'A new version of dave is loading' : elsewhere() ? `Leaves the call in ${elsewhere()!.saved.name}` : undefined} onClick={() => joinCall(l)}>Join</button>
+                        <button class="join" disabled={l.room.status().kind !== 'connected'} title={holding() ? 'A new version of dave is loading' : elsewhere() ? `Leaves the call in ${elsewhere()!.saved.name}` : undefined} onClick={() => joinCall(l)}>Join</button>
                       </Show>
                       <Show when={l.call.joinError()}>{(e) => <div class="warn">{e()}</div>}</Show>
                       <Show when={l.call.shareError()}>{(e) => <div class="warn">{e()}</div>}</Show>
