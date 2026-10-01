@@ -24,7 +24,6 @@ import { place } from './place';
 import { createTabLock } from './tablock';
 import { build, commitUrl, REPO_URL, shortCommit } from './version';
 import { applyUpdate, noteOffered, updateReady } from './update';
-import { reveal, waitForReveal } from './boot';
 
 export default function App() {
   // An invite link is consumed before anything else renders, so it never stays in the address bar.
@@ -92,11 +91,6 @@ export default function App() {
     const t = tab.state();
     return list && list.length > 0 && name() && identity() && t.kind === 'held' ? { rooms: list, selected: selected(), created: created(), name: name()!, identity: identity()!, mayRejoin: t.mayRejoin } : null;
   });
-
-  // The logo goes once there is a screen to show (boot.ts): one that asks something of you, or the workspace (below).
-  // Whatever still holds the start up after a while, the page underneath is better than a logo that never goes.
-  createEffect(() => !!roomsError() || (rooms() !== null && (rooms()!.length === 0 || !name() || !!identityError() || tab.state().kind === 'waiting')), (asks) => { if (asks) reveal(); });
-  setTimeout(reveal, REVEAL_AT_LATEST_MS);
 
   return (
     <>
@@ -319,9 +313,9 @@ function Workspace(props: WorkspaceProps) {
   const sharerOf = (key: string): Person => sharers().find((p) => p.publicKey === key) ?? sharers()[0]!;
   const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
   const connected = () => current()?.room.status().kind === 'connected';
-  // The room is on screen: the logo can go (boot.ts). The first connection gets a moment before the pill says so: your
-  // own row, dimmed until the room is connected, already tells.
-  onSettled(reveal);
+  // The room is on screen; friends arriving now let the phone's splash fade first. The first connection gets a moment
+  // before the pill says so: your own row, dimmed until the room is connected, already tells.
+  onSettled(() => { roomShownAt = performance.now(); });
   const [firstConnect, setFirstConnect] = createSignal(true);
   const quietTimer = setTimeout(() => setFirstConnect(false), QUIET_CONNECT_MS);
   onCleanup(() => clearTimeout(quietTimer));
@@ -532,8 +526,9 @@ function Avatar(props: { initial: string; picture?: string; speaking?: boolean; 
 
 /** How long the first connection may take before the room shows the "Connecting…" pill. */
 const QUIET_CONNECT_MS = 2500;
-/** The logo goes by then at the latest (boot.ts), even if nothing has said it may. */
-const REVEAL_AT_LATEST_MS = 8000;
+/** Friends arriving as the room comes on screen wait this long, so they slide in after the phone's splash has faded. */
+const SETTLE_MS = 400;
+let roomShownAt = 0;
 /** Rows arriving together follow each other this far apart; from the fifth on they come with the fourth. */
 const STAGGER_MS = 160;
 const MAX_STAGGER = 3;
@@ -541,7 +536,7 @@ const MAX_STAGGER = 3;
 /**
  * A row arriving in a list slides down into place, pushing the rows below it down, as if from above. Rows arriving
  * together come one after the other from the bottom up, so each lands on top of the one before; none comes before the
- * logo has gone (boot.ts).
+ * room has been on screen a moment.
  */
 let arriving: HTMLElement[] = [];
 function slideIn(el: HTMLElement): void {
@@ -553,7 +548,7 @@ function slideIn(el: HTMLElement): void {
   requestAnimationFrame(() => {
     const rows = arriving.filter((r) => r.isConnected).sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? 1 : -1));
     arriving = [];
-    const wait = waitForReveal();
+    const wait = Math.max(0, roomShownAt + SETTLE_MS - performance.now());
     rows.forEach((row, i) => open(row, wait + Math.min(i, MAX_STAGGER) * STAGGER_MS));
   });
 }
