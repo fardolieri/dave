@@ -1,6 +1,6 @@
 # 37 · Noise removal on the microphone's clock, and a guard that stops it when the voice runs off time
 
-Status: built 2026-10-02 on `build/37-noise-removal-clock`, not shipped
+Status: shipped 2026-10-02 to nightly (6bc823f, nightly e2e green in both engines); prod waits for the USB-C friend
 Asked for 2026-10-02: Daniel: "a different friend is in the chat with me right now and sounds similar weird as last time."
 The receive side was clean every time (no loss, jitter under 10 ms), and a bigger buffer would not have helped. What
 was wrong was how much voice arrived. With noise removal on, three friends sent more voice than real time, and Daniel's
