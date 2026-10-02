@@ -111,7 +111,7 @@ test('texts from more than 18 h before the room came on screen wait behind a but
   await bob.page.reload();
   await bob.connected();
   const older = bob.page.locator('.chat-older');
-  await expect(older).toHaveText('Show 2 older messages');
+  await expect(older).toHaveText('Show older messages');
   await expect.poll(() => bob.chat()).toEqual([{ from: 'Alice', text: 'this morning' }]); // the first line shown has its name
   await alice.say('now');
   await expect.poll(() => bob.chatTexts()).toEqual(['this morning', 'now']);
@@ -122,7 +122,7 @@ test('texts from more than 18 h before the room came on screen wait behind a but
 
   await bob.selectRoom('Other');
   await bob.selectRoom(crowd.room.name);
-  await expect(older).toHaveText('Show 2 older messages');
+  await expect(older).toHaveText('Show older messages');
   expect(await bob.chatTexts()).toEqual(['this morning', 'now']);
 });
 

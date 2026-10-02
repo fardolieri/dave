@@ -88,9 +88,9 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 /* subtle pill over the log's bottom edge while new lines wait below the reader */
 .chat-new { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); font-size: 11px; color: var(--dim); background: rgba(34,38,47,.85); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
 .chat-new:hover { color: var(--fg); }
-/* the texts from more than 18 h before the room came on screen, folded above the first line shown (ticket 38) */
-.chat-older { align-self: center; flex: none; font-size: 11px; color: var(--dim); background: none; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
-.chat-older:hover { color: var(--fg); }
+/* the texts from more than 18 h before the room came on screen, folded above the first line shown: barely there, plain dim text (ticket 38) */
+.chat-older { align-self: center; flex: none; font-size: 11px; color: var(--dim); opacity: .6; background: none; border: 0; padding: 2px 6px; }
+.chat-older:hover, .chat-older:focus-visible { opacity: 1; }
 .msg-from { font-weight: 600; } .msg-at { color: var(--dim); font-size: 11px; margin-left: 6px; }
 .msg-text { white-space: pre-wrap; word-break: break-word; }
 .msg-cont { margin-top: -8px; } /* a follow-on line from the same writer sits under their name: 2px apart instead of the log's 10px */

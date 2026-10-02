@@ -1283,7 +1283,7 @@ function ChatLog(props: { lines: ChatLine[]; openedAt: number; jumpToken: number
       <div class="chat-log" ref={log} onScroll={onScroll}>
         <Show when={folded() > 0}>
           <button class="chat-older" onClick={() => setUnfoldedFor(props.openedAt)} title="Messages from more than 18 hours before you opened this room">
-            Show {folded()} older {folded() === 1 ? 'message' : 'messages'}
+            Show older messages
           </button>
         </Show>
         <For each={lines()}>
