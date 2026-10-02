@@ -771,7 +771,12 @@ function AudioPanel(props: { call: Call }) {
         </div>
       </Show>
       <Show when={a().noiseRemoval && props.call.noiseRemoval() === 'unavailable'}>
-        <div class="hint">Noise removal cannot run in this browser, so the browser's own noise suppression is used.</div>
+        <div class="hint">
+          <Switch fallback="Noise removal cannot run in this browser, so the browser's own noise suppression is used.">
+            <Match when={props.call.noiseRemovalStop() === 'drift'}>Noise removal stopped: with it your voice went out too fast or too slow on this device, which friends hear as a weird voice. The browser's own noise suppression is used instead.</Match>
+            <Match when={props.call.noiseRemovalStop() === 'overload'}>Noise removal stopped: this device could not keep up with it, which friends hear as a choppy voice. The browser's own noise suppression is used instead.</Match>
+          </Switch>
+        </div>
       </Show>
       <label class="check"><input type="checkbox" checked={a().echoCancellation} onChange={(e) => set({ echoCancellation: e.currentTarget.checked })} /> Echo cancellation</label>
       <label class="check" title={removing() ? 'Noise removal takes its place while it is on.' : undefined}>

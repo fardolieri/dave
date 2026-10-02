@@ -23,10 +23,13 @@ import type { createRoom } from './room';
 import { tryUnlockSound } from './sound';
 import { local } from './storage';
 import { canRemoveNoise, createVoiceProcessor, type VoiceLevel, type VoiceProcessor } from './voice';
+import { createVoiceGuard, sendRatePct, type ClockSample, type GuardFault } from '../core/voiceclock';
 
 export type ConnState = 'connecting' | 'direct' | 'relayed' | 'reconnecting' | 'unreachable';
 /** Noise removal as the Audio panel shows it (ticket 26): `starting` until the processed voice is what peers get. */
 export type NoiseRemovalState = 'off' | 'starting' | 'on' | 'unavailable';
+/** Why noise removal gave up mid-call (ticket 37): the voice it sent ran off real time, or the device could not keep up. */
+export type NoiseRemovalStop = GuardFault['reason'];
 
 /** My own share as the sharer sees it: total upload, the distinct encoded formats, how many watch. */
 export type OutgoingShare = { kbps: number; formats: VideoFormat[]; viewers: number };
@@ -129,6 +132,9 @@ type Peer = {
   candidateTimer?: ReturnType<typeof setTimeout>;
 };
 const CANDIDATE_BATCH_MS = 60;
+
+/** How often `voice_send` reports how the voice I send keeps time (ticket 37). */
+const VOICE_SEND_EVERY_MS = 30_000;
 
 const SPEAK_THRESHOLD = 0.02;
 const SPEAK_HOLD_MS = 300;
@@ -261,6 +267,9 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   let removalUnavailable = false;
   let lastLevel: VoiceLevel = { voice: 0, open: false };
   const [noiseRemoval, setNoiseRemoval] = createSignal<NoiseRemovalState>('off');
+  const [noiseRemovalStop, setNoiseRemovalStop] = createSignal<NoiseRemovalStop | null>(null);
+  /** The worker's last processing load, percent of real time (frames path only). */
+  let voiceLoad: number | null = null;
   const [voiceLevel, setVoiceLevel] = createSignal<VoiceLevel>(lastLevel);
   const onVoiceLevel = (l: VoiceLevel) => { lastLevel = l; setVoiceLevel(l); };
 
@@ -285,7 +294,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     let v: VoiceProcessor | null = null;
     const onRunning = () => { if (v && voice === v) { sendVoice(); showRemoval(); } };
     try {
-      v = await createVoiceProcessor(localStream, a.voiceThreshold, { level: onVoiceLevel, running: onRunning });
+      v = await createVoiceProcessor(localStream, a.voiceThreshold, { level: onVoiceLevel, running: onRunning, load: (pct) => { voiceLoad = pct; } });
       if (generation !== voiceGeneration) { v.close(); return; }
       voice = v;
       v.track.enabled = !muted();
@@ -305,20 +314,68 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     voice = null;
     sendVoice(); // back to the microphone before the processed track goes away
     v?.close();
+    voiceLoad = null;
+    guard.reset();
     onVoiceLevel({ voice: 0, open: false });
   }
   function stopNoiseRemoval(): void {
     dropVoice();
     setNoiseRemoval('off');
   }
-  function removalFailed(reason: string): void {
+  function removalFailed(reason: string, props: Record<string, unknown> = {}): void {
     dropVoice();
     removalUnavailable = true;
     setNoiseRemoval('unavailable');
-    posthog.capture('noise_removal_unavailable', { reason });
+    posthog.capture('noise_removal_unavailable', { reason, ...props });
     // It was off for RNNoise: the browser's own noise suppression takes over again.
     void voiceTrack?.applyConstraints(microphoneConstraints()).catch((e) => console.warn('applyConstraints audio', e));
   }
+  // ---- the sent voice against the clock (ticket 37)
+  /** Audio the track has handed on so far, ms, where the browser counts it (Chromium's MediaStreamTrack stats). */
+  const deliveredMs = (t: MediaStreamTrack | null): number | null => {
+    const v = (t as (MediaStreamTrack & { stats?: { deliveredFramesDuration?: number } }) | null)?.stats?.deliveredFramesDuration;
+    return typeof v === 'number' ? v : null;
+  };
+  const guard = createVoiceGuard();
+  /** The e2e suite's stand-in for a device whose voice runs off real time: scales what the guard reads (hook only). */
+  let clockSkew = 1;
+  /** The start of the current `voice_send` window, and the track it measures. */
+  let sendMark: (ClockSample & { track: MediaStreamTrack }) | null = null;
+  let sendLoads: number[] = [];
+  /**
+   * Once a second while in a call with a friend: the processed voice goes to the guard, which stops noise removal when
+   * it runs off real time or the device cannot keep up; every 30 s `voice_send` says how the voice I send keeps time.
+   */
+  function clockTick(): void {
+    const track = sentVoice;
+    const audioMs = deliveredMs(track);
+    // Muted, a track delivers nothing: neither the guard nor `voice_send` measures that time.
+    if (!joined || !track || audioMs === null || peers.size === 0 || untrack(muted)) { guard.reset(); sendMark = null; return; }
+    const now: ClockSample = { at: Date.now(), audioMs: audioMs * clockSkew, loadPct: voiceLoad };
+    const processed = !!voice && track === voice.track;
+    if (processed) {
+      const fault = guard.feed(now);
+      if (fault) {
+        removalFailed(fault.reason, { path: voice!.path, rate_pct: fault.ratePct, load_pct: fault.loadPct, mic_rate: voiceTrack?.getSettings().sampleRate ?? null });
+        setNoiseRemovalStop(fault.reason);
+        return;
+      }
+      if (voiceLoad !== null) sendLoads.push(voiceLoad);
+    } else guard.reset();
+    if (!sendMark || sendMark.track !== track) { sendMark = { ...now, track }; sendLoads = []; return; }
+    if (now.at - sendMark.at < VOICE_SEND_EVERY_MS) return;
+    posthog.capture('voice_send', {
+      rate_pct: sendRatePct(sendMark, now), seconds: Math.round((now.at - sendMark.at) / 1000),
+      noise_removal: untrack(noiseRemoval), path: processed ? voice!.path : null,
+      load_pct: sendLoads.length ? Math.round(sendLoads.reduce((a, b) => a + b, 0) / sendLoads.length) : null,
+      load_max_pct: sendLoads.length ? Math.max(...sendLoads) : null,
+      mic_rate: voiceTrack?.getSettings().sampleRate ?? null, peers: peers.size,
+    });
+    sendMark = { ...now, track };
+    sendLoads = [];
+  }
+  const clockTimer = setInterval(clockTick, 1000);
+
   async function refreshDevices(): Promise<void> {
     try {
       // Chrome lists pseudo-devices "default" (and "communications" on Windows) that mirror a real entry;
@@ -402,6 +459,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       storeAudioSettings(next);
       if (next.noiseRemoval !== prev.noiseRemoval) {
         removalUnavailable = false; // switching it on again tries again
+        setNoiseRemovalStop(null);
         if (next.noiseRemoval) void startNoiseRemoval(next); else stopNoiseRemoval();
       }
       if (next.voiceThreshold !== prev.voiceThreshold) voice?.setThreshold(next.voiceThreshold);
@@ -891,7 +949,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     return {
       inCall: joined, muted: untrack(muted), joinSeq: myJoinSeq,
       sharing: shareVideo ? { ...shareVideo.getSettings(), readyState: shareVideo.readyState, contentHint: shareVideo.contentHint } : null,
-      outgoing: untrack(outgoing), shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl, noiseRemoval: untrack(noiseRemoval), voiceThreshold }, lowBandwidthVoice: lowVoiceOn, voiceRepair,
+      outgoing: untrack(outgoing), shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl, noiseRemoval: untrack(noiseRemoval), voiceThreshold, path: voice?.path ?? null, stop: untrack(noiseRemovalStop), loadPct: voiceLoad, micRate: voiceTrack?.getSettings().sampleRate ?? null }, lowBandwidthVoice: lowVoiceOn, voiceRepair,
       ice: { servers: iceServers.length, turn: hasTurn(), ageMinutes: iceIssuedAt ? Math.round((Date.now() - iceIssuedAt) / 60000) : null },
       peers: await Promise.all([...peers.values()].map(peerDiag)),
     };
@@ -1264,6 +1322,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     window.removeEventListener('pagehide', onPageHide);
     clearInterval(statsTimer);
     clearInterval(voiceTimer);
+    clearInterval(clockTimer);
     clearInterval(speakingTimer);
     leave();
     audioCtx?.close();
@@ -1283,7 +1342,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         senders: [...peers.values()].map((p) => { const params = p.tx[SLOT_INDEX.shareVideo]?.sender.getParameters(); const e = params?.encodings?.[0]; return { name: p.name, active: e?.active, maxBitrate: e?.maxBitrate, maxFramerate: e?.maxFramerate, scale: e?.scaleResolutionDownBy, degradation: (params as { degradationPreference?: string } | undefined)?.degradationPreference }; }),
       })),
       audio: () => untrack(() => ({
-        settings: audioSettings(), track: voiceTrack?.getSettings() ?? null, noiseRemoval: noiseRemoval(),
+        settings: audioSettings(), track: voiceTrack?.getSettings() ?? null, noiseRemoval: noiseRemoval(), path: voice?.path ?? null, stop: noiseRemovalStop(), load: voiceLoad, deliveredMs: deliveredMs(sentVoice),
         sending: !sentVoice ? null : sentVoice === voice?.track ? 'processed' : 'microphone', level: lastLevel,
       })),
       playback: () => untrack(() => ({ context: audioCtx?.state ?? null, blocked: audioBlocked(), paused: [...peers.values()].map((p) => ({ name: p.name, voice: p.audio.paused, keepAlive: p.keepAlive.paused })) })),
@@ -1306,6 +1365,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         graceEnded(peer);
         return peers.has(peer.key) ? 'kept' : 'closed';
       },
+      /** Makes the sent voice read `factor` of real time from now on, as a USB-C headset did (ticket 37). */
+      skewVoiceClock: (factor: number) => { clockSkew = factor; },
       diagnostics,
       state: () => ({ inCall: joined, joining, joinError: untrack(joinError), myJoinSeq, role: untrack(me)?.role ?? null, participants: untrack(room.people).filter((p) => p.role === 'participant').map((p) => `${p.name}#${p.joinSeq}`) }),
     };
@@ -1314,7 +1375,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   return {
     inCall, muted, views, speakingSelf, joinError, join: () => join(), leave, setMuted, myJoinSeq: () => myJoinSeq, audioBlocked, unblockAudio,
-    noiseRemoval, voiceLevel,
+    noiseRemoval, noiseRemovalStop, voiceLevel,
     sharing, shareError, outgoing, startShare, stopShare, watch, watchOnly, shareStreamOf,
     shareSettings, changeShare, audioSettings, changeAudio, viewerSettings, setViewerSettings, devices, refreshDevices, canPickSpeaker,
     setVolume, canPickSpeakerDialog, pickSpeaker,

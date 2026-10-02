@@ -57,6 +57,51 @@ test('noise removal runs on the outgoing voice, the gate follows its slider, and
   await bob.hearing('Alice');
 });
 
+test('noise removal keeps time with the microphone, and stops itself when the voice it sends runs off the clock', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  type Audio = { noiseRemoval: string; sending: string | null; path: string | null; stop: string | null; deliveredMs: number | null };
+  const audio = () => alice.hook<Audio>('audio');
+  const context = await alice.hook<{ context: string | null }>('playback').then((p) => p.context);
+  const frames = await alice.page.evaluate(() => typeof (window as unknown as { MediaStreamTrackProcessor?: unknown }).MediaStreamTrackProcessor === 'function');
+  test.skip(!frames && context !== 'running', `no microphone frames and no running AudioContext here (${context}): noise removal waits`);
+  await expect.poll(async () => (await audio()).noiseRemoval, { message: 'RNNoise runs' }).toBe('on');
+  // Chromium hands out the microphone's own frames; Firefox keeps the worklet in its own AudioContext.
+  expect((await audio()).path).toBe(frames ? 'frames' : 'context');
+  expect((await audio()).sending).toBe('processed');
+  await bob.hearing('Alice');
+
+  const first = await audio();
+  test.skip(first.deliveredMs === null, 'this browser does not count the audio a track delivers, so nothing watches the clock');
+  const t0 = Date.now();
+  await alice.page.waitForTimeout(5000);
+  const second = await audio();
+  const rate = (second.deliveredMs! - first.deliveredMs!) / (Date.now() - t0);
+  expect(rate, 'the processed voice goes out in real time').toBeGreaterThan(0.95);
+  expect(rate).toBeLessThan(1.05);
+  expect(second.noiseRemoval).toBe('on');
+
+  // A device whose voice runs 5 percent fast: the guard gives up on noise removal and the microphone goes out as it is.
+  await alice.page.evaluate(() => (window as unknown as { __dave: { skewVoiceClock(f: number): void } }).__dave.skewVoiceClock(1.05));
+  await expect.poll(async () => (await audio()).noiseRemoval, { timeout: 30_000, message: 'noise removal stops' }).toBe('unavailable');
+  expect(await audio()).toMatchObject({ sending: 'microphone', stop: 'drift' });
+  await alice.selectedRoom.getByTitle('Audio settings').click();
+  await expect(alice.page.locator('.panel')).toContainText('Noise removal stopped: with it your voice went out too fast or too slow');
+  await bob.hearing('Alice');
+
+  // Switching it off and on tries again.
+  await alice.page.evaluate(() => (window as unknown as { __dave: { skewVoiceClock(f: number): void } }).__dave.skewVoiceClock(1));
+  const toggle = alice.page.locator('.panel').getByLabel('Noise removal');
+  await toggle.uncheck();
+  await toggle.check();
+  await expect.poll(async () => (await audio()).noiseRemoval).toBe('on');
+  expect((await audio()).stop).toBeNull();
+});
+
 test('low bandwidth voice caps the voice both ways from one side, and the delay to each friend shows beside the name', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');

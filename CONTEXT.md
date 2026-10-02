@@ -93,7 +93,7 @@ An identity this browser has seen and clicked once. Until then it wears a "new" 
 _Avoid_: Trusted, verified, known (in UI copy; fine in code)
 
 **Noise removal**:
-RNNoise running on your outgoing voice in your own browser: it takes keyboard clicks, fans and other noise out before anything is sent, and feeds the voice gate. On by default; the browser's own noise suppression steps aside while it runs.
+RNNoise running on your outgoing voice in your own browser: it takes keyboard clicks, fans and other noise out before anything is sent, and feeds the voice gate. On by default; the browser's own noise suppression steps aside while it runs. It runs on the microphone's own frames where the browser allows it, and stops by itself if the voice it sends runs off real time or the device cannot keep up.
 _Avoid_: Noise suppression (the browser's built-in filter, a different thing), noise cancellation, denoiser (in UI copy)
 
 **Voice gate**:

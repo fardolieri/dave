@@ -2,14 +2,23 @@ import { VOICE_PROCESSOR } from '../core/voicegate';
 import wasmUrl from './rnnoise/rnnoise-little.wasm?url';
 import workletUrl from './voice.worklet.ts?worker&url';
 import type { VoiceMessage, VoiceOptions } from './voice.worklet';
+import VoiceWorker from './voice.worker.ts?worker';
+import type { WorkerIn, WorkerOut } from './voice.worker';
 
 /**
- * Noise removal on the outgoing voice (ticket 26): microphone -> RNNoise and the voice gate in an AudioWorklet -> a
- * track to send instead of the microphone's. It runs in an AudioContext of its own at 48 kHz, RNNoise's only rate, so
- * the context that plays everyone else keeps the browser's default rate, and a browser that cannot open this one
- * (Firefox before 148 refuses a microphone at another rate) loses noise removal and nothing else.
+ * Noise removal on the outgoing voice (ticket 26): microphone -> RNNoise and the voice gate -> a track to send instead
+ * of the microphone's. Two paths (ticket 37):
+ * - `frames`, where the browser hands out the microphone's own frames (Chromium: MediaStreamTrackProcessor and
+ *   MediaStreamTrackGenerator): a worker takes each frame and passes it on processed, so the microphone sets the pace.
+ * - `context` elsewhere: an AudioWorklet in an AudioContext of its own at 48 kHz, RNNoise's only rate, so the context
+ *   that plays everyone else keeps the browser's default rate, and a browser that cannot open this one (Firefox before
+ *   148 refuses a microphone at another rate) loses noise removal and nothing else. That context keeps time by the
+ *   output device, not the microphone; where the two disagree (a USB-C headset on a phone) the voice it sends runs
+ *   off real time, which the guard in call.ts catches.
  */
+export type VoicePath = 'frames' | 'context';
 export type VoiceProcessor = {
+  path: VoicePath;
   /** The denoised, gated voice. Silent while the context is not running, so send it only when `running()`. */
   track: MediaStreamTrack;
   /** Settles when RNNoise runs; rejects when it cannot. */
@@ -36,7 +45,54 @@ const loadWasm = (): Promise<ArrayBuffer> => {
   return wasm;
 };
 
-export async function createVoiceProcessor(stream: MediaStream, threshold: number, on: { level(l: VoiceLevel): void; running(): void }): Promise<VoiceProcessor> {
+type Callbacks = { level(l: VoiceLevel): void; running(): void; load(pct: number): void };
+
+// Chromium's breakout box; not in TypeScript's DOM library yet.
+declare const MediaStreamTrackProcessor: { new (init: { track: MediaStreamTrack }): { readable: ReadableStream<AudioData> } } | undefined;
+declare const MediaStreamTrackGenerator: { new (init: { kind: 'audio' }): MediaStreamTrack & { writable: WritableStream<AudioData> } } | undefined;
+const hasFrames = (): boolean =>
+  typeof MediaStreamTrackProcessor === 'function' && typeof MediaStreamTrackGenerator === 'function' && typeof AudioData === 'function' && typeof Worker === 'function';
+
+export async function createVoiceProcessor(stream: MediaStream, threshold: number, on: Callbacks): Promise<VoiceProcessor> {
+  return hasFrames() ? framesProcessor(stream, threshold, on) : contextProcessor(stream, threshold, on);
+}
+
+async function framesProcessor(stream: MediaStream, threshold: number, on: Callbacks): Promise<VoiceProcessor> {
+  const bytes = await loadWasm();
+  const worker = new VoiceWorker();
+  const send = (m: WorkerIn, transfer: Transferable[] = []) => worker.postMessage(m, transfer);
+  const readableOf = (s: MediaStream) => new MediaStreamTrackProcessor!({ track: s.getAudioTracks()[0]! }).readable;
+  const gen = new MediaStreamTrackGenerator!({ kind: 'audio' });
+  const ready = new Promise<void>((resolve, reject) => {
+    worker.onmessage = (e: MessageEvent<WorkerOut>) => {
+      const m = e.data;
+      if (m.t === 'level') on.level(m);
+      else if (m.t === 'load') on.load(m.pct);
+      else if (m.t === 'ready') resolve();
+      else reject(new Error(m.message));
+    };
+    worker.onerror = (e) => reject(new Error(e.message || 'voice worker failed'));
+  });
+  ready.catch(() => {}); // awaited by the caller; this only keeps an early failure from being reported as unhandled
+  const readable = readableOf(stream);
+  send({ t: 'start', wasm: bytes, threshold, readable, writable: gen.writable }, [readable, gen.writable]);
+  return {
+    path: 'frames',
+    track: gen,
+    ready,
+    running: () => true,
+    resume: () => {},
+    setInput(next) { const r = readableOf(next); send({ t: 'input', readable: r }, [r]); },
+    setThreshold: (t) => send({ t: 'threshold', threshold: t }),
+    close() {
+      worker.onmessage = null;
+      worker.terminate();
+      gen.stop();
+    },
+  };
+}
+
+async function contextProcessor(stream: MediaStream, threshold: number, on: Callbacks): Promise<VoiceProcessor> {
   const ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
   try {
     // Inside the join click, or on a Rejoin with the microphone already live, which lets a context start without a gesture.
@@ -60,6 +116,7 @@ export async function createVoiceProcessor(stream: MediaStream, threshold: numbe
     });
     ready.catch(() => {}); // awaited by the caller; this only keeps an early failure from being reported as unhandled
     return {
+      path: 'context',
       track: dest.stream.getAudioTracks()[0]!,
       ready,
       running: () => ctx.state === 'running',
