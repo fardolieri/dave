@@ -45,7 +45,9 @@ const loadWasm = (): Promise<ArrayBuffer> => {
   return wasm;
 };
 
-type Callbacks = { level(l: VoiceLevel): void; running(): void; load(pct: number): void };
+/** How the worker keeps up, once a second of audio (`frames` path only). */
+export type VoiceLoad = { pct: number; droppedMs: number };
+type Callbacks = { level(l: VoiceLevel): void; running(): void; load(l: VoiceLoad): void };
 
 // Chromium's breakout box; not in TypeScript's DOM library yet.
 declare const MediaStreamTrackProcessor: { new (init: { track: MediaStreamTrack }): { readable: ReadableStream<AudioData> } } | undefined;
@@ -67,7 +69,7 @@ async function framesProcessor(stream: MediaStream, threshold: number, on: Callb
     worker.onmessage = (e: MessageEvent<WorkerOut>) => {
       const m = e.data;
       if (m.t === 'level') on.level(m);
-      else if (m.t === 'load') on.load(m.pct);
+      else if (m.t === 'load') on.load(m);
       else if (m.t === 'ready') resolve();
       else reject(new Error(m.message));
     };

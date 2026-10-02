@@ -3,7 +3,7 @@
  * the output device, not by the microphone; with a USB-C headset on a phone, and with WebAssembly interpreted (Vanadium
  * without JIT), friends received 3 to 20 percent more voice than real time and played it sped up behind a 2 s buffer.
  * Runtime-neutral: the resampler that lets the microphone's own frames feed RNNoise at 48 kHz, and the guard that stops
- * noise removal when the voice it sends runs off the clock or the processing cannot keep up.
+ * noise removal when the voice it sends runs off the clock (worklet path) or the processing cannot keep up (worker path).
  */
 
 /**
@@ -32,9 +32,14 @@ export function createResampler(fromRate: number, toRate: number): (input: Float
   };
 }
 
-/** One reading of the sent voice: wall clock and audio the track has delivered, ms; and the processing load, percent. */
-export type ClockSample = { at: number; audioMs: number; loadPct?: number | null };
-export type GuardFault = { reason: 'drift' | 'overload'; ratePct: number; loadPct: number | null };
+/**
+ * One reading of the sent voice, about once a second: wall clock and audio the track has delivered, ms. The `frames`
+ * path adds what its worker saw over the last second of audio: processing load, percent of real time, and audio the
+ * microphone handed out that never reached the worker, ms. A worker that falls behind does not lag: the browser keeps
+ * about 100 ms of frames for it and drops the rest (measured in Chromium, ticket 37 follow-up), so drops are the sign.
+ */
+export type ClockSample = { at: number; audioMs: number; loadPct?: number | null; droppedMs?: number | null };
+export type GuardFault = { reason: 'drift' | 'overload'; ratePct: number; loadPct: number | null; droppedMs: number | null };
 
 /** Judged over this much wall time: long enough that the 10 ms steps of the counter and a stall or two average out. */
 export const DRIFT_WINDOW_MS = 10_000;
@@ -42,18 +47,24 @@ export const DRIFT_WINDOW_MS = 10_000;
 export const DRIFT_LIMIT_PCT = 2;
 /** Readings in a row past the limit: one stall right at the edge of the window does not count. */
 export const DRIFT_SAMPLES = 3;
-/** Processing time over audio time, sustained over OVERLOAD_SAMPLES readings (one a second). */
-export const OVERLOAD_PCT = 80;
-export const OVERLOAD_SAMPLES = 5;
+/**
+ * The `frames` path cannot drift (the microphone sets the pace) and a high load alone says nothing (a phone near 80
+ * percent still keeps up, ticket 37 follow-up). It fails when friends would hear it: this much audio a second lost on
+ * the way in, for OVERLOAD_SAMPLES readings in a row.
+ */
+export const DROP_LIMIT_MS = 100;
+export const OVERLOAD_SAMPLES = 3;
 /** The first readings after a start are ignored: the pipeline fills its buffers then. */
 export const GUARD_WARMUP_MS = 3_000;
 
 /**
  * Fed a reading about once a second while the processed voice goes to at least one friend. Returns a fault the first
- * time the voice runs off the clock or the load stays too high, null otherwise. A reading in which no audio advanced
- * (no friend took it, a track swapped) starts the measurement over.
+ * time the voice goes wrong in a way friends hear, null otherwise:
+ * - `context` path (the AudioContext keeps its own time): `drift`, the voice runs off real time. A reading in which no
+ *   audio advanced (no friend took it, a track swapped) starts the measurement over.
+ * - `frames` path: `overload`, the worker cannot keep up and the browser drops the microphone's frames.
  */
-export function createVoiceGuard() {
+export function createVoiceGuard(path: 'frames' | 'context') {
   let samples: ClockSample[] = [];
   let startedAt: number | null = null;
   let heavy = 0;
@@ -66,17 +77,19 @@ export function createVoiceGuard() {
       const prev = samples.at(-1);
       if (prev && s.audioMs <= prev.audioMs) { samples = []; off = 0; }
       samples.push(s);
-      heavy = typeof s.loadPct === 'number' && s.loadPct >= OVERLOAD_PCT ? heavy + 1 : 0;
       // The oldest reading kept is the newest one at least a window back.
       while (samples.length > 2 && s.at - samples[1]!.at >= DRIFT_WINDOW_MS) samples.shift();
       const first = samples[0]!;
       const rate = s.at > first.at ? (s.audioMs - first.audioMs) / (s.at - first.at) : 1;
-      const ratePct = Math.round(rate * 1000) / 10;
-      const loadPct = s.loadPct ?? null;
-      if (heavy >= OVERLOAD_SAMPLES) return { reason: 'overload', ratePct, loadPct };
-      off = s.at - first.at >= DRIFT_WINDOW_MS && Math.abs(ratePct - 100) > DRIFT_LIMIT_PCT ? off + 1 : 0;
-      if (off >= DRIFT_SAMPLES) return { reason: 'drift', ratePct, loadPct };
-      return null;
+      const fault = (reason: GuardFault['reason']): GuardFault => ({
+        reason, ratePct: Math.round(rate * 1000) / 10, loadPct: s.loadPct ?? null, droppedMs: s.droppedMs ?? null,
+      });
+      if (path === 'frames') {
+        heavy = (s.droppedMs ?? 0) >= DROP_LIMIT_MS ? heavy + 1 : 0;
+        return heavy >= OVERLOAD_SAMPLES ? fault('overload') : null;
+      }
+      off = s.at - first.at >= DRIFT_WINDOW_MS && Math.abs(rate * 100 - 100) > DRIFT_LIMIT_PCT ? off + 1 : 0;
+      return off >= DRIFT_SAMPLES ? fault('drift') : null;
     },
   };
 }

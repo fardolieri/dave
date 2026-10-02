@@ -69,3 +69,33 @@ RNNoise there stalled and burst. Even with JIT on, the USB-C headset still drift
 - 7bsj5u's phone sends only page-load events (`$pageview`, `$identify` or `room_entered`), then nothing: no
   `call_joined`, no `voice_quality`, now no `voice_send` either, though he opted in. Not visible from PostHog; it needs
   his console (`chrome://inspect` over USB).
+
+## Follow-up 2026-10-02: the guard stopped noise removal on a voice that was fine
+Daniel: "my friend sounds better now. but i think our self-check might be too aggressive. it keeps turning off the noise
+removal even it doesnt sound too bad." Report 19:09 ("my friends noise removal keeps disabling itself"). His friend's
+app sent no events (the open item above), so the reason is unknown; on Daniel's side friend 9izbc8's bytes per packet
+went from about 45 to 72 at 19:07:35 (noise removal off, no gate), while his voice arrived on time before and after
+(1500 packets per 30 s, at most 0.6 percent sped up). The 16:38 report ("a friend didnt hear me") came from the old
+version in Daniel's tab (no `path` in its audio processing, his first `voice_send` at 16:53): not this ticket.
+
+The worker path cannot drift, as the microphone sets its pace, and turning noise removal off would not mend a microphone
+that drifts; and a phone at 80 percent load can still keep up. So:
+- `core/voiceclock.ts`: `createVoiceGuard(path)`. The worklet path keeps the drift check. The worker path checks only
+  audio lost on the way in: 100 ms or more a second (`DROP_LIMIT_MS`) for 3 readings in a row (`OVERLOAD_SAMPLES`);
+  the load no longer counts. A worker that falls behind does not build up a lag: a probe (`scratchpad/lag-probe.mjs`)
+  stalled one for 2 s, Chromium kept about 100 ms of frames and dropped the rest, and frames were on time again right
+  after. So the gaps in the frames' timestamps are what to count. Chromium's first frame can carry a timestamp 40 ms
+  ahead of the next, so a step back is no gap.
+- `client/voice.worker.ts`: `load` carries `droppedMs`; the drops while the model compiles at the start do not count.
+- `client/call.ts`: a guard per path (`createVoiceGuard(v.path)`); on the worker path it is fed once per worker reading,
+  not per tick, so the same reading never counts twice and a tick between two readings does not break a run.
+  `voice_send` adds `dropped_ms`; `noise_removal_unavailable` adds `dropped_ms`. Hook: `strainVoice({ droppedMs, pct })`.
+- A first try measured lag against the earliest frame; Chromium's ahead-of-time first frame made that a steady 1.9 s
+  in the e2e run and stopped noise removal by itself. Dropped. No delay was real: steady frames arrive within 10 ms.
+
+Verify: `pnpm test` (worker path: 3 percent fast at 95 percent load and 5 percent slow at 85 percent stay on; a lost
+frame every third second stays on; 200 ms lost a second stops in 3 s). E2E, both engines, twice: Chromium's worker
+path holds with the clock read 5 percent fast for 18 s, the worker reports no drops, and `strainVoice({ droppedMs: 300 })`
+stops it with "could not keep up"; Firefox checks its path and skips the clock part.
+Not known: which path the friend's phone took. If Vanadium hands out no microphone frames, he is on the worklet path,
+and its drift check would still be what stopped it on a voice that arrived on time.

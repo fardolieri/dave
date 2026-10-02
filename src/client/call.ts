@@ -22,7 +22,7 @@ import { REJOIN_HEARTBEAT_MS, parseRejoinMarker, rejoinFor, type RejoinMarker } 
 import type { createRoom } from './room';
 import { tryUnlockSound } from './sound';
 import { local } from './storage';
-import { canRemoveNoise, createVoiceProcessor, type VoiceLevel, type VoiceProcessor } from './voice';
+import { canRemoveNoise, createVoiceProcessor, type VoiceLevel, type VoiceLoad, type VoiceProcessor } from './voice';
 import { createVoiceGuard, sendRatePct, type ClockSample, type GuardFault } from '../core/voiceclock';
 
 export type ConnState = 'connecting' | 'direct' | 'relayed' | 'reconnecting' | 'unreachable';
@@ -268,8 +268,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   let lastLevel: VoiceLevel = { voice: 0, open: false };
   const [noiseRemoval, setNoiseRemoval] = createSignal<NoiseRemovalState>('off');
   const [noiseRemovalStop, setNoiseRemovalStop] = createSignal<NoiseRemovalStop | null>(null);
-  /** The worker's last processing load, percent of real time (frames path only). */
-  let voiceLoad: number | null = null;
+  /** How the worker kept up over the last second of audio (frames path only). */
+  let voiceLoad: VoiceLoad | null = null;
+  /** A reading arrived since the guard last looked: each one counts once, though ticks and readings both come about once a second. */
+  let loadFresh = false;
   const [voiceLevel, setVoiceLevel] = createSignal<VoiceLevel>(lastLevel);
   const onVoiceLevel = (l: VoiceLevel) => { lastLevel = l; setVoiceLevel(l); };
 
@@ -294,9 +296,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     let v: VoiceProcessor | null = null;
     const onRunning = () => { if (v && voice === v) { sendVoice(); showRemoval(); } };
     try {
-      v = await createVoiceProcessor(localStream, a.voiceThreshold, { level: onVoiceLevel, running: onRunning, load: (pct) => { voiceLoad = pct; } });
+      v = await createVoiceProcessor(localStream, a.voiceThreshold, { level: onVoiceLevel, running: onRunning, load: (l) => { voiceLoad = { pct: l.pct, droppedMs: l.droppedMs, ...loadOverride }; loadFresh = true; } });
       if (generation !== voiceGeneration) { v.close(); return; }
       voice = v;
+      guard = createVoiceGuard(v.path);
       v.track.enabled = !muted();
       await v.ready;
       if (generation !== voiceGeneration) return;
@@ -336,12 +339,13 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const v = (t as (MediaStreamTrack & { stats?: { deliveredFramesDuration?: number } }) | null)?.stats?.deliveredFramesDuration;
     return typeof v === 'number' ? v : null;
   };
-  const guard = createVoiceGuard();
-  /** The e2e suite's stand-in for a device whose voice runs off real time: scales what the guard reads (hook only). */
+  let guard = createVoiceGuard('context');
+  /** The e2e suite's stand-ins for a device whose voice runs off real time, and for a worker that cannot keep up (hook only). */
   let clockSkew = 1;
+  let loadOverride: Partial<VoiceLoad> = {};
   /** The start of the current `voice_send` window, and the track it measures. */
   let sendMark: (ClockSample & { track: MediaStreamTrack }) | null = null;
-  let sendLoads: number[] = [];
+  let sendLoads: VoiceLoad[] = [];
   /**
    * Once a second while in a call with a friend: the processed voice goes to the guard, which stops noise removal when
    * it runs off real time or the device cannot keep up; every 30 s `voice_send` says how the voice I send keeps time.
@@ -351,24 +355,28 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const audioMs = deliveredMs(track);
     // Muted, a track delivers nothing: neither the guard nor `voice_send` measures that time.
     if (!joined || !track || audioMs === null || peers.size === 0 || untrack(muted)) { guard.reset(); sendMark = null; return; }
-    const now: ClockSample = { at: Date.now(), audioMs: audioMs * clockSkew, loadPct: voiceLoad };
+    const fresh = loadFresh;
+    loadFresh = false;
+    const now: ClockSample = { at: Date.now(), audioMs: audioMs * clockSkew, loadPct: voiceLoad?.pct, droppedMs: voiceLoad?.droppedMs };
     const processed = !!voice && track === voice.track;
     if (processed) {
-      const fault = guard.feed(now);
+      // The worklet path is judged by the clock, every tick; the worker path by the worker's readings, each one once.
+      const fault = voice!.path === 'context' || fresh ? guard.feed(now) : null;
       if (fault) {
-        removalFailed(fault.reason, { path: voice!.path, rate_pct: fault.ratePct, load_pct: fault.loadPct, mic_rate: voiceTrack?.getSettings().sampleRate ?? null });
+        removalFailed(fault.reason, { path: voice!.path, rate_pct: fault.ratePct, load_pct: fault.loadPct, dropped_ms: fault.droppedMs, mic_rate: voiceTrack?.getSettings().sampleRate ?? null });
         setNoiseRemovalStop(fault.reason);
         return;
       }
-      if (voiceLoad !== null) sendLoads.push(voiceLoad);
+      if (voiceLoad !== null && fresh) sendLoads.push(voiceLoad);
     } else guard.reset();
     if (!sendMark || sendMark.track !== track) { sendMark = { ...now, track }; sendLoads = []; return; }
     if (now.at - sendMark.at < VOICE_SEND_EVERY_MS) return;
     posthog.capture('voice_send', {
       rate_pct: sendRatePct(sendMark, now), seconds: Math.round((now.at - sendMark.at) / 1000),
       noise_removal: untrack(noiseRemoval), path: processed ? voice!.path : null,
-      load_pct: sendLoads.length ? Math.round(sendLoads.reduce((a, b) => a + b, 0) / sendLoads.length) : null,
-      load_max_pct: sendLoads.length ? Math.max(...sendLoads) : null,
+      load_pct: sendLoads.length ? Math.round(sendLoads.reduce((a, l) => a + l.pct, 0) / sendLoads.length) : null,
+      load_max_pct: sendLoads.length ? Math.max(...sendLoads.map((l) => l.pct)) : null,
+      dropped_ms: sendLoads.length ? sendLoads.reduce((a, l) => a + l.droppedMs, 0) : null,
       mic_rate: voiceTrack?.getSettings().sampleRate ?? null, peers: peers.size,
     });
     sendMark = { ...now, track };
@@ -949,7 +957,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     return {
       inCall: joined, muted: untrack(muted), joinSeq: myJoinSeq,
       sharing: shareVideo ? { ...shareVideo.getSettings(), readyState: shareVideo.readyState, contentHint: shareVideo.contentHint } : null,
-      outgoing: untrack(outgoing), shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl, noiseRemoval: untrack(noiseRemoval), voiceThreshold, path: voice?.path ?? null, stop: untrack(noiseRemovalStop), loadPct: voiceLoad, micRate: voiceTrack?.getSettings().sampleRate ?? null }, lowBandwidthVoice: lowVoiceOn, voiceRepair,
+      outgoing: untrack(outgoing), shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl, noiseRemoval: untrack(noiseRemoval), voiceThreshold, path: voice?.path ?? null, stop: untrack(noiseRemovalStop), load: voiceLoad, micRate: voiceTrack?.getSettings().sampleRate ?? null }, lowBandwidthVoice: lowVoiceOn, voiceRepair,
       ice: { servers: iceServers.length, turn: hasTurn(), ageMinutes: iceIssuedAt ? Math.round((Date.now() - iceIssuedAt) / 60000) : null },
       peers: await Promise.all([...peers.values()].map(peerDiag)),
     };
@@ -1367,6 +1375,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       },
       /** Makes the sent voice read `factor` of real time from now on, as a USB-C headset did (ticket 37). */
       skewVoiceClock: (factor: number) => { clockSkew = factor; },
+      /** Makes the worker's readings say it loses frames (or carries a load) from now on (ticket 37 follow-up); `{}` stops it. */
+      strainVoice: (load: Partial<VoiceLoad>) => { loadOverride = load; },
       diagnostics,
       state: () => ({ inCall: joined, joining, joinError: untrack(joinError), myJoinSeq, role: untrack(me)?.role ?? null, participants: untrack(room.people).filter((p) => p.role === 'participant').map((p) => `${p.name}#${p.joinSeq}`) }),
     };

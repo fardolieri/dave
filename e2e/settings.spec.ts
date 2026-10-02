@@ -57,15 +57,18 @@ test('noise removal runs on the outgoing voice, the gate follows its slider, and
   await bob.hearing('Alice');
 });
 
-test('noise removal keeps time with the microphone, and stops itself when the voice it sends runs off the clock', async ({ crowd }) => {
+test('noise removal keeps time with the microphone, and stops itself only when friends would hear it go wrong', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   await alice.join();
   await bob.join();
   await alice.connectedTo('Bob');
   await needHooks(alice);
-  type Audio = { noiseRemoval: string; sending: string | null; path: string | null; stop: string | null; deliveredMs: number | null };
+  type Load = { pct: number; droppedMs: number };
+  type Audio = { noiseRemoval: string; sending: string | null; path: string | null; stop: string | null; deliveredMs: number | null; load: Load | null };
+  type Hooks = { skewVoiceClock(f: number): void; strainVoice(l: Partial<Load>): void };
   const audio = () => alice.hook<Audio>('audio');
+  const dave = (f: (d: Hooks) => void) => alice.page.evaluate(`(${f.toString()})(window.__dave)`);
   const context = await alice.hook<{ context: string | null }>('playback').then((p) => p.context);
   const frames = await alice.page.evaluate(() => typeof (window as unknown as { MediaStreamTrackProcessor?: unknown }).MediaStreamTrackProcessor === 'function');
   test.skip(!frames && context !== 'running', `no microphone frames and no running AudioContext here (${context}): noise removal waits`);
@@ -83,18 +86,24 @@ test('noise removal keeps time with the microphone, and stops itself when the vo
   const rate = (second.deliveredMs! - first.deliveredMs!) / (Date.now() - t0);
   expect(rate, 'the processed voice goes out in real time').toBeGreaterThan(0.95);
   expect(rate).toBeLessThan(1.05);
-  expect(second.noiseRemoval).toBe('on');
+  expect(second.load, 'the worker keeps up with the microphone').toMatchObject({ droppedMs: 0 });
 
-  // A device whose voice runs 5 percent fast: the guard gives up on noise removal and the microphone goes out as it is.
-  await alice.page.evaluate(() => (window as unknown as { __dave: { skewVoiceClock(f: number): void } }).__dave.skewVoiceClock(1.05));
-  await expect.poll(async () => (await audio()).noiseRemoval, { timeout: 30_000, message: 'noise removal stops' }).toBe('unavailable');
-  expect(await audio()).toMatchObject({ sending: 'microphone', stop: 'drift' });
+  // The worker path cannot drift: a clock reading 5 percent fast is no reason to stop (it stopped a friend's on 2 Oct).
+  await dave((d) => d.skewVoiceClock(1.05));
+  await alice.page.waitForTimeout(18_000);
+  expect((await audio()).noiseRemoval, 'a skewed clock leaves the worker path alone').toBe('on');
+  await dave((d) => d.skewVoiceClock(1));
+
+  // A worker that keeps losing the microphone's frames: noise removal gives up and the microphone goes out as it is.
+  await dave((d) => d.strainVoice({ droppedMs: 300 }));
+  await expect.poll(async () => (await audio()).noiseRemoval, { timeout: 15_000, message: 'noise removal stops' }).toBe('unavailable');
+  expect(await audio()).toMatchObject({ sending: 'microphone', stop: 'overload' });
   await alice.selectedRoom.getByTitle('Audio settings').click();
-  await expect(alice.page.locator('.panel')).toContainText('Noise removal stopped: with it your voice went out too fast or too slow');
+  await expect(alice.page.locator('.panel')).toContainText('Noise removal stopped: this device could not keep up with it');
   await bob.hearing('Alice');
 
   // Switching it off and on tries again.
-  await alice.page.evaluate(() => (window as unknown as { __dave: { skewVoiceClock(f: number): void } }).__dave.skewVoiceClock(1));
+  await dave((d) => d.strainVoice({}));
   const toggle = alice.page.locator('.panel').getByLabel('Noise removal');
   await toggle.uncheck();
   await toggle.check();

@@ -9,8 +9,12 @@ export type WorkerIn =
   | { t: 'start'; wasm: ArrayBuffer; threshold: number; readable: ReadableStream<AudioData>; writable: WritableStream<AudioData> }
   | { t: 'input'; readable: ReadableStream<AudioData> }
   | { t: 'threshold'; threshold: number };
-/** To the page: ready or failed once, the level meter 20 times a second, the processing load once a second of audio. */
-export type WorkerOut = { t: 'ready' } | { t: 'error'; message: string } | { t: 'level'; voice: number; open: boolean } | { t: 'load'; pct: number };
+/**
+ * To the page: ready or failed once, the level meter 20 times a second, and once a second of audio how it keeps up:
+ * the processing load (percent of real time) and the audio lost on the way in (ms; frames the microphone handed out
+ * that a busy worker never got, as the gaps in their timestamps show).
+ */
+export type WorkerOut = { t: 'ready' } | { t: 'error'; message: string } | { t: 'level'; voice: number; open: boolean } | { t: 'load'; pct: number; droppedMs: number };
 
 const RATE = 48000; // RNNoise's only rate
 const LOAD_FRAMES = 100; // a second of audio
@@ -29,9 +33,15 @@ let inputRate = 0;
 let outTs: number | null = null; // µs, from the first frame's timestamp on, in 10 ms steps
 let busyMs = 0;
 let busyFrames = 0;
+let droppedMs = 0;
+let nextInTs: number | null = null; // µs: where the next input frame should start if none went missing
 
 function take(data: AudioData): void {
   outTs ??= data.timestamp;
+  // A gap in the timestamps is audio dropped before it got here. Chromium's first frame can carry a timestamp ahead of
+  // the next ones (40 ms in a probe), so a step back is no gap; the count starts over from the later frame.
+  if (nextInTs !== null && data.timestamp - nextInTs > 5000) droppedMs += (data.timestamp - nextInTs) / 1000;
+  nextInTs = data.timestamp + (data.numberOfFrames / data.sampleRate) * 1e6;
   if (data.sampleRate !== inputRate) { inputRate = data.sampleRate; resample = createResampler(inputRate, RATE); }
   const raw = new Float32Array(data.numberOfFrames);
   data.copyTo(raw, { planeIndex: 0, format: 'f32-planar' }); // the first channel: the voice is sent mono
@@ -48,7 +58,10 @@ function take(data: AudioData): void {
       const t0 = performance.now();
       frames.process(frame);
       busyMs += performance.now() - t0;
-      if (++busyFrames === LOAD_FRAMES) { post({ t: 'load', pct: Math.round(busyMs / (LOAD_FRAMES * 10) * 100) }); busyMs = 0; busyFrames = 0; }
+      if (++busyFrames === LOAD_FRAMES) {
+        post({ t: 'load', pct: Math.round(busyMs / (LOAD_FRAMES * 10) * 100), droppedMs: Math.round(droppedMs) });
+        busyMs = 0; busyFrames = 0; droppedMs = 0;
+      }
     }
     const out = new AudioData({ format: 'f32-planar', sampleRate: RATE, numberOfFrames: FRAME, numberOfChannels: 1, timestamp: outTs, data: frame });
     outTs += (FRAME / RATE) * 1e6;
@@ -75,11 +88,16 @@ async function pump(readable: ReadableStream<AudioData>): Promise<void> {
 onmessage = (e: MessageEvent<WorkerIn>) => {
   const m = e.data;
   if (m.t === 'threshold') { threshold = m.threshold; frames?.setThreshold(threshold); return; }
-  if (m.t === 'input') { void pump(m.readable); return; }
+  if (m.t === 'input') { nextInTs = null; void pump(m.readable); return; }
   threshold = m.threshold;
   writer = m.writable.getWriter();
   void pump(m.readable);
   loadRnnoise(m.wasm)
-    .then((r) => { frames = createFrameProcessor(r, threshold, (l) => post({ t: 'level', ...l })); post({ t: 'ready' }); })
+    .then((r) => {
+      frames = createFrameProcessor(r, threshold, (l) => post({ t: 'level', ...l }));
+      // Compiling the model stalls this worker for a moment and the browser drops the frames meanwhile: not counted.
+      droppedMs = 0;
+      post({ t: 'ready' });
+    })
     .catch((err: unknown) => post({ t: 'error', message: String(err) }));
 };

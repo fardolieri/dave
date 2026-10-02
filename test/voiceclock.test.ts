@@ -35,46 +35,55 @@ const firstFault = (guard: ReturnType<typeof createVoiceGuard>, xs: ClockSample[
   return null;
 };
 
-describe('createVoiceGuard', () => {
-  it('stays quiet on a voice in real time, light load, and the small steps of the counter', () => {
-    const g = createVoiceGuard();
-    const xs = readings(120, 1, 20).map((x, i) => ({ ...x, audioMs: x.audioMs + (i % 3) * 10 }));
-    expect(firstFault(g, xs)).toBeNull();
+describe('createVoiceGuard, worklet path', () => {
+  const guard = () => createVoiceGuard('context');
+  it('stays quiet on a voice in real time and the small steps of the counter', () => {
+    const xs = readings(120, 1).map((x, i) => ({ ...x, audioMs: x.audioMs + (i % 3) * 10 }));
+    expect(firstFault(guard(), xs)).toBeNull();
   });
   it('stops a voice that runs 3 percent fast, as the USB-C headset did, once a window is measured', () => {
-    const f = firstFault(createVoiceGuard(), readings(60, 1.03));
+    const f = firstFault(guard(), readings(60, 1.03));
     expect(f).toMatchObject({ reason: 'drift', ratePct: 103 });
     expect(f!.at).toBe(GUARD_WARMUP_MS + DRIFT_WINDOW_MS + (DRIFT_SAMPLES - 1) * 1000);
   });
   it('stops a voice that falls behind too', () => {
-    expect(firstFault(createVoiceGuard(), readings(60, 0.95))).toMatchObject({ reason: 'drift', ratePct: 95 });
+    expect(firstFault(guard(), readings(60, 0.95))).toMatchObject({ reason: 'drift', ratePct: 95 });
   });
   it('ignores the start, where the pipeline fills its buffers', () => {
-    const g = createVoiceGuard();
     // A burst of a second of audio in the first two seconds, real time after.
     const xs = [{ at: 0, audioMs: 0 }, { at: 1000, audioMs: 2000 }, { at: 2000, audioMs: 3000 }, ...readings(60, 1, undefined, 3000, 3000).slice(1)];
-    expect(firstFault(g, xs)).toBeNull();
+    expect(firstFault(guard(), xs)).toBeNull();
   });
   it('judges a stall and the burst after it by the window, not by one reading', () => {
-    const g = createVoiceGuard();
     const xs = readings(60, 1).map((x) => (x.at === 20_000 ? { ...x, audioMs: x.audioMs - 300 } : x));
-    expect(firstFault(g, xs)).toBeNull();
-  });
-  it('stops on a load that stays at the mark, not on a moment of it', () => {
-    const g = createVoiceGuard();
-    const spike = readings(30, 1, 10).map((x, i) => (i % 7 === 0 ? { ...x, loadPct: 95 } : x));
-    expect(firstFault(g, spike)).toBeNull();
-    const f = firstFault(createVoiceGuard(), readings(30, 1, 85));
-    expect(f).toMatchObject({ reason: 'overload', loadPct: 85 });
-    expect(f!.at).toBe(GUARD_WARMUP_MS + (OVERLOAD_SAMPLES - 1) * 1000);
+    expect(firstFault(guard(), xs)).toBeNull();
   });
   it('starts over when no audio advanced, and after a reset', () => {
-    const g = createVoiceGuard();
+    const g = guard();
     // Nobody took the voice for a while (no friend), then real time: the pause is no drift.
     const xs = [...readings(10, 1), ...readings(10, 0, undefined, 10_000, 11_000).slice(1), ...readings(40, 1, undefined, 10_000, 21_000).slice(1)];
     expect(firstFault(g, xs)).toBeNull();
     g.reset();
     expect(firstFault(g, readings(60, 1, undefined, 0, 100_000))).toBeNull();
+  });
+});
+
+describe('createVoiceGuard, worker path', () => {
+  const guard = () => createVoiceGuard('frames');
+  const strained = (xs: ClockSample[], droppedMs: number) => xs.map((x) => ({ ...x, droppedMs }));
+  it('never judges the clock or the load: the microphone sets the pace, and a busy phone that keeps up is fine', () => {
+    // What stopped a friend's noise removal on 2 Oct though his voice arrived on time: the rate or the load past the old marks.
+    expect(firstFault(guard(), strained(readings(120, 1.03, 95), 0))).toBeNull();
+    expect(firstFault(guard(), strained(readings(120, 0.95, 85), 0))).toBeNull();
+  });
+  it('stays quiet through a moment of lost frames', () => {
+    const xs = strained(readings(60, 1, 30), 0).map((x, i) => (i % 3 === 0 ? { ...x, droppedMs: 150 } : x));
+    expect(firstFault(guard(), xs)).toBeNull();
+  });
+  it('stops when audio keeps getting lost on the way in', () => {
+    const f = firstFault(guard(), strained(readings(30, 1, 99), 200));
+    expect(f).toMatchObject({ reason: 'overload', droppedMs: 200, loadPct: 99 });
+    expect(f!.at).toBe(GUARD_WARMUP_MS + (OVERLOAD_SAMPLES - 1) * 1000);
   });
 });
 
