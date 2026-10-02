@@ -15,6 +15,7 @@ import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, normaliseName, type Identity, type Pe
 import { displayName, formatAgo, knownAgo } from '../core/names';
 import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatVideo } from '../core/format';
+import { FOLD_OLDER_MS, olderCount } from '../core/chatlog';
 import { formatDelay, lagLevel } from '../core/lowvoice';
 import { VOICE_REPAIRS, type VoiceRepair } from '../core/voicerepair';
 import { collectReport, formatReport, sendReport, type Report } from './diagnostics';
@@ -339,6 +340,8 @@ function Workspace(props: WorkspaceProps) {
   const bannerStatus = (l: Link): ServerStatus => (firstConnect() && l.room.status().kind === 'connecting' ? { kind: 'connected' } : l.room.status());
   // Bumped when I send or switch rooms: the log jumps to the newest line (the composer and the log are separate grid items).
   const [jumpToken, setJumpToken] = createSignal(0);
+  // When the room on screen came on screen: texts from well before then start out folded away (ticket 38).
+  const openedAt = createMemo(() => (current(), Date.now()));
   // The room on screen has nothing unread, however many lines arrive while it is up.
   createEffect(() => ({ link: current(), lines: current()?.room.lines().length }), ({ link }, prev) => {
     link?.room.markRead();
@@ -471,7 +474,7 @@ function Workspace(props: WorkspaceProps) {
               </For>
             </section>
           )}</Show>
-          <ChatLog lines={cur().room.lines()} jumpToken={jumpToken()} label={labelOf} />
+          <ChatLog lines={cur().room.lines()} openedAt={openedAt()} jumpToken={jumpToken()} label={labelOf} />
         </div>
         <Composer connected={connected()} roomName={cur().saved.name} onSend={(text) => { cur().room.sendText(text); setJumpToken((n) => n + 1); }}>
           {/* Anchored to the composer's top edge, whatever its height on this device (ticket 32) */}
@@ -1240,9 +1243,16 @@ function Composer(props: { connected: boolean; roomName: string; onSend: (text: 
   );
 }
 
-/** The log with the new-messages pill. `jumpToken` changes when I send, which brings me back to the newest line. */
-function ChatLog(props: { lines: ChatLine[]; jumpToken: number; label: (id: Identity) => Label }) {
+/**
+ * The log with the new-messages pill. `jumpToken` changes when I send, which brings me back to the newest line.
+ * Texts from more than 18 h before the room came on screen (`openedAt`) wait behind a button above the log, until
+ * clicked or until the room comes on screen again (ticket 38).
+ */
+function ChatLog(props: { lines: ChatLine[]; openedAt: number; jumpToken: number; label: (id: Identity) => Label }) {
   let log: HTMLDivElement | undefined;
+  const [unfoldedFor, setUnfoldedFor] = createSignal<number | null>(null); // the opening the reader unfolded the older lines in
+  const folded = createMemo(() => (unfoldedFor() === props.openedAt ? 0 : olderCount(props.lines, props.openedAt - FOLD_OLDER_MS)));
+  const lines = createMemo(() => props.lines.slice(folded()));
   // Lines in reading order, so selecting text works as it reads. The browser measures scroll positions from the
   // top edge, which is the edge that moves when the share strip comes or goes, so the log keeps its own distance
   // to the bottom edge and restores it after every size change (ResizeObserver) and every change of the lines:
@@ -1259,24 +1269,30 @@ function ChatLog(props: { lines: ChatLine[]; jumpToken: number; label: (id: Iden
   const jump = () => { gap = 0; restore(); setUnseen(false); };
   const observer = new ResizeObserver(restore);
   onCleanup(() => observer.disconnect());
-  createEffect(() => props.lines.length, (n, prev) => {
+  createEffect(() => ({ n: lines().length, last: lines().at(-1)?.id }), (now, prev) => {
     if (!log) return;
     if (prev === undefined) observer.observe(log);
     // A line arrived while the reader was up in the older lines: the browser has left them in place and the
-    // new line waits below, so only the distance to the bottom changes. Otherwise the log stays at the newest line.
-    if (prev !== undefined && n > prev && !atBottom()) { measure(); setUnseen(true); } else restore();
+    // new line waits below, so only the distance to the bottom changes. Otherwise the log stays at the newest line;
+    // lines that came in above it (the history as it loads, the older lines unfolded) leave the reader where they were.
+    if (prev !== undefined && now.n > prev.n && now.last !== prev.last && !atBottom()) { measure(); setUnseen(true); } else restore();
   });
   createEffect(() => props.jumpToken, (t, prev) => { if (prev !== undefined && t !== prev) jump(); });
   return (
     <div class="chat">
       <div class="chat-log" ref={log} onScroll={onScroll}>
-        <For each={props.lines}>
+        <Show when={folded() > 0}>
+          <button class="chat-older" onClick={() => setUnfoldedFor(props.openedAt)} title="Messages from more than 18 hours before you opened this room">
+            Show {folded()} older {folded() === 1 ? 'message' : 'messages'}
+          </button>
+        </Show>
+        <For each={lines()}>
           {(l, i) => (
             <Switch>
               <Match when={l.kind === 'system' && l}>{(s) => <div class="msg msg-sys"><span class="msg-text">{s().text}</span><span class="msg-at">{when(s().at)}</span></div>}</Match>
               <Match when={l.kind === 'text' && l}>
                 {(m) => (
-                  <Show when={!continues(props.lines, i())} fallback={
+                  <Show when={!continues(lines(), i())} fallback={
                     <div class="msg msg-cont" title={when(m().at)}><div class="msg-text"><Linkified text={m().text} /></div></div>
                   }>
                     <div class="msg">

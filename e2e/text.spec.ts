@@ -88,6 +88,44 @@ test('leaving a room forgets its history: the link brings the room back, not the
   await expect.poll(() => bob.chatTexts()).toEqual(['after']);
 });
 
+test('texts from more than 18 h before the room came on screen wait behind a button, folded again each time it does', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob', { rooms: [crowd.room, other] });
+  await alice.say('yesterday one');
+  await alice.say('yesterday two');
+  await alice.say('this morning');
+  await expect.poll(() => bob.chatTexts()).toEqual(['yesterday one', 'yesterday two', 'this morning']);
+  // Bob's own copy, as if the first two had come in 19 h ago and the third 17 h ago.
+  await bob.page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('dave'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+    const store = () => db.transaction('kv', 'readwrite').objectStore('kv');
+    const keys = await new Promise<IDBValidKey[]>((resolve) => { const r = store().getAllKeys(); r.onsuccess = () => resolve(r.result); });
+    for (const key of keys.filter((k) => String(k).startsWith('history:'))) {
+      const list = await new Promise<Array<{ text: string; at: number }>>((resolve) => { const r = store().get(key); r.onsuccess = () => resolve(r.result); });
+      const aged = list.map((m) => ({ ...m, at: Date.now() - (m.text.startsWith('yesterday') ? 19 : 17) * 3600_000 }));
+      await new Promise((resolve) => { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(aged, key); tx.oncomplete = resolve; });
+    }
+    db.close();
+  });
+  await bob.page.reload();
+  await bob.connected();
+  const older = bob.page.locator('.chat-older');
+  await expect(older).toHaveText('Show 2 older messages');
+  await expect.poll(() => bob.chat()).toEqual([{ from: 'Alice', text: 'this morning' }]); // the first line shown has its name
+  await alice.say('now');
+  await expect.poll(() => bob.chatTexts()).toEqual(['this morning', 'now']);
+
+  await older.click();
+  await expect(older).toHaveCount(0);
+  expect(await bob.chatTexts()).toEqual(['yesterday one', 'yesterday two', 'this morning', 'now']);
+
+  await bob.selectRoom('Other');
+  await bob.selectRoom(crowd.room.name);
+  await expect(older).toHaveText('Show 2 older messages');
+  expect(await bob.chatTexts()).toEqual(['this morning', 'now']);
+});
+
 test('a text in a room not on screen counts as unread and chimes; own texts never chime', async ({ crowd }) => {
   const other = { secret: newSecret(), name: 'Other' };
   const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
