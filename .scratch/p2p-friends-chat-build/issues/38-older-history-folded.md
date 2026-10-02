@@ -1,6 +1,6 @@
 # 38 · Texts from more than 18 h before the room came on screen start out folded
 
-Status: done 2026-10-02, awaiting deploy
+Status: shipped 2026-10-02 (prod and nightly 1fd0b42, pushed straight to prod at Daniel's word, nightly e2e not waited for)
 Asked for 2026-10-02: Daniel: "When opening a chat I want chat history that is older than 18 hours to be hidden by default."
 
 ## Scope
