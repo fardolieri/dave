@@ -59,7 +59,7 @@ export function videoElementStates(): Report['videoElements'] {
   return [...document.querySelectorAll<HTMLVideoElement>('.share video')].map((v) => {
     const q = typeof v.getVideoPlaybackQuality === 'function' ? v.getVideoPlaybackQuality() : null;
     const shown = v.dataset['frames'];
-    return { readyState: v.readyState, width: v.videoWidth, height: v.videoHeight, paused: v.paused, ended: v.ended, error: v.error?.code ?? null, hidden: v.hidden, frames: shown !== undefined ? Number(shown) : q?.totalVideoFrames ?? null, dropped: q?.droppedVideoFrames ?? null };
+    return { readyState: v.readyState, width: v.videoWidth, height: v.videoHeight, paused: v.paused, ended: v.ended, error: v.error?.code ?? null, hidden: v.hidden !== false, frames: shown !== undefined ? Number(shown) : q?.totalVideoFrames ?? null, dropped: q?.droppedVideoFrames ?? null };
   });
 }
 
