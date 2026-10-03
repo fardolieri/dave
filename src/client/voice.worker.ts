@@ -2,7 +2,7 @@
 // of a MediaStreamTrackProcessor on the microphone and the writable side of a MediaStreamTrackGenerator, and every
 // frame that comes in goes out as soon as RNNoise and the gate are through with it. The microphone sets the pace, so
 // the voice sent cannot run faster or slower than it speaks, which the AudioContext of the worklet path could.
-import { createResampler } from '../core/voiceclock';
+import { createDropCounter, createResampler } from '../core/voiceclock';
 import { FRAME, createFrameProcessor, loadRnnoise } from './denoise';
 
 export type WorkerIn =
@@ -33,15 +33,11 @@ let inputRate = 0;
 let outTs: number | null = null; // µs, from the first frame's timestamp on, in 10 ms steps
 let busyMs = 0;
 let busyFrames = 0;
-let droppedMs = 0;
-let nextInTs: number | null = null; // µs: where the next input frame should start if none went missing
+const drops = createDropCounter();
 
 function take(data: AudioData): void {
   outTs ??= data.timestamp;
-  // A gap in the timestamps is audio dropped before it got here. Chromium's first frame can carry a timestamp ahead of
-  // the next ones (40 ms in a probe), so a step back is no gap; the count starts over from the later frame.
-  if (nextInTs !== null && data.timestamp - nextInTs > 5000) droppedMs += (data.timestamp - nextInTs) / 1000;
-  nextInTs = data.timestamp + (data.numberOfFrames / data.sampleRate) * 1e6;
+  drops.frame(data.timestamp, (data.numberOfFrames / data.sampleRate) * 1e6);
   if (data.sampleRate !== inputRate) { inputRate = data.sampleRate; resample = createResampler(inputRate, RATE); }
   const raw = new Float32Array(data.numberOfFrames);
   data.copyTo(raw, { planeIndex: 0, format: 'f32-planar' }); // the first channel: the voice is sent mono
@@ -59,8 +55,8 @@ function take(data: AudioData): void {
       frames.process(frame);
       busyMs += performance.now() - t0;
       if (++busyFrames === LOAD_FRAMES) {
-        post({ t: 'load', pct: Math.round(busyMs / (LOAD_FRAMES * 10) * 100), droppedMs: Math.round(droppedMs) });
-        busyMs = 0; busyFrames = 0; droppedMs = 0;
+        post({ t: 'load', pct: Math.round(busyMs / (LOAD_FRAMES * 10) * 100), droppedMs: drops.take() });
+        busyMs = 0; busyFrames = 0;
       }
     }
     const out = new AudioData({ format: 'f32-planar', sampleRate: RATE, numberOfFrames: FRAME, numberOfChannels: 1, timestamp: outTs, data: frame });
@@ -88,7 +84,7 @@ async function pump(readable: ReadableStream<AudioData>): Promise<void> {
 onmessage = (e: MessageEvent<WorkerIn>) => {
   const m = e.data;
   if (m.t === 'threshold') { threshold = m.threshold; frames?.setThreshold(threshold); return; }
-  if (m.t === 'input') { nextInTs = null; void pump(m.readable); return; }
+  if (m.t === 'input') { drops.reset(); void pump(m.readable); return; }
   threshold = m.threshold;
   writer = m.writable.getWriter();
   void pump(m.readable);
@@ -96,7 +92,7 @@ onmessage = (e: MessageEvent<WorkerIn>) => {
     .then((r) => {
       frames = createFrameProcessor(r, threshold, (l) => post({ t: 'level', ...l }));
       // Compiling the model stalls this worker for a moment and the browser drops the frames meanwhile: not counted.
-      droppedMs = 0;
+      drops.reset();
       post({ t: 'ready' });
     })
     .catch((err: unknown) => post({ t: 'error', message: String(err) }));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DRIFT_SAMPLES, DRIFT_WINDOW_MS, GUARD_WARMUP_MS, OVERLOAD_SAMPLES, createResampler, createVoiceGuard, sendRatePct, type ClockSample } from '../src/core/voiceclock';
+import { DRIFT_SAMPLES, DRIFT_WINDOW_MS, GUARD_WARMUP_MS, OVERLOAD_SAMPLES, createDropCounter, createResampler, createVoiceGuard, sendRatePct, type ClockSample } from '../src/core/voiceclock';
 
 describe('createResampler', () => {
   it('passes a matching rate through untouched', () => {
@@ -84,6 +84,41 @@ describe('createVoiceGuard, worker path', () => {
     const f = firstFault(guard(), strained(readings(30, 1, 99), 200));
     expect(f).toMatchObject({ reason: 'overload', droppedMs: 200, loadPct: 99 });
     expect(f!.at).toBe(GUARD_WARMUP_MS + (OVERLOAD_SAMPLES - 1) * 1000);
+  });
+});
+
+describe('createDropCounter', () => {
+  const F = 10_000; // a 10 ms frame, µs
+  /** A second of 10 ms frames from `t0`, timestamps from `stamp(i)`, skipping the frames `lost` says. */
+  const second = (c: ReturnType<typeof createDropCounter>, t0: number, stamp = (i: number) => t0 + i * F, lost = (_i: number) => false) => {
+    for (let i = 0; i < 100; i++) if (!lost(i)) c.frame(stamp(i), F);
+    return c.take();
+  };
+  it('counts nothing on a steady microphone', () => {
+    const c = createDropCounter();
+    expect([0, 1, 2].map((s) => second(c, s * 1e6))).toEqual([0, 0, 0]);
+  });
+  it("counts nothing on Android's pairs of frames under one timestamp, which the old count took for 500 ms a second", () => {
+    const c = createDropCounter();
+    const paired = (t0: number) => (i: number) => t0 + Math.floor(i / 2) * 2 * F;
+    expect([0, 1, 2].map((s) => second(c, s * 1e6, paired(s * 1e6)))).toEqual([0, 0, 0]);
+  });
+  it('counts nothing on jitter, nor on a first frame stamped ahead of the next', () => {
+    const c = createDropCounter();
+    expect(second(c, 0, (i) => (i === 0 ? 44_000 : i * F + ((i % 3) - 1) * 4000))).toBe(0);
+    expect(second(c, 1e6, (i) => 1e6 + i * F + ((i % 3) - 1) * 4000)).toBe(0);
+  });
+  it('counts frames that never came, once', () => {
+    const c = createDropCounter();
+    second(c, 0);
+    expect(second(c, 1e6, undefined, (i) => i >= 20 && i < 40)).toBe(200);
+    expect(second(c, 2e6)).toBe(0);
+  });
+  it('forgets on a reset', () => {
+    const c = createDropCounter();
+    second(c, 0);
+    c.reset();
+    expect(second(c, 5e6)).toBe(0); // five seconds later, a new microphone: no gap
   });
 });
 

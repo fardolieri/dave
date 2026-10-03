@@ -94,6 +94,37 @@ export function createVoiceGuard(path: 'frames' | 'context') {
   };
 }
 
+/**
+ * Audio lost before it reached the worker, from the microphone frames' timestamps: over each reading, how far the
+ * timestamps moved beyond the audio that came in. Net, not frame by frame: Android hands out 10 ms frames in pairs
+ * under one timestamp every 20 ms, which a frame-by-frame count took for 10 ms lost in every other step (500 ms a
+ * second, a phone at 5 percent load, 3 Oct); and Chromium's first frame can carry a timestamp ahead of the next ones.
+ * Early and late frames cancel out; frames that never came do not.
+ */
+export function createDropCounter() {
+  let start: number | null = null; // µs: where this reading's audio began
+  let end = 0; // µs: the furthest any frame reached
+  let audio = 0; // µs of audio received in this reading
+  return {
+    /** A frame: its timestamp and duration, µs. */
+    frame(ts: number, dur: number): void {
+      if (start === null) { start = ts; end = ts; }
+      audio += dur;
+      end = Math.max(end, ts + dur);
+    },
+    /** Audio lost since the last call, ms; the next reading carries on from where this one ended. */
+    take(): number {
+      if (start === null) return 0;
+      const lost = Math.max(0, end - start - audio) / 1000;
+      start = end;
+      audio = 0;
+      return Math.round(lost);
+    },
+    /** A new microphone, or a start to forget (the model compiling). */
+    reset(): void { start = null; end = 0; audio = 0; },
+  };
+}
+
 /** The sent voice between two readings, for `voice_send`: audio delivered over wall time, percent; null without either. */
 export function sendRatePct(prev: ClockSample, cur: ClockSample): number | null {
   const wall = cur.at - prev.at;

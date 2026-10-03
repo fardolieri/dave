@@ -99,3 +99,20 @@ path holds with the clock read 5 percent fast for 18 s, the worker reports no dr
 stops it with "could not keep up"; Firefox checks its path and skips the clock part.
 Not known: which path the friend's phone took. If Vanadium hands out no microphone frames, he is on the worklet path,
 and its drift check would still be what stopped it on a voice that arrived on time.
+
+## Follow-up 2026-10-03: lost audio counted net, not frame by frame
+Friends' noise removal still stopped after the first follow-up, and on 2026-10-03 Daniel's own phone (Android, Chromium
+engine, BKplz13V) did the same and sent the event this time: `noise_removal_unavailable` 11:34:32, `overload`,
+`frames`, `dropped_ms: 500`, `load_pct: 5`, `rate_pct: 101`, 5 s after an unmute. Nothing was lost: the processed track
+delivered 101 percent of real time and Daniel's desktop got 1251 packets in 25 s from the phone (`suz4uv`). 500 ms a
+second is what the old count makes of 10 ms frames handed out in pairs under one timestamp every 20 ms: every second
+step looked like a 10 ms gap, 50 times a second, and the frame that came early was never set against it.
+- `core/voiceclock.ts`: `createDropCounter`, the net gap over each reading (how far the timestamps moved beyond the
+  audio that came in), carried on from where the last reading ended. Early and late frames cancel out; frames that
+  never came count once. Unit-tested: steady, pairs under one timestamp, jitter of ±4 ms, a first frame 44 ms ahead,
+  200 ms missing (counted once), reset.
+- `client/voice.worker.ts` uses it; a new microphone and the end of the model's compile reset it.
+Why other friends' phones stopped: very likely the same. Their reports and events never arrived (Vanadium's default
+content filter, EasyPrivacy's `||i.posthog.com/i/`, blocks the `/i/v0/e/` endpoint our project's remote config moves
+the SDK to about a second after load, and the endpoint problem reports post to); Daniel's phone got through.
+Verify: `pnpm test` (203); noise removal e2e twice in Chromium and Firefox.
