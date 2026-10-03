@@ -55,7 +55,16 @@ export function EmojiPicker(props: { id: string; anchor: () => HTMLElement | und
     props.onPick(char);
     if (props.closeOnPick) card?.hidePopover();
   };
-  const jumpTo = (label: string) => scroller?.querySelector<HTMLElement>(`[data-section="${label}"]`)?.scrollIntoView({ block: 'start' });
+  // Not `scrollIntoView` on the heading: a sticky heading already scrolled past sits stuck at the top, so the scroll
+  // went there, a nudge instead of a jump (report of Sep 24). The grid after it never sticks; the heading goes above that.
+  const jumpTo = (label: string) => {
+    const heading = scroller?.querySelector<HTMLElement>(`[data-section="${label}"]`);
+    const grid = heading?.nextElementSibling;
+    if (!scroller || !heading || !grid) return;
+    const gridTop = grid.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+    const { marginTop, marginBottom } = getComputedStyle(heading);
+    scroller.scrollTo({ top: gridTop - parseFloat(marginBottom) - heading.offsetHeight - parseFloat(marginTop) });
+  };
   const onKey = (e: KeyboardEvent) => {
     // Enter in the search field takes the first result, so "thumbs⏎" is two keystrokes shorter than a click.
     if (e.key !== 'Enter') return;
