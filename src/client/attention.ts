@@ -13,7 +13,7 @@ export type RoomLink = { room: ReturnType<typeof createRoom>; call: ReturnType<t
 /**
  * Attention cues (spec §7.4) and the screen wake lock (spec §6.5) across every room: title badge while
  * the window is unfocused, quiet chimes when others join or leave a call, each friend's own, a tick for messages, and the
- * screen kept awake while watching a share. Platform state (focus, visibility) is mirrored into a
+ * screen kept awake while watching a share or, on a phone, while in a call. Platform state (focus, visibility) is mirrored into a
  * signal once; everything else derives from room and call signals.
  */
 export function createAttention(links: () => RoomLink[], myKey: string): void {
@@ -70,10 +70,12 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
   });
   if (exposeHooks) (window as unknown as { __daveCues?: () => number }).__daveCues = () => cues;
 
-  // ---- wake lock while watching at least one live share, serialised so overlapping triggers cannot double-request
+  // ---- wake lock while watching at least one live share, or while in a call on a touch device: a phone that
+  // dims to black mid-call drops the call (report of Sep 23). Serialised so overlapping triggers cannot double-request.
   let sentinel: WakeLockSentinel | null = null;
   let wakeChain: Promise<void> = Promise.resolve();
-  const wantLock = () => links().some((l) => l.call.views().some((v) => v.watching && v.shareLive)) && !document.hidden;
+  const touch = matchMedia('(pointer: coarse)').matches;
+  const wantLock = () => links().some((l) => (touch && l.call.inCall()) || l.call.views().some((v) => v.watching && v.shareLive)) && !document.hidden;
   async function syncWakeLockNow(): Promise<void> {
     const wl = navigator.wakeLock;
     if (!wl) return;
