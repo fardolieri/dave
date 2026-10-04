@@ -155,3 +155,22 @@ test('ticket 23: join and leave cues follow each friend\'s profile picture', asy
   expect(carolLeave).not.toEqual(carolJoin); // the leave is the picture's cue backwards and lower
   expect(await heard(carol)).toBeTruthy(); // Carol heard her own leave
 });
+
+test('ticket 39: starting a share plays the sharer\'s cue with a high C6 on top, for everyone and the sharer', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { picture: '😀' });
+  const bob = await crowd.open('Bob', { picture: '🐸' }); // no wobble, so the cue's first notes match the join's
+  const heard = async (f: typeof alice) => { let got: string[] = []; await expect.poll(async () => (got = await f.cuesPlayed()).length, { message: `${f.name} hears a cue` }).toBeGreaterThan(0); return got; };
+  await alice.join();
+  await needHooks(alice);
+  const context = await alice.hook<{ context: string | null }>('playback').then((p) => p.context);
+  test.skip(context !== 'running', `no running AudioContext here (${context}), so no cue can play`);
+  await heard(alice); // my own join
+  await bob.join();
+  const bobJoin = await heard(alice);
+  await bob.cuesPlayed(); // Bob's own join, and Alice's
+  await bob.startShare();
+  const share = await heard(alice);
+  expect(share.slice(0, bobJoin.length)).toEqual(bobJoin); // Bob's own tune first
+  expect(share.at(-1)).toBe('sine 1047'); // then the sparkle
+  expect((await heard(bob)).at(-1)).toBe('sine 1047'); // Bob hears his own
+});

@@ -1,6 +1,6 @@
 import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
-import { callDiff, titleFor } from '../core/attention';
-import { MESSAGE_CUE, joinCue, leaveCue } from '../core/cue';
+import { callDiff, sharesStarted, titleFor } from '../core/attention';
+import { MESSAGE_CUE, joinCue, leaveCue, shareCue } from '../core/cue';
 import { armSound, playCue } from './sound';
 import { getPicture } from './invite';
 import type { createRoom } from './room';
@@ -12,8 +12,8 @@ export type RoomLink = { room: ReturnType<typeof createRoom>; call: ReturnType<t
 
 /**
  * Attention cues (spec §7.4) and the screen wake lock (spec §6.5) across every room: title badge while
- * the window is unfocused, quiet chimes when others join or leave a call, each friend's own, a tick for messages, and the
- * screen kept awake while watching a share. Platform state (focus, visibility) is mirrored into a
+ * the window is unfocused, quiet chimes when others join or leave a call or start sharing, each friend's own, a tick for
+ * messages, and the screen kept awake while watching a share. Platform state (focus, visibility) is mirrored into a
  * signal once; everything else derives from room and call signals.
  */
 export function createAttention(links: () => RoomLink[], myKey: string): void {
@@ -28,6 +28,7 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
   const participants = (except?: string) => new Set(links().flatMap((l) => l.room.people().filter((p) => p.role === 'participant' && p.publicKey !== except).map((p) => tag(l.room.roomId, p.publicKey))));
   const inCall = () => participants();
   const others = () => participants(myKey);
+  const sharers = () => new Set(links().flatMap((l) => l.room.people().filter((p) => p.role === 'participant' && p.sharing && p.publicKey !== myKey).map((p) => tag(l.room.roomId, p.publicKey))));
   const held = () => new Set(links().flatMap((l) => l.call.views().filter((v) => v.serverLost).map((v) => tag(l.room.roomId, v.publicKey))));
   /** Profile pictures by participant tag; a leaver is gone from presence, so theirs is read from the previous snapshot. */
   const pictures = () => new Map(links().flatMap((l) => l.room.people().map((p) => [tag(l.room.roomId, p.publicKey), p.picture] as const)));
@@ -41,8 +42,8 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
   const disarm = armSound();
   createEffect(
     // Everything reactive is read here, in the compute phase; the apply phase only acts on the snapshot.
-    () => ({ now: others(), seeded: seeded(), held: held(), pictures: pictures() }),
-    ({ now, seeded, held, pictures }, prev) => {
+    () => ({ now: others(), sharing: sharers(), seeded: seeded(), held: held(), pictures: pictures() }),
+    ({ now, sharing, seeded, held, pictures }, prev) => {
       if (!prev) return;
       // Only rooms that were seeded before and still are can report a join or a leave.
       const settled = (t: string) => { const roomId = t.slice(0, t.indexOf(' ')); return seeded.has(roomId) && prev.seeded.has(roomId); };
@@ -51,6 +52,7 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
       const { joined, left } = callDiff(before, after, '', held); // I am already left out of both sets
       for (const t of joined) playCue(joinCue(pictures.get(t)));
       for (const t of left) playCue(leaveCue(prev.pictures.get(t)));
+      for (const t of sharesStarted({ present: before, sharing: prev.sharing }, { sharing })) playCue(shareCue(pictures.get(t)));
     },
   );
 
@@ -60,6 +62,10 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
     if (!prev) return;
     if (now.some((id) => !prev.includes(id))) playCue(joinCue(getPicture()));
     if (prev.some((id) => !now.includes(id))) playCue(leaveCue(getPicture()));
+  });
+  // Starting my own share plays my share cue too, once the browser's picker has handed over the screen.
+  createEffect(() => links().filter((l) => l.call.sharing() !== null).map((l) => l.room.roomId), (now, prev) => {
+    if (prev && now.some((id) => !prev.includes(id))) playCue(shareCue(getPicture()));
   });
 
   // ---- incoming text: a soft tick for other people's messages in any room, never your own or restored history (ticket 09)

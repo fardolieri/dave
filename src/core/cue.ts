@@ -136,6 +136,19 @@ export function leaveCue(picture: string | null | undefined): Cue {
   return { timbre: join.timbre, gain: join.gain * 0.8, vibrato: join.vibrato, notes: [...join.notes].reverse().map((n) => ({ freq: n.freq * 2 ** (-5 / 12), seconds: n.seconds * 1.2, ...(n.with ? { with: n.with * 2 ** (-5 / 12) } : {}) })) };
 }
 
+/** The sparkle a share start ends on: a C6 over two steps, above every join cue (they stop at C5). */
+const SPARKLE: Note = { freq: semitones(24), seconds: 2 * STEP_SECONDS };
+
+/**
+ * A friend starting to share their screen: their join cue, its last note held to at least 90 ms, then the sparkle, so
+ * you hear who it is and that something new is on screen (picked by the owner from seven candidates, 2026-10-04).
+ */
+export function shareCue(picture: string | null | undefined): Cue {
+  const join = joinCue(picture);
+  const notes = join.notes.map((n, i) => (i === join.notes.length - 1 ? { ...n, seconds: Math.max(n.seconds, 0.09) } : n));
+  return { ...join, notes: [...notes, SPARKLE] };
+}
+
 /**
  * The gain one note is played at: the cue's, raised for low notes, which the ear finds quieter (roughly the 40-phon
  * equal-loudness curve over this range, taken halfway so small speakers are not pushed into bass they cannot play).

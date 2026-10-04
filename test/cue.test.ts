@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CUE_GAIN, MINOR_SCALE, TIMBRES, VIBRATOS, joinCue, joinParts, leaveCue, melodySteps, noteGain } from '../src/core/cue';
+import { CUE_GAIN, MINOR_SCALE, TIMBRES, VIBRATOS, joinCue, joinParts, leaveCue, melodySteps, noteGain, shareCue } from '../src/core/cue';
 import { EMOJI_CATEGORIES } from '../src/core/emoji';
 
 const signature = (emoji: string) => JSON.stringify(joinCue(emoji));
@@ -89,5 +89,16 @@ describe('join and leave cues from the profile picture', () => {
       expect(n.seconds).toBeGreaterThan(back[i]!.seconds);
       expect(n.with === undefined).toBe(back[i]!.with === undefined);
     });
+  });
+});
+
+describe('share cue', () => {
+  it("plays the friend's join cue, then a C6 above every join cue", () => {
+    for (const picture of ['🦊', '🐸', null]) {
+      const join = joinCue(picture), share = shareCue(picture);
+      expect(share.notes.slice(0, -1).map((n) => n.freq)).toEqual(join.notes.map((n) => n.freq));
+      expect(share.notes.at(-1)!.freq).toBeCloseTo(1046.5, 0);
+      expect(share.notes.at(-2)!.seconds).toBeGreaterThanOrEqual(0.09);
+    }
   });
 });

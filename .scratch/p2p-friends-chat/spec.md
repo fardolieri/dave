@@ -156,6 +156,8 @@ Title badge such as "(3 in call)" while the tab is unfocused, short join and lea
 
 Each friend's join and leave cue comes from their profile picture (2026-09-24, ticket 23): two or three pentatonic notes within four scale steps (a third to a sixth wide) that rise without arching and never pass C5, a register from C4 to F4, one of the short rhythms that won (60 ms steps, at most 240 ms plus a short ring-out), a pure sine tone, a bright (major pentatonic) or moody (minor pentatonic) mood, a wobble on the last note from none to slow, and mostly a second voice on the last note (a consonant dyad), all from a hash of the emoji, the ranges chosen from 274 blind picks by the owner over three rounds and a lab of switches; leaving plays it backwards and a fourth lower, so it falls. Tones are gain-balanced from a loudness model and low notes are raised, so every cue is about as loud as the next. No picture keeps the plain two-note chime. You hear your own cue when you join or leave, so you know what the others hear. Nothing is configured apart from the emoji: choosing a picture is choosing a sound. There are no previews and nothing in the UI explains it: a hidden feature friends find by listening (owner, 2026-09-24).
 
+Starting a share plays the sharer's join cue followed by a high C6 (2026-10-04, ticket 39): the tune says who, the sparkle above every join cue says a share. The sharer hears it too. Stopping a share is silent.
+
 ### 7.5 Mobile promise
 Best effort: "works on recent iOS Safari and Android Chrome, not a supported target". Voice, text, and viewing shares. Publishing where the browser offers `getDisplayMedia`: iOS Safari 27 and later, not Android (amended 2026-09-24).
 

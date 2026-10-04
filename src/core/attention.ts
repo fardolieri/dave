@@ -18,3 +18,11 @@ export function callDiff(before: Set<string>, after: Set<string>, me: string, st
   return { joined, left };
 }
 
+
+/**
+ * Who started sharing between two views of the Call. Only someone already in the Call before counts: a friend coming
+ * back from a server reconnect returns with their share still flagged (spec §8.1), which is no new share.
+ */
+export function sharesStarted(before: { present: Set<string>; sharing: Set<string> }, after: { sharing: Set<string> }): string[] {
+  return [...after.sharing].filter((k) => before.present.has(k) && !before.sharing.has(k));
+}

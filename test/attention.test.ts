@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { callDiff, titleFor } from '../src/core/attention';
+import { callDiff, sharesStarted, titleFor } from '../src/core/attention';
 
 describe('attention cues', () => {
   it('badges the title only while hidden and while someone is in the call', () => {
@@ -16,5 +16,10 @@ describe('attention cues', () => {
     const held = new Set(['a']);
     expect(callDiff(new Set(['a', 'b']), new Set(['b']), 'me', held)).toEqual({ joined: [], left: [] });
     expect(callDiff(new Set(['b']), new Set(['a', 'b']), 'me', held)).toEqual({ joined: [], left: [] });
+  });
+  it('counts a share start only from someone already in the call who was not sharing', () => {
+    const before = { present: new Set(['a', 'b']), sharing: new Set(['b']) };
+    expect(sharesStarted(before, { sharing: new Set(['a', 'b']) })).toEqual(['a']);
+    expect(sharesStarted(before, { sharing: new Set(['b', 'c']) })).toEqual([]); // c was away: a reconnect keeps the flag
   });
 });
