@@ -53,7 +53,7 @@ export type PeerDiagnostics = {
   pair: { local: string; remote: string; state: string; rttMs: number | null; outgoingKbps: number | null } | null;
 };
 export type CallDiagnostics = {
-  inCall: boolean; muted: boolean; joinSeq: number | null; sharing: Record<string, unknown> | null; outgoing: OutgoingShare | null;
+  inCall: boolean; muted: boolean; microphone: boolean; joinSeq: number | null; sharing: Record<string, unknown> | null; outgoing: OutgoingShare | null;
   shareSettings: unknown; viewerSettings: unknown; audioProcessing: unknown; lowBandwidthVoice: boolean; voiceRepair: VoiceRepair; ice: { servers: number; turn: boolean; ageMinutes: number | null };
   peers: PeerDiagnostics[];
 };
@@ -155,6 +155,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   const [views, setViews] = createSignal<PeerView[]>([]);
   const [speakingSelf, setSpeakingSelf] = createSignal(false);
   const [joinError, setJoinError] = createSignal<string | null>(null);
+  /** Why I am in the call without a microphone: none found, access denied. I listen, shown muted; Unmute asks again. */
+  const [micProblem, setMicProblem] = createSignal<string | null>(null);
   const [sharing, setSharing] = createSignal<MediaStream | null>(null);
   const [shareError, setShareError] = createSignal<string | null>(null);
   /** Remote share streams by participant key, as a signal so tiles re-read them when a connection is rebuilt. */
@@ -244,6 +246,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (a.microphoneId) c.deviceId = { ideal: a.microphoneId };
     return c;
   }
+  const micProblemOf = (e: unknown): string =>
+    e instanceof Error && e.name === 'NotAllowedError' ? 'Microphone access was denied.'
+    : e instanceof Error && (e.name === 'NotFoundError' || e.name === 'OverconstrainedError') ? 'No microphone found.'
+    : `Could not open the microphone: ${e instanceof Error ? e.message : String(e)}`;
   async function openMicrophone(): Promise<void> {
     if (voiceTrack) return;
     localStream = await navigator.mediaDevices.getUserMedia({ audio: microphoneConstraints() });
@@ -955,7 +961,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   async function diagnostics(): Promise<CallDiagnostics> {
     const { echoCancellation, noiseSuppression, autoGainControl, voiceThreshold } = untrack(audioSettings);
     return {
-      inCall: joined, muted: untrack(muted), joinSeq: myJoinSeq,
+      inCall: joined, muted: untrack(muted), microphone: !!voiceTrack, joinSeq: myJoinSeq,
       sharing: shareVideo ? { ...shareVideo.getSettings(), readyState: shareVideo.readyState, contentHint: shareVideo.contentHint } : null,
       outgoing: untrack(outgoing), shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl, noiseRemoval: untrack(noiseRemoval), voiceThreshold, path: voice?.path ?? null, stop: untrack(noiseRemovalStop), load: voiceLoad, micRate: voiceTrack?.getSettings().sampleRate ?? null }, lowBandwidthVoice: lowVoiceOn, voiceRepair,
       ice: { servers: iceServers.length, turn: hasTurn(), ageMinutes: iceIssuedAt ? Math.round((Date.now() - iceIssuedAt) / 60000) : null },
@@ -1133,7 +1139,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   async function declareJoin(): Promise<Extract<ServerMessage, { t: 'call' }> | null> {
-    const m = await awaitReply('call', () => room.send({ t: 'join', muted: muted(), sharing: shareVideo !== null }), 8000);
+    const m = await awaitReply('call', () => room.send({ t: 'join', muted: muted() || !voiceTrack, sharing: shareVideo !== null }), 8000);
     if (m) { myJoinSeq = m.joinSeq; iceServers = m.iceServers; iceIssuedAt = m.issuedAt; }
     return m;
   }
@@ -1264,16 +1270,18 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (joined || joining) return;
     joining = true;
     setJoinError(null);
+    setMicProblem(null);
     try {
       try {
         await openMicrophone(); // first: a live capture is what lets the audio below start without a gesture
-        if (rejoin) tryUnlockSound();
       } catch (e) {
-        const joinErrMsg = e instanceof Error && e.name === 'NotAllowedError' ? 'Microphone access was denied.' : `Could not open the microphone: ${e instanceof Error ? e.message : String(e)}`;
-        setJoinError(joinErrMsg);
-        posthog.capture('join_error', { reason: 'microphone_denied' });
-        return;
+        // No microphone, or none allowed: join anyway, to listen. The join click lets the call's sound play; a Rejoin may need one.
+        setMicProblem(micProblemOf(e));
+        posthog.capture('microphone_unavailable', { error: e instanceof Error ? e.name : 'unknown', rejoin: !!rejoin });
+        audioCtx ??= new AudioContext();
+        if (audioCtx.state === 'suspended') void audioCtx.resume().catch(() => {});
       }
+      if (rejoin) tryUnlockSound();
       const reply = await declareJoin();
       if (!reply) { setJoinError('The server did not answer the join request.'); posthog.capture('join_error', { reason: 'server_no_answer' }); return; }
       if (rejoin) {
@@ -1287,7 +1295,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       writeRejoinMarker();
       heartbeat = setInterval(writeRejoinMarker, REJOIN_HEARTBEAT_MS);
       exposeDevHook();
-      posthog.capture('call_joined', { rejoin: !!rejoin });
+      posthog.capture('call_joined', { rejoin: !!rejoin, microphone: !!voiceTrack });
       reconcile(untrack(room.people));
     } finally {
       joining = false;
@@ -1307,6 +1315,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     setAudioBlocked(false);
     setInCall(false);
     myJoinSeq = null;
+    setMicProblem(null);
+    closeMicrophone();
+  }
+
+  function closeMicrophone(): void {
     stopNoiseRemoval();
     sentVoice = null;
     voiceTrack?.stop();
@@ -1316,7 +1329,27 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     setSpeakingSelf(false);
   }
 
-  function setMuted(m: boolean): void {
+  /** Unmute in a call without a microphone: ask for one again, inside the click. */
+  let micRetry = false;
+  async function retryMicrophone(): Promise<boolean> {
+    if (micRetry) return false;
+    micRetry = true;
+    try {
+      await openMicrophone();
+    } catch (e) {
+      setMicProblem(micProblemOf(e));
+      return false;
+    } finally {
+      micRetry = false;
+    }
+    if (!joined) { closeMicrophone(); return false; } // left while the browser asked
+    setMicProblem(null);
+    posthog.capture('microphone_opened_later');
+    return true;
+  }
+
+  async function setMuted(m: boolean): Promise<void> {
+    if (!m && joined && !voiceTrack && !(await retryMicrophone())) return;
     setMutedSignal(m);
     local.set('muted', String(m));
     if (voiceTrack) voiceTrack.enabled = !m;
@@ -1384,7 +1417,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   exposeDevHook();
 
   return {
-    inCall, muted, views, speakingSelf, joinError, join: () => join(), leave, setMuted, myJoinSeq: () => myJoinSeq, audioBlocked, unblockAudio,
+    inCall, muted: () => muted() || micProblem() !== null, micProblem, views, speakingSelf, joinError, join: () => join(), leave, setMuted, myJoinSeq: () => myJoinSeq, audioBlocked, unblockAudio,
     noiseRemoval, noiseRemovalStop, voiceLevel,
     sharing, shareError, outgoing, startShare, stopShare, watch, watchOnly, shareStreamOf,
     shareSettings, changeShare, audioSettings, changeAudio, viewerSettings, setViewerSettings, devices, refreshDevices, canPickSpeaker,

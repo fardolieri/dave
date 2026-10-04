@@ -494,9 +494,10 @@ function CallControls(props: { call: Call; panel: 'audio' | 'share' | null; onPa
         <button class="unblock" title="The browser held back the call's sound until you click" onClick={props.call.unblockAudio}>Click to hear the call</button>
       </Show>
       <div class="row">
-        <button class={props.call.muted() ? 'on' : ''} onClick={() => props.call.setMuted(!props.call.muted())}>{props.call.muted() ? 'Unmute' : 'Mute'}</button>
+        <button class={props.call.muted() ? 'on' : ''} onClick={() => void props.call.setMuted(!props.call.muted())}>{props.call.muted() ? 'Unmute' : 'Mute'}</button>
         <button class={`gear ${props.panel === 'audio' ? 'on' : ''}`} title="Audio settings" onClick={() => { toggle('audio'); void props.call.refreshDevices(); }}>⚙</button>
       </div>
+      <Show when={props.call.micProblem()}>{(p) => <div class="hint">{p()} You can listen; Unmute asks for the microphone again.</div>}</Show>
       <Show when={props.panel === 'audio'}><AudioPanel call={props.call} /></Show>
       <Show when={props.canShare} fallback={<div class="hint">Screen sharing is not available on this device</div>}>
         <div class="row">

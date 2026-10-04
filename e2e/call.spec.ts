@@ -44,6 +44,38 @@ test('mute shows for everyone; leaving removes a participant at once', async ({ 
   await expect.poll(() => bob.online()).toEqual(['Alice']);
 });
 
+test('a friend without a microphone joins to listen, shown muted; Unmute takes one plugged in later', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const nick = await crowd.open('Nick', { connect: false });
+  // The browser finds no microphone until the test plugs one in.
+  await nick.context.addInitScript(() => {
+    const w = window as unknown as { __micPlugged: boolean };
+    w.__micPlugged = false;
+    const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = (c) => (c?.audio && !w.__micPlugged ? Promise.reject(new DOMException('Requested device not found', 'NotFoundError')) : real(c));
+  });
+  await nick.open();
+  await alice.join();
+  await nick.join();
+  const hint = nick.selectedRoom.locator('.hint', { hasText: 'No microphone found.' });
+  await expect(hint).toBeVisible();
+  await alice.connectedTo('Nick');
+  await nick.connectedTo('Alice');
+  const nickRow = alice.selectedRoom.locator('li.prow', { hasText: 'Nick' });
+  await expect(nickRow).toContainText('muted');
+  await needHooks(nick);
+  await nick.hearing('Alice');
+  await nick.button('Unmute').click(); // still none: keeps listening
+  await expect(hint).toBeVisible();
+  await expect(nick.button('Unmute')).toBeVisible();
+  await nick.page.evaluate(() => { (window as unknown as { __micPlugged: boolean }).__micPlugged = true; });
+  await nick.button('Unmute').click();
+  await expect(nick.button('Mute')).toBeVisible();
+  await expect(hint).toHaveCount(0);
+  await expect(nickRow).not.toContainText('muted');
+  await alice.hearing('Nick');
+});
+
 test('a participant who rejoins is connected again', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
