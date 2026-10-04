@@ -1,6 +1,6 @@
 # 40 · A mic test: hear yourself as friends do
 
-Status: built 2026-10-04 on `build/40-microphone-test`, not shipped
+Status: shipped 2026-10-04 to nightly (deploy and nightly e2e green), not yet to prod
 Asked for 2026-10-04: Daniel: "Users should be able to test their microphone settings. I want a button in the audio settings
 card that [mutes] yourself for others, [mutes] others for you, [and plays] everything you say to your speaker […] You should be
 able to change the settings while the test is running so that you immediately see the effect." After talking it through:
