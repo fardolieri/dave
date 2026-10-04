@@ -38,3 +38,19 @@ able to change the settings while the test is running so that you immediately se
 - Firefox's fake microphone is a steady tone, which RNNoise removes completely, so there the processed voice's level is not
   checked, only that the monitor follows it.
 - Not tried on a real phone or with real headphones yet.
+
+## Follow-up 2026-10-04: echo cancellation, and processing changes that never reached the microphone
+Daniel, Chrome 154 on Linux: humming in "Hear yourself" cut in and out; recorded, it was steady. Unticking Echo
+cancellation changed nothing, but unticking it and reloading made the hum come through: echo cancellation took the
+played-back voice for an echo.
+- The toggles had never worked mid-call in Chromium (since ticket 06): `applyConstraints` resolves, but the track keeps
+  the processing it was opened with (checked in Chrome 153: `getSettings().echoCancellation` stays true). The e2e test
+  checked the stored setting, not the track.
+- Now a processing change opens the microphone again and swaps it in (`syncMicrophone`, `reopenMicrophone`), like a
+  microphone switch. A second capture gets processing switched off while the first runs; switched back on it inherits
+  the off, so then the first is stopped before, a moment of silence. Noise removal stepping in or out, and giving up,
+  take the same path.
+- "Hear yourself" runs with echo cancellation off on the microphone and puts the setting back after; the panel says so.
+  The recording keeps the setting: nothing plays while it records.
+- e2e: the processing test and `ticket 40` now read the track's own settings, Chromium only: Firefox's fake microphone
+  reports no processing whatever it is asked for.

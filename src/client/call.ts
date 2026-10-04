@@ -251,9 +251,57 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   /** Takes the settings explicitly where they were just written: a signal written in this run still reads the old value. */
   function microphoneConstraints(a: AudioSettings = untrack(audioSettings)): MediaTrackConstraints {
     const c: MediaTrackConstraints = captureProcessing(a, a.noiseRemoval && canRemoveNoise() && !removalUnavailable);
+    // Hearing myself live, echo cancellation would take my own voice for an echo and cut it in and out; no friend plays to cancel.
+    if (testing === 'live') c.echoCancellation = false;
     // `ideal`, not `exact`: a remembered microphone that is unplugged must not lock anyone out of the call.
     if (a.microphoneId) c.deviceId = { ideal: a.microphoneId };
     return c;
+  }
+  /** The constraints the live microphone was opened with, to tell whether the settings now ask for another. */
+  let micOpenedWith = '';
+  const capture = async (c: MediaTrackConstraints): Promise<MediaStream | null> => {
+    try { return await navigator.mediaDevices.getUserMedia({ audio: c }); } catch (e) { console.warn('microphone reopen failed', e); return null; }
+  };
+  const PROCESSING = ['echoCancellation', 'noiseSuppression', 'autoGainControl'] as const;
+  /** Whether a capture runs the processing `c` asked for, where the browser says. */
+  const takes = (stream: MediaStream, c: MediaTrackConstraints): boolean => {
+    const got = stream.getAudioTracks()[0]?.getSettings() ?? {};
+    return PROCESSING.every((k) => c[k] === undefined || got[k] === undefined || got[k] === c[k]);
+  };
+  /**
+   * Opens the microphone again with `c` and swaps it in. Chromium keeps the processing a track was opened with, whatever
+   * applyConstraints says (2026-10-04, Chrome 153). A second capture of the same device gets its own processing switched
+   * off, but not back on while the first runs without: then the first is stopped before the second, a moment of silence.
+   * False when the browser refused, or the microphone was closed or replaced meanwhile.
+   */
+  async function reopenMicrophone(c: MediaTrackConstraints): Promise<boolean> {
+    const old = voiceTrack;
+    if (!old) return false;
+    let stream = await capture(c);
+    if (stream && voiceTrack === old && !takes(stream, c)) {
+      stream.getTracks().forEach((t) => t.stop());
+      old.stop();
+      stream = await capture(c) ?? await capture(JSON.parse(micOpenedWith) as MediaTrackConstraints);
+      if (!stream) posthog.capture('microphone_reopen_failed');
+    }
+    if (!stream) return false;
+    const track = stream.getAudioTracks()[0];
+    if (!track || voiceTrack !== old) { stream.getTracks().forEach((t) => t.stop()); return false; }
+    track.enabled = micLive();
+    voiceTrack = track;
+    localStream = stream;
+    micOpenedWith = JSON.stringify(c);
+    voice?.setInput(stream); // the processed track stays the same; only while the microphone goes out as it is does a sender change
+    await sendVoice();
+    old.stop();
+    localAnalyser = analyserFor('me', stream);
+    return true;
+  }
+  /** Brings the live microphone in line with the settings and the mic test: opened again only when they ask for something else. */
+  async function syncMicrophone(a: AudioSettings = untrack(audioSettings)): Promise<void> {
+    if (!voiceTrack) return;
+    const c = microphoneConstraints(a);
+    if (JSON.stringify(c) !== micOpenedWith) await reopenMicrophone(c);
   }
   const micProblemOf = (e: unknown): string =>
     e instanceof Error && e.name === 'NotAllowedError' ? 'Microphone access was denied.'
@@ -261,7 +309,9 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     : `Could not open the microphone: ${e instanceof Error ? e.message : String(e)}`;
   async function openMicrophone(): Promise<void> {
     if (voiceTrack) return;
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: microphoneConstraints() });
+    const c = microphoneConstraints();
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: c });
+    micOpenedWith = JSON.stringify(c);
     voiceTrack = localStream.getAudioTracks()[0] ?? null;
     if (voiceTrack) voiceTrack.enabled = !muted();
     audioCtx ??= new AudioContext();
@@ -311,15 +361,17 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   async function startNoiseRemoval(a: AudioSettings = untrack(audioSettings)): Promise<void> {
     if (!a.noiseRemoval || !localStream || voice) return;
     const generation = ++voiceGeneration;
+    const input = localStream;
     if (!canRemoveNoise()) { removalFailed('unsupported'); return; }
     setNoiseRemoval('starting');
     // The context can report its state while it is still being set up, before `v` is assigned.
     let v: VoiceProcessor | null = null;
     const onRunning = () => { if (v && voice === v) { sendVoice(); showRemoval(); } };
     try {
-      v = await createVoiceProcessor(localStream, a.voiceThreshold, { level: onVoiceLevel, running: onRunning, load: (l) => { voiceLoad = { pct: l.pct, droppedMs: l.droppedMs, ...loadOverride }; loadFresh = true; } });
+      v = await createVoiceProcessor(input, a.voiceThreshold, { level: onVoiceLevel, running: onRunning, load: (l) => { voiceLoad = { pct: l.pct, droppedMs: l.droppedMs, ...loadOverride }; loadFresh = true; } });
       if (generation !== voiceGeneration) { v.close(); return; }
       voice = v;
+      if (localStream && localStream !== input) v.setInput(localStream); // the microphone was opened again meanwhile
       guard = createVoiceGuard(v.path);
       v.track.enabled = micLive();
       await v.ready;
@@ -352,13 +404,18 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     setNoiseRemoval('unavailable');
     posthog.capture('noise_removal_unavailable', { reason, ...props });
     // It was off for RNNoise: the browser's own noise suppression takes over again.
-    void voiceTrack?.applyConstraints(microphoneConstraints()).catch((e) => console.warn('applyConstraints audio', e));
+    queueMicSync();
   }
   // ---- mic test (ticket 40)
   const [micTest, setMicTestSignal] = createSignal<MicTest | null>(null);
   /** Plain mirror of `micTest`, read on the way to the senders. */
   let testing: MicTest | null = null;
-  const setTesting = (t: MicTest | null) => { testing = t; setMicTestSignal(t); };
+  const setTesting = (t: MicTest | null) => {
+    const live = testing === 'live' || t === 'live';
+    testing = t;
+    setMicTestSignal(t);
+    if (live) queueMicSync(); // echo cancellation off while I hear myself, back after
+  };
   /** My microphone's tracks run while unmuted, and during a mic test even when muted: the test plays what friends would get. */
   const micLive = (): boolean => !untrack(muted) || testing !== null;
   /** Plays my live voice or the recording, on the chosen speaker. */
@@ -586,31 +643,17 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     audioChain = audioChain.then(() => changeAudioNow(change)).catch((e) => console.warn('audio settings', e));
     return audioChain;
   }
+  /** For what changes the microphone's constraints outside the settings: noise removal giving up, the live mic test. */
+  function queueMicSync(): void {
+    audioChain = audioChain.then(() => syncMicrophone()).catch((e) => console.warn('microphone sync', e));
+  }
   async function changeAudioNow(change: Partial<AudioSettings>): Promise<void> {
     const prev = audioSettings();
     const next = { ...prev, ...change };
     if (testing) testChanges++;
     if (voiceTrack && next.microphoneId !== prev.microphoneId) {
-      storeAudioSettings(next); // the id is selected now; rolled back below if the capture fails
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: microphoneConstraints(next) });
-      } catch (e) {
-        storeAudioSettings(prev); // roll back: the old microphone stays live and selected
-        console.warn('microphone switch failed', e);
-        return;
-      }
-      const track = stream.getAudioTracks()[0];
-      if (track) {
-        track.enabled = micLive();
-        const old = voiceTrack;
-        voiceTrack = track;
-        localStream = stream;
-        voice?.setInput(stream); // the processed track stays the same; only while the microphone goes out as it is does a sender change
-        await sendVoice();
-        old.stop();
-        localAnalyser = analyserFor('me', stream);
-      }
+      storeAudioSettings(next); // the id is selected now; rolled back if the capture fails: the old microphone stays live and selected
+      if (!(await reopenMicrophone(microphoneConstraints(next)))) { storeAudioSettings(prev); return; }
     } else {
       storeAudioSettings(next);
       if (next.noiseRemoval !== prev.noiseRemoval) {
@@ -619,8 +662,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         if (next.noiseRemoval) void startNoiseRemoval(next); else stopNoiseRemoval();
       }
       if (next.voiceThreshold !== prev.voiceThreshold) voice?.setThreshold(next.voiceThreshold);
-      const processingChanged = (['echoCancellation', 'noiseSuppression', 'autoGainControl', 'noiseRemoval'] as const).some((k) => next[k] !== prev[k]);
-      if (voiceTrack && processingChanged) await voiceTrack.applyConstraints(microphoneConstraints(next)).catch((e) => console.warn('applyConstraints audio', e));
+      await syncMicrophone(next); // echo cancellation, noise suppression and automatic gain, live
+
     }
     if (next.speakerId !== prev.speakerId) {
       for (const p of peers.values()) { void applySink(p.audio); void applySink(p.shareAudio); }

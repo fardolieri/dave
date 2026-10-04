@@ -834,7 +834,7 @@ function MicTest(props: { call: Call }) {
 }
 type MicTestPhase = NonNullable<ReturnType<Call['micTest']>>;
 const MIC_TEST_NOTE: Record<MicTestPhase, string> = {
-  live: 'You hear yourself as friends would. Use headphones, or your voice comes back as an echo.',
+  live: 'You hear yourself as friends would, but with echo cancellation off: here it would only cut into your own voice. Use headphones, or your voice comes back as an echo.',
   recording: 'Recording: say something.',
   playing: 'Playing back what friends would have heard.',
 };

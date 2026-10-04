@@ -2,7 +2,7 @@ import { expect, needHooks, test } from './fixtures';
 
 // Audio settings, volumes, the problem report, and the phone layout.
 
-test('turning audio processing off warns, and the change reaches the microphone track', async ({ crowd }) => {
+test('turning audio processing off warns, and the change reaches the microphone track live', async ({ crowd, browserName }) => {
   const alice = await crowd.open('Alice');
   await alice.join();
   await alice.selectedRoom.getByTitle('Audio settings').click();
@@ -18,6 +18,21 @@ test('turning audio processing off warns, and the change reaches the microphone 
   await expect.poll(async () => (await alice.hook<{ settings: { noiseSuppression: boolean } }>('audio')).settings.noiseSuppression).toBe(false);
   await panel.getByLabel('Noise suppression').check();
   await expect(panel.locator('.warn')).toHaveCount(0);
+  // Firefox's fake microphone runs no processing whatever it is asked for, so only Chromium's can show the change arriving.
+  test.skip(browserName !== 'chromium', 'the fake microphone reports no processing here');
+  // What the microphone reports, not the stored setting: Chromium keeps a track's processing whatever applyConstraints says,
+  // so a change mid-call opens the microphone again.
+  type Track = { track: { echoCancellation?: boolean; noiseSuppression?: boolean } | null };
+  const track = async () => (await alice.hook<Track>('audio')).track;
+  await expect.poll(async () => (await track())?.noiseSuppression).toBe(true);
+  await panel.getByLabel('Noise suppression').uncheck();
+  await expect.poll(async () => (await track())?.noiseSuppression).toBe(false);
+  await panel.getByLabel('Noise suppression').check();
+  await expect.poll(async () => (await track())?.noiseSuppression).toBe(true);
+  await panel.getByLabel('Echo cancellation').uncheck();
+  await expect.poll(async () => (await track())?.echoCancellation).toBe(false);
+  await panel.getByLabel('Echo cancellation').check();
+  await expect.poll(async () => (await track())?.echoCancellation).toBe(true);
 });
 
 test('noise removal runs on the outgoing voice, the gate follows its slider, and switching it off sends the microphone again', async ({ crowd }) => {
@@ -138,6 +153,9 @@ test('ticket 40: the mic test plays my voice as friends get it, while friends ge
   await expect(aliceRow).toContainText('muted');
   await expect.poll(bobGain, { message: 'Bob goes unheard' }).toBe(0);
   await expect.poll(async () => (await test40()).playing).toBe(true);
+  const echo = async () => (await alice.hook<{ track: { echoCancellation?: boolean } | null }>('audio')).track?.echoCancellation;
+  // Firefox's fake microphone runs no processing whatever it is asked for: there echo cancellation always reads off.
+  if (browserName === 'chromium') await expect.poll(echo, { message: 'echo cancellation steps aside while I hear myself' }).toBe(false);
   expect((await test40()).follows).toBe('processed');
   // Firefox's fake microphone is a steady tone, which RNNoise takes out entirely; Chromium's beeps get through an open gate.
   if (browserName === 'chromium') await expect.poll(async () => (await test40()).level ?? 0, { message: 'my processed voice plays' }).toBeGreaterThan(0.001);
@@ -154,6 +172,7 @@ test('ticket 40: the mic test plays my voice as friends get it, while friends ge
   expect((await test40()).wire).toBe('silence');
   await live.click(); // the lit button ends it
   await expect.poll(async () => (await test40()).phase).toBe(null);
+  if (browserName === 'chromium') await expect.poll(echo, { message: 'echo cancellation is back' }).toBe(true);
   expect((await test40()).wire).toBe('voice');
   await expect(aliceRow).not.toContainText('muted');
   await expect.poll(bobGain).toBe(1);
