@@ -8,7 +8,7 @@ import { addRoom, forgetRoom, getSelectedRoom, loadRooms, setSelectedRoom, type 
 import { newRoomSecret, normaliseRoomName, parseInviteText, type InviteLink } from '../core/rooms';
 import { encodeQr, qrPath } from '../core/qr';
 import { createRoom, type ChatLine, type ServerStatus } from './room';
-import { createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
+import { MIC_TEST_RECORD_MS, createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
 import { createAttention, type RoomLink } from './attention';
 import { contactOf, isKnown, markKnown, setNickname } from './contacts';
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, normaliseName, type Identity, type Person } from '../core/protocol';
@@ -758,6 +758,7 @@ function AudioPanel(props: { call: Call }) {
         <input type="range" min="0" max={MAX_VOLUME * 100} step="5" value={masterPercent()} onInput={(e) => set({ masterVolume: Number(e.currentTarget.value) / 100 })} onDblClick={() => set({ masterVolume: 1 })} />
         <span class="dim">{masterPercent()}%</span>
       </label>
+      <MicTest call={props.call} />
       <div class={processingIsDefault(a()) ? 'hint' : 'warn'}>
         {processingIsDefault(a()) ? 'Turning these off usually makes you sound worse to others.' : 'Audio processing is off. Turn everything back on if friends complain.'}
       </div>
@@ -801,7 +802,44 @@ function AudioPanel(props: { call: Call }) {
   );
 }
 
-const VOICE_REPAIR_LABEL: Record<VoiceRepair, string> = { off: 'Off', fec: 'Opus FEC', red: 'RED' };
+/**
+ * The mic test (ticket 40): hear yourself live, or record 5 s and hear them back, as friends would get your voice, while
+ * the settings below change. Friends meanwhile get silence and you hear none of them; closing the panel ends it.
+ */
+function MicTest(props: { call: Call }) {
+  const t = () => props.call.micTest();
+  const toggle = (phase: MicTestPhase, start: () => void) => (t() === phase ? props.call.stopMicTest() : start());
+  onCleanup(() => props.call.stopMicTest('panel'));
+  return (
+    <>
+      <div class="mictest">
+        <span>Mic test</span>
+        <button class={t() === 'live' ? 'on' : ''} disabled={props.call.micProblem() !== null} onClick={() => toggle('live', props.call.hearYourself)}
+          title="Hear your voice as friends get it while you change the settings below. Use headphones: through speakers it comes back as an echo or a howl.">Hear yourself</button>
+        <Show when={props.call.canRecordMicTest}>
+          <button class={t() === 'recording' ? 'recording' : ''} style={{ '--record-ms': `${MIC_TEST_RECORD_MS}ms` }} disabled={props.call.micProblem() !== null} onClick={() => toggle('recording', props.call.recordMicTest)}
+            title="Records 5 seconds of your voice as friends get it, then plays them back. Works through speakers too.">{t() === 'recording' ? 'Recording…' : 'Record 5 s'}</button>
+          <Show when={props.call.hasMicTestClip()}>
+            <button class={t() === 'playing' ? 'on' : ''} onClick={() => toggle('playing', props.call.playMicTest)} title="Plays the last recording again">Play</button>
+          </Show>
+        </Show>
+      </div>
+      <Show when={t()}>{(phase) => (
+        <div class="warn">
+          {MIC_TEST_NOTE[phase()]} Friends can't hear you and you hear none of them until the test ends.
+        </div>
+      )}</Show>
+    </>
+  );
+}
+type MicTestPhase = NonNullable<ReturnType<Call['micTest']>>;
+const MIC_TEST_NOTE: Record<MicTestPhase, string> = {
+  live: 'You hear yourself as friends would. Use headphones, or your voice comes back as an echo.',
+  recording: 'Recording: say something.',
+  playing: 'Playing back what friends would have heard.',
+};
+
+const VOICE_REPAIR_LABEL: Record<VoiceRepair, string> ={ off: 'Off', fec: 'Opus FEC', red: 'RED' };
 
 const CONN_LABEL: Record<ConnState, string> = { connecting: 'connecting…', direct: 'direct', relayed: 'via relay', reconnecting: 'reconnecting…', unreachable: 'unreachable' };
 

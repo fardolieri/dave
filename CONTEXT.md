@@ -100,6 +100,10 @@ _Avoid_: Noise suppression (the browser's built-in filter, a different thing), n
 What lets your voice out only while you speak: it opens when RNNoise's voice probability passes the threshold on the Audio panel's slider and holds open briefly after. Below it friends receive silence, and your speaking ring follows it.
 _Avoid_: Noise gate (that one goes by loudness), voice activity detection (the measurement, not the gate), input sensitivity
 
+**Mic test**:
+Hearing your own voice as friends get it, from the Audio panel: live while you change the settings, or as 5 seconds recorded and played back. While it runs you are out of the call: friends get silence and see you muted, and you hear none of them.
+_Avoid_: Echo test, loopback (in UI copy; fine in code), sound check
+
 **Low bandwidth voice**:
 The setting for a slow or overloaded internet line: voices go at about a third of the data, sounding a little duller, so they stop arriving seconds late, and play from a slightly longer buffer, so an uneven line does not stutter. Asked for by one side, it holds both ways between the two; at the slow end it covers all of that friend's connections.
 _Avoid_: Low quality mode, data saver, low bitrate (in UI copy; fine in code)

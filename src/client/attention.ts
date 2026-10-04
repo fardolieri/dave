@@ -1,6 +1,6 @@
 import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
 import { callDiff, sharesStarted, titleFor } from '../core/attention';
-import { MESSAGE_CUE, joinCue, leaveCue, shareCue } from '../core/cue';
+import { MESSAGE_CUE, joinCue, leaveCue, shareCue, type Cue } from '../core/cue';
 import { armSound, playCue } from './sound';
 import { getPicture } from './invite';
 import type { createRoom } from './room';
@@ -40,6 +40,8 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
 
   // ---- chimes: each friend's own cue from their profile picture (ticket 23)
   const disarm = armSound();
+  /** During a mic test (ticket 40) I hear nothing but myself, cues included. */
+  const cue = (c: Cue) => { if (!untrack(() => links().some((l) => l.call.micTest() !== null))) playCue(c); };
   createEffect(
     // Everything reactive is read here, in the compute phase; the apply phase only acts on the snapshot.
     () => ({ now: others(), sharing: sharers(), seeded: seeded(), held: held(), pictures: pictures() }),
@@ -50,9 +52,9 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
       const before = new Set([...prev.now].filter(settled));
       const after = new Set([...now].filter(settled));
       const { joined, left } = callDiff(before, after, '', held); // I am already left out of both sets
-      for (const t of joined) playCue(joinCue(pictures.get(t)));
-      for (const t of left) playCue(leaveCue(prev.pictures.get(t)));
-      for (const t of sharesStarted({ present: before, sharing: prev.sharing }, { sharing })) playCue(shareCue(pictures.get(t)));
+      for (const t of joined) cue(joinCue(pictures.get(t)));
+      for (const t of left) cue(leaveCue(prev.pictures.get(t)));
+      for (const t of sharesStarted({ present: before, sharing: prev.sharing }, { sharing })) cue(shareCue(pictures.get(t)));
     },
   );
 
@@ -60,18 +62,18 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
   // a server reconnect keeps me in the call and must not sound like leaving and coming back.
   createEffect(() => links().filter((l) => l.call.inCall()).map((l) => l.room.roomId), (now, prev) => {
     if (!prev) return;
-    if (now.some((id) => !prev.includes(id))) playCue(joinCue(getPicture()));
-    if (prev.some((id) => !now.includes(id))) playCue(leaveCue(getPicture()));
+    if (now.some((id) => !prev.includes(id))) cue(joinCue(getPicture()));
+    if (prev.some((id) => !now.includes(id))) cue(leaveCue(getPicture()));
   });
   // Starting my own share plays my share cue too, once the browser's picker has handed over the screen.
   createEffect(() => links().filter((l) => l.call.sharing() !== null).map((l) => l.room.roomId), (now, prev) => {
-    if (prev && now.some((id) => !prev.includes(id))) playCue(shareCue(getPicture()));
+    if (prev && now.some((id) => !prev.includes(id))) cue(shareCue(getPicture()));
   });
 
   // ---- incoming text: a soft tick for other people's messages in any room, never your own or restored history (ticket 09)
   let cues = 0;
   createEffect(() => links().map((l) => l.room), (rooms) => {
-    const stops = rooms.map((room) => room.onText(() => { cues++; playCue(MESSAGE_CUE); }));
+    const stops = rooms.map((room) => room.onText(() => { cues++; cue(MESSAGE_CUE); }));
     return () => { for (const stop of stops) stop(); };
   });
   if (exposeHooks) (window as unknown as { __daveCues?: () => number }).__daveCues = () => cues;

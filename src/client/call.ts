@@ -31,6 +31,15 @@ export type NoiseRemovalState = 'off' | 'starting' | 'on' | 'unavailable';
 /** Why noise removal gave up mid-call (ticket 37): the voice it sent ran off real time, or the device could not keep up. */
 export type NoiseRemovalStop = GuardFault['reason'];
 
+/**
+ * The mic test (ticket 40): hearing my own voice live, or recording 5 s of it and playing them back. While one runs,
+ * friends get silence and see me muted, and I hear none of them.
+ */
+export type MicTest = 'live' | 'recording' | 'playing';
+export const MIC_TEST_RECORD_MS = 5000;
+/** Why a mic test ended, for telemetry. */
+export type MicTestEnd = 'stop' | 'played' | 'panel' | 'mute' | 'leave' | 'hidden' | 'failed';
+
 /** My own share as the sharer sees it: total upload, the distinct encoded formats, how many watch. */
 export type OutgoingShare = { kbps: number; formats: VideoFormat[]; viewers: number };
 
@@ -53,7 +62,7 @@ export type PeerDiagnostics = {
   pair: { local: string; remote: string; state: string; rttMs: number | null; outgoingKbps: number | null } | null;
 };
 export type CallDiagnostics = {
-  inCall: boolean; muted: boolean; microphone: boolean; joinSeq: number | null; sharing: Record<string, unknown> | null; outgoing: OutgoingShare | null;
+  inCall: boolean; muted: boolean; microphone: boolean; micTest: MicTest | null; joinSeq: number | null; sharing: Record<string, unknown> | null; outgoing: OutgoingShare | null;
   shareSettings: unknown; viewerSettings: unknown; audioProcessing: unknown; lowBandwidthVoice: boolean; voiceRepair: VoiceRepair; ice: { servers: number; turn: boolean; ageMinutes: number | null };
   peers: PeerDiagnostics[];
 };
@@ -283,12 +292,18 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   /** What peers get: the processed voice once RNNoise runs and its context plays, the microphone's own track until then. */
   const outgoingVoice = (): MediaStreamTrack | null => (voice && voiceReady && voice.running() ? voice.track : voiceTrack);
+  /** My voice as friends get it, a mic test aside: what the test plays back, the guard measures and my ring follows. */
   let sentVoice: MediaStreamTrack | null = null;
-  function sendVoice(): void {
+  /** What the voice senders carry: `sentVoice`, or silence while a mic test runs. */
+  let wiredVoice: MediaStreamTrack | null = null;
+  const wireFor = (track: MediaStreamTrack | null): MediaStreamTrack | null => (testing && track ? silence() : track);
+  function sendVoice(): Promise<unknown> {
     const track = outgoingVoice();
-    if (track === sentVoice) return;
-    sentVoice = track;
-    for (const p of peers.values()) p.tx[SLOT_INDEX.voice]?.sender.replaceTrack(track).catch((e) => console.warn('replaceTrack voice', e));
+    if (track !== sentVoice) { sentVoice = track; followMonitor(); }
+    const wire = wireFor(track);
+    if (wire === wiredVoice) return Promise.resolve();
+    wiredVoice = wire;
+    return Promise.all([...peers.values()].map((p) => p.tx[SLOT_INDEX.voice]?.sender.replaceTrack(wire).catch((e) => console.warn('replaceTrack voice', e))));
   }
   const showRemoval = () => setNoiseRemoval(voice && voiceReady ? (voice.running() ? 'on' : 'starting') : untrack(noiseRemoval));
 
@@ -306,7 +321,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       if (generation !== voiceGeneration) { v.close(); return; }
       voice = v;
       guard = createVoiceGuard(v.path);
-      v.track.enabled = !muted();
+      v.track.enabled = micLive();
       await v.ready;
       if (generation !== voiceGeneration) return;
       voiceReady = true;
@@ -339,6 +354,133 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     // It was off for RNNoise: the browser's own noise suppression takes over again.
     void voiceTrack?.applyConstraints(microphoneConstraints()).catch((e) => console.warn('applyConstraints audio', e));
   }
+  // ---- mic test (ticket 40)
+  const [micTest, setMicTestSignal] = createSignal<MicTest | null>(null);
+  /** Plain mirror of `micTest`, read on the way to the senders. */
+  let testing: MicTest | null = null;
+  const setTesting = (t: MicTest | null) => { testing = t; setMicTestSignal(t); };
+  /** My microphone's tracks run while unmuted, and during a mic test even when muted: the test plays what friends would get. */
+  const micLive = (): boolean => !untrack(muted) || testing !== null;
+  /** Plays my live voice or the recording, on the chosen speaker. */
+  const testOut = new Audio();
+  /** The last recording, for Play until the call ends. */
+  let clip: string | null = null;
+  const [hasClip, setHasClip] = createSignal(false);
+  let recorder: MediaRecorder | null = null;
+  let recordTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Bumped whenever what plays or records stops, so a play() refused for that reason ends nothing newer. */
+  let testMedia = 0;
+  let testStarted = 0, testChanges = 0, testRecordings = 0, testUsedLive = false;
+  /** Disabled, so friends get what a muted microphone sends. */
+  let silent: MediaStreamTrack | null = null;
+  function silence(): MediaStreamTrack {
+    if (!silent) { silent = audioCtx!.createMediaStreamDestination().stream.getAudioTracks()[0]!; silent.enabled = false; }
+    return silent;
+  }
+  /** `sentVoice` copied into the call's context, so what plays and what records follow it when it changes mid-test. */
+  let monitor: { source: MediaStreamAudioSourceNode | null; track: MediaStreamTrack | null; dest: MediaStreamAudioDestinationNode; analyser: AnalyserNode } | null = null;
+  function monitorStream(): MediaStream {
+    if (!monitor) {
+      monitor = { source: null, track: null, dest: audioCtx!.createMediaStreamDestination(), analyser: audioCtx!.createAnalyser() };
+      monitor.analyser.fftSize = 32768; // the dev hook's level: most of a second, so a short beep from a fake microphone is not missed
+      followMonitor();
+    }
+    return monitor.dest.stream;
+  }
+  function followMonitor(): void {
+    if (!monitor) return;
+    monitor.source?.disconnect();
+    monitor.track = sentVoice;
+    monitor.source = sentVoice ? audioCtx!.createMediaStreamSource(new MediaStream([sentVoice])) : null;
+    monitor.source?.connect(monitor.dest);
+    monitor.source?.connect(monitor.analyser);
+  }
+  function stopTestMedia(): void {
+    testMedia++;
+    clearTimeout(recordTimer);
+    const r = recorder;
+    recorder = null; // a recording stopped here is dropped, see its onstop
+    if (r && r.state !== 'inactive') r.stop();
+    testOut.onended = null;
+    testOut.pause();
+    testOut.srcObject = null;
+    testOut.removeAttribute('src');
+    monitor?.source?.disconnect();
+    monitor?.dest.stream.getTracks().forEach((t) => t.stop());
+    monitor = null;
+  }
+  const canTest = (): boolean => joined && !!voiceTrack && !!audioCtx;
+  /** Takes me out of the call for the test: friends get silence and see me muted, I hear nobody. One thing plays or records at a time. */
+  function cutCall(phase: MicTest): void {
+    stopTestMedia();
+    if (testing) { setTesting(phase); return; }
+    testStarted = Date.now(); testChanges = 0; testRecordings = 0; testUsedLive = false;
+    setTesting(phase);
+    if (voiceTrack) voiceTrack.enabled = true;
+    if (voice) { voice.track.enabled = true; voice.resume(); }
+    void sendVoice();
+    for (const p of peers.values()) applyGain(p);
+    if (!untrack(muted)) room.send({ t: 'mute', muted: true });
+    if (audioCtx?.state === 'suspended') void audioCtx.resume().catch(() => {});
+  }
+  function playTest(src: { stream: MediaStream } | { url: string }): void {
+    if ('stream' in src) testOut.srcObject = src.stream; else testOut.src = src.url;
+    void applySink(testOut);
+    const media = testMedia;
+    testOut.play().catch(() => { if (media === testMedia) stopMicTest('failed'); });
+  }
+  /** Hear my voice as friends would get it, live, while the settings change. */
+  function hearYourself(): void {
+    if (!canTest()) return;
+    cutCall('live');
+    testUsedLive = true;
+    playTest({ stream: monitorStream() });
+  }
+  /** Record MIC_TEST_RECORD_MS of my voice as friends would get it, then play it back. */
+  function recordMicTest(): void {
+    if (!canTest() || typeof MediaRecorder === 'undefined') return;
+    cutCall('recording');
+    testRecordings++;
+    const r = new MediaRecorder(monitorStream());
+    const chunks: Blob[] = [];
+    r.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    r.onstop = () => {
+      if (recorder !== r) return; // cancelled
+      recorder = null;
+      if (clip) URL.revokeObjectURL(clip);
+      clip = URL.createObjectURL(new Blob(chunks, { type: r.mimeType }));
+      setHasClip(true);
+      playMicTest();
+    };
+    recorder = r;
+    r.start();
+    recordTimer = setTimeout(() => r.stop(), MIC_TEST_RECORD_MS);
+  }
+  /** Play the last recording; the test ends when it has played. */
+  function playMicTest(): void {
+    if (!joined || !clip) return;
+    cutCall('playing');
+    testOut.onended = () => stopMicTest('played');
+    playTest({ url: clip });
+  }
+  /** Ends a test and puts the call back as it was; `mutedAfter` is the state Mute or Unmute is about to set, so friends see no flicker. */
+  function stopMicTest(end: MicTestEnd = 'stop', mutedAfter = untrack(muted)): void {
+    if (!testing) return;
+    stopTestMedia();
+    setTesting(null);
+    if (voiceTrack) voiceTrack.enabled = !mutedAfter;
+    if (voice) voice.track.enabled = !mutedAfter;
+    void sendVoice();
+    for (const p of peers.values()) applyGain(p);
+    if (joined && !mutedAfter) room.send({ t: 'mute', muted: false });
+    posthog.capture('mic_test', {
+      end, seconds: Math.round((Date.now() - testStarted) / 1000), live: testUsedLive, recordings: testRecordings, changes: testChanges, noise_removal: untrack(noiseRemoval),
+    });
+  }
+  /** A phone put away mid-test would leave me silent and deaf in the call. */
+  const onTestHidden = () => { if (document.hidden) stopMicTest('hidden'); };
+  document.addEventListener('visibilitychange', onTestHidden);
+
   // ---- the sent voice against the clock (ticket 37)
   /** Audio the track has handed on so far, ms, where the browser counts it (Chromium's MediaStreamTrack stats). */
   const deliveredMs = (t: MediaStreamTrack | null): number | null => {
@@ -360,7 +502,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const track = sentVoice;
     const audioMs = deliveredMs(track);
     // Muted, a track delivers nothing: neither the guard nor `voice_send` measures that time.
-    if (!joined || !track || audioMs === null || peers.size === 0 || untrack(muted)) { guard.reset(); sendMark = null; return; }
+    if (!joined || !track || audioMs === null || peers.size === 0 || !micLive()) { guard.reset(); sendMark = null; return; }
     const fresh = loadFresh;
     loadFresh = false;
     const now: ClockSample = { at: Date.now(), audioMs: audioMs * clockSkew, loadPct: voiceLoad?.pct, droppedMs: voiceLoad?.droppedMs };
@@ -447,6 +589,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   async function changeAudioNow(change: Partial<AudioSettings>): Promise<void> {
     const prev = audioSettings();
     const next = { ...prev, ...change };
+    if (testing) testChanges++;
     if (voiceTrack && next.microphoneId !== prev.microphoneId) {
       storeAudioSettings(next); // the id is selected now; rolled back below if the capture fails
       let stream: MediaStream;
@@ -459,13 +602,12 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       }
       const track = stream.getAudioTracks()[0];
       if (track) {
-        track.enabled = !muted();
+        track.enabled = micLive();
         const old = voiceTrack;
         voiceTrack = track;
         localStream = stream;
         voice?.setInput(stream); // the processed track stays the same; only while the microphone goes out as it is does a sender change
-        sentVoice = outgoingVoice();
-        await Promise.all([...peers.values()].map((p) => p.tx[SLOT_INDEX.voice]?.sender.replaceTrack(sentVoice)));
+        await sendVoice();
         old.stop();
         localAnalyser = analyserFor('me', stream);
       }
@@ -480,7 +622,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       const processingChanged = (['echoCancellation', 'noiseSuppression', 'autoGainControl', 'noiseRemoval'] as const).some((k) => next[k] !== prev[k]);
       if (voiceTrack && processingChanged) await voiceTrack.applyConstraints(microphoneConstraints(next)).catch((e) => console.warn('applyConstraints audio', e));
     }
-    if (next.speakerId !== prev.speakerId) for (const p of peers.values()) { void applySink(p.audio); void applySink(p.shareAudio); }
+    if (next.speakerId !== prev.speakerId) {
+      for (const p of peers.values()) { void applySink(p.audio); void applySink(p.shareAudio); }
+      void applySink(testOut);
+    }
     if (next.masterVolume !== prev.masterVolume) for (const p of peers.values()) applyGain(p, next.masterVolume);
     if (next.lowBandwidthVoice !== lowVoiceOn) {
       lowVoiceOn = next.lowBandwidthVoice;
@@ -494,8 +639,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     }
   }
 
-  /** What a participant's gain nodes are set to: the master volume times their own local volume. */
-  const effectiveGain = (peer: Peer, master = untrack(audioSettings).masterVolume): number => master * peer.view.volume;
+  /** What a participant's gain nodes are set to: the master volume times their own local volume; nothing during a mic test. */
+  const effectiveGain = (peer: Peer, master = untrack(audioSettings).masterVolume): number => (testing ? 0 : master * peer.view.volume);
   function applyGain(peer: Peer, master?: number): void {
     const g = effectiveGain(peer, master);
     if (peer.voiceGain) peer.voiceGain.gain.value = g;
@@ -555,8 +700,9 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       if (an && gate && levelOf(an) > SPEAK_THRESHOLD) lastLoud.set(key, now);
       return now - (lastLoud.get(key) ?? 0) < SPEAK_HOLD_MS;
     };
-    // While the processed voice goes out, my ring shows what friends hear: the gate being open.
-    setSpeakingSelf(voice && sentVoice === voice.track ? !muted() && lastLevel.open : loud('me', localAnalyser, !muted()));
+    // While the processed voice goes out, my ring shows what friends hear: the gate being open. A mic test, nothing.
+    const heard = !muted() && testing === null;
+    setSpeakingSelf(voice && sentVoice === voice.track ? heard && lastLevel.open : loud('me', localAnalyser, heard));
     let changed = false;
     for (const p of peers.values()) {
       const s = loud(p.key, p.analyser, true);
@@ -671,7 +817,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   function attachLocalTracks(peer: Peer): void {
     const voiceSender = peer.tx[SLOT_INDEX.voice]?.sender;
-    const voiceOut = outgoingVoice();
+    const voiceOut = wireFor(outgoingVoice());
     if (voiceSender && voiceOut) voiceSender.replaceTrack(voiceOut).catch((e) => console.warn('replaceTrack voice', e));
     if (shareVideo) {
       // A share flows to nobody until they subscribe: deactivate both share senders as soon as the
@@ -961,7 +1107,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   async function diagnostics(): Promise<CallDiagnostics> {
     const { echoCancellation, noiseSuppression, autoGainControl, voiceThreshold } = untrack(audioSettings);
     return {
-      inCall: joined, muted: untrack(muted), microphone: !!voiceTrack, joinSeq: myJoinSeq,
+      inCall: joined, muted: untrack(muted), microphone: !!voiceTrack, micTest: testing, joinSeq: myJoinSeq,
       sharing: shareVideo ? { ...shareVideo.getSettings(), readyState: shareVideo.readyState, contentHint: shareVideo.contentHint } : null,
       outgoing: untrack(outgoing), shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl, noiseRemoval: untrack(noiseRemoval), voiceThreshold, path: voice?.path ?? null, stop: untrack(noiseRemovalStop), load: voiceLoad, micRate: voiceTrack?.getSettings().sampleRate ?? null }, lowBandwidthVoice: lowVoiceOn, voiceRepair,
       ice: { servers: iceServers.length, turn: hasTurn(), ageMinutes: iceIssuedAt ? Math.round((Date.now() - iceIssuedAt) / 60000) : null },
@@ -1139,7 +1285,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   async function declareJoin(): Promise<Extract<ServerMessage, { t: 'call' }> | null> {
-    const m = await awaitReply('call', () => room.send({ t: 'join', muted: muted() || !voiceTrack, sharing: shareVideo !== null }), 8000);
+    const m = await awaitReply('call', () => room.send({ t: 'join', muted: muted() || !voiceTrack || testing !== null, sharing: shareVideo !== null }), 8000);
     if (m) { myJoinSeq = m.joinSeq; iceServers = m.iceServers; iceIssuedAt = m.issuedAt; }
     return m;
   }
@@ -1320,8 +1466,13 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   function closeMicrophone(): void {
+    stopMicTest('leave');
+    if (clip) URL.revokeObjectURL(clip);
+    clip = null;
+    setHasClip(false);
     stopNoiseRemoval();
     sentVoice = null;
+    wiredVoice = null;
     voiceTrack?.stop();
     localStream?.getTracks().forEach((t) => t.stop());
     sources.get('me')?.disconnect(); sources.delete('me');
@@ -1349,6 +1500,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   async function setMuted(m: boolean): Promise<void> {
+    stopMicTest('mute', m);
     if (!m && joined && !voiceTrack && !(await retryMicrophone())) return;
     setMutedSignal(m);
     local.set('muted', String(m));
@@ -1361,11 +1513,13 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   onCleanup(() => {
     unsubscribe();
     window.removeEventListener('pagehide', onPageHide);
+    document.removeEventListener('visibilitychange', onTestHidden);
     clearInterval(statsTimer);
     clearInterval(voiceTimer);
     clearInterval(clockTimer);
     clearInterval(speakingTimer);
     leave();
+    silent?.stop();
     audioCtx?.close();
   });
 
@@ -1386,6 +1540,19 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         settings: audioSettings(), track: voiceTrack?.getSettings() ?? null, noiseRemoval: noiseRemoval(), path: voice?.path ?? null, stop: noiseRemovalStop(), load: voiceLoad, deliveredMs: deliveredMs(sentVoice),
         sending: !sentVoice ? null : sentVoice === voice?.track ? 'processed' : 'microphone', level: lastLevel,
       })),
+      micTest: () => ({
+        phase: testing, clip: !!clip, playing: !testOut.paused, sink: (testOut as HTMLAudioElement & { sinkId?: string }).sinkId ?? '',
+        follows: !monitor?.track ? null : monitor.track === voice?.track ? 'processed' : 'microphone', level: monitor ? levelOf(monitor.analyser) : null, wire: !wiredVoice ? null : wiredVoice === silent ? 'silence' : 'voice',
+      }),
+      /** The last recording decoded: how long, and how loud at its loudest 100 ms. */
+      micTestClip: async () => {
+        if (!clip || !audioCtx) return null;
+        const buf = await audioCtx.decodeAudioData(await (await fetch(clip)).arrayBuffer());
+        const data = buf.getChannelData(0), step = Math.round(buf.sampleRate / 10);
+        let peak = 0;
+        for (let i = 0; i + step <= data.length; i += step) { let sum = 0; for (let j = i; j < i + step; j++) sum += data[j]! * data[j]!; peak = Math.max(peak, Math.sqrt(sum / step)); }
+        return { seconds: buf.duration, peak };
+      },
       playback: () => untrack(() => ({ context: audioCtx?.state ?? null, blocked: audioBlocked(), paused: [...peers.values()].map((p) => ({ name: p.name, voice: p.audio.paused, keepAlive: p.keepAlive.paused })) })),
       volumes: () => ({ master: untrack(audioSettings).masterVolume, peers: [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })) }),
       dropSocket: () => room.dropSocket(),
@@ -1419,6 +1586,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   return {
     inCall, muted: () => muted() || micProblem() !== null, micProblem, views, speakingSelf, joinError, join: () => join(), leave, setMuted, myJoinSeq: () => myJoinSeq, audioBlocked, unblockAudio,
     noiseRemoval, noiseRemovalStop, voiceLevel,
+    micTest, hasMicTestClip: hasClip, canRecordMicTest: typeof MediaRecorder !== 'undefined', hearYourself, recordMicTest, playMicTest, stopMicTest,
     sharing, shareError, outgoing, startShare, stopShare, watch, watchOnly, shareStreamOf,
     shareSettings, changeShare, audioSettings, changeAudio, viewerSettings, setViewerSettings, devices, refreshDevices, canPickSpeaker,
     setVolume, canPickSpeakerDialog, pickSpeaker,

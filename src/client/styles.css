@@ -198,6 +198,13 @@ button.unblock { background: #4a3a12; color: var(--warn); border-color: transpar
 .panel .vgate .vmeter { position: absolute; left: 0; right: 0; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; pointer-events: none; }
 .panel .vgate .vmeter .fill { display: block; height: 100%; background: var(--dim); transition: width 50ms linear; }
 .panel .vgate .vmeter .fill.open { background: var(--acc); }
+/* Mic test (ticket 40): the heading, then its buttons sharing a row; Record fills up over the recording. */
+.panel .mictest { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.panel .mictest > span { flex: 0 0 100%; }
+.panel .mictest button { flex: 1 1 auto; width: auto; padding: 6px 10px; }
+.panel .mictest button.recording { background: var(--panel2) linear-gradient(var(--acc), var(--acc)) left / 0% 100% no-repeat; border-color: var(--acc); animation: record-fill var(--record-ms) linear forwards; }
+@keyframes record-fill { to { background-size: 100% 100%; } }
+.panel .mictest + .warn { margin-top: 0; }
 /* The slider's thumb is the mark on the meter behind it; no track of its own. */
 .panel .vgate input[type=range] { position: relative; width: 100%; height: 22px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
 .panel .vgate input[type=range]::-webkit-slider-runnable-track { height: 8px; background: transparent; }

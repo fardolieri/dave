@@ -111,6 +111,86 @@ test('noise removal keeps time with the microphone, and stops itself only when f
   expect((await audio()).stop).toBeNull();
 });
 
+test('ticket 40: the mic test plays my voice as friends get it, while friends get silence, see me muted, and go unheard', async ({ crowd, browserName }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  const carol = await crowd.open('Carol');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  type MicTest = { phase: string | null; clip: boolean; playing: boolean; follows: string | null; level: number | null; wire: string | null };
+  const test40 = () => alice.hook<MicTest>('micTest');
+  const bobGain = async () => (await alice.hook<{ peers: Array<{ name: string; voiceGain: number | null }> }>('volumes')).peers.find((p) => p.name === 'Bob')?.voiceGain;
+  const aliceRow = bob.selectedRoom.locator('li.prow', { hasText: 'Alice' });
+  const context = await alice.hook<{ context: string | null }>('playback').then((p) => p.context);
+  test.skip(context !== 'running', `no running AudioContext here (${context}): nothing to play the test through`);
+  await expect.poll(async () => (await alice.hook<{ noiseRemoval: string }>('audio')).noiseRemoval, { message: 'RNNoise runs' }).toBe('on');
+
+  await alice.selectedRoom.getByTitle('Audio settings').click();
+  const panel = alice.page.locator('.panel');
+  await panel.getByLabel('Voice gate').fill('0'); // the fake microphone beeps, which the gate would shut on
+  const live = panel.getByRole('button', { name: 'Hear yourself' });
+  await live.click();
+  await expect.poll(async () => (await test40()).phase).toBe('live');
+  await expect(panel.locator('.warn', { hasText: "Friends can't hear you" })).toBeVisible();
+  expect((await test40()).wire).toBe('silence');
+  await expect(aliceRow).toContainText('muted');
+  await expect.poll(bobGain, { message: 'Bob goes unheard' }).toBe(0);
+  await expect.poll(async () => (await test40()).playing).toBe(true);
+  expect((await test40()).follows).toBe('processed');
+  // Firefox's fake microphone is a steady tone, which RNNoise takes out entirely; Chromium's beeps get through an open gate.
+  if (browserName === 'chromium') await expect.poll(async () => (await test40()).level ?? 0, { message: 'my processed voice plays' }).toBeGreaterThan(0.001);
+  // A setting changed mid-test: the test follows the voice that would go out, here the microphone as it is.
+  await alice.cuesPlayed();
+  await carol.join(); // no join cue: I hear nothing but myself
+  await expect.poll(() => alice.inCall().then((n) => n.length)).toBe(3);
+  await alice.page.waitForTimeout(500);
+  expect(await alice.cuesPlayed()).toEqual([]);
+  await panel.getByLabel('Noise removal').uncheck();
+  await expect.poll(async () => (await alice.hook<{ sending: string }>('audio')).sending).toBe('microphone');
+  expect((await test40()).follows).toBe('microphone');
+  await expect.poll(async () => (await test40()).level ?? 0, { message: 'the microphone as it is plays' }).toBeGreaterThan(0.001);
+  expect((await test40()).wire).toBe('silence');
+  await live.click(); // the lit button ends it
+  await expect.poll(async () => (await test40()).phase).toBe(null);
+  expect((await test40()).wire).toBe('voice');
+  await expect(aliceRow).not.toContainText('muted');
+  await expect.poll(bobGain).toBe(1);
+  await bob.hearing('Alice');
+
+  // Record 5 s: the recording plays back by itself, and the call comes back once it has played.
+  await panel.getByRole('button', { name: 'Record 5 s' }).click();
+  await expect.poll(async () => (await test40()).phase).toBe('recording');
+  await expect(aliceRow).toContainText('muted');
+  await expect.poll(async () => (await test40()).phase, { timeout: 10_000 }).toBe('playing');
+  expect((await test40()).clip).toBe(true);
+  const recorded = await alice.hook<{ seconds: number; peak: number }>('micTestClip');
+  expect(recorded.seconds, 'about 5 s recorded').toBeGreaterThan(4);
+  expect(recorded.peak, 'the recording holds my voice').toBeGreaterThan(0.001);
+  await expect.poll(async () => (await test40()).phase, { timeout: 15_000, message: 'the recording played to its end' }).toBe(null);
+  await expect(aliceRow).not.toContainText('muted');
+  await expect.poll(bobGain).toBe(1);
+
+  // Play it again, then close the panel: closing ends the test.
+  await panel.getByRole('button', { name: 'Play' }).click();
+  await expect.poll(async () => (await test40()).phase).toBe('playing');
+  await alice.selectedRoom.getByTitle('Audio settings').click();
+  await expect.poll(async () => (await test40()).phase).toBe(null);
+  await expect(aliceRow).not.toContainText('muted');
+
+  // Muted before the test: the test still hears me, Mute ends it, and I stay muted.
+  await alice.selectedRoom.getByRole('button', { name: 'Mute' }).click();
+  await expect(aliceRow).toContainText('muted');
+  await alice.selectedRoom.getByTitle('Audio settings').click();
+  await live.click();
+  await expect.poll(async () => (await test40()).level ?? 0, { message: 'a muted microphone still plays in the test' }).toBeGreaterThan(0.001);
+  await alice.selectedRoom.getByRole('button', { name: 'Unmute' }).click();
+  await expect.poll(async () => (await test40()).phase).toBe(null);
+  await expect(aliceRow).not.toContainText('muted');
+  expect((await test40()).wire).toBe('voice');
+});
+
 test('low bandwidth voice caps the voice both ways from one side, and the delay to each friend shows beside the name', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
