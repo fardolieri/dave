@@ -51,7 +51,7 @@ export type PeerDiagnostics = {
   sendsFec: boolean;
   /** The buffer that follows the line (ticket 34): what it asks for now, and the last 5 s window it judged. */
   voiceBuffer: { adaptiveMs: number | null; level: number; lastWindow: VoiceWindow | null };
-  view: Pick<PeerView, 'conn' | 'watching' | 'shareLive' | 'shareKbps' | 'shareFormat' | 'serverLost' | 'volume' | 'rttMs'>;
+  view: Pick<PeerView, 'conn' | 'watching' | 'shareLive' | 'shareKbps' | 'shareFormat' | 'serverLost' | 'volume' | 'shareVolume' | 'rttMs'>;
   pc: { connection: RTCPeerConnectionState; ice: RTCIceConnectionState; signaling: RTCSignalingState; gathering: RTCIceGatheringState; transceivers: number };
   shareTrack: { readyState: string; muted: boolean } | null;
   inboundVideo: Record<string, unknown> | null;
@@ -75,6 +75,8 @@ export type PeerView = {
   watching: boolean; shareLive: boolean; shareKbps: number; shareFormat: VideoFormat | null;
   /** How loud this participant is for me, 0 to 1. Local only. */
   volume: number;
+  /** How loud their share's sound is for me, on top of their volume. Local only. */
+  shareVolume: number;
   /** Round trip to them in ms, the larger of ICE's and RTCP's latest measurement; null until one exists (ticket 27). */
   rttMs: number | null;
 };
@@ -204,6 +206,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   const [shareSettings, storeShareSettings] = persisted('shareSettings', parseShareSettings);
   /** Local volume per participant public key, remembered per browser. */
   const [volumes, storeVolumes] = persisted('volumes', parseVolumes);
+  /** Local volume of a participant's share sound, set from the share tile, so it never quiets their voice. */
+  const [shareVolumes, storeShareVolumes] = persisted('shareVolumes', parseVolumes);
   const [audioSettings, storeAudioSettings] = persisted('audioSettings', parseAudioSettings);
   const [viewerSettings, storeViewerSettings] = persisted('viewerSettings', parseViewerSettings);
   /** Plain mirror of the low bandwidth voice setting (ticket 27), read while descriptions go out and come in. */
@@ -682,12 +686,15 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     }
   }
 
-  /** What a participant's gain nodes are set to: the master volume times their own local volume; nothing during a mic test. */
-  const effectiveGain = (peer: Peer, master = untrack(audioSettings).masterVolume): number => (testing ? 0 : master * peer.view.volume);
+  /**
+   * What a participant's gain nodes are set to: the master volume times their own local volume, for the share also
+   * times its share volume; nothing during a mic test.
+   */
+  const effectiveGain = (peer: Peer, kind: 'voice' | 'share', master = untrack(audioSettings).masterVolume): number =>
+    (testing ? 0 : master * peer.view.volume * (kind === 'share' ? peer.view.shareVolume : 1));
   function applyGain(peer: Peer, master?: number): void {
-    const g = effectiveGain(peer, master);
-    if (peer.voiceGain) peer.voiceGain.gain.value = g;
-    if (peer.shareGain) peer.shareGain.gain.value = g;
+    if (peer.voiceGain) peer.voiceGain.gain.value = effectiveGain(peer, 'voice', master);
+    if (peer.shareGain) peer.shareGain.gain.value = effectiveGain(peer, 'share', master);
   }
 
   /** Change share settings live: track constraints and content hint on the capture, encodings per Viewer. */
@@ -712,6 +719,19 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const next = { ...untrack(volumes) };
     if (v === 1) delete next[key]; else next[key] = v;
     storeVolumes(next);
+  }
+
+  /** Set how loud one participant's share sound is for me, leaving their voice as it is (report of Oct 3). */
+  function setShareVolume(key: string, value: number): void {
+    const v = clampVolume(value);
+    const peer = peers.get(key);
+    if (peer) {
+      setView(peer, { shareVolume: v });
+      applyGain(peer);
+    }
+    const next = { ...untrack(shareVolumes) };
+    if (v === 1) delete next[key]; else next[key] = v;
+    storeShareVolumes(next);
   }
 
   function setViewerSettings(next: ViewerSettings): void {
@@ -768,7 +788,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const { closed, close: markClosed } = closeLatch();
     const peer: Peer = {
       key, name, pc, closed, markClosed, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, keepAlive, audioNodes: [], restarts: 0, relayOnly, generation: ++generation,
-      view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1, rttMs: null },
+      view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1, shareVolume: untrack(shareVolumes)[key] ?? 1, rttMs: null },
       viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, sendsRed: false, sendsFec: true, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
     };
@@ -831,7 +851,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (kind === 'voice') { peer.keepAlive.srcObject = stream; peer.keepAlive.play().catch(refused); }
     const source = ctx.createMediaStreamSource(stream);
     const gain = ctx.createGain();
-    gain.gain.value = effectiveGain(peer);
+    gain.gain.value = effectiveGain(peer, kind);
     const dest = ctx.createMediaStreamDestination();
     source.connect(gain).connect(dest);
     peer.audioNodes.push(source, gain, dest);
@@ -1093,12 +1113,12 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   async function peerDiag(peer: Peer): Promise<PeerDiagnostics> {
     const { inboundVideo, outboundVideo, inboundVoice, outboundVoice, pair } = await reportStats(peer.pc, peer.tx[SLOT_INDEX.voice]);
     const track = peer.remoteShare.getVideoTracks()[0];
-    const { conn, watching, shareLive, shareKbps, shareFormat, serverLost, volume, rttMs } = peer.view;
+    const { conn, watching, shareLive, shareKbps, shareFormat, serverLost, volume, shareVolume, rttMs } = peer.view;
     return {
       fingerprint: untrack(room.people).find((p) => p.publicKey === peer.key)?.fingerprint ?? null, polite: peer.polite, restarts: peer.restarts, relayOnly: peer.relayOnly, viewsMyShare: peer.viewsMyShare, viewerScale: peer.viewerScale, asksLowVoice: peer.asksLowVoice, sendsRed: peer.sendsRed, sendsFec: peer.sendsFec,
       voiceBufferMs: (peer.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined)?.jitterBufferTarget ?? null,
       voiceBuffer: { adaptiveMs: bufferMs(peer.buffer), level: peer.buffer.level, lastWindow: peer.lastWindow },
-      view: { conn, watching, shareLive, shareKbps, shareFormat, serverLost, volume, rttMs },
+      view: { conn, watching, shareLive, shareKbps, shareFormat, serverLost, volume, shareVolume, rttMs },
       pc: { connection: peer.pc.connectionState, ice: peer.pc.iceConnectionState, signaling: peer.pc.signalingState, gathering: peer.pc.iceGatheringState, transceivers: peer.pc.getTransceivers().length },
       shareTrack: track ? { readyState: track.readyState, muted: track.muted } : null,
       inboundVideo, outboundVideo, inboundVoice, outboundVoice, pair,
@@ -1597,7 +1617,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         return { seconds: buf.duration, peak };
       },
       playback: () => untrack(() => ({ context: audioCtx?.state ?? null, blocked: audioBlocked(), paused: [...peers.values()].map((p) => ({ name: p.name, voice: p.audio.paused, keepAlive: p.keepAlive.paused })) })),
-      volumes: () => ({ master: untrack(audioSettings).masterVolume, peers: [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })) }),
+      volumes: () => ({ master: untrack(audioSettings).masterVolume, peers: [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, shareView: p.view.shareVolume, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })) }),
       dropSocket: () => room.dropSocket(),
       /** What the stuck-connecting watchdog does, on demand (ticket 22): tear the connection to `name` down and offer again from a fresh one; `stalled` attempts already counted make the rebuild relay-only. */
       rebuild: (name: string, stalled = 0) => {
@@ -1632,7 +1652,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     micTest, hasMicTestClip: hasClip, canRecordMicTest: typeof MediaRecorder !== 'undefined', hearYourself, recordMicTest, playMicTest, stopMicTest,
     sharing, shareError, outgoing, startShare, stopShare, watch, watchOnly, shareStreamOf,
     shareSettings, changeShare, audioSettings, changeAudio, viewerSettings, setViewerSettings, devices, refreshDevices, canPickSpeaker,
-    setVolume, canPickSpeakerDialog, pickSpeaker,
+    setVolume, setShareVolume, canPickSpeakerDialog, pickSpeaker,
     diagnostics, reportBlackShare,
   };
 }

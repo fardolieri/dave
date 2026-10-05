@@ -467,7 +467,7 @@ function Workspace(props: WorkspaceProps) {
                     outgoing={key === me ? s().call.outgoing() : undefined}
                     onWatch={(on) => s().call.watch(key, on)}
                     onFullscreen={() => s().call.watchOnly(key)}
-                    onVolume={s().call.inCall() ? (v) => s().call.setVolume(key, v) : undefined}
+                    onVolume={s().call.inCall() ? (v) => s().call.setShareVolume(key, v) : undefined}
                     onBlack={(element) => void s().call.reportBlackShare(key, element)}
                   />
                 )}
@@ -1061,7 +1061,7 @@ function ShareTile(props: ShareTileProps) {
     else if (running()) enterFullscreen();
   };
   const stopWatching = (e: MouseEvent) => { e.stopPropagation(); props.onWatch(false); };
-  const percent = () => Math.round((props.view?.volume ?? 1) * 100);
+  const percent = () => Math.round((props.view?.shareVolume ?? 1) * 100);
   const stats = () => {
     if (props.isMe) {
       const o = props.outgoing;
@@ -1094,7 +1094,7 @@ function ShareTile(props: ShareTileProps) {
         <div class="share-bar" onClick={(e) => e.stopPropagation()} onPointerEnter={() => setOnControls(true)} onPointerLeave={() => setOnControls(false)}>
           <span class="share-stats">{stats()}</span>
           <Show when={fullscreen() && props.onVolume}>
-            <label class="share-vol" title="Volume for you, double-click to reset">
+            <label class="share-vol" title="This share's sound for you, their voice stays as it is. Double-click to reset.">
               <span>{percent() === 0 ? '🔇' : '🔊'}</span>
               <input type="range" min="0" max={MAX_VOLUME * 100} step="5" value={percent()} onInput={(e) => props.onVolume?.(Number(e.currentTarget.value) / 100)} onDblClick={() => props.onVolume?.(1)} />
               <span>{percent()}%</span>
