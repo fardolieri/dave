@@ -31,7 +31,7 @@ test('a share flows only to a viewer who asked for it, and stops when they stop 
 });
 
 test('regression: a share stopped and started again goes live for its viewer, not stuck on Opening', async ({ crowd }) => {
-  // Problem report of Oct 3: Chrome keeps a remote track unmuted when the sharer only stops sending, so the second share
+  // Problem report of Oct 3: the remote track can stay unmuted when the sharer only stops sending, so the second share
   // never fired the unmute that marks a tile live, and its frames played behind "Opening…".
   const [alice, bob] = await callOf(crowd, ['Alice', 'Bob']);
   await alice.startShare();

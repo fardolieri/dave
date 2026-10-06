@@ -819,7 +819,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         applyVoiceBuffer(peer);
       } else if (slot === SLOT_INDEX.shareVideo || slot === SLOT_INDEX.shareAudio) {
         // Share tracks exist from join time, muted and empty until the sharer sends. "Live" follows the
-        // unmute/mute events, which is how a viewer knows frames are actually arriving (spec §6.5).
+        // unmute/mute events, which is how a viewer knows frames are actually arriving (spec §6.5), or arriving
+        // video where no unmute fires (refreshStats).
         peer.remoteShare.addTrack(track);
         applyJitterTarget(transceiver.receiver);
         if (slot === SLOT_INDEX.shareVideo) {
@@ -1238,7 +1239,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     // Only rate over a meaningful window; onIceState and the 2 s timer can call this back to back.
     if (peer.videoBytesAt && now - peer.videoBytesAt >= 500) {
       const kbps = Math.round(((videoBytesIn - peer.videoBytesIn) * 8) / (now - peer.videoBytesAt));
-      if (peer.view.shareLive && (kbps !== peer.view.shareKbps || !sameFormat(inFormat, peer.view.shareFormat))) setView(peer, { shareKbps: kbps, shareFormat: inFormat });
+      // The remote track can stay unmuted when the sharer only stops sending, so a share started again fires no
+      // unmute: video arriving on an unmuted track marks a watched share live as well (problem report of Oct 3).
+      if (peer.view.watching && !peer.view.shareLive && kbps > 0 && peer.remoteShare.getVideoTracks()[0]?.muted === false) setView(peer, { shareLive: true, shareKbps: kbps, shareFormat: inFormat });
+      else if (peer.view.shareLive && (kbps !== peer.view.shareKbps || !sameFormat(inFormat, peer.view.shareFormat))) setView(peer, { shareKbps: kbps, shareFormat: inFormat });
       peer.outKbps = Math.max(0, Math.round(((videoBytesOut - peer.videoBytesOut) * 8) / (now - peer.videoBytesAt)));
       peer.outFormat = outFormat;
       peer.videoBytesIn = videoBytesIn;
