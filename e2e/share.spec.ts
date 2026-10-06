@@ -30,6 +30,22 @@ test('a share flows only to a viewer who asked for it, and stops when they stop 
   await expect(bob.page.locator('.share')).toHaveCount(0);
 });
 
+test('regression: a share stopped and started again goes live for its viewer, not stuck on Opening', async ({ crowd }) => {
+  // Problem report of Oct 3: Chrome keeps a remote track unmuted when the sharer only stops sending, so the second share
+  // never fired the unmute that marks a tile live, and its frames played behind "Opening…".
+  const [alice, bob] = await callOf(crowd, ['Alice', 'Bob']);
+  await alice.startShare();
+  await bob.watchShare('Alice');
+  await expect(bob.tile('Alice')).toHaveClass(/share-live/);
+  await alice.stopShare();
+  await expect(bob.page.locator('.share')).toHaveCount(0);
+
+  await alice.startShare();
+  await bob.watchShare('Alice');
+  await expect(bob.tile('Alice')).toHaveClass(/share-live/);
+  await expect(bob.tile('Alice').locator('video')).toBeVisible();
+});
+
 test('two sharers at once: a viewer watches both and dropping one leaves the other flowing', async ({ crowd }) => {
   const [alice, bob, carol] = await callOf(crowd, ['Alice', 'Bob', 'Carol'], 2);
   await alice.startShare();
