@@ -25,6 +25,9 @@ export default defineConfig({
   // A deployed Worker limits socket upgrades per IP (see wrangler.jsonc): one test at a time there.
   workers: Number(process.env['E2E_WORKERS']) || (ci && !target ? 2 : 1),
   retries: ci ? 1 : 0,
+  // Against a deployed copy in CI (the nightly run is the release gate, e2e.yml) a test that only passed on its retry fails
+  // the run: a flake is a bug to explain, not noise (ticket 35). On branches the retry still keeps one bad roll from blocking.
+  failOnFlakyTests: ci && !!target,
   forbidOnly: ci,
   reporter: ci ? [['list'], ['html', { open: 'never', outputFolder: 'e2e-report' }]] : 'list',
   outputDir: 'e2e-results',

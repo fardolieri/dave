@@ -2,6 +2,8 @@ name: ci
 # Typecheck, tests and a build for every pushed branch, which covers pull requests from this repository without a second
 # run per push. master and prod get the same checks from deploy.yml right before deploying, so they are skipped here.
 # Runs on GitHub's machines so a small dev box never has to.
+# Both Wrangler environments the deploys use: deploy.yml tests master with CLOUDFLARE_ENV=nightly, and a test that only
+# breaks there (a nightly-only var, say) once failed the master deploy after a green branch.
 on:
   push:
     branches-ignore: [master, prod]
@@ -11,7 +13,14 @@ concurrency:
   cancel-in-progress: true
 jobs:
   check:
+    name: check (${{ matrix.wrangler-env || 'prod' }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        wrangler-env: ['', nightly] # '' is the top-level Worker, what prod deploys
+    env:
+      CLOUDFLARE_ENV: ${{ matrix.wrangler-env }}
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4

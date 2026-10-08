@@ -7,6 +7,10 @@ name: e2e
 # about 7 minutes. Eight per engine: 16 jobs stay under the 20 a free account runs at once, and beyond that each runner's
 # ~40 s of setup outweighs its share of the tests. A runner has its own IP, so nightly's upgrade limit sees one shard.
 # The report and the traces of failures are kept as an artifact.
+#
+# The nightly run is the release gate: its last job, `nightly e2e passed`, succeeds only when every shard of both engines
+# passed against nightly for that exact commit, with no flaky test (playwright.config.ts fails flakes there). A ruleset on
+# `prod` requires that check, so GitHub refuses to fast-forward prod to a commit that has not passed it (CLAUDE.md, /release).
 on:
   push:
     branches-ignore: [master, prod]
@@ -67,3 +71,15 @@ jobs:
             e2e-report
             e2e-results
           retention-days: 14
+
+  gate:
+    # Named per event so that only the nightly run ever writes the check the prod ruleset requires: a branch run of the same
+    # commit (a branch fast-forwarded to master has the same sha) must not satisfy it, and a skipped job would count as passed.
+    name: ${{ github.event_name == 'workflow_run' && 'nightly e2e passed' || 'e2e passed' }}
+    needs: e2e
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "e2e shards: ${{ needs.e2e.result }} (target: ${{ github.event_name == 'workflow_run' && 'nightly' || 'branch' }})"
+          test "${{ needs.e2e.result }}" = success
