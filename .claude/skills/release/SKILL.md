@@ -6,14 +6,14 @@ description: Release master to prod in this repo — check that the master commi
 # /release
 
 prod only ever fast-forwards to a master commit that passed the full e2e suite against nightly. GitHub enforces this with a
-ruleset on `prod` that requires the `nightly e2e passed` check (written by `e2e.yml` after a nightly run). This skill does
+ruleset on `prod` that requires the `nightly e2e passed` commit status (written by `e2e.yml` after a nightly run). This skill does
 the same check first, so a refusal never comes as a surprise.
 
 1. `git fetch origin`. The candidate is `origin/master` unless the owner names a commit; it must be a descendant of
    `origin/prod` (`git merge-base --is-ancestor origin/prod <sha>`). If it is not, stop and explain: something went to prod
    that is not on master, which must not happen.
 2. Check the gate for the exact commit:
-   `gh api repos/fardolieri/dave/commits/<sha>/check-runs -q '.check_runs[] | select(.name == "nightly e2e passed") | .conclusion'`
+   `gh api repos/fardolieri/dave/commits/<sha>/statuses -q '[.[] | select(.context == "nightly e2e passed")][0].state'`
    - `success`: go on.
    - nothing yet: the deploy or the nightly e2e run is still going. Wait for it (one poll loop, every 60 s, about 25 min at
      most) and tell the owner you are waiting.

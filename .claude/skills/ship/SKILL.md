@@ -52,7 +52,7 @@ Then:
 ## 4. Nightly
 
 Wait for `deploy` on the master commit, then for the `e2e` run it triggers against nightly and its `nightly e2e passed`
-check. That check is what makes the commit releasable (`/release`).
+commit status. That status is what makes the commit releasable (`/release`).
 
 ## 5. Report
 

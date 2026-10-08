@@ -1,6 +1,6 @@
 # 01 · Foundation: one definition of done, a gated prod, sessions that know the machine
 
-Status: in progress
+Status: shipped 2026-10-08 to master (cea9a36), gate fixed in a follow-up the same day
 Type: task
 
 ## Goal
@@ -17,11 +17,14 @@ passed the full browser suite against nightly.
 - `.claude/skills/ship`: rebase, review plus the adversarial "Grumpy Friend" subagent, push, CI, nightly, report the rung.
 - `.claude/skills/release`: check the gate, fast-forward prod, watch the deploy, report.
 - `ci.yml` tests both Wrangler environments the deploys use (prod's and nightly's).
-- `e2e.yml` ends with a `gate` job. In the run after a master deploy it is called `nightly e2e passed` and succeeds only if
-  every shard passed; on branches it is called `e2e passed`, so a branch run of the same commit cannot satisfy the gate.
+- `e2e.yml` ends with a `release gate` job. In the run after a master deploy it writes the commit status
+  `nightly e2e passed` on the tested commit: success only if every shard passed. Branch runs never write it.
+  First built as the job's own check run, named per event; GitHub's rules do not count check runs from `workflow_run`
+  runs (a probe ruleset refused a commit whose check was green, and accepted it once a commit status of the same name was
+  set), so it became a commit status.
 - `playwright.config.ts`: `failOnFlakyTests` against a deployed copy in CI, so the gate run has no flakes.
-- A ruleset on `prod` (set up through the GitHub API once this is on master): required check `nightly e2e passed` from
-  GitHub Actions, no force pushes, no deletion. A ruleset on `master`: no force pushes, no deletion.
+- A ruleset on `prod` (set up through the GitHub API once this is on master): required status `nightly e2e passed`, no force
+  pushes, no deletion. A ruleset on `master`: no force pushes, no deletion.
 
 ## Verify
 - A branch push shows `check (prod)`, `check (nightly)` and `e2e passed`.

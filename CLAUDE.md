@@ -57,7 +57,7 @@ Rules:
 
 - `master` deploys nightly (`dave-nightly`); `prod` deploys the live site. Releasing is a fast-forward:
   `git push origin master:prod`, nothing else (no cherry-picks, no force pushes).
-- **prod is gated:** GitHub refuses a push to prod unless the commit has the `nightly e2e passed` check, which `e2e.yml`
+- **prod is gated:** GitHub refuses a push to prod unless the commit has the `nightly e2e passed` status, which `e2e.yml`
   writes only after the full suite passed against nightly for exactly that commit. So: push master, wait for deploy and
   nightly e2e, then release. `/release` does this.
 - `/ship` takes a branch from "works" to "on master": rebase, review, push, CI, report.

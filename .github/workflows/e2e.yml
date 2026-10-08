@@ -8,9 +8,9 @@ name: e2e
 # ~40 s of setup outweighs its share of the tests. A runner has its own IP, so nightly's upgrade limit sees one shard.
 # The report and the traces of failures are kept as an artifact.
 #
-# The nightly run is the release gate: its last job, `nightly e2e passed`, succeeds only when every shard of both engines
-# passed against nightly for that exact commit, with no flaky test (playwright.config.ts fails flakes there). A ruleset on
-# `prod` requires that check, so GitHub refuses to fast-forward prod to a commit that has not passed it (CLAUDE.md, /release).
+# The nightly run is the release gate: its last job writes the commit status `nightly e2e passed`, success only when every
+# shard of both engines passed against nightly for that exact commit, with no flaky test (playwright.config.ts fails flakes
+# there). A ruleset on `prod` requires it, so GitHub refuses to fast-forward prod to a commit that has not passed (CLAUDE.md).
 on:
   push:
     branches-ignore: [master, prod]
@@ -73,13 +73,30 @@ jobs:
           retention-days: 14
 
   gate:
-    # Named per event so that only the nightly run ever writes the check the prod ruleset requires: a branch run of the same
-    # commit (a branch fast-forwarded to master has the same sha) must not satisfy it, and a skipped job would count as passed.
-    name: ${{ github.event_name == 'workflow_run' && 'nightly e2e passed' || 'e2e passed' }}
+    # The release gate. After the run against nightly it writes the commit status `nightly e2e passed` on the tested commit,
+    # success only when every shard of both engines passed. A ruleset on `prod` requires that status. It is a commit status
+    # and not this job's own check because GitHub's rules do not count checks from workflow_run runs (tried 2026-10-08).
+    # Branch runs of the same commit never write it.
+    name: release gate
     needs: e2e
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      statuses: write
     steps:
-      - run: |
-          echo "e2e shards: ${{ needs.e2e.result }} (target: ${{ github.event_name == 'workflow_run' && 'nightly' || 'branch' }})"
-          test "${{ needs.e2e.result }}" = success
+      - name: Report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ needs.e2e.result }}
+          NIGHTLY: ${{ github.event_name == 'workflow_run' }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          echo "e2e shards: $RESULT (against nightly: $NIGHTLY)"
+          if [ "$NIGHTLY" = true ]; then
+            state=$([ "$RESULT" = success ] && echo success || echo failure)
+            gh api -X POST "repos/${{ github.repository }}/statuses/$SHA" -f state="$state" -f context="nightly e2e passed" \
+              -f description="Full e2e suite against nightly, both engines, no flakes: $RESULT" -f target_url="$RUN_URL" > /dev/null
+            echo "Wrote 'nightly e2e passed' = $state on $SHA"
+          fi
+          test "$RESULT" = success
