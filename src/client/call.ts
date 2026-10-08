@@ -21,7 +21,8 @@ import {
 import { REJOIN_HEARTBEAT_MS, parseRejoinMarker, rejoinFor, type RejoinMarker } from '../core/rejoin';
 import type { createRoom } from './room';
 import { tryUnlockSound } from './sound';
-import { local } from './storage';
+import { local, type LocalKey } from './storage';
+import { flag } from '../core/storedstate';
 import { canRemoveNoise, createVoiceProcessor, type VoiceLevel, type VoiceLoad, type VoiceProcessor } from './voice';
 import { createVoiceGuard, sendRatePct, type ClockSample, type GuardFault } from '../core/voiceclock';
 
@@ -162,7 +163,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   // value. Internal logic therefore uses this plain mirror; the signal is for rendering only.
   let joined = false;
   const setInCall = (v: boolean) => { joined = v; setInCallSignal(v); };
-  const [muted, setMutedSignal] = createSignal(local.get('muted') === 'true');
+  const [muted, setMutedSignal] = createSignal(flag(local.get('muted')));
   const [views, setViews] = createSignal<PeerView[]>([]);
   const [speakingSelf, setSpeakingSelf] = createSignal(false);
   const [joinError, setJoinError] = createSignal<string | null>(null);
@@ -199,7 +200,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   // ---- settings (spec §6.1, §6.3), remembered per browser
   /** A setting signal that also persists: [read, write]. */
-  function persisted<T extends object>(key: string, parse: (raw: string | null) => T): [() => T, (next: T) => void] {
+  function persisted<T extends object>(key: LocalKey, parse: (raw: string | null) => T): [() => T, (next: T) => void] {
     const [get, set] = createSignal<T>(parse(local.get(key)) as Exclude<T, Function>);
     return [get, (next) => { set(() => next); local.set(key, JSON.stringify(next)); }];
   }

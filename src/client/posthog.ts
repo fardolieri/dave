@@ -10,13 +10,14 @@
 import type { PostHog } from 'posthog-js';
 import { createSignal } from 'solid-js';
 import { local } from './storage';
+import { consent as parseConsent, flag } from '../core/storedstate';
 
 /**
  * A browser the e2e fixtures seeded with `dave.test = true`. Its events carry `is_test_account` and its person is marked
  * `$internal_or_test_user`, the property the project's "Internal / Test users" cohort keys on, so PostHog's test-account
  * filter drops it from insights.
  */
-export const isTestAccount: boolean = local.get('test') === 'true';
+export const isTestAccount: boolean = flag(local.get('test'));
 
 const key = import.meta.env['VITE_POSTHOG_KEY'] as string | undefined;
 const host = import.meta.env['VITE_POSTHOG_HOST'] as string | undefined;
@@ -24,8 +25,7 @@ if ((!key || !host) && import.meta.env.DEV) console.warn('PostHog is not configu
 
 /** This browser's answer to "Want to help me find bugs?"; null while it has not been asked. */
 export type Consent = 'on' | 'off';
-const stored = local.get('telemetry');
-const [consent, setConsentSignal] = createSignal<Consent | null>(stored === 'on' || stored === 'off' ? stored : null);
+const [consent, setConsentSignal] = createSignal<Consent | null>(parseConsent(local.get('telemetry')));
 export { consent };
 export const telemetryOn = (): boolean => consent() === 'on';
 

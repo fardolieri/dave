@@ -32,6 +32,15 @@ export const normaliseRoomName = normaliseName;
 
 export type InviteLink = { secret: string; name: string };
 
+/** A room as this browser stores it (`dave.rooms`): the id and the auth key are derived again at load. */
+export type StoredRoom = { secret: string; name: string; addedAt: number };
+export function parseStoredRooms(raw: string | null): StoredRoom[] {
+  try {
+    const list = JSON.parse(raw ?? '[]') as unknown;
+    return Array.isArray(list) ? list.filter((r): r is StoredRoom => !!r && typeof r.secret === 'string' && typeof r.name === 'string' && typeof r.addedAt === 'number').map(({ secret, name, addedAt }) => ({ secret, name, addedAt })) : [];
+  } catch { return []; }
+}
+
 const decode = (part: string): string => { try { return decodeURIComponent(part); } catch { return part; } };
 
 /** The fragment of an invite link: `#<secret>/<name>`. A bare `#<secret>` is a link from before rooms had names. */

@@ -1,6 +1,6 @@
 import { createSignal } from 'solid-js';
 import { local } from './storage';
-import { normaliseNickname, type Contact } from '../core/names';
+import { normaliseNickname, parseContacts, type Contact } from '../core/names';
 
 // The keys this browser has acknowledged, with the name they used and an optional nickname (issues #6 and #7).
 // A key not in the book shows a "new" badge until you acknowledge it (spec §3).
@@ -9,9 +9,7 @@ import { normaliseNickname, type Contact } from '../core/names';
 type Book = Record<string, Contact>;
 const KEY = 'seenKeys';
 
-function read(): Book {
-  try { return JSON.parse(local.get(KEY) ?? '{}') as Book; } catch { return {}; }
-}
+const read = (): Book => parseContacts(local.get(KEY));
 
 // `latest` is the source of truth for read-modify-write; the signal only mirrors it for the UI. Signal
 // writes are batched, so two changes in one tick (two rows clicked at once) would otherwise both start

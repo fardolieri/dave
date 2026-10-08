@@ -1124,3 +1124,12 @@ export function searchEmoji(query: string, entries: EmojiEntry[] = ALL_EMOJI): E
   const words = q.split(/\s+/);
   return entries.filter((e) => words.every((w) => e.name.includes(w)));
 }
+
+/** How many recently picked emoji the picker remembers (`dave.emojiRecent`), newest first. */
+export const RECENT_EMOJI_MAX = 24;
+export function parseRecentEmoji(raw: string | null): string[] {
+  try {
+    const v: unknown = JSON.parse(raw ?? '[]');
+    return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string').slice(0, RECENT_EMOJI_MAX) : [];
+  } catch { return []; }
+}

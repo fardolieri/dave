@@ -1,4 +1,4 @@
-import { authKeyOf, DEFAULT_ROOM_NAME, roomIdOf, type InviteLink } from '../core/rooms';
+import { authKeyOf, DEFAULT_ROOM_NAME, parseStoredRooms, roomIdOf, type InviteLink, type StoredRoom } from '../core/rooms';
 import { adoptLegacyHistory, forgetHistory } from './history';
 import { local } from './storage';
 
@@ -8,18 +8,13 @@ import { local } from './storage';
  * selected is remembered too, so a reload lands where you were.
  */
 export type SavedRoom = { id: string; authKey: string; secret: string; name: string; addedAt: number };
-type Stored = Pick<SavedRoom, 'secret' | 'name' | 'addedAt'>;
+type Stored = StoredRoom;
 const KEY = 'rooms';
 const SELECTED = 'room';
 /** The single secret from before rooms; folded into the list on first load and removed. */
 const LEGACY_SECRET = 'secret';
 
-function readStored(): Stored[] {
-  try {
-    const list = JSON.parse(local.get(KEY) ?? '[]') as unknown;
-    return Array.isArray(list) ? list.filter((r): r is Stored => !!r && typeof r.secret === 'string' && typeof r.name === 'string' && typeof r.addedAt === 'number') : [];
-  } catch { return []; }
-}
+const readStored = (): Stored[] => parseStoredRooms(local.get(KEY));
 
 function write(list: Stored[]): void {
   local.set(KEY, JSON.stringify(list.map(({ secret, name, addedAt }) => ({ secret, name, addedAt }))));

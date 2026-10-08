@@ -1,6 +1,10 @@
 // Per-browser persistence. The identity keypair must live in IndexedDB because a
 // non-extractable CryptoKey can only be stored by structured clone. Everything
-// else is small strings in localStorage.
+// else is small strings in localStorage. Every key is listed, with its parser, in
+// core/storedstate.ts: a key missing there does not typecheck here.
+import type { IdbKey, LocalKey } from '../core/storedstate';
+
+export type { IdbKey, LocalKey };
 
 const DB = 'dave';
 const STORE = 'kv';
@@ -14,7 +18,7 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-export async function idbGet<T>(key: string): Promise<T | undefined> {
+export async function idbGet<T>(key: IdbKey): Promise<T | undefined> {
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(key);
@@ -23,7 +27,7 @@ export async function idbGet<T>(key: string): Promise<T | undefined> {
   });
 }
 
-export async function idbSet(key: string, value: unknown): Promise<void> {
+export async function idbSet(key: IdbKey, value: unknown): Promise<void> {
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
@@ -33,7 +37,7 @@ export async function idbSet(key: string, value: unknown): Promise<void> {
   });
 }
 
-export async function idbDelete(key: string): Promise<void> {
+export async function idbDelete(key: IdbKey): Promise<void> {
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
@@ -44,13 +48,13 @@ export async function idbDelete(key: string): Promise<void> {
 }
 
 export const local = {
-  get: (key: string): string | null => {
+  get: (key: LocalKey): string | null => {
     try { return localStorage.getItem(`dave.${key}`); } catch { return null; }
   },
-  set: (key: string, value: string): void => {
+  set: (key: LocalKey, value: string): void => {
     try { localStorage.setItem(`dave.${key}`, value); } catch { /* private mode etc. */ }
   },
-  remove: (key: string): void => {
+  remove: (key: LocalKey): void => {
     try { localStorage.removeItem(`dave.${key}`); } catch { /* private mode etc. */ }
   },
 };

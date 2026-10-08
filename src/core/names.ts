@@ -3,6 +3,20 @@
 /** What this browser remembers about a friend's key: the name they used, when the key was acknowledged, and an optional nickname. */
 export type Contact = { name: string; since: number; nick?: string };
 
+/** The stored address book (`dave.seenKeys`), public key to contact. Entries without a name and a time are dropped. */
+export function parseContacts(raw: string | null): Record<string, Contact> {
+  const out: Record<string, Contact> = {};
+  try {
+    const v: unknown = JSON.parse(raw ?? '{}');
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) return out;
+    for (const [key, c] of Object.entries(v as Record<string, Partial<Contact> | null>)) {
+      if (!c || typeof c.name !== 'string' || typeof c.since !== 'number') continue;
+      out[key] = typeof c.nick === 'string' ? { name: c.name, since: c.since, nick: c.nick } : { name: c.name, since: c.since };
+    }
+  } catch { /* junk counts as an empty book */ }
+  return out;
+}
+
 /** The name shown for a friend here: their nickname when this browser gave them one, else their self-declared name. */
 export function displayName(selfDeclared: string, contact: Contact | undefined): string {
   return contact?.nick ?? selfDeclared;
