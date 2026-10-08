@@ -261,6 +261,9 @@ test('low bandwidth voice caps the voice both ways from one side, and the delay 
 
   await alice.selectedRoom.getByTitle('Audio settings').click();
   await alice.page.locator('.panel').getByLabel('Low bandwidth voice').uncheck();
+  // Flaked once in Firefox against nightly (2026-10-08, run 37784001226): the Room dropped both sockets right after this
+  // offer went out, it was lost, and Alice's voice stayed low. The app wrongly never sent it again; now it does (see
+  // resendOffer in client/call.ts, and its test in resilience.spec.ts).
   for (const f of [alice, bob]) await expect.poll(() => rate(f).then(full), { message: `${f.name} is back to full voice` }).toBe(true);
   for (const f of [alice, bob]) expect((await voiceBuffer(f)).asked).toBeNull();
   await bob.hearing('Alice');
