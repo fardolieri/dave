@@ -327,6 +327,8 @@ export const test = base.extend<{ crowd: Crowd; film: Film }>({
     const room: RoomSeed = { secret: newSecret(), name: 'Room' };
     // Extra browsers (another engine, another autoplay policy), launched on first use and closed with the test.
     const extra = new Map<string, Promise<Browser>>();
+    // Seconds from the start of the film until its friend's page is up: the blank page before that is cut from the receipt.
+    let filmReady = 0;
     const browserFor = (o: Partial<FriendOptions>): Promise<Browser> => {
       const engine = o.engine ?? (browserName as Engine);
       const autoplay = o.autoplay ?? 'allowed';
@@ -338,11 +340,14 @@ export const test = base.extend<{ crowd: Crowd; film: Film }>({
     await use({
       room,
       async open(name, options = {}) {
-        if (film && friends.length === 0) options = { viewport: film.viewport, ...options, video: testInfo.outputPath('film') };
+        const filming = film && friends.length === 0;
+        if (filming) options = { viewport: film.viewport, ...options, video: testInfo.outputPath('film') };
         const friend = new Friend(name, { ...options, rooms: options.rooms ?? [room] });
         friends.push(friend);
+        const started = Date.now();
         await friend.launch(await browserFor(options), options.engine ?? (browserName as Engine));
         if (options.connect !== false) await friend.open();
+        if (filming) filmReady = (Date.now() - started) / 1000;
         return friend;
       },
     });
@@ -363,7 +368,7 @@ export const test = base.extend<{ crowd: Crowd; film: Film }>({
       const name = filmName(testInfo.title);
       mkdirSync(film.dir, { recursive: true });
       await filmed.saveAs(join(film.dir, `${name}.webm`));
-      writeFileSync(join(film.dir, `${name}.json`), JSON.stringify({ title: testInfo.title.replace(/\s*@\w+/g, ''), status: testInfo.status === testInfo.expectedStatus && !problems.length ? 'passed' : 'failed' }));
+      writeFileSync(join(film.dir, `${name}.json`), JSON.stringify({ title: testInfo.title.replace(/\s*@\w+/g, ''), skip: filmReady, status: testInfo.status === testInfo.expectedStatus && !problems.length ? 'passed' : 'failed' }));
     }
     expect(problems, 'console warnings, errors or exceptions nobody expected').toEqual([]);
   },
