@@ -8,7 +8,8 @@
  * declared them expected with `friend.expectWarning(/.../)`.
  */
 import { randomBytes } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test as base, expect, type Browser, type BrowserContext, type Locator, type Page, type WebSocketRoute } from '@playwright/test';
 import { environmentNoise, launchOptions, originFor, type Autoplay, type Engine } from './browsers';
 
@@ -302,6 +303,16 @@ export class Friend {
 const clean = (s: string) => s.replace(/\s*\(you\)\s*$/, '').trim();
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/**
+ * A video receipt (playwright.receipts.config.ts, .github/workflows/receipts.yml): the first friend a test opens is filmed at
+ * this viewport, unless the test gives that friend a viewport of its own, and the video lands in `dir` named after the test.
+ * Null, the default, in the normal suite.
+ */
+export type Film = { viewport: { width: number; height: number }; dir: string } | null;
+
+/** The file name a receipt gets from its test's title: lower case, words joined by dashes, the tag left out. */
+export const filmName = (title: string): string => title.replace(/@\w+/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
+
 type Crowd = {
   /** Opens a friend in the given rooms (default: one room shared by the test) and waits until connected. */
   open(name: string, options?: Partial<FriendOptions> & { connect?: boolean }): Promise<Friend>;
@@ -309,8 +320,9 @@ type Crowd = {
   room: RoomSeed;
 };
 
-export const test = base.extend<{ crowd: Crowd }>({
-  crowd: async ({ browser, browserName, playwright }, use, testInfo) => {
+export const test = base.extend<{ crowd: Crowd; film: Film }>({
+  film: [null, { option: true }],
+  crowd: async ({ browser, browserName, playwright, film }, use, testInfo) => {
     const friends: Friend[] = [];
     const room: RoomSeed = { secret: newSecret(), name: 'Room' };
     // Extra browsers (another engine, another autoplay policy), launched on first use and closed with the test.
@@ -326,6 +338,7 @@ export const test = base.extend<{ crowd: Crowd }>({
     await use({
       room,
       async open(name, options = {}) {
+        if (film && friends.length === 0) options = { viewport: film.viewport, ...options, video: testInfo.outputPath('film') };
         const friend = new Friend(name, { ...options, rooms: options.rooms ?? [room] });
         friends.push(friend);
         await friend.launch(await browserFor(options), options.engine ?? (browserName as Engine));
@@ -344,6 +357,14 @@ export const test = base.extend<{ crowd: Crowd }>({
     if (problems.length) await testInfo.attach('console problems', { body: problems.join('\n'), contentType: 'text/plain' });
     await Promise.all(friends.map((f) => f.close()));
     await Promise.all([...extra.values()].map(async (b) => (await b).close()));
+    // The video is complete once its context is closed. A failed run is kept too: it shows how far the change got.
+    const filmed = film && friends[0]?.page?.video();
+    if (filmed) {
+      const name = filmName(testInfo.title);
+      mkdirSync(film.dir, { recursive: true });
+      await filmed.saveAs(join(film.dir, `${name}.webm`));
+      writeFileSync(join(film.dir, `${name}.json`), JSON.stringify({ title: testInfo.title.replace(/\s*@\w+/g, ''), status: testInfo.status === testInfo.expectedStatus && !problems.length ? 'passed' : 'failed' }));
+    }
     expect(problems, 'console warnings, errors or exceptions nobody expected').toEqual([]);
   },
 });
