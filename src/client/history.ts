@@ -1,5 +1,5 @@
-import { idbDelete, idbGet, idbSet, type IdbKey } from './storage';
-import { MAX_HISTORY, parseHistory, type StoredText } from '../core/chatlog';
+import { idbDelete, idbGet, idbRead, idbSet, type ParsedIdbKey } from './storage';
+import { MAX_HISTORY, type StoredText } from '../core/chatlog';
 import type { Identity } from '../core/protocol';
 
 /**
@@ -13,9 +13,7 @@ const keyFor = (roomId: string): `history:${string}` => `history:${roomId}`;
 /** Before rooms, this browser kept one history under a single key. */
 const LEGACY_KEY = 'history';
 
-async function read(key: IdbKey): Promise<StoredText[]> {
-  return parseHistory(await idbGet<unknown>(key));
-}
+const read = (key: ParsedIdbKey): Promise<StoredText[]> => idbRead(key);
 
 export function loadHistory(roomId: string): Promise<StoredText[]> {
   return read(keyFor(roomId));

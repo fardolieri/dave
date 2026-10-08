@@ -1,4 +1,4 @@
-import { authKeyOf, DEFAULT_ROOM_NAME, parseStoredRooms, roomIdOf, type InviteLink, type StoredRoom } from '../core/rooms';
+import { authKeyOf, DEFAULT_ROOM_NAME, roomIdOf, type InviteLink, type StoredRoom } from '../core/rooms';
 import { adoptLegacyHistory, forgetHistory } from './history';
 import { local } from './storage';
 
@@ -14,7 +14,7 @@ const SELECTED = 'room';
 /** The single secret from before rooms; folded into the list on first load and removed. */
 const LEGACY_SECRET = 'secret';
 
-const readStored = (): Stored[] => parseStoredRooms(local.get(KEY));
+const readStored = (): Stored[] => local.read(KEY);
 
 function write(list: Stored[]): void {
   local.set(KEY, JSON.stringify(list.map(({ secret, name, addedAt }) => ({ secret, name, addedAt }))));
@@ -26,7 +26,7 @@ async function withKeys(r: Stored): Promise<SavedRoom> {
 
 export async function loadRooms(): Promise<SavedRoom[]> {
   let stored = readStored();
-  const legacy = local.get(LEGACY_SECRET);
+  const legacy = local.read(LEGACY_SECRET);
   if (legacy) {
     if (!stored.some((r) => r.secret === legacy)) stored = [{ secret: legacy, name: DEFAULT_ROOM_NAME, addedAt: Date.now() }, ...stored];
     write(stored);
@@ -53,5 +53,5 @@ export function forgetRoom(rooms: SavedRoom[], secret: string): SavedRoom[] {
   return next;
 }
 
-export const getSelectedRoom = (): string | null => local.get(SELECTED);
+export const getSelectedRoom = (): string | null => local.read(SELECTED);
 export const setSelectedRoom = (secret: string): void => local.set(SELECTED, secret);

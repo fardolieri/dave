@@ -1,10 +1,13 @@
 // Per-browser persistence. The identity keypair must live in IndexedDB because a
 // non-extractable CryptoKey can only be stored by structured clone. Everything
 // else is small strings in localStorage. Every key is listed, with its parser, in
-// core/storedstate.ts: a key missing there does not typecheck here.
-import type { IdbKey, LocalKey } from '../core/storedstate';
+// core/storedstate.ts: a key missing there does not typecheck here, and every read
+// of a parsed key goes through the parser listed there.
+import { IDB, LOCAL, type IdbKey, type LocalKey } from '../core/storedstate';
 
 export type { IdbKey, LocalKey };
+/** What a read of a localStorage key gives: the return type of its parser in the registry. */
+export type LocalValue<K extends LocalKey> = ReturnType<(typeof LOCAL)[K]['parse']>;
 
 const DB = 'dave';
 const STORE = 'kv';
@@ -47,10 +50,21 @@ export async function idbDelete(key: IdbKey): Promise<void> {
   });
 }
 
+/** The parsed IndexedDB keys; `identity` is read raw with idbGet. */
+export type ParsedIdbKey = 'history' | `history:${string}`;
+/** Reads an IndexedDB key through its parser in the registry. */
+export async function idbRead(key: ParsedIdbKey): Promise<ReturnType<(typeof IDB)['history']['parse']>> {
+  const entry = key === 'history' ? IDB.history : IDB['history:<roomId>'];
+  return entry.parse(await idbGet<unknown>(key));
+}
+
+function getRaw(key: LocalKey): string | null {
+  try { return localStorage.getItem(`dave.${key}`); } catch { return null; }
+}
+
 export const local = {
-  get: (key: LocalKey): string | null => {
-    try { return localStorage.getItem(`dave.${key}`); } catch { return null; }
-  },
+  /** Reads a key through its parser in the registry (core/storedstate.ts). */
+  read: <K extends LocalKey>(key: K): LocalValue<K> => (LOCAL[key].parse as (raw: string | null) => unknown)(getRaw(key)) as LocalValue<K>,
   set: (key: LocalKey, value: string): void => {
     try { localStorage.setItem(`dave.${key}`, value); } catch { /* private mode etc. */ }
   },

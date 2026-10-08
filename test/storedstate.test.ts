@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { allStoredKeys, storedStateSnapshot } from '../src/core/storedstate';
+import { allStoredKeys, shapeOf, storedStateSnapshot } from '../src/core/storedstate';
+import { parseContacts } from '../src/core/names';
 import { STORED_STATE } from './storedstate.snapshot';
 
 // The saved-state guard (quality ticket 02). Stored state outlives a deploy: a new default reaches only browsers that
@@ -61,6 +62,23 @@ describe('saved-state guard', () => {
 
   it('has a fixture for every parsed key', () => {
     for (const { id, fixtures } of parsed) expect(Object.keys(fixtures), `${id}: add a fixture of what browsers hold today`).not.toHaveLength(0);
+  });
+
+  it('names every fixture after the day its format began, so the newest is found by date', () => {
+    for (const { id, fixtures } of parsed) for (const name of Object.keys(fixtures)) expect(name, `${id}: name the fixture "YYYY-MM-DD, why"`).toMatch(/^\d{4}-\d{2}-\d{2}(, .+)?$/);
+  });
+
+  it('merges the items of a list and the values of a map into one shape', () => {
+    expect(shapeOf([{ a: 1 }, { a: 2, b: 'x' }])).toEqual([{ a: 'number', 'b?': 'string' }]);
+    expect(shapeOf({ pkA: 0.5, pkB: 2 }, true)).toEqual({ '<key>': 'number' });
+    expect(shapeOf({ pkA: { n: 1 }, pkB: { n: 'x' } }, true)).toEqual({ '<key>': { n: 'number|string' } });
+    expect(shapeOf([])).toEqual([]);
+  });
+
+  it('repairs a malformed address book entry instead of dropping it, so the key stays acknowledged', () => {
+    expect(parseContacts('{"pkA":{"name":"Anna"},"pkB":"x","pkC":{"since":5,"nick":"C"}}')).toEqual({
+      pkA: { name: 'Anna', since: 0 }, pkB: { name: '', since: 0 }, pkC: { name: '', since: 5, nick: 'C' },
+    });
   });
 
   // Worse than a missed default is a crash on old data: the app would not start for that friend.

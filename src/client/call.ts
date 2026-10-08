@@ -15,14 +15,13 @@ import {
 } from '../core/mesh';
 import type { IceServer, Person, ServerMessage, SignalData } from '../core/protocol';
 import {
-  SMALL_SCREEN_QUERY, captureProcessing, clampVolume, contentHint, parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes, shareEncoding, trackConstraints, withChange,
+  SMALL_SCREEN_QUERY, captureProcessing, clampVolume, contentHint, shareEncoding, trackConstraints, withChange,
   type AudioSettings, type ShareSettings, type ViewerSettings,
 } from '../core/settings';
-import { REJOIN_HEARTBEAT_MS, parseRejoinMarker, rejoinFor, type RejoinMarker } from '../core/rejoin';
+import { REJOIN_HEARTBEAT_MS, rejoinFor, type RejoinMarker } from '../core/rejoin';
 import type { createRoom } from './room';
 import { tryUnlockSound } from './sound';
-import { local, type LocalKey } from './storage';
-import { flag } from '../core/storedstate';
+import { local, type LocalValue } from './storage';
 import { canRemoveNoise, createVoiceProcessor, type VoiceLevel, type VoiceLoad, type VoiceProcessor } from './voice';
 import { createVoiceGuard, sendRatePct, type ClockSample, type GuardFault } from '../core/voiceclock';
 
@@ -163,7 +162,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   // value. Internal logic therefore uses this plain mirror; the signal is for rendering only.
   let joined = false;
   const setInCall = (v: boolean) => { joined = v; setInCallSignal(v); };
-  const [muted, setMutedSignal] = createSignal(flag(local.get('muted')));
+  const [muted, setMutedSignal] = createSignal(local.read('muted'));
   const [views, setViews] = createSignal<PeerView[]>([]);
   const [speakingSelf, setSpeakingSelf] = createSignal(false);
   const [joinError, setJoinError] = createSignal<string | null>(null);
@@ -194,23 +193,23 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   window.addEventListener('pagehide', onPageHide);
   /** Read at load: another tab superseding this one clears the marker, so a later read could miss it. A tab that waited
    * behind another open tab is not a reload and never rejoins (ticket 25): that tab may have just left the call by closing. */
-  let pendingRejoin = opts.mayRejoin ? rejoinFor(parseRejoinMarker(local.get(REJOIN_KEY)), room.roomId, Date.now()) : null;
+  let pendingRejoin = opts.mayRejoin ? rejoinFor(local.read(REJOIN_KEY), room.roomId, Date.now()) : null;
   /** Remote audio the browser refused to start without a gesture (a Rejoin normally avoids it by taking the mic first). */
   const [audioBlocked, setAudioBlocked] = createSignal(false);
 
   // ---- settings (spec §6.1, §6.3), remembered per browser
   /** A setting signal that also persists: [read, write]. */
-  function persisted<T extends object>(key: LocalKey, parse: (raw: string | null) => T): [() => T, (next: T) => void] {
-    const [get, set] = createSignal<T>(parse(local.get(key)) as Exclude<T, Function>);
+  function persisted<K extends 'shareSettings' | 'volumes' | 'shareVolumes' | 'audioSettings' | 'viewerSettings'>(key: K): [() => LocalValue<K>, (next: LocalValue<K>) => void] {
+    const [get, set] = createSignal<LocalValue<K>>(local.read(key) as Exclude<LocalValue<K>, Function>);
     return [get, (next) => { set(() => next); local.set(key, JSON.stringify(next)); }];
   }
-  const [shareSettings, storeShareSettings] = persisted('shareSettings', parseShareSettings);
+  const [shareSettings, storeShareSettings] = persisted('shareSettings');
   /** Local volume per participant public key, remembered per browser. */
-  const [volumes, storeVolumes] = persisted('volumes', parseVolumes);
+  const [volumes, storeVolumes] = persisted('volumes');
   /** Local volume of a participant's share sound, set from the share tile, so it never quiets their voice. */
-  const [shareVolumes, storeShareVolumes] = persisted('shareVolumes', parseVolumes);
-  const [audioSettings, storeAudioSettings] = persisted('audioSettings', parseAudioSettings);
-  const [viewerSettings, storeViewerSettings] = persisted('viewerSettings', parseViewerSettings);
+  const [shareVolumes, storeShareVolumes] = persisted('shareVolumes');
+  const [audioSettings, storeAudioSettings] = persisted('audioSettings');
+  const [viewerSettings, storeViewerSettings] = persisted('viewerSettings');
   /** Plain mirror of the low bandwidth voice setting (ticket 27), read while descriptions go out and come in. */
   let lowVoiceOn = untrack(audioSettings).lowBandwidthVoice;
   let voiceRepair = untrack(audioSettings).voiceRepair;

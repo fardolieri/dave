@@ -1,12 +1,12 @@
 import { createSignal, createMemo, For, Show } from 'solid-js';
-import { EMOJI_CATEGORIES, parseRecentEmoji, RECENT_EMOJI_MAX, searchEmoji, type EmojiEntry } from '../core/emoji';
+import { EMOJI_CATEGORIES, RECENT_EMOJI_MAX, searchEmoji, type EmojiEntry } from '../core/emoji';
 import { isSingleEmoji } from '../core/protocol';
 import { local } from './storage';
 import { place } from './place';
 
 // Emoji this browser picked last, newest first, shown as the first row of the picker (issue #3).
 const RECENT_KEY = 'emojiRecent';
-const [recent, setRecent] = createSignal<string[]>(parseRecentEmoji(local.get(RECENT_KEY)));
+const [recent, setRecent] = createSignal<string[]>(local.read(RECENT_KEY));
 function rememberEmoji(char: string): void {
   const next = [char, ...recent().filter((c) => c !== char)].slice(0, RECENT_EMOJI_MAX);
   setRecent(next);

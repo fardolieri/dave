@@ -3,15 +3,20 @@
 /** What this browser remembers about a friend's key: the name they used, when the key was acknowledged, and an optional nickname. */
 export type Contact = { name: string; since: number; nick?: string };
 
-/** The stored address book (`dave.seenKeys`), public key to contact. Entries without a name and a time are dropped. */
+/**
+ * The stored address book (`dave.seenKeys`), public key to contact. A malformed entry is repaired, not dropped: the key
+ * stays acknowledged, a missing name reads as empty until the friend is seen again, a missing time as 0.
+ */
 export function parseContacts(raw: string | null): Record<string, Contact> {
   const out: Record<string, Contact> = {};
   try {
     const v: unknown = JSON.parse(raw ?? '{}');
     if (typeof v !== 'object' || v === null || Array.isArray(v)) return out;
-    for (const [key, c] of Object.entries(v as Record<string, Partial<Contact> | null>)) {
-      if (!c || typeof c.name !== 'string' || typeof c.since !== 'number') continue;
-      out[key] = typeof c.nick === 'string' ? { name: c.name, since: c.since, nick: c.nick } : { name: c.name, since: c.since };
+    for (const [key, entry] of Object.entries(v as Record<string, unknown>)) {
+      const c = (typeof entry === 'object' && entry !== null ? entry : {}) as Partial<Record<keyof Contact, unknown>>;
+      const contact: Contact = { name: typeof c.name === 'string' ? c.name : '', since: typeof c.since === 'number' ? c.since : 0 };
+      if (typeof c.nick === 'string') contact.nick = c.nick;
+      out[key] = contact;
     }
   } catch { /* junk counts as an empty book */ }
   return out;
