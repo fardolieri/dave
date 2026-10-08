@@ -1,0 +1,10 @@
+[Unit]
+Description=dave night shift, nightly at 02:30 UTC (04:30 in Berlin in summer, 03:30 in winter)
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 UTC
+Persistent=false
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

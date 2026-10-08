@@ -1,0 +1,9 @@
+[Unit]
+Description=dave night shift: problem reports into failing e2e tests (scripts/night-shift/run.sh)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/libexec/dave-night-shift.sh
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+TimeoutStartSec=5h
+Nice=10

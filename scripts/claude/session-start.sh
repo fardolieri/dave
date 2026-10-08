@@ -19,4 +19,6 @@ echo "- master is ${unreleased:-?} commit(s) ahead of prod (unreleased)."
 echo "- ${avail:-?} MB memory available. GitHub Actions is the test environment; see CLAUDE.md before running anything heavy."
 [ "$others" -gt 0 ] 2>/dev/null && echo "- WARNING: $others other agent session(s) running on this machine. Work on your own branch, fetch before pushing, and do not run heavy commands at the same time."
 [ -n "$heavy" ] && { echo "- Leftover heavy processes from earlier sessions (kill them unless another session owns them):"; echo "$heavy" | sed 's/^/    /'; }
+night=$(ls -t "${XDG_STATE_HOME:-$HOME/.local/state}"/night-shift/digest-*.md 2>/dev/null | head -1)
+[ -n "$night" ] && [ -n "$(find "$night" -mmin -1440 2>/dev/null)" ] && echo "- The night shift left a digest: $night (draft 'Repro:' PRs: gh pr list --draft --search 'head:night-shift/')."
 exit 0
