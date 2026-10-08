@@ -55,6 +55,8 @@ Rules:
   Past reviews found real bugs every time they ran.
 - **Saved state needs a migration story.** Anything in `localStorage` or IndexedDB outlives a deploy: changing a default or a
   stored shape does not reach existing browsers by itself. Either migrate, or say plainly in the report who will not see it.
+  Every stored key is listed in `src/core/storedstate.ts` with its parser and fixtures. `test/storedstate.test.ts` fails on
+  a changed default or shape and says what to do.
 - Never invent commit hashes, test counts or CI results. Copy them from the output.
 
 ## Shipping
