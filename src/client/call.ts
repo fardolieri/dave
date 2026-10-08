@@ -92,6 +92,8 @@ type Peer = {
   makingOffer: boolean;
   ignoreOffer: boolean;
   srdAnswerPending: boolean;
+  /** Their join sequence when presence last listed them: a new one means their server socket came back (see resendOffer). */
+  joinSeq: number | null;
   /** Plays the gain-adjusted voice; sink-selectable. */
   audio: HTMLAudioElement;
   /** Chrome only feeds a remote track into WebAudio while some media element plays it, so the raw track stays attached here, muted. */
@@ -808,7 +810,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     keepAlive.muted = true;
     const { closed, close: markClosed } = closeLatch();
     const peer: Peer = {
-      key, name, pc, closed, markClosed, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, keepAlive, audioNodes: [], restarts: 0, relayOnly, generation: ++generation,
+      key, name, pc, closed, markClosed, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, joinSeq: null, audio, keepAlive, audioNodes: [], restarts: 0, relayOnly, generation: ++generation,
       view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1, shareVolume: untrack(shareVolumes)[key] ?? 1, rttMs: null },
       viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, sendsRed: false, sendsFec: true, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, framesDecoded: null, framesGrewAt: null, holdOpening: false, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
@@ -983,6 +985,21 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   /**
+   * Signals travel over the room sockets, and one in flight when a socket drops is gone: mine on the way out, or on the
+   * way in to them. An offer of mine still unanswered then is never answered, and the connection stays out of "stable"
+   * for good: no later negotiation starts (renegotiateVoice waits forever, an ICE restart never goes out), though the
+   * voice keeps flowing on what was agreed before. Seen on nightly (2026-10-08): the Room dropped both sockets the moment
+   * Alice switched low bandwidth voice off, and her voice stayed low. So the offer is sent again once both sockets can
+   * carry it: after my own reconnect, and when they come back with a new join sequence. An offer they did get, whose
+   * answer was lost, is applied again and answered again; the answer that comes second is dropped in onSignalNow.
+   */
+  function resendOffer(peer: Peer): void {
+    if (peers.get(peer.key) !== peer || peer.makingOffer || peer.pc.signalingState !== 'have-local-offer') return;
+    posthog.capture('offer_resent');
+    void sendDescription(peer);
+  }
+
+  /**
    * Send my current local description with its DTLS fingerprints signed by my identity key, bound to this peer (ADR 0004).
    * The copy sent asks for low bandwidth voice and the voice repair chosen here; my own connection keeps the description as the browser made it.
    */
@@ -1051,6 +1068,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         const collision = description.type === 'offer' && (peer.makingOffer || (pc.signalingState !== 'stable' && !peer.srdAnswerPending));
         peer.ignoreOffer = !peer.polite && collision;
         if (peer.ignoreOffer) return;
+        if (description.type === 'answer' && pc.signalingState === 'stable') return; // a second answer to a resent offer (resendOffer)
         peer.srdAnswerPending = description.type === 'answer';
         peer.asksLowVoice = asksLowVoice(description.sdp ?? '');
         // My encoder reads its bitrate, packet length, FEC flag and codec order from this description: rewritten, it obeys my settings too.
@@ -1363,6 +1381,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       const existing = peers.get(p.publicKey);
       if (existing) {
         if (existing.view.serverLost) { clearTimeout(existing.graceTimer); setView(existing, { serverLost: false, name: p.name }); }
+        if (existing.joinSeq !== p.joinSeq) {
+          const back = existing.joinSeq !== null;
+          existing.joinSeq = p.joinSeq;
+          if (back) resendOffer(existing); // their socket came back: what I sent while it was down never reached them
+        }
         // Their share ended: my subscription is void, the tile goes back to "click to watch" (spec §6.5).
         if (!p.sharing) { watchIntent.delete(p.publicKey); if (existing.view.watching) setView(existing, { watching: false, shareLive: false, shareKbps: 0, shareFormat: null }); }
         continue;
@@ -1409,6 +1432,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       if (s === 'failed' || s === 'disconnected' || s === 'closed') closePeer(peer.key);
     }
     reconcile(room.people());
+    for (const peer of peers.values()) resendOffer(peer); // an offer on my old socket may be lost with it
     reassertSubscriptions(); // re-ask for any watched share the reconnect dropped (spec §6.5)
   }
 
