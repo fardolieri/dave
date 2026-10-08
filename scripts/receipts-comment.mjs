@@ -64,7 +64,7 @@ async function api(path, init = {}) {
 async function existing() {
   for (let page = 1; ; page++) {
     const comments = await api(`/issues/${pr}/comments?per_page=100&page=${page}`);
-    const mine = comments.find((c) => c.body?.startsWith(MARKER));
+    const mine = comments.find((c) => c.user?.login === 'github-actions[bot]' && c.body?.startsWith(MARKER));
     if (mine || comments.length < 100) return mine;
   }
 }
@@ -75,4 +75,4 @@ const text = arg === '--closed'
 const old = await existing();
 if (old) await api(`/issues/comments/${old.id}`, { method: 'PATCH', body: JSON.stringify({ body: text }) });
 else if (arg !== '--closed') await api(`/issues/${pr}/comments`, { method: 'POST', body: JSON.stringify({ body: text }) });
-console.log(old ? `updated ${old.html_url}` : 'commented');
+console.log(old ? `updated ${old.html_url}` : arg === '--closed' ? 'no receipts comment to update' : 'commented');

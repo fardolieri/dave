@@ -24,7 +24,8 @@ for webm in "$src"/*/*.webm; do
     fps=$((10 - 3 * i))
     # One palette for the whole clip, built from what changes between frames (the UI is mostly still), and only the
     # changed rectangle of each frame stored.
-    ffmpeg -loglevel error -y -ss "$skip" -i "$webm" -vf "fps=$fps,scale=${widths[$i]}:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" -loop 0 "$gif"
+    ffmpeg -loglevel error -y -ss "$skip" -i "$webm" -vf "fps=$fps,scale=${widths[$i]}:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" -loop 0 "$gif" \
+      || { echo "::warning::$webm could not be turned into a GIF"; rm -f "$gif"; continue 2; }
     size=$(stat -c %s "$gif")
     echo "$gif: ${widths[$i]} px wide, $fps fps, $((size / 1024)) KB"
     [ "$size" -le "$limit" ] && break
