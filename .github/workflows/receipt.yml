@@ -1,0 +1,53 @@
+name: receipt
+# The red-then-green receipt (scripts/receipt.mjs): when a branch changes src/ and adds or changes tests, those tests run
+# against src/ from where the branch started, and the job summary says per test whether it fails there. A regression test
+# that fails without its fix is the proof that it covers the bug (CLAUDE.md: bug fixes start red).
+# The job fails only when the branch has a "Problem report:" commit and every touched test passed on the old code;
+# otherwise it is informative. Browser tests run in Chromium only, just the touched ones, on one runner.
+# From the Actions tab it can compare with another branch than master.
+on:
+  push:
+    branches-ignore: [master, prod]
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "the branch to compare with (its merge base with this one gives the old src/)"
+        default: master
+        required: true
+concurrency:
+  group: receipt-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  receipt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      RECEIPT_BASE: origin/${{ inputs.base || 'master' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The merge base and the branch's commits need the history.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: node --test scripts/receipt.test.mjs
+      - id: plan
+        run: node scripts/receipt.mjs plan
+      - if: steps.plan.outputs.run == 'true'
+        run: pnpm install --frozen-lockfile
+      # Firefox too: a few tests mix the engines in one call.
+      - if: steps.plan.outputs.e2e == 'true'
+        run: pnpm exec playwright install --with-deps chromium firefox
+      - if: steps.plan.outputs.run == 'true'
+        run: node scripts/receipt.mjs run
+      - uses: actions/upload-artifact@v4
+        # The traces of the browser tests that failed on the old code.
+        if: always() && steps.plan.outputs.e2e == 'true'
+        with:
+          name: receipt-${{ github.run_id }}
+          path: e2e-results
+          if-no-files-found: ignore
+          retention-days: 14
