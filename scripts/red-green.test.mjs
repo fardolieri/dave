@@ -1,7 +1,7 @@
-// The decisions of scripts/receipt.mjs, without git or test runners: node --test scripts/receipt.test.mjs
+// The decisions of scripts/red-green.mjs, without git or test runners: node --test scripts/red-green.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { browserOutcome, carriesRegression, changedHunks, classify, commits, GOOD, outcome, problemReports, summary, testsIn, touchedTests, verdict } from './receipt.mjs';
+import { browserOutcome, carriesRegression, changedHunks, classify, commits, GOOD, outcome, problemReports, summary, testsIn, touchedTests, verdict } from './red-green.mjs';
 
 test('changed hunks come from the new side of the diff; a deletion marks both lines around the gap', () => {
   const diff = ['diff --git a/x b/x', '@@ -31,7 +31,7 @@ test(', '-a', '+b', '@@ -40 +40,3 @@', '@@ -60,2 +62,0 @@', '@@ -70 +72 @@'].join('\n');
@@ -34,7 +34,7 @@ test('tests are read from source with their line and literal title', () => {
 
 test('every app file goes back, the test side stays; only kept test files run', () => {
   const c = classify(['M\tsrc/client/call.ts', 'M\tindex.html', 'A\tpublic/x.png', 'M\twrangler.jsonc', 'M\tvite.config.ts', 'M\te2e/share.spec.ts', 'M\te2e/fixtures.ts',
-    'A\ttest/new.test.ts', 'D\ttest/old.test.ts', 'M\ttest/harness.ts', 'M\tpackage.json', 'M\tpnpm-lock.yaml', 'M\tplaywright.config.ts', 'M\tscripts/receipt.mjs', 'M\tREADME.md', 'M\t.github/workflows/ci.yml'].join('\n'));
+    'A\ttest/new.test.ts', 'D\ttest/old.test.ts', 'M\ttest/harness.ts', 'M\tpackage.json', 'M\tpnpm-lock.yaml', 'M\tplaywright.config.ts', 'M\tscripts/red-green.mjs', 'M\tREADME.md', 'M\t.github/workflows/ci.yml'].join('\n'));
   assert.deepEqual(c.app.map((f) => f.path), ['src/client/call.ts', 'index.html', 'public/x.png', 'wrangler.jsonc', 'vite.config.ts']);
   assert.deepEqual(c.e2e.map((f) => f.path), ['e2e/share.spec.ts']);
   assert.deepEqual(c.unit.map((f) => f.path), ['test/new.test.ts']);

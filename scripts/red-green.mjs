@@ -1,9 +1,9 @@
-// The red-then-green receipt (.github/workflows/receipt.yml). A regression test proves it covers a bug only if it fails
+// The red-then-green receipt (.github/workflows/red-green.yml). A regression test proves it covers a bug only if it fails
 // without the fix. This runs the tests a branch adds or changes against the app as it was before the branch, and says per
 // test whether it fails there.
 //
-//   node scripts/receipt.mjs plan   whether there is anything to run; writes run= and e2e= to $GITHUB_OUTPUT
-//   node scripts/receipt.mjs run    puts the old app in place, runs the touched tests, puts the branch's back, reports
+//   node scripts/red-green.mjs plan   whether there is anything to run; writes run= and e2e= to $GITHUB_OUTPUT
+//   node scripts/red-green.mjs run    puts the old app in place, runs the touched tests, puts the branch's back, reports
 //
 // "Before the branch" is the merge base with RECEIPT_BASE (default origin/master), or, on a branch with a "Problem report:"
 // commit, the commit right before the first one. Every file the branch changes goes back to it except the test side
@@ -309,5 +309,5 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const command = process.argv[2];
   if (command === 'plan') plan();
   else if (command === 'run') run();
-  else { console.error('usage: node scripts/receipt.mjs plan|run'); process.exit(2); }
+  else { console.error('usage: node scripts/red-green.mjs plan|run'); process.exit(2); }
 }

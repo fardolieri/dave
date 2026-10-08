@@ -2,7 +2,7 @@
 .dev.vars
 .dev.vars.*
 dist/
-node_modules/
+node_modules
 .wrangler/
 e2e-results/
 e2e-report/

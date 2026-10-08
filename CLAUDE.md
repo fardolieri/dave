@@ -46,7 +46,7 @@ Rules:
   mock, a modeled timeline or a test page is not the real thing: name it as what it is.
 - **"Verify it works" from the owner means rung 2 at least, and rung 4 for anything visual.**
 - **Bug fixes start red.** A problem report gets a regression test that fails without the fix (in CI) before the fix lands.
-  Commit the test first ("Regression test: …"), then the fix ("Problem report: …"). The `receipt` job (`receipt.yml`)
+  Commit the test first ("Regression test: …"), then the fix ("Problem report: …"). The `red-green` job (`red-green.yml`)
   checks this on every branch: it runs the tests of those two commits against the app from before the branch and fails a
   "Problem report:" commit with no test that fails there, unless the commit's body has a line "No regression test: <reason>"
   (for bugs no test can reach). Put any hook or helper the test needs (`src/client/hooks.ts`, `e2e/fixtures.ts`) in the

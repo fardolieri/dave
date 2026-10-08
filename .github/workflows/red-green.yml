@@ -1,5 +1,5 @@
-name: receipt
-# The red-then-green receipt (scripts/receipt.mjs): when a branch changes the app and adds or changes tests, those tests run
+name: red-green
+# The red-then-green receipt (scripts/red-green.mjs): when a branch changes the app and adds or changes tests, those tests run
 # against the app from where the branch started, and the job summary says per test whether it fails there. A regression
 # test that fails without its fix is the proof that it covers the bug (CLAUDE.md: bug fixes start red).
 # The job fails only when the branch has a "Problem report:" commit and its "Regression test:" and "Problem report:"
@@ -16,7 +16,7 @@ on:
         default: master
         required: true
 concurrency:
-  group: receipt-${{ github.ref }}
+  group: red-green-${{ github.ref }}
   cancel-in-progress: true
 permissions:
   contents: read
@@ -38,9 +38,9 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: node --test scripts/receipt.test.mjs
+      - run: node --test scripts/red-green.test.mjs
       - id: plan
-        run: node scripts/receipt.mjs plan
+        run: node scripts/red-green.mjs plan
       - if: steps.plan.outputs.run == 'true'
         run: pnpm install --frozen-lockfile
       # Firefox too: a few tests mix the engines in one call.
@@ -48,12 +48,12 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium firefox
       - if: steps.plan.outputs.run == 'true'
         timeout-minutes: 35
-        run: node scripts/receipt.mjs run
+        run: node scripts/red-green.mjs run
       - uses: actions/upload-artifact@v4
         # The traces of the browser tests that failed on the old code.
         if: always() && steps.plan.outputs.e2e == 'true'
         with:
-          name: receipt-${{ github.run_id }}
+          name: red-green-${{ github.run_id }}
           path: e2e-results
           if-no-files-found: ignore
           retention-days: 14
