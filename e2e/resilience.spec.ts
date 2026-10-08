@@ -34,6 +34,48 @@ test('a friend whose socket drops without a goodbye is shown as lost, then recov
   await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
 });
 
+test('an offer lost with a dropped socket, on either side, is sent again once the socket is back', async ({ crowd }) => {
+  // Nightly, 2026-10-08 (the low bandwidth voice test, Firefox): the Room dropped both sockets the moment Alice switched
+  // low bandwidth voice off, her offer went with them, and her connection waited for its answer for good, still low.
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  type Diag = { peers: Array<{ asksLowVoice: boolean; pc: { signaling: string } }> };
+  const peer = async (f: typeof alice) => (await f.hook<Diag>('diagnostics')).peers[0];
+  const lostOffer = (frame: string) => (frame.includes('"t":"signal"') && frame.includes('"type":"offer"') ? null : frame);
+  const lowVoice = async (on: boolean) => {
+    await alice.selectedRoom.getByTitle('Audio settings').click();
+    await alice.page.locator('.panel').getByLabel('Low bandwidth voice').setChecked(on);
+    await alice.selectedRoom.getByTitle('Audio settings').click();
+    await expect.poll(async () => (await peer(alice))?.pc.signaling, { message: 'Alice offers' }).toBe('have-local-offer');
+  };
+
+  // Alice's own socket drops with her offer on it.
+  alice.wire.up = lostOffer;
+  await lowVoice(true);
+  alice.wire.up = null;
+  await alice.wire.cut();
+  alice.wire.restore();
+  await alice.connected();
+  await expect.poll(async () => (await peer(bob))?.asksLowVoice, { message: 'Bob got the offer after Alice came back' }).toBe(true);
+  await expect.poll(async () => (await peer(alice))?.pc.signaling, { message: 'Alice got the answer' }).toBe('stable');
+
+  // Bob's socket drops with Alice's offer on its way to him.
+  bob.wire.down = lostOffer;
+  await lowVoice(false);
+  bob.wire.down = null;
+  await bob.wire.cut();
+  bob.wire.restore();
+  await bob.connected();
+  await expect.poll(async () => (await peer(bob))?.asksLowVoice, { message: 'Bob got the offer after he came back' }).toBe(false);
+  await expect.poll(async () => (await peer(alice))?.pc.signaling, { message: 'Alice got the answer' }).toBe('stable');
+  await alice.hearing('Bob');
+  await bob.hearing('Alice');
+});
+
 test('a friend cut off from the server stays in the call, dimmed, as long as the connection to them works (ticket 31)', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
