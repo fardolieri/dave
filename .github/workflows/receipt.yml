@@ -2,8 +2,8 @@ name: receipt
 # The red-then-green receipt (scripts/receipt.mjs): when a branch changes src/ and adds or changes tests, those tests run
 # against src/ from where the branch started, and the job summary says per test whether it fails there. A regression test
 # that fails without its fix is the proof that it covers the bug (CLAUDE.md: bug fixes start red).
-# The job fails only when the branch has a "Problem report:" commit and every touched test passed on the old code;
-# otherwise it is informative. Browser tests run in Chromium only, just the touched ones, on one runner.
+# The job fails only when the branch has a "Problem report:" commit and changes no test, or every touched test passed on
+# the old code; otherwise it is informative. A line "No regression test: <reason>" in that commit's body excuses it. Browser tests run in Chromium only, just the touched ones, on one runner.
 # From the Actions tab it can compare with another branch than master.
 on:
   push:

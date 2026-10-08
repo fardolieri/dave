@@ -19,6 +19,7 @@ import { relative } from 'node:path';
 export const GOOD = 'fails without the change (good: it covers it)';
 export const WEAK = 'passes without the change';
 const PROBLEM = 'Problem report:';
+const EXCUSE = 'No regression test:';
 
 /** The runs of lines on the new side that a `git diff -U0` changes, `[from, to]`. A pure deletion marks both lines around the gap. */
 export function changedHunks(diff) {
@@ -65,23 +66,38 @@ export function classify(nameStatus) {
 }
 
 /**
- * The job's verdict. It fails only when the branch fixes a problem report and every touched test ran and passed on the old
- * code: nothing then shows the tests cover the bug. A part that could not run leaves it informative.
+ * The "Problem report:" commits of `git log --format=%x1e%s%x1f%b`, each with its excuse: the reason on a body line
+ * starting with "No regression test:", for a bug no test can reach.
  */
-export function verdict({ problems, results, incomplete }) {
+export function problemReports(log) {
+  return log.split('\x1e').filter(Boolean).map((c) => { const [subject = '', body = ''] = c.split('\x1f'); return { subject: subject.trim(), body }; })
+    .filter((c) => c.subject.startsWith(PROBLEM))
+    .map(({ subject, body }) => ({ subject, excuse: body.match(new RegExp(`^${EXCUSE}[ \\t]*(\\S.*)$`, 'm'))?.[1].trim() }));
+}
+
+/**
+ * The job's verdict. It fails when the branch fixes a problem report without saying why it has no regression test, and
+ * either changes no test at all (`tested` false) or every touched test ran and passed on the old code: nothing then shows
+ * the tests cover the bug. A part that could not run leaves it informative.
+ */
+export function verdict({ problems, results, incomplete, tested = true }) {
+  const owing = problems.filter((p) => !p.excuse);
   const caught = results.some((r) => r.status === 'failed');
-  if (problems.length && !caught && !incomplete) return { fail: true, text: `This branch fixes a problem report, but none of its tests fails without the change, so nothing shows they cover the bug. A regression test should fail on the old code first (CLAUDE.md: bug fixes start red).` };
+  if (owing.length && !tested) return { fail: true, text: `This branch fixes a problem report but adds or changes no test. A regression test should fail on the old code first (CLAUDE.md: bug fixes start red); if no test can reach the bug, say why on a line starting with "${EXCUSE}" in the commit's body.` };
+  if (owing.length && !caught && !incomplete) return { fail: true, text: `This branch fixes a problem report, but none of its tests fails without the change, so nothing shows they cover the bug. A regression test should fail on the old code first (CLAUDE.md: bug fixes start red); if no test can reach the bug, say why on a line starting with "${EXCUSE}" in the commit's body.` };
   if (caught) return { fail: false, text: `At least one test fails without the change: the branch carries its red-then-green receipt.` };
-  if (problems.length) return { fail: false, text: `No test failed without the change, but not every test could run, so this stays informative.` };
+  if (owing.length) return { fail: false, text: `No test failed without the change, but not every test could run, so this stays informative.` };
+  if (problems.length) return { fail: false, text: `Its problem report fixes say why they have no regression test, so no test has to fail without the change.` };
+  if (!tested) return { fail: false, text: `No problem report fix on this branch, so no test has to fail without the change.` };
   return { fail: false, text: `No test fails without the change. That is fine for a feature or a refactor; a bug fix should have one that does.` };
 }
 
 const words = { failed: GOOD, passed: WEAK, skipped: 'skipped on the old code', missing: 'did not run' };
 
-export function summary({ base, problems, results, notes, outcome }) {
+export function summary({ base, problems, results, notes, outcome, intro }) {
   const cell = (s) => String(s).replaceAll('|', '\\|').replaceAll('\n', ' ');
-  const out = ['## Red-then-green receipt', '', `The tests this branch adds or changes, run against \`src/\` from ${base}, where the branch started.`, ''];
-  if (problems.length) out.push(`Problem report fixes on this branch: ${problems.map((p) => `"${p}"`).join(', ')}.`, '');
+  const out = ['## Red-then-green receipt', '', intro ?? `The tests this branch adds or changes, run against \`src/\` from ${base}, where the branch started.`, ''];
+  for (const p of problems) out.push(`Problem report fix on this branch: "${p.subject}"${p.excuse ? `, without a regression test because: "${p.excuse}"` : ''}.`, '');
   if (results.length) {
     out.push('| Test | Without the change |', '|---|---|');
     for (const r of results) out.push(`| ${cell(r.where)} ${cell(r.title)} | ${cell(words[r.status] + (r.note ? ` (${r.note})` : ''))} |`);
@@ -103,7 +119,7 @@ function context() {
   const ref = process.env['RECEIPT_BASE'] || 'origin/master';
   const base = git('merge-base', ref, 'HEAD');
   const changes = classify(git('diff', '--name-status', '--no-renames', base, 'HEAD'));
-  const problems = git('log', '--no-merges', '--format=%s', `${base}..HEAD`).split('\n').filter((s) => s.startsWith(PROBLEM));
+  const problems = problemReports(git('log', '--no-merges', '--format=%x1e%s%x1f%b', `${base}..HEAD`));
   const label = `\`${base.slice(0, 7)}\`${ref === 'origin/master' ? '' : ` (merge base with ${ref})`}`;
   return { base, label, changes, problems };
 }
@@ -118,9 +134,11 @@ function plan() {
   const run = changes.src && tests > 0;
   if (process.env['GITHUB_OUTPUT']) appendFileSync(process.env['GITHUB_OUTPUT'], `run=${run}\ne2e=${run && changes.e2e.length > 0}\n`);
   if (run) return console.log(`${changes.unit.length} unit test files and ${changes.e2e.length} browser test files to run against the old src/`);
-  const why = !changes.src ? 'This branch does not change `src/`, so its tests have no older code to run against.' : 'This branch changes `src/` but adds or changes no tests under `test/` or `e2e/`.';
-  report(`## Red-then-green receipt\n\nNothing to run. ${why}\n`);
-  if (problems.length && !tests) console.log(`::warning::This branch fixes a problem report (${problems[0]}) without a changed test, so nothing shows the bug is covered.`);
+  const why = !tests ? 'This branch adds or changes no tests under `test/` or `e2e/`.' : 'This branch does not change `src/`, so its tests have no older code to run against.';
+  // Tests changed without src/: there is no old code to run them on, so they neither prove nor disprove a fix.
+  const outcome = verdict({ problems, results: [], incomplete: tests > 0, tested: tests > 0 });
+  report(summary({ problems, results: [], notes: [], outcome, intro: `Nothing to run. ${why}` }));
+  if (outcome.fail) process.exitCode = 1;
 }
 
 function runUnit(base, files) {
