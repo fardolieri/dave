@@ -4,7 +4,8 @@
 #
 # GIF, not MP4: GitHub shows an image from any URL inline in a comment, a GIF plays there on a phone without a tap, and a
 # video only plays from GitHub's own attachment storage, which has no API. Each GIF is kept under 3 MB, the size a phone
-# loads quickly on mobile data: frame rate and width step down until it fits.
+# loads quickly on mobile data: frame rate and width step down until it fits. One that never fits is dropped and its
+# .json says so ("oversized"), which the comment reports.
 set -euo pipefail
 src=${1:-receipts-out}
 out=${2:-receipts-gif}
@@ -28,6 +29,9 @@ for webm in "$src"/*/*.webm; do
       || { echo "::warning::$webm could not be turned into a GIF"; rm -f "$gif"; continue 2; }
     size=$(stat -c %s "$gif")
     echo "$gif: ${widths[$i]} px wide, $fps fps, $((size / 1024)) KB"
-    [ "$size" -le "$limit" ] && break
+    [ "$size" -le "$limit" ] && continue 2
   done
+  echo "::warning::$gif stays over 3 MB at the smallest setting; dropped"
+  rm -f "$gif"
+  node -e "const f = process.argv[1], fs = require('fs'); fs.writeFileSync(f, JSON.stringify({ ...JSON.parse(fs.readFileSync(f, 'utf8')), oversized: true }))" "${gif%.gif}.json"
 done

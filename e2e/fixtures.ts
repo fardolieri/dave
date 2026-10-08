@@ -9,7 +9,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { test as base, expect, type Browser, type BrowserContext, type Locator, type Page, type WebSocketRoute } from '@playwright/test';
 import { environmentNoise, launchOptions, originFor, type Autoplay, type Engine } from './browsers';
 
@@ -310,8 +310,11 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  */
 export type Film = { viewport: { width: number; height: number }; dir: string } | null;
 
-/** The file name a receipt gets from its test's title: lower case, words joined by dashes, the tag left out. */
-export const filmName = (title: string): string => title.replace(/@\w+/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
+/** The file name a receipt gets: its spec file, then its test's title, lower case, words joined by dashes, the tag left out. */
+export const filmName = (file: string, title: string): string => {
+  const slug = (s: string) => s.replace(/@\w+/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return `${slug(basename(file).replace(/\.spec\.ts$/, ''))}--${slug(title).slice(0, 80)}`;
+};
 
 type Crowd = {
   /** Opens a friend in the given rooms (default: one room shared by the test) and waits until connected. */
@@ -365,7 +368,7 @@ export const test = base.extend<{ crowd: Crowd; film: Film }>({
     // The video is complete once its context is closed. A failed run is kept too: it shows how far the change got.
     const filmed = film && friends[0]?.page?.video();
     if (filmed) {
-      const name = filmName(testInfo.title);
+      const name = filmName(testInfo.file, testInfo.title);
       mkdirSync(film.dir, { recursive: true });
       await filmed.saveAs(join(film.dir, `${name}.webm`));
       writeFileSync(join(film.dir, `${name}.json`), JSON.stringify({ title: testInfo.title.replace(/\s*@\w+/g, ''), skip: filmReady, status: testInfo.status === testInfo.expectedStatus && !problems.length ? 'passed' : 'failed' }));

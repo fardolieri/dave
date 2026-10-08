@@ -5,7 +5,8 @@ name: receipts
 #     build of the PR, and the same tests against a build of master: the "before" checks out master's app with the PR's e2e/
 #   - publish: GIFs onto the `receipts` branch under pr-<n>/<sha>/ (scripts/receipts-publish.sh), then the comment is
 #     written or rewritten in place (scripts/receipts-comment.mjs)
-#   - cleanup: a closed PR's folder leaves the branch
+#   - cleanup: a closed PR's folder leaves the branch. The paths filter applies to `closed` too, so every publish also
+#     drops the folders of PRs that are no longer open (scripts/receipts-publish.sh)
 # By hand from the Actions tab for any open PR of this repository. PRs from forks are skipped: their token cannot write.
 on:
   pull_request:
@@ -16,8 +17,6 @@ on:
       - index.html
       - public/**
       - vite.config.ts
-      - package.json
-      - pnpm-lock.yaml
       - e2e/fixtures.ts
       - e2e/receipts/**
       - playwright.receipts.config.ts
@@ -124,12 +123,19 @@ jobs:
           mkdir -p receipts
           for side in before after; do [ -d "artifacts/receipts-$side" ] && mv "artifacts/receipts-$side" "receipts/$side"; done
           find receipts -type f | sort
-      - run: scripts/receipts-publish.sh "$PR" "$HEAD_SHA" receipts
+          echo "gifs=$(find receipts -name '*.gif' | wc -l)" >> "$GITHUB_OUTPUT"
+        id: found
+      # A run that filmed nothing (both sides died early) leaves the receipts of the last good run and its comment alone.
+      - if: steps.found.outputs.gifs == '0'
+        run: echo "::warning::no GIF was produced; the receipts and the comment of the last run stay as they are"
+      - if: steps.found.outputs.gifs != '0'
+        run: scripts/receipts-publish.sh "$PR" "$HEAD_SHA" receipts
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ needs.pr.outputs.number }}
           HEAD_SHA: ${{ needs.pr.outputs.head }}
-      - run: node scripts/receipts-comment.mjs receipts
+      - if: steps.found.outputs.gifs != '0'
+        run: node scripts/receipts-comment.mjs receipts
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ needs.pr.outputs.number }}

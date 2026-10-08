@@ -21,10 +21,10 @@ function receipts(dir) {
       if (!existsSync(at)) continue;
       for (const f of readdirSync(at).filter((f) => f.endsWith('.json')).sort()) {
         const name = f.slice(0, -'.json'.length);
-        const { title, status } = JSON.parse(readFileSync(join(at, f), 'utf8'));
+        const { title, status, oversized } = JSON.parse(readFileSync(join(at, f), 'utf8'));
         const entry = found.get(name) ?? { title, before: {}, after: {} };
         if (side === 'after') entry.title = title;
-        entry[side][view] = { status, gif: existsSync(join(at, `${name}.gif`)) ? `${side}/${view}/${name}.gif` : null };
+        entry[side][view] = { status, oversized, gif: existsSync(join(at, `${name}.gif`)) ? `${side}/${view}/${name}.gif` : null };
         found.set(name, entry);
       }
     }
@@ -38,12 +38,14 @@ function body(dir) {
   const found = receipts(dir);
   if (found.size === 0) lines.push('', 'Nothing was filmed: see the run.');
   const failed = [];
+  const missing = [];
   for (const { title, before, after } of found.values()) {
     lines.push('', `#### ${title}`);
     for (const view of ['phone', 'desktop']) {
       const shot = (side) => {
         const r = side === 'before' ? before[view] : after[view];
         if (r?.status === 'failed') failed.push(`${side}, ${view}: ${title}`);
+        if (r && !r.gif) missing.push(`${side}, ${view}: ${title}${r.oversized ? ' (over 3 MB even at the smallest setting)' : ''}`);
         return r?.gif ? `<a href="${raw}/${r.gif}"><img src="${raw}/${r.gif}" width="49%" alt="${side}, ${view}"></a>` : null;
       };
       const pair = [shot('before'), shot('after')];
@@ -51,6 +53,7 @@ function body(dir) {
       lines.push('', `**${view}**: ${pair[0] ? 'before (master) · after (this PR)' : 'this PR (nothing filmed on master)'}`, '', pair.filter(Boolean).join(' '));
     }
   }
+  if (missing.length) lines.push('', 'Filmed but no GIF (see the run):', '', ...missing.map((m) => `- ${m}`));
   if (failed.length) lines.push('', `Did not run to the end (the GIF shows how far it got; on master a new receipt test is expected to fail):`, '', ...failed.map((f) => `- ${f}`));
   return lines.join('\n');
 }

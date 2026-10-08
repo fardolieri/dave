@@ -4,6 +4,9 @@
 #   receipts-publish.sh <pr> <sha> <dir>    pr-<pr>/ becomes <dir> under pr-<pr>/<sha>/ (older commits of the PR are dropped)
 #   receipts-publish.sh <pr>                pr-<pr>/ is removed, when the PR is closed
 #
+# Folders of PRs that are no longer open are dropped on every run: the workflow's paths filter also applies to `closed`,
+# so a PR closed after a push outside those paths never runs the cleanup. A PR whose state cannot be read is kept.
+#
 # The branch is one orphan commit, rewritten on every change: the GIFs of closed PRs leave no history behind to bloat the
 # repository. Two PRs publishing at once both read the branch; whoever pushes second finds it moved (--force-with-lease)
 # and starts over from the new state.
@@ -25,6 +28,10 @@ for attempt in 1 2 3 4 5; do
   fi
   cd "$work"
   rm -rf "pr-$pr"
+  for d in pr-*/; do
+    n=${d#pr-}; n=${n%/}
+    [ -d "$d" ] && [ "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$n" --jq .state 2>/dev/null)" = closed ] && rm -rf "$d" && echo "dropped $d: PR closed" || true
+  done
   if [ -n "$src" ]; then mkdir -p "pr-$pr/$sha" && cp -r "$src"/. "pr-$pr/$sha/"; fi
   cat > README.md <<'EOF'
 Video receipts of the open pull requests, written by .github/workflows/receipts.yml on master.
