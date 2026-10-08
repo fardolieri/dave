@@ -45,9 +45,11 @@ describe('worker routing', () => {
   it.skipIf(!('UPGRADE_LIMIT' in env))('rate-limits upgrade attempts per IP', async () => {
     const headers = { Upgrade: 'websocket', 'cf-connecting-ip': '203.0.113.9' };
     const path = await wsPath(SECRET);
-    // Up to past the highest limit in wrangler.jsonc: deploy.yml runs the tests with CLOUDFLARE_ENV=nightly, whose limit is 120, not 10.
+    // Past twice the highest limit in wrangler.jsonc (nightly's 120; ci.yml and deploy.yml also run the tests with
+    // CLOUDFLARE_ENV=nightly). The limiter's windows are aligned to the wall clock, so a loop that crosses a minute boundary
+    // starts counting again from zero; with only one window's worth of attempts that failed about one run in thirty.
     let last = 0;
-    for (let i = 0; i < 130; i++) {
+    for (let i = 0; i < 250; i++) {
       const res = await exports.default.fetch(new Request(`https://dave.test${path}`, { headers }));
       last = res.status;
       res.webSocket?.accept();
