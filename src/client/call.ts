@@ -10,8 +10,8 @@ import { asksFec, sendsRed, voiceRepairSdp, type VoiceRepair } from '../core/voi
 import { INITIAL_BUFFER, VOICE_REPORT_EVERY, VOICE_SAMPLE_MS, bufferMs, nextBuffer, voiceWindow, type BufferState, type VoiceCounters, type VoiceWindow } from '../core/voicequality';
 import type { LocalIdentity } from './identity';
 import { candidateCounts, reportStats, summarise, voiceCounters, windowProps } from './peerstats';
-import { createInvariantWatchdog, invariantViolations } from './invariants';
-import type { CallFacts } from '../core/invariants';
+import { createInvariantWatchdog } from './invariants';
+import { gainFor, type CallFacts } from '../core/invariants';
 import {
   ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
 } from '../core/mesh';
@@ -150,6 +150,8 @@ type Peer = {
   candidateTimer?: ReturnType<typeof setTimeout>;
 };
 const CANDIDATE_BATCH_MS = 60;
+/** How often a hidden tab reads its connections' stats (statsTimer). */
+const HIDDEN_STATS_MS = 10_000;
 
 /** How often `voice_send` reports how the voice I send keeps time (ticket 37). */
 const VOICE_SEND_EVERY_MS = 30_000;
@@ -220,6 +222,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   /** Plain mirror of the low bandwidth voice setting (ticket 27), read while descriptions go out and come in. */
   let lowVoiceOn = untrack(audioSettings).lowBandwidthVoice;
   let voiceRepair = untrack(audioSettings).voiceRepair;
+  /** Plain mirror of the master volume, which the gains follow at once, ahead of the queued settings changes. */
+  let masterVolume = untrack(audioSettings).masterVolume;
   /** Every description crosses this on its way out and on its way in: low bandwidth voice (ticket 27), then voice repair (ticket 34). */
   const voiceSdp = (sdp: string): string => voiceRepairSdp(lowVoiceOn ? lowVoiceSdp(sdp) : sdp, voiceRepair);
   const [devices, setDevices] = createSignal<{ microphones: MediaDeviceInfo[]; speakers: MediaDeviceInfo[] }>({ microphones: [], speakers: [] });
@@ -652,6 +656,14 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
    */
   let audioChain: Promise<void> = Promise.resolve();
   function changeAudio(change: Partial<AudioSettings>): Promise<void> {
+    // The master volume takes effect at once: every step of a drag would otherwise wait for the changes queued before it.
+    if (change.masterVolume !== undefined && change.masterVolume !== masterVolume) {
+      masterVolume = change.masterVolume;
+      storeAudioSettings({ ...untrack(audioSettings), masterVolume });
+      for (const p of peers.values()) applyGain(p);
+    }
+    const { masterVolume: _, ...rest } = change;
+    if (Object.keys(rest).length === 0) return audioChain;
     audioChain = audioChain.then(() => changeAudioNow(change)).catch((e) => console.warn('audio settings', e));
     return audioChain;
   }
@@ -661,11 +673,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
   async function changeAudioNow(change: Partial<AudioSettings>): Promise<void> {
     const prev = audioSettings();
-    const next = { ...prev, ...change };
+    const next = { ...prev, ...change, masterVolume }; // never an older master volume than changeAudio set
     if (testing) testChanges++;
     if (voiceTrack && next.microphoneId !== prev.microphoneId) {
       storeAudioSettings(next); // the id is selected now; rolled back if the capture fails: the old microphone stays live and selected
-      if (!(await reopenMicrophone(microphoneConstraints(next)))) { storeAudioSettings(prev); return; }
+      if (!(await reopenMicrophone(microphoneConstraints(next)))) { storeAudioSettings({ ...prev, masterVolume }); return; }
     } else {
       storeAudioSettings(next);
       if (next.noiseRemoval !== prev.noiseRemoval) {
@@ -674,14 +686,15 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         if (next.noiseRemoval) void startNoiseRemoval(next); else stopNoiseRemoval();
       }
       if (next.voiceThreshold !== prev.voiceThreshold) voice?.setThreshold(next.voiceThreshold);
-      await syncMicrophone(next); // echo cancellation, noise suppression and automatic gain, live
+      // Echo cancellation, noise suppression and automatic gain, live. Reopens only if the constraints differ from those
+      // the microphone was opened with, so any other setting passes straight through.
+      await syncMicrophone(next);
 
     }
     if (next.speakerId !== prev.speakerId) {
       for (const p of peers.values()) { void applySink(p.audio); void applySink(p.shareAudio); }
       void applySink(testOut);
     }
-    if (next.masterVolume !== prev.masterVolume) for (const p of peers.values()) applyGain(p, next.masterVolume);
     if (next.lowBandwidthVoice !== lowVoiceOn) {
       lowVoiceOn = next.lowBandwidthVoice;
       posthog.capture('low_bandwidth_voice_toggled', { on: lowVoiceOn, peers: peers.size });
@@ -698,11 +711,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
    * What a participant's gain nodes are set to: the master volume times their own local volume, for the share also
    * times its share volume; nothing during a mic test.
    */
-  const effectiveGain = (peer: Peer, kind: 'voice' | 'share', master = untrack(audioSettings).masterVolume): number =>
-    (testing ? 0 : master * peer.view.volume * (kind === 'share' ? peer.view.shareVolume : 1));
-  function applyGain(peer: Peer, master?: number): void {
-    if (peer.voiceGain) peer.voiceGain.gain.value = effectiveGain(peer, 'voice', master);
-    if (peer.shareGain) peer.shareGain.gain.value = effectiveGain(peer, 'share', master);
+  const effectiveGain = (peer: Peer, kind: 'voice' | 'share'): number =>
+    gainFor(kind, { master: masterVolume, volume: peer.view.volume, shareVolume: peer.view.shareVolume, micTest: testing !== null });
+  function applyGain(peer: Peer): void {
+    if (peer.voiceGain) peer.voiceGain.gain.value = effectiveGain(peer, 'voice');
+    if (peer.shareGain) peer.shareGain.gain.value = effectiveGain(peer, 'share');
   }
 
   /** Change share settings live: track constraints and content hint on the capture, encodings per Viewer. */
@@ -1080,6 +1093,9 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
    * and a path without encryption carries no media; showing "direct" for it also silenced the watchdog.
    */
   function onConnectionState(peer: Peer): void {
+    // The handshake can fail while ICE still says connected: no media flows, so the badge goes as for failed ICE (which
+    // handles its own failure; the connection state follows it).
+    if (peer.pc.connectionState === 'failed' && peer.pc.iceConnectionState !== 'failed') { connectionFailed(peer); return; }
     if (peer.pc.connectionState !== 'connected') return;
     clearTimeout(peer.connectTimer);
     stuckAttempts.delete(peer.key);
@@ -1108,14 +1124,20 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         if (peer.view.serverLost) closePeer(peer.key); else void restartIce(peer);
       }, ICE_DISCONNECTED_GRACE_MS);
     } else if (s === 'failed') {
-      if (peer.view.serverLost) { closePeer(peer.key); return; }
-      setView(peer, { conn: 'unreachable' });
-      const delay = ICE_RESTART_BACKOFF_MS[Math.min(peer.restarts, ICE_RESTART_BACKOFF_MS.length - 1)]!;
-      peer.restarts++;
-      peer.restartTimer = setTimeout(() => void restartIce(peer), delay);
+      connectionFailed(peer);
     } else if (s === 'closed') {
       setView(peer, { conn: 'unreachable' });
     }
+  }
+
+  /** No media can flow (ICE or the handshake failed): unreachable, then an ICE restart after the back-off. */
+  function connectionFailed(peer: Peer): void {
+    if (peer.view.serverLost) { closePeer(peer.key); return; }
+    setView(peer, { conn: 'unreachable' });
+    const delay = ICE_RESTART_BACKOFF_MS[Math.min(peer.restarts, ICE_RESTART_BACKOFF_MS.length - 1)]!;
+    peer.restarts++;
+    clearTimeout(peer.restartTimer); // one restart pending at a time, should both failures be told
+    peer.restartTimer = setTimeout(() => void restartIce(peer), delay);
   }
 
   /** One peer as a problem report sees it: states, the share track, decoder and encoder counters, the selected pair (ticket 12). */
@@ -1286,7 +1308,17 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (rttMs !== peer.view.rttMs) setView(peer, { rttMs });
     if (relayed !== null && peer.pc.connectionState === 'connected' && peer.view.conn !== (relayed ? 'relayed' : 'direct')) setView(peer, { conn: relayed ? 'relayed' : 'direct' });
   }
-  const statsTimer = setInterval(() => { for (const p of peers.values()) void refreshStats(p); }, 2000);
+  /**
+   * Every 2 s while the tab shows; hidden, every 10 s is enough for what nobody sees (badges, rates, the round trip), and
+   * the next read after the tab is back comes within 2 s.
+   */
+  let statsAt = 0;
+  const statsTimer = setInterval(() => {
+    const now = Date.now();
+    if (document.visibilityState === 'hidden' && now - statsAt < HIDDEN_STATS_MS) return;
+    statsAt = now;
+    for (const p of peers.values()) void refreshStats(p);
+  }, 2000);
 
   /** Sum my share's upload over its viewers and list the encoded formats, largest first (spec §6.5). */
   function updateOutgoing(): void {
@@ -1534,7 +1566,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         if (audioCtx?.state === 'suspended') setAudioBlocked(true);
       }
       setInCall(true);
-      invariants.reset();
+      invariants.start();
       writeRejoinMarker();
       heartbeat = setInterval(writeRejoinMarker, REJOIN_HEARTBEAT_MS);
       exposeDevHook();
@@ -1557,6 +1589,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     local.remove(REJOIN_KEY); // a deliberate Leave (or another tab taking over) means no Rejoin
     setAudioBlocked(false);
     setInCall(false);
+    invariants.stop();
     myJoinSeq = null;
     setMicProblem(null);
     closeMicrophone();
@@ -1677,7 +1710,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       strainVoice: (load: Partial<VoiceLoad>) => { loadOverride = load; },
       diagnostics,
       /** What the invariant watchdog reported in this tab (quality ticket 04). */
-      invariants: invariantViolations,
+      invariants: () => invariants.violations(),
       /** Sets a gain node of `name` off what their controls say, as a path that forgot applyGain would: 'voice' or 'share'. */
       detuneGain: (name: string, kind: 'voice' | 'share', value: number) => {
         const peer = [...peers.values()].find((p) => p.name === name);
@@ -1693,6 +1726,14 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         peer.holdOpening = true;
         setView(peer, { shareLive: false });
         return 'holding';
+      },
+      /** Tells the call the handshake with `name` failed while ICE stays connected, as a browser would; returns the badge's state right after. */
+      failHandshake: (name: string) => {
+        const peer = [...peers.values()].find((p) => p.name === name);
+        if (!peer) return 'no such peer';
+        Object.defineProperty(peer.pc, 'connectionState', { get: () => 'failed', configurable: true });
+        try { onConnectionState(peer); } finally { delete (peer.pc as { connectionState?: unknown }).connectionState; }
+        return peer.view.conn;
       },
       /** Closes the connection to `name` underneath the call, as a path that forgot closePeer would: no state event fires, the badge stays. */
       closeQuietly: (name: string) => {

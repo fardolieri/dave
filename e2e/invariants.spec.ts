@@ -46,6 +46,11 @@ test('a gain off what the volume controls say is reported, voice and share apart
   await expect.poll(fired(alice), { timeout: REPORTED_WITHIN }).toEqual(['share_gain']);
   await expect.poll(() => alice.hook('detuneGain', 'Bob', 'voice', 0.5)).toBe('detuned');
   await expect.poll(fired(alice), { timeout: REPORTED_WITHIN }).toEqual(['share_gain', 'voice_gain']);
+  // The report says which gain is off and by how much, not how loud Alice set Bob, and never next to his fingerprint.
+  const [share] = await alice.invariants();
+  expect(share!.snapshot['peer']).toMatchObject({ shareGain: 0, shareGainExpected: 1 });
+  expect(share!.snapshot['peer']).not.toHaveProperty('fingerprint');
+  expect(share!.snapshot['peer']).not.toHaveProperty('volume');
   // Once per kind per call: the share gain is still off, and not reported again.
   await alice.page.waitForTimeout(8_000);
   expect(await fired(alice)()).toEqual(['share_gain', 'voice_gain']);
@@ -61,4 +66,14 @@ test('a badge left on "direct" or "via relay" over a closed connection is report
   expect(await alice.hook('closeQuietly', 'Bob')).toBe('closed');
   await expect.poll(fired(alice), { timeout: REPORTED_WITHIN }).toEqual(['conn_transport']);
   await expect(alice.badge('Bob')).toHaveText(/^(direct|via relay)$/);
+});
+
+test('a handshake that fails while ICE stays connected takes the badge off "direct", and it comes back once the link works', async ({ crowd }) => {
+  const [alice] = await pair(crowd);
+  await needHooks(alice);
+  // What conn_transport would otherwise report: a badge left green over a failed connection.
+  expect(await alice.hook('failHandshake', 'Bob')).toBe('unreachable');
+  await alice.connectedTo('Bob');
+  await alice.hearing('Bob');
+  expect(await alice.invariants()).toEqual([]);
 });
