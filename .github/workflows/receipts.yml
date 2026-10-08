@@ -1,0 +1,137 @@
+name: receipts
+# Video receipts: a pull request that changes the client gets one comment with GIFs of the app, filmed here at a phone and
+# a desktop viewport, before (master) and after (the PR), so the change can be seen from a phone in one tap.
+#   - film: the tests tagged @receipt (playwright.receipts.config.ts; the tour in e2e/receipts/ is one) against a local
+#     build of the PR, and the same tests against a build of master: the "before" checks out master's app with the PR's e2e/
+#   - publish: GIFs onto the `receipts` branch under pr-<n>/<sha>/ (scripts/receipts-publish.sh), then the comment is
+#     written or rewritten in place (scripts/receipts-comment.mjs)
+#   - cleanup: a closed PR's folder leaves the branch
+# By hand from the Actions tab for any open PR of this repository. PRs from forks are skipped: their token cannot write.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    paths:
+      - src/client/**
+      - index.html
+      - public/**
+      - e2e/receipts/**
+      - playwright.receipts.config.ts
+      - scripts/receipts-*
+      - .github/workflows/receipts.yml
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "number of the pull request to film"
+        required: true
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: receipts-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+jobs:
+  pr:
+    if: github.event.action != 'closed' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    outputs:
+      number: ${{ steps.pr.outputs.number }}
+      head: ${{ steps.pr.outputs.head }}
+      base: ${{ steps.pr.outputs.base }}
+    steps:
+      # The base as it is now, not when the PR was opened: "before" is what the PR would land on.
+      - id: pr
+        run: gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" --jq '"number=\(.number)\nhead=\(.head.sha)\nbase=\(.base.sha)"' >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number || inputs.pr }}
+
+  film:
+    needs: pr
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        side: [before, after]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ matrix.side == 'after' && needs.pr.outputs.head || needs.pr.outputs.base }}
+      - name: The PR's tests and tooling over master's app
+        if: matrix.side == 'before'
+        run: |
+          git fetch -q --depth=1 origin "$HEAD_SHA"
+          git checkout FETCH_HEAD -- e2e playwright.config.ts playwright.receipts.config.ts scripts/receipts-gif.sh
+        env:
+          HEAD_SHA: ${{ needs.pr.outputs.head }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: command -v ffmpeg || sudo apt-get install -y --no-install-recommends ffmpeg
+      # A failed test is still filmed up to where it failed and published: the comment says which. The PR's own side fails
+      # the job at the end; master's side may fail where the PR adds a receipt for something master does not have.
+      - id: film
+        continue-on-error: true
+        run: pnpm exec playwright test -c playwright.receipts.config.ts
+      - run: scripts/receipts-gif.sh receipts-out receipts-gif
+      - uses: actions/upload-artifact@v4
+        with:
+          name: receipts-${{ matrix.side }}
+          path: receipts-gif
+          if-no-files-found: ignore
+          retention-days: 30
+      - if: matrix.side == 'after' && steps.film.outcome == 'failure'
+        run: echo "::error::a receipt test failed on this PR; see the film step" && exit 1
+
+  publish:
+    needs: [pr, film]
+    if: ${{ !cancelled() && needs.pr.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.pr.outputs.head }}
+          sparse-checkout: scripts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: receipts-*
+          path: artifacts
+      - name: Receipts in before/ and after/
+        run: |
+          mkdir -p receipts
+          for side in before after; do [ -d "artifacts/receipts-$side" ] && mv "artifacts/receipts-$side" "receipts/$side"; done
+          find receipts -type f | sort
+      - run: scripts/receipts-publish.sh "$PR" "$HEAD_SHA" receipts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ needs.pr.outputs.number }}
+          HEAD_SHA: ${{ needs.pr.outputs.head }}
+      - run: node scripts/receipts-comment.mjs receipts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ needs.pr.outputs.number }}
+          HEAD_SHA: ${{ needs.pr.outputs.head }}
+          BASE_SHA: ${{ needs.pr.outputs.base }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  cleanup:
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      # The PR's own scripts: master has them only once this workflow is merged.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          sparse-checkout: scripts
+      - run: scripts/receipts-publish.sh "$PR"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+      - run: node scripts/receipts-comment.mjs --closed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
