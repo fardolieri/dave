@@ -5,7 +5,8 @@
  * rewrite and drop frames in either direction, which is how the suite checks claims such as "the server cannot sit in a call".
  *
  * Every friend's console warnings, errors and uncaught exceptions are collected and fail the test at the end unless the test
- * declared them expected with `friend.expectWarning(/.../)`.
+ * declared them expected with `friend.expectWarning(/.../)`. That includes the invariant watchdog's `[invariant] …` warnings
+ * (quality ticket 04): a test in which the UI contradicted the call fails, unless it declared `friend.expectInvariant(kind)`.
  */
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -183,6 +184,8 @@ export class Friend {
 
   /** Declares console output this test provokes on purpose, so it does not fail the test. */
   expectWarning(pattern: RegExp): void { this.expected.push(pattern); }
+  /** Declares an invariant this test breaks on purpose (client/invariants.ts), so its report does not fail the test. */
+  expectInvariant(kind: string): void { this.expected.push(new RegExp(`^warning: \\[invariant\\] ${kind} `)); }
   async unexpectedProblems(): Promise<string[]> {
     await Promise.all(this.reading);
     return this.problems.filter((p) => !this.expected.some((re) => re.test(p)));
@@ -276,6 +279,8 @@ export class Friend {
   async hook<T = any>(name: string, ...args: unknown[]): Promise<T> { // eslint-disable-line @typescript-eslint/no-explicit-any
     return this.page.evaluate(([n, a]) => (window as unknown as { __dave: Record<string, (...x: unknown[]) => unknown> }).__dave[n as string]!(...(a as unknown[])), [name, args] as const) as Promise<T>;
   }
+  /** The invariants the watchdog reported in this friend's page, in order (quality ticket 04). */
+  async invariants(): Promise<Array<{ kind: string; heldMs: number; snapshot: Record<string, unknown> }>> { return this.hook('invariants'); }
   /** Share video bytes received from one sharer so far. */
   async videoBytesFrom(name: string): Promise<number> { return (await this.peers()).find((p) => p.name === name)?.videoBytesIn ?? 0; }
   /** Whether share video from `name` is still arriving: bytes grow over `ms`. */

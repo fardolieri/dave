@@ -10,6 +10,8 @@ import { asksFec, sendsRed, voiceRepairSdp, type VoiceRepair } from '../core/voi
 import { INITIAL_BUFFER, VOICE_REPORT_EVERY, VOICE_SAMPLE_MS, bufferMs, nextBuffer, voiceWindow, type BufferState, type VoiceCounters, type VoiceWindow } from '../core/voicequality';
 import type { LocalIdentity } from './identity';
 import { candidateCounts, reportStats, summarise, voiceCounters, windowProps } from './peerstats';
+import { createInvariantWatchdog, invariantViolations } from './invariants';
+import type { CallFacts } from '../core/invariants';
 import {
   ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
 } from '../core/mesh';
@@ -118,6 +120,11 @@ type Peer = {
   shareAudio: HTMLAudioElement;
   videoBytesIn: number;
   videoBytesAt: number;
+  /** The share video's frames decoded at the last stats read, and when that count last grew (the invariant watchdog). */
+  framesDecoded: number | null;
+  framesGrewAt: number | null;
+  /** The e2e suite's stand-in for the tile that stayed on "Opening…" (problem report of Oct 3): the share never shows live (hook only). */
+  holdOpening: boolean;
   /** My share as sent to this peer: bytes so far, rate and encoded format from the last stats read. */
   videoBytesOut: number;
   outKbps: number;
@@ -247,6 +254,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   const publish = () => setViews([...peers.values()].map((p) => ({ ...p.view })));
   const setView = (p: Peer, patch: Partial<PeerView>) => {
     if (patch.conn && patch.conn !== p.view.conn) posthog.capture('peer_connection_state', { state: patch.conn, previous: p.view.conn, peers: peers.size });
+    if (patch.shareLive && p.holdOpening) patch = { ...patch, shareLive: false };
     Object.assign(p.view, patch);
     publish();
   };
@@ -789,7 +797,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const peer: Peer = {
       key, name, pc, closed, markClosed, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, audio, keepAlive, audioNodes: [], restarts: 0, relayOnly, generation: ++generation,
       view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1, shareVolume: untrack(shareVolumes)[key] ?? 1, rttMs: null },
-      viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, sendsRed: false, sendsFec: true, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
+      viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, sendsRed: false, sendsFec: true, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, framesDecoded: null, framesGrewAt: null, holdOpening: false, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
     };
     earlyViewers.delete(key);
@@ -1179,6 +1187,25 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     };
   }
 
+  /** What the invariant watchdog compares (quality ticket 04): each peer as the UI shows them and as the browser has them. */
+  function invariantFacts(): CallFacts | null {
+    if (!joined) return null;
+    const people = untrack(room.people);
+    return {
+      at: Date.now(), master: untrack(audioSettings).masterVolume, micTest: testing !== null,
+      peers: [...peers.values()].map((p) => ({
+        key: p.key, conn: p.view.conn, watching: p.view.watching, shareLive: p.view.shareLive, volume: p.view.volume, shareVolume: p.view.shareVolume,
+        sharing: people.some((q) => q.publicKey === p.key && q.sharing),
+        voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, framesGrewAt: p.framesGrewAt,
+        connection: p.pc.connectionState, ice: p.pc.iceConnectionState,
+      })),
+    };
+  }
+  const invariants = createInvariantWatchdog(invariantFacts, (key) => {
+    const p = peers.get(key);
+    return p ? { fingerprint: fingerprintOf(p), relayOnly: p.relayOnly, restarts: p.restarts, serverLost: p.view.serverLost, signaling: p.pc.signalingState } : {};
+  });
+
   /**
    * A watched share whose tile shows nothing after a few seconds although bytes arrive (reported by
    * friends). Record what the decoder and the element say, then ask for the share again: the sharer
@@ -1233,9 +1260,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   async function refreshStats(peer: Peer): Promise<void> {
     if (peer.pc.connectionState === 'closed') return;
-    const { audioBytesIn, videoBytesIn, videoBytesOut, inFormat, outFormat, rttMs, relayed } = summarise(await peer.pc.getStats());
+    const { audioBytesIn, videoBytesIn, videoBytesOut, inFormat, outFormat, framesDecoded, rttMs, relayed } = summarise(await peer.pc.getStats());
     if (audioBytesIn !== peer.view.audioBytesIn) peer.view.audioBytesIn = audioBytesIn;
     const now = Date.now();
+    if (framesDecoded !== null && peer.framesDecoded !== null && framesDecoded > peer.framesDecoded) peer.framesGrewAt = now;
+    peer.framesDecoded = framesDecoded;
     // Only rate over a meaningful window; onIceState and the 2 s timer can call this back to back.
     if (peer.videoBytesAt && now - peer.videoBytesAt >= 500) {
       const kbps = Math.round(((videoBytesIn - peer.videoBytesIn) * 8) / (now - peer.videoBytesAt));
@@ -1505,6 +1534,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         if (audioCtx?.state === 'suspended') setAudioBlocked(true);
       }
       setInCall(true);
+      invariants.reset();
       writeRejoinMarker();
       heartbeat = setInterval(writeRejoinMarker, REJOIN_HEARTBEAT_MS);
       exposeDevHook();
@@ -1585,6 +1615,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     clearInterval(voiceTimer);
     clearInterval(clockTimer);
     clearInterval(speakingTimer);
+    invariants.stop();
     leave();
     silent?.stop();
     audioCtx?.close();
@@ -1645,6 +1676,31 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       /** Makes the worker's readings say it loses frames (or carries a load) from now on (ticket 37 follow-up); `{}` stops it. */
       strainVoice: (load: Partial<VoiceLoad>) => { loadOverride = load; },
       diagnostics,
+      /** What the invariant watchdog reported in this tab (quality ticket 04). */
+      invariants: invariantViolations,
+      /** Sets a gain node of `name` off what their controls say, as a path that forgot applyGain would: 'voice' or 'share'. */
+      detuneGain: (name: string, kind: 'voice' | 'share', value: number) => {
+        const peer = [...peers.values()].find((p) => p.name === name);
+        const node = kind === 'voice' ? peer?.voiceGain : peer?.shareGain;
+        if (!node) return 'no such gain';
+        node.gain.value = value;
+        return 'detuned';
+      },
+      /** Brings back the tile that stayed on "Opening…" (problem report of Oct 3) for `name`'s share: it never shows live again. */
+      holdOpening: (name: string) => {
+        const peer = [...peers.values()].find((p) => p.name === name);
+        if (!peer) return 'no such peer';
+        peer.holdOpening = true;
+        setView(peer, { shareLive: false });
+        return 'holding';
+      },
+      /** Closes the connection to `name` underneath the call, as a path that forgot closePeer would: no state event fires, the badge stays. */
+      closeQuietly: (name: string) => {
+        const peer = [...peers.values()].find((p) => p.name === name);
+        if (!peer) return 'no such peer';
+        peer.pc.close();
+        return 'closed';
+      },
       state: () => ({ inCall: joined, joining, joinError: untrack(joinError), myJoinSeq, role: untrack(me)?.role ?? null, participants: untrack(room.people).filter((p) => p.role === 'participant').map((p) => `${p.name}#${p.joinSeq}`) }),
     };
   };

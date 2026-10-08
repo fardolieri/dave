@@ -17,6 +17,7 @@ import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUM
 import { formatBitrate, formatVideo } from '../core/format';
 import { FOLD_OLDER_MS, olderCount } from '../core/chatlog';
 import { formatDelay, lagLevel } from '../core/lowvoice';
+import { shareTileState } from '../core/invariants';
 import { VOICE_REPAIRS, type VoiceRepair } from '../core/voicerepair';
 import { collectReport, formatReport, sendReport, type Report } from './diagnostics';
 import { CATEGORIES, SEVERITIES, isCategory, isSeverity, type Category, type Severity } from '../core/report';
@@ -987,13 +988,8 @@ function ShareTile(props: ShareTileProps) {
     video.srcObject = stream ?? null;
     if (stream && props.isMe) play('own'); // a viewer's tile plays from the click that starts watching
   });
-  const state = () => {
-    if (props.isMe) return 'own';
-    if (!props.inCall) return 'locked';
-    if (props.view?.conn === 'unreachable') return 'unreachable';
-    if (!props.view?.watching) return 'closed';
-    return props.view.shareLive ? 'live' : 'opening';
-  };
+  // The invariant watchdog reads the same rule (quality ticket 04).
+  const state = () => shareTileState(props.isMe, props.inCall, props.view);
   const running = () => state() === 'live' || state() === 'opening' || state() === 'own';
   const showsVideo = () => state() === 'live' || state() === 'own';
   // Black-tile check: bytes arrive (the tile is live) but nothing shows. Report it with what the

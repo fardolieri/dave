@@ -9,9 +9,12 @@ import type { PeerDiagnostics } from './call';
 
 const pick = (r: Record<string, unknown>, keys: string[]): Record<string, unknown> => Object.fromEntries(keys.filter((k) => r[k] !== undefined).map((k) => [k, r[k]]));
 
-/** What refreshStats follows every 2 s: bytes both ways, the formats, the round trip, and whether the selected pair is relayed (null: no pair yet). */
+/**
+ * What refreshStats follows every 2 s: bytes both ways, the formats, the share video's frames decoded (null: no count yet),
+ * the round trip, and whether the selected pair is relayed (null: no pair yet).
+ */
 export type StatsSummary = {
-  audioBytesIn: number; videoBytesIn: number; videoBytesOut: number; inFormat: VideoFormat | null; outFormat: VideoFormat | null;
+  audioBytesIn: number; videoBytesIn: number; videoBytesOut: number; inFormat: VideoFormat | null; outFormat: VideoFormat | null; framesDecoded: number | null;
   rttMs: number | null; relayed: boolean | null;
 };
 export function summarise(st: RTCStatsReport): StatsSummary {
@@ -20,6 +23,7 @@ export function summarise(st: RTCStatsReport): StatsSummary {
   let videoBytesOut = 0;
   let inFormat: VideoFormat | null = null;
   let outFormat: VideoFormat | null = null;
+  let framesDecoded: number | null = null;
   /** RTCP's view of the round trip, from the receiver reports on what I send; seconds. */
   let rtcpRtt: number | undefined;
   type VideoRtp = { frameWidth?: number; frameHeight?: number; framesPerSecond?: number };
@@ -28,7 +32,7 @@ export function summarise(st: RTCStatsReport): StatsSummary {
     if (r.type === 'inbound-rtp') {
       const rtp = r as RTCInboundRtpStreamStats & VideoRtp;
       if (rtp.kind === 'audio') audioBytesIn += rtp.bytesReceived ?? 0;
-      if (rtp.kind === 'video') { videoBytesIn += rtp.bytesReceived ?? 0; inFormat = formatOf(rtp) ?? inFormat; }
+      if (rtp.kind === 'video') { videoBytesIn += rtp.bytesReceived ?? 0; inFormat = formatOf(rtp) ?? inFormat; framesDecoded = rtp.framesDecoded ?? framesDecoded; }
     } else if (r.type === 'outbound-rtp') {
       const rtp = r as RTCOutboundRtpStreamStats & VideoRtp;
       if (rtp.kind === 'video') { videoBytesOut += rtp.bytesSent ?? 0; outFormat = formatOf(rtp) ?? outFormat; }
@@ -50,7 +54,7 @@ export function summarise(st: RTCStatsReport): StatsSummary {
     const remote = st.get((pair as RTCIceCandidatePairStats).remoteCandidateId) as CandidateStats | undefined;
     relayed = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
   }
-  return { audioBytesIn, videoBytesIn, videoBytesOut, inFormat, outFormat, rttMs, relayed };
+  return { audioBytesIn, videoBytesIn, videoBytesOut, inFormat, outFormat, framesDecoded, rttMs, relayed };
 }
 
 /** The counters a problem report keeps (ticket 12): decoder and encoder, the selected pair, the voice both ways (ticket 27). */
