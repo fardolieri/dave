@@ -45,12 +45,15 @@ test('an offer lost with a dropped socket, on either side, is sent again once th
   await needHooks(alice);
   type Diag = { peers: Array<{ asksLowVoice: boolean; pc: { signaling: string } }> };
   const peer = async (f: typeof alice) => (await f.hook<Diag>('diagnostics')).peers[0];
-  const lostOffer = (frame: string) => (frame.includes('"t":"signal"') && frame.includes('"type":"offer"') ? null : frame);
+  let lost = 0;
+  const lostOffer = (frame: string) => (frame.includes('"t":"signal"') && frame.includes('"type":"offer"') ? (lost++, null) : frame);
   const lowVoice = async (on: boolean) => {
+    const before = lost;
     await alice.selectedRoom.getByTitle('Audio settings').click();
     await alice.page.locator('.panel').getByLabel('Low bandwidth voice').setChecked(on);
     await alice.selectedRoom.getByTitle('Audio settings').click();
-    await expect.poll(async () => (await peer(alice))?.pc.signaling, { message: 'Alice offers' }).toBe('have-local-offer');
+    await expect.poll(() => lost, { message: 'the offer is lost' }).toBe(before + 1);
+    expect((await peer(alice))?.pc.signaling, 'Alice waits for an answer').toBe('have-local-offer');
   };
 
   // Alice's own socket drops with her offer on it.

@@ -810,7 +810,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     keepAlive.muted = true;
     const { closed, close: markClosed } = closeLatch();
     const peer: Peer = {
-      key, name, pc, closed, markClosed, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, joinSeq: null, audio, keepAlive, audioNodes: [], restarts: 0, relayOnly, generation: ++generation,
+      key, name, pc, closed, markClosed, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, joinSeq: untrack(room.people).find((p) => p.publicKey === key && p.role === 'participant')?.joinSeq ?? null, audio, keepAlive, audioNodes: [], restarts: 0, relayOnly, generation: ++generation,
       view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1, shareVolume: untrack(shareVolumes)[key] ?? 1, rttMs: null },
       viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, sendsRed: false, sendsFec: true, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, framesDecoded: null, framesGrewAt: null, holdOpening: false, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
@@ -1065,10 +1065,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     try {
       if (data.description) {
         const description = data.description as RTCSessionDescriptionInit;
+        if (description.type === 'answer' && pc.signalingState === 'stable') return; // a second answer to a resent offer (resendOffer)
         const collision = description.type === 'offer' && (peer.makingOffer || (pc.signalingState !== 'stable' && !peer.srdAnswerPending));
         peer.ignoreOffer = !peer.polite && collision;
         if (peer.ignoreOffer) return;
-        if (description.type === 'answer' && pc.signalingState === 'stable') return; // a second answer to a resent offer (resendOffer)
         peer.srdAnswerPending = description.type === 'answer';
         peer.asksLowVoice = asksLowVoice(description.sdp ?? '');
         // My encoder reads its bitrate, packet length, FEC flag and codec order from this description: rewritten, it obeys my settings too.
