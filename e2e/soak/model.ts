@@ -200,14 +200,35 @@ export function parse(line: string): Action {
 export const parseList = (s: string): Action[] => s.split(/[;\n]/).map((l) => l.trim()).filter(Boolean).map(parse);
 
 /**
- * Delta debugging (ddmin) over a failing list: drops ever smaller chunks while the rest still fails, until no single
- * action can go or `more()` says the budget is spent. `fails` replays a list in fresh rooms. Returns the shortest list
- * that failed and how many replays it took.
+ * Groups of actions a failure often does not need, tried away whole before the delta debugging: one replay each instead
+ * of the many it takes ddmin to find them scattered over a long list. Measured on a deliberately broken rejoin (a reload
+ * forgot the watched shares): plain ddmin got 95 steps down to 10 to 32 in 20 minutes, the shortest being 5.
  */
-export async function shrink<T>(list: T[], fails: (l: T[]) => Promise<boolean>, more: () => boolean): Promise<{ list: T[]; replays: number; complete: boolean }> {
+export const SHRINK_FIRST: Array<(a: Action) => boolean> = [
+  (a) => a.do === 'say' || a.do === 'hide' || a.do === 'cut' || a.do === 'offline' || a.do === 'settings' || a.do === 'volume',
+  (a) => a.do === 'say',
+  (a) => a.do === 'hide' || a.do === 'cut' || a.do === 'offline',
+  (a) => a.do === 'settings' || a.do === 'volume',
+  (a) => a.do === 'mute' || a.do === 'unmute',
+  ...NAMES.map((n) => (a: Action) => a.who === n || ('of' in a && a.of === n)),
+];
+
+/**
+ * Shrinks a failing list: first drops whole groups (`first`), then delta debugging (ddmin) drops ever smaller chunks
+ * while the rest still fails, until no single action can go or `more()` says the budget is spent. `fails` replays a list
+ * in fresh rooms. Returns the shortest list that failed and how many replays it took.
+ */
+export async function shrink<T>(list: T[], fails: (l: T[]) => Promise<boolean>, more: () => boolean, first: Array<(a: T) => boolean> = []): Promise<{ list: T[]; replays: number; complete: boolean }> {
   let current = list;
   let n = 2;
   let replays = 0;
+  for (const group of first) {
+    const rest = current.filter((a) => !group(a));
+    if (rest.length === current.length || rest.length === 0) continue;
+    if (!more()) return { list: current, replays, complete: false };
+    replays++;
+    if (await fails(rest)) current = rest;
+  }
   while (current.length >= 2) {
     const size = Math.ceil(current.length / n);
     let reduced = false;

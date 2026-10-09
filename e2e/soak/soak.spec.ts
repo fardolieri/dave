@@ -6,14 +6,14 @@
  * share settings, texts, that every friend in the call hears every unmuted one, and no console warning nobody expected
  * (the invariant watchdog's `[invariant] …` lines among them, ticket 04).
  *
- * A failing run replays its list in fresh rooms to see the failure again, shrinks it (model.ts, `shrink`) to a shorter
- * list that fails the same way, records a trace of the shortest one, and writes soak-out/report.{md,json} for the
- * workflow to turn into an issue.
+ * A failing run shrinks its list (model.ts, `shrink`) by replaying parts of it in fresh rooms, to a shorter list that
+ * fails the same way, records a trace of the shortest one, and writes soak-out/report.{md,json} for the workflow to turn
+ * into an issue.
  *
  *   SOAK_SEED=7 SOAK_MINUTES=15        a run of 15 minutes from seed 7 (a random seed when unset)
  *   SOAK_SEED=7 SOAK_STEPS=40          exactly the first 40 actions of seed 7
  *   SOAK_ACTIONS="Alice join; …"       exactly these actions (the minimal list of a report)
- *   SOAK_SHRINK_MINUTES=20             the time the shrinking may take; 0 skips it
+ *   SOAK_SHRINK_MINUTES=30             the time the shrinking may take; 0 skips it
  *
  *   E2E_URL=nightly pnpm exec playwright test -c playwright.soak.config.ts
  */
@@ -23,14 +23,14 @@ import { join } from 'node:path';
 import type { Browser } from '@playwright/test';
 import { launchOptions, target } from '../browsers';
 import { Friend, expect, newSecret, test, type RoomSeed } from '../fixtures';
-import { FRIENDS, NAMES, applicable, apply, effective, engineOf, format, formatList, generate, initialModel, parseList, participants, sharers, shrink, volumeOf, type Action, type Model, type Name } from './model';
+import { FRIENDS, NAMES, applicable, apply, effective, format, formatList, generate, initialModel, parseList, participants, sharers, shrink, SHRINK_FIRST, volumeOf, type Action, type Model, type Name } from './model';
 
 const env = process.env;
 const SEED = env['SOAK_SEED'] ? Number(env['SOAK_SEED']) : Math.floor(Math.random() * 1e9);
 const STEPS = env['SOAK_STEPS'] ? Number(env['SOAK_STEPS']) : null;
 const ACTIONS = env['SOAK_ACTIONS']?.trim() ? parseList(env['SOAK_ACTIONS']) : null;
 const MINUTES = Number(env['SOAK_MINUTES'] ?? 15);
-const SHRINK_MINUTES = Number(env['SOAK_SHRINK_MINUTES'] ?? 20);
+const SHRINK_MINUTES = Number(env['SOAK_SHRINK_MINUTES'] ?? 30);
 const OUT = env['SOAK_OUT'] ?? 'soak-out';
 /** How long what everyone sees may take to match the model after a step: a reconnect, an ICE restart, a rebuild. */
 const SETTLE_MS = 60_000;
@@ -38,6 +38,8 @@ const SETTLE_MS = 60_000;
  * reconnects each open one: at most a few a minute at this pace. */
 const MIN_STEP_MS = 1500;
 const MIN = 60_000;
+/** The longest list the report traces: about two minutes of replay. */
+const TRACE_MAX_STEPS = 40;
 
 type Browsers = Record<'chromium' | 'firefox', Browser>;
 type Failure = { step: number; action: Action | null; problems: string[]; kinds: string[] };
@@ -45,7 +47,6 @@ type Outcome = { steps: number; failure: Failure | null; aborted: boolean };
 
 const log = (s: string) => console.log(`[soak] ${s}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const sameSet = (a: string[], b: string[]) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
 const firstLine = (e: unknown) => (e instanceof Error ? e.message : String(e)).split('\n').find((l) => l.trim())?.trim().slice(0, 300) ?? 'unknown error';
 /** What kind of difference a line reports, without names: "tile of Bob: …" → "tile"; "invariant share_opening". */
 function kindOf(problem: string): string {
@@ -59,23 +60,21 @@ class Group {
   model: Model = initialModel();
   readonly room: RoomSeed = { secret: newSecret(), name: 'Soak' };
 
-  static async open(browsers: Browsers, tracing: boolean): Promise<Group> {
-    const g = new Group();
+  async open(browsers: Browsers, tracing: boolean): Promise<void> {
     for (const { name, engine } of FRIENDS) {
-      const f = new Friend(name, { rooms: [g.room] });
-      g.friends.set(name, f);
+      const f = new Friend(name, { rooms: [this.room] });
+      this.friends.set(name, f);
       await f.launch(browsers[engine], engine);
       if (tracing) await f.context.tracing.start({ screenshots: true, snapshots: true });
       await f.open();
     }
-    return g;
   }
 
   of(n: Name): Friend { return this.friends.get(n)!; }
 
   async close(traceDir?: string): Promise<void> {
     for (const [n, f] of this.friends) {
-      if (traceDir) await f.context.tracing.stop({ path: join(traceDir, `trace-${n}.zip`) }).catch(() => {});
+      if (traceDir) await f.context?.tracing.stop({ path: join(traceDir, `trace-${n}.zip`) }).catch(() => {});
       await f.close();
     }
   }
@@ -237,12 +236,13 @@ const redact = (s: string, secret: string) => s.split(secret).join('<room secret
  * first step after which what everyone sees differs from the model, or at `stopAt`.
  */
 async function play(browsers: Browsers, list: Action[], o: { stopAt: number; keep?: string; trace?: string; verbose?: boolean }): Promise<Outcome> {
-  const g = await Group.open(browsers, !!o.trace);
+  const g = new Group();
   let steps = 0;
   let failure: Failure | null = null;
   let aborted = false;
   try {
-    const opening = await g.settle();
+    // A room that does not even open is a failure of its own, at step 0, never taken for the one being shrunk.
+    const opening = await g.open(browsers, !!o.trace).then(() => g.settle(), (e: unknown) => [`open: the room did not open: ${firstLine(e)}`]);
     if (opening.length) failure = { step: 0, action: null, problems: opening, kinds: [...new Set(opening.map(kindOf))] };
     for (const a of failure ? [] : list) {
       if (Date.now() > o.stopAt) { aborted = true; break; }
@@ -292,35 +292,37 @@ test('the friend group from hell', async ({ browser, playwright }) => {
     for (const p of failure.problems) log(`  ${p}`);
     log(`seed ${SEED}; actions: ${formatList(ran)}`);
 
-    // Seen again in fresh rooms? Then shrink: a shorter list counts when it fails in at least one of the same ways.
+    // Shrink: a shorter list counts when it fails, in fresh rooms, in at least one of the same ways. The whole list is not
+    // replayed first: after a long run that alone took half the budget, and any shorter list that fails shows it comes back.
     const until = shrinkUntil();
     const more = () => Date.now() < until;
-    const sameWay = (o: Outcome) => !!o.failure && o.failure.kinds.some((k) => failure.kinds.includes(k));
+    const sameWay = (o: Outcome) => !!o.failure && o.failure.step > 0 && o.failure.kinds.some((k) => failure.kinds.includes(k));
     let reproduced = 0, replays = 0;
     let minimal = ran;
     let complete = false;
     if (failure.step > 0 && SHRINK_MINUTES > 0) {
-      const again = await play(browsers, ran, { stopAt: until });
-      replays++;
-      if (sameWay(again)) {
-        reproduced++;
-        log('the failure comes back on a replay; shrinking');
-        const result = await shrink(ran, async (l) => {
-          const o = await play(browsers, l, { stopAt: until });
-          const yes = sameWay(o);
-          if (yes) reproduced++;
-          log(`  ${effective(l).length} steps: ${yes ? 'fails' : o.aborted ? 'out of time' : 'passes'}`);
-          return yes;
-        }, more);
-        minimal = effective(result.list);
-        replays += result.replays;
-        complete = result.complete;
-        log(`shortest list that fails: ${minimal.length} steps (${complete ? 'minimal' : 'the time for shrinking ran out'}): ${formatList(minimal)}`);
-      } else log(`the failure did not come back on a replay${again.failure ? ` (it failed another way: ${again.failure.kinds.join(', ')})` : ''}`);
+      const result = await shrink(ran, async (l) => {
+        const o = await play(browsers, l, { stopAt: until });
+        const yes = sameWay(o);
+        if (yes) reproduced++;
+        log(`  ${effective(l).length} steps: ${yes ? 'fails' : o.aborted ? 'out of time' : 'passes'}`);
+        return yes;
+      }, more, SHRINK_FIRST);
+      minimal = effective(result.list);
+      replays = result.replays;
+      complete = result.complete;
+      // Nothing shorter failed: does the whole list fail again at all?
+      if (!reproduced && more()) {
+        const again = await play(browsers, ran, { stopAt: until });
+        replays++;
+        if (sameWay(again)) reproduced++;
+        log(`the whole list again: ${sameWay(again) ? 'fails' : again.aborted ? 'out of time' : 'passes'}`);
+      }
+      log(`shortest list that fails: ${minimal.length} steps (${complete ? 'minimal' : 'the time for shrinking ran out'}): ${formatList(minimal)}`);
     }
-    // A trace of the shortest list, which the report points at; the first run would be too long to trace.
-    const traced = await play(browsers, minimal, { stopAt: Date.now() + 30 * MIN, trace: join(OUT, 'trace'), keep: join(OUT, 'trace') });
-    report({ failure, ran, minimal, complete, reproduced, replays, tracedFails: !!traced.failure && sameWay(traced), minutes: (Date.now() - started) / MIN });
+    // A trace of the shortest list, which the report points at. A long one would take as long again and hold every step.
+    const traced = minimal.length <= TRACE_MAX_STEPS ? await play(browsers, minimal, { stopAt: Date.now() + 30 * MIN, trace: join(OUT, 'trace'), keep: join(OUT, 'trace') }) : null;
+    report({ failure, ran, minimal, complete, reproduced, replays, traced: traced && sameWay(traced), minutes: (Date.now() - started) / MIN });
     throw new Error(`the soak found a difference at step ${failure.step} (${failure.action ? format(failure.action) : 'opening'}):\n${failure.problems.join('\n')}\nshortest failing list: ${formatList(minimal)}`);
   } finally {
     await firefox.close();
@@ -328,7 +330,7 @@ test('the friend group from hell', async ({ browser, playwright }) => {
 });
 
 /** soak-out/report.json for the workflow, and report.md: the issue body and the job summary. */
-function report(r: { failure: Failure; ran: Action[]; minimal: Action[]; complete: boolean; reproduced: number; replays: number; tracedFails: boolean; minutes: number }): void {
+function report(r: { failure: Failure; ran: Action[]; minimal: Action[]; complete: boolean; reproduced: number; replays: number; traced: boolean | null; minutes: number }): void {
   const { failure, ran, minimal } = r;
   const sequence = formatList(minimal);
   const hash = createHash('sha256').update(sequence).digest('hex').slice(0, 12);
@@ -337,16 +339,20 @@ function report(r: { failure: Failure; ran: Action[]; minimal: Action[]; complet
   const shrunk = minimal.length < ran.length;
   const replayList = `gh workflow run soak.yml -f target=${targetInput} -f actions="${sequence}"`;
   const replaySeed = ACTIONS ? null : `gh workflow run soak.yml -f target=${targetInput} -f seed=${SEED} -f steps=${ran.length}`;
-  const title = `Soak: ${failure.kinds.join(', ')} after ${minimal.length} step${minimal.length === 1 ? '' : 's'}${r.reproduced === 0 ? ' (did not come back on a replay)' : ''}`;
+  const first = failure.problems[0]!.replace(/^(console|invariant): /, '');
+  const title = `Soak: ${first.length > 90 ? `${first.slice(0, 89)}…` : first} (${minimal.length} step${minimal.length === 1 ? '' : 's'}${r.reproduced === 0 ? ', did not come back on a replay' : ''})`;
   const md = [
     `**${failure.kinds.join(', ')}** at step ${failure.step} (\`${failure.action ? format(failure.action) : 'opening the room'}\`) of a soak against ${targetInput}${env['SOAK_COMMIT'] ? ` at ${env['SOAK_COMMIT'].slice(0, 7)}` : ''}, seed ${ACTIONS ? 'none (a given list)' : SEED}.${runUrl ? ` [Run](${runUrl}), with the trace of the shortest list in its artifact.` : ''}`,
     '',
     'What differed from the model:',
     ...failure.problems.slice(0, 12).map((p) => `- ${p.slice(0, 400)}`),
     '',
-    r.reproduced === 0
-      ? `It did not come back on a fresh replay of the same ${ran.length} steps${failure.step === 0 ? ' (it failed while the room opened)' : ''}: a timing bug, or a flake of the soak. Not shrunk.`
-      : `${shrunk ? `Shrunk from ${ran.length} to **${minimal.length} steps**` : `Not shorter than ${ran.length} steps`}${r.complete ? '' : ' (the time for shrinking ran out; a shorter one may exist)'}. It failed the same way in ${r.reproduced} of ${r.replays} replays${r.tracedFails ? ', and again in the traced one' : ', but not in the traced one'}.`,
+    failure.step === 0
+      ? 'It failed while the room opened, before any action: not shrunk.'
+      : r.reproduced === 0
+        ? `It did not come back in ${r.replays} replays in fresh rooms: a timing bug, or a flake of the soak. Not shrunk.`
+        : `${shrunk ? `Shrunk from ${ran.length} to **${minimal.length} steps**` : `Not shorter than ${ran.length} steps`}${r.complete ? '' : ' (the time for shrinking ran out; a shorter one may exist)'}. Of ${r.replays} replays in fresh rooms, ${r.reproduced} failed the same way.`,
+    r.traced === null ? 'The list is too long to trace; the artifact has every socket frame of the first run.' : `The traced replay of the shortest list ${r.traced ? 'failed again' : 'did not fail'}.`,
     '',
     '```',
     ...minimal.map(format),

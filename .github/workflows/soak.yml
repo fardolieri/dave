@@ -32,7 +32,7 @@ on:
         default: ""
       shrink:
         description: "minutes a failing shard may spend shrinking its list; 0 skips it"
-        default: "20"
+        default: "30"
       issue:
         description: "open or update a `soak` issue when a shard fails"
         type: boolean
@@ -42,7 +42,7 @@ permissions:
 jobs:
   soak:
     runs-on: ubuntu-latest
-    timeout-minutes: 80
+    timeout-minutes: 100
     strategy:
       fail-fast: false
       matrix:
@@ -53,7 +53,7 @@ jobs:
       SOAK_STEPS: ${{ inputs.steps }}
       SOAK_MINUTES: ${{ inputs.minutes || '15' }}
       SOAK_ACTIONS: ${{ inputs.actions }}
-      SOAK_SHRINK_MINUTES: ${{ inputs.shrink || '20' }}
+      SOAK_SHRINK_MINUTES: ${{ inputs.shrink || '30' }}
       SOAK_COMMIT: ${{ github.sha }}
       SOAK_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:

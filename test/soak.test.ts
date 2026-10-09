@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applicable, apply, effective, format, formatList, generate, initialModel, parse, parseList, shrink, type Action } from '../e2e/soak/model';
+import { applicable, apply, effective, format, formatList, generate, initialModel, parse, parseList, shrink, SHRINK_FIRST, type Action } from '../e2e/soak/model';
 
 // The model of the nightly soak (e2e/soak/): a seed must give the same run every time, a report's list must read back as
 // the same actions, and the shrinking must find the few actions a failure needs.
@@ -42,6 +42,9 @@ describe('soak model', () => {
     const { list, complete } = await shrink(run, fails, () => true);
     expect(list).toEqual(needed);
     expect(complete).toBe(true);
+    // Dropping whole groups first finds the same.
+    const grouped = await shrink(run, fails, () => true, SHRINK_FIRST);
+    expect(grouped.list).toEqual(needed);
     // Out of budget, it keeps what it has.
     const cut = await shrink(run, fails, () => false);
     expect(cut).toMatchObject({ list: run, complete: false, replays: 0 });
