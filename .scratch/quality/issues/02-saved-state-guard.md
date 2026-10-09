@@ -1,6 +1,6 @@
 # 02 · Saved-state guard: a changed default or stored shape cannot slip through unnoticed
 
-Status: open
+Status: shipped 2026-10-08 to master (d1d42a9, PR #27)
 Type: task
 
 ## Why
@@ -20,3 +20,6 @@ found by luck or by review, after the change was written.
 
 ## Not
 No migration of past changes the owner already decided against (old volumes: "Nah lets leave that", 2026-10-05).
+
+## Built
+src/core/storedstate.ts lists every stored key with its parser and dated old-value samples; every read goes through the registry (local.read, idbRead), so a new key fails typecheck until listed. test/storedstate.test.ts snapshots defaults and shapes and fails with what to do; old samples must still parse. The address book now repairs malformed entries instead of keeping them raw.

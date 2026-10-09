@@ -1,6 +1,6 @@
 # 04 · Invariants: the app notices when its UI contradicts reality
 
-Status: open
+Status: shipped 2026-10-08 to master (d9b7cdd, PR #24)
 Type: task
 
 ## Why
@@ -31,3 +31,6 @@ was found by a friend, days later, by luck. The app has everything it needs to n
 
 ## Verify
 Rung 2: the whole e2e suite green with the watchdog on (no false positives), plus the new tests.
+
+## Built
+src/core/invariants.ts (pure rules) and src/client/invariants.ts (watchdog from join to leave): share_opening, voice_gain/share_gain, conn_transport. Reported once per kind per call as `[invariant]` console warnings and PostHog `invariant_violation` (expected vs actual gains, no fingerprints). e2e fails any test in which one fires (friend.expectInvariant to declare it). Also fixed on the way: volume follows its slider at once; a failed DTLS handshake under connected ICE now restarts instead of showing "direct". Roster-vs-connections and tab-title checks were left out (normal 15–60 s gaps; same data source).

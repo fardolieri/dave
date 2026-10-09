@@ -2,7 +2,6 @@
 
 Status: open
 Type: task
-Blocked by: 04
 
 ## Why
 The bugs that reach friends are sequences in time (stop then re-share, leave then rejoin, reload mid-call, a background tab).

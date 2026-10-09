@@ -1,6 +1,6 @@
 # 06 · Video receipts: every UI change filmed in CI, viewable on the phone
 
-Status: open
+Status: shipped 2026-10-08 to master (814d5f4, PR #23)
 Type: task
 
 ## Why
@@ -23,3 +23,6 @@ pull request.
 
 ## Verify
 A PR with a small visible change shows a comment with the phone and desktop recordings, before and after.
+
+## Built
+.github/workflows/receipts.yml films e2e/receipts/tour.spec.ts plus any test tagged @receipt at phone and desktop size, master's build next to the PR's, as GIFs (under 3 MB, inline on a phone) on the orphan `receipts` branch, and keeps one PR comment up to date. Per-PR preview Workers were researched and left out: Workers with Durable Objects get no preview URLs, and a separate Worker would share prod's free-plan quotas.

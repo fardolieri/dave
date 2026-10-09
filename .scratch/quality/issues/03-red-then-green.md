@@ -1,6 +1,6 @@
 # 03 · Red-then-green receipt: CI proves a regression test catches its bug
 
-Status: open
+Status: shipped 2026-10-08 to master (b21230d, PR #28)
 Type: task
 
 ## Why
@@ -21,3 +21,6 @@ Keep it cheap: skip when there are no test changes; one engine; a timeout.
 ## Verify
 Push a branch with a deliberately reverted fix pair (e.g. recreate 9a73b1a + 4b9fe98 on top of a scratch branch) and show
 the job naming the test as "fails without the change".
+
+## Built
+.github/workflows/red-green.yml with scripts/red-green.mjs: runs the tests of a branch's Regression test:/Problem report: commits against the app from before the first fix and reports per test. Fails a Problem report: with no test that fails on the old app, unless the commit body says `No regression test: <reason>`. Failures that only come from code the branch adds count as inconclusive. Renamed from receipt.yml so it is not confused with the video receipts.
