@@ -1684,6 +1684,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (!exposeHooks) return;
     (window as unknown as { __dave?: unknown }).__dave = {
       peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, relayOnly: p.relayOnly, generation: p.generation, stuck: stuckAttempts.get(p.key) ?? 0, audioBytesIn: p.view.audioBytesIn, videoBytesIn: p.videoBytesIn, watching: p.view.watching, shareLive: p.view.shareLive, subscribedToMe: p.viewsMyShare, transceivers: p.pc.getTransceivers().length, rttMs: p.view.rttMs, asksLowVoice: p.asksLowVoice, sendsRed: p.sendsRed,
+        signaling: p.pc.signalingState, remoteUfrag: /a=ice-ufrag:(\S+)/.exec(p.pc.remoteDescription?.sdp ?? '')?.[1] ?? null,
         voiceBufferMs: (p.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined)?.jitterBufferTarget ?? null, adaptiveMs: bufferMs(p.buffer), lastWindow: p.lastWindow })),
       share: () => untrack(() => ({
         settings: shareSettings(),
@@ -1733,6 +1734,13 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       /** Makes the worker's readings say it loses frames (or carries a load) from now on (ticket 37 follow-up); `{}` stops it. */
       strainVoice: (load: Partial<VoiceLoad>) => { loadOverride = load; },
       diagnostics,
+      /** An ICE restart toward `name` now, as after a failed or long-disconnected path: a new offer on the same connection. */
+      restartIce: (name: string) => {
+        const peer = [...peers.values()].find((p) => p.name === name);
+        if (!peer) return 'no such peer';
+        void restartIce(peer);
+        return 'restarting';
+      },
       /** What the invariant watchdog reported in this tab (quality ticket 04). */
       invariants: () => invariants.violations(),
       /** Sets a gain node of `name` off what their controls say, as a path that forgot applyGain would: 'voice' or 'share'. */

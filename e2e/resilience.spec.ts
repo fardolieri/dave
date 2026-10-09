@@ -1,4 +1,4 @@
-import { expect, needHooks, test } from './fixtures';
+import { expect, needHooks, test, type Friend } from './fixtures';
 
 test('the call survives the server going away and coming back', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
@@ -75,6 +75,126 @@ test('an offer lost with a dropped socket, on either side, is sent again once th
   await bob.connected();
   await expect.poll(async () => (await peer(bob))?.asksLowVoice, { message: 'Bob got the offer after he came back' }).toBe(false);
   await expect.poll(async () => (await peer(alice))?.pc.signaling, { message: 'Alice got the answer' }).toBe('stable');
+  await alice.hearing('Bob');
+  await bob.hearing('Alice');
+});
+
+// What an offer sent again must not do (review of the fix above): be answered twice and have the late answer taken for a
+// newer offer, or reach a friend who reloaded meanwhile and tangle their new connection.
+type PeerHook = { name: string; generation: number; transceivers: number; asksLowVoice: boolean; signaling: string; remoteUfrag: string | null };
+const peerOf = async (f: Friend) => (await f.hook<PeerHook[]>('peers'))[0];
+const isSignal = (type: 'offer' | 'answer') => (frame: string) => frame.includes('"t":"signal"') && frame.includes(`"type":"${type}"`);
+const ufragOf = (frame: string) => /a=ice-ufrag:(\S+)/.exec((JSON.parse(frame) as { data: { description: { sdp: string } } }).data.description.sdp)?.[1];
+async function lowVoice(f: Friend, on: boolean): Promise<void> {
+  await f.selectedRoom.getByTitle('Audio settings').click();
+  await f.page.locator('.panel').getByLabel('Low bandwidth voice').setChecked(on);
+  await f.selectedRoom.getByTitle('Audio settings').click();
+}
+
+test('a late second answer to an offer sent again is never applied to a newer offer', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  // Bob's signals to Alice from his first answer on are held back, in order: his candidates follow the answer they belong to.
+  const held: string[] = [];
+  alice.wire.down = (frame) => (isSignal('answer')(frame) || (held.length > 0 && frame.includes('"t":"signal"')) ? (held.push(frame), null) : frame);
+  const answers = () => held.filter(isSignal('answer'));
+
+  // Alice offers; Bob's answer is held back. Her socket drops and comes back, she sends the offer again, Bob answers again.
+  await lowVoice(alice, true);
+  await expect.poll(() => answers().length, { message: 'Bob answers the offer' }).toBe(1);
+  await alice.wire.cut();
+  alice.wire.restore();
+  await alice.connected();
+  await expect.poll(() => answers().length, { message: 'Bob answers the offer sent again' }).toBe(2);
+
+  // The first answer arrives; then an ICE restart offers anew, and the late second answer comes before the real one.
+  const [first, late] = answers();
+  alice.wire.deliver(first!);
+  await expect.poll(async () => (await peerOf(alice))?.signaling).toBe('stable');
+  await alice.hook('restartIce', 'Bob');
+  await expect.poll(() => answers().length, { message: 'Bob answers the ICE restart' }).toBe(3);
+  const restart = answers()[2]!;
+  expect(ufragOf(restart), 'the restart gives Bob new ICE credentials').not.toBe(ufragOf(late!));
+  for (const f of held) if (f !== first) alice.wire.deliver(f);
+  alice.wire.down = null;
+  await expect.poll(async () => (await peerOf(alice))?.remoteUfrag, { message: "Alice holds Bob's credentials from his answer to the restart" }).toBe(ufragOf(restart));
+  expect((await peerOf(alice))?.signaling).toBe('stable');
+  await alice.hearing('Bob');
+  await bob.hearing('Alice');
+});
+
+for (const polite of [true, false]) for (const newest of [true, false]) {
+  const who = `the ${polite ? 'polite' : 'impolite'} side reloads, ${newest ? 'the last to join' : 'the first to join'}`;
+  test(`an offer stuck for a friend who then reloads leaves their new connection alone (${who})`, async ({ crowd }) => {
+    // The polite side would take up the stale offer in place of its own fresh one. The last to join gets the same join
+    // sequence back after a reload; the first gets a new one.
+    const alice = await crowd.open('Alice');
+    const bob = await crowd.open('Bob');
+    await alice.join();
+    await bob.join();
+    await alice.connectedTo('Bob');
+    await needHooks(alice);
+    const alicePolite = (await alice.hook<{ peers: Array<{ polite: boolean }> }>('diagnostics')).peers[0]!.polite;
+    const [reloader, offerer] = alicePolite === polite ? [alice, bob] : [bob, alice];
+    if ((newest ? reloader : offerer) === alice) {
+      // Bob joined last; Alice joins again to be the last.
+      await alice.leave();
+      await alice.join();
+      await alice.connectedTo('Bob');
+      await bob.connectedTo('Alice');
+    }
+    let lost = 0;
+    reloader.wire.down = (frame) => (isSignal('offer')(frame) && lost++ === 0 ? null : frame);
+    await lowVoice(offerer, true);
+    await expect.poll(() => lost, { message: 'the offer is lost' }).toBe(1);
+    expect((await peerOf(offerer))?.signaling, `${offerer.name} waits for an answer`).toBe('have-local-offer');
+    reloader.wire.down = null;
+
+    const offers = () => offerer.wire.log.filter((l) => l.dir === 'up' && isSignal('offer')(l.frame)).length;
+    const offersBefore = offers();
+    await reloader.page.reload();
+    await reloader.connected();
+    await expect(reloader.button('Leave')).toBeVisible(); // a reload rejoins the call by itself (ticket 24)
+    await expect.poll(offers, { message: `${offerer.name} sends the stuck offer again` }).toBeGreaterThan(offersBefore);
+
+    await offerer.connectedTo(reloader.name);
+    await reloader.connectedTo(offerer.name);
+    for (const f of [offerer, reloader]) await expect.poll(async () => (await peerOf(f))?.signaling, { message: `${f.name} is stable` }).toBe('stable');
+    const fresh = await peerOf(reloader);
+    expect(fresh?.generation, `${reloader.name}'s page built one connection, no rebuild`).toBe(1);
+    expect(fresh?.transceivers).toBe(3);
+    expect(fresh?.asksLowVoice, `${reloader.name} reads ${offerer.name}'s ask`).toBe(true);
+    await offerer.hearing(reloader.name);
+    await reloader.hearing(offerer.name);
+  });
+}
+
+test('both sockets drop with an offer of each in flight, and both settle with the ask read', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  for (const f of [alice, bob]) {
+    let lost = 0;
+    f.wire.up = (frame) => (isSignal('offer')(frame) ? (lost++, null) : frame);
+    await lowVoice(f, true);
+    await expect.poll(() => lost, { message: `${f.name}'s offer is lost` }).toBe(1);
+  }
+  for (const f of [alice, bob]) expect((await peerOf(f))?.signaling, `${f.name} waits for an answer`).toBe('have-local-offer');
+  await Promise.all([alice.wire.cut(), bob.wire.cut()]);
+  for (const f of [alice, bob]) { f.wire.up = null; f.wire.restore(); }
+  await alice.connected();
+  await bob.connected();
+  for (const f of [alice, bob]) {
+    await expect.poll(async () => (await peerOf(f))?.signaling, { message: `${f.name} is stable` }).toBe('stable');
+    await expect.poll(async () => (await peerOf(f))?.asksLowVoice, { message: `${f.name} reads the other's ask` }).toBe(true);
+  }
   await alice.hearing('Bob');
   await bob.hearing('Alice');
 });
