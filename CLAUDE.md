@@ -69,6 +69,18 @@ Rules:
 - `/ship` takes a branch from "works" to "on master": rebase, review, push, CI, report.
 - Prefer small PRs. Squash noise (debug commits, CI experiments) into a coherent story before master.
 
+## What watches the app
+
+- **CI on every branch:** typecheck and unit tests in both Wrangler envs (`ci.yml`), the browser suite in both engines
+  (`e2e.yml`), the red-then-green check of regression tests (`red-green.yml`), video receipts for client changes
+  (`receipts.yml`, GIFs in one PR comment; add `{ tag: '@receipt' }` to a test to film it).
+- **Inside every e2e test:** unexpected console warnings and runtime invariants (`src/client/invariants.ts`: UI that
+  contradicts the call) fail the test.
+- **Nightly:** the suite against nightly is the release gate; the chaos soak (`soak.yml`, 01:00 UTC) opens `soak` issues
+  with a minimal sequence; the night shift (`scripts/night-shift/`, on this VM, 02:30 UTC) turns new problem reports into
+  draft "Repro:" PRs.
+- **In the field:** `invariant_violation`, `$exception` and `bug_report` in PostHog (read recipe in the auto memory).
+
 ## Flakes
 
 A flaky test is a bug in the app or in the test, never noise (`.scratch/p2p-friends-chat-build/issues/35-*`): find the cause,

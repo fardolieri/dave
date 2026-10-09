@@ -107,3 +107,15 @@ Never a longer timeout or another retry without the cause.
 - The four tests above pass 10 of 10 repeats against nightly in Chromium and Firefox, with the cause of each flake
   written under the test in the spec file.
 - A nightly run after a master push has been green without a rerun three times in a row.
+
+## Comments
+
+2026-10-08/09, after the nightly run started failing on flaky tests (`failOnFlakyTests`, quality ticket 01), four more:
+- `test/worker.test.ts` upgrade limit: the emulated rate limiter counts in wall-clock windows, so a loop crossing a minute
+  boundary started again from zero (about 1 run in 30). Test fixed (1b11360).
+- Firefox, low bandwidth voice: a real app bug. A socket drop while an offer was in flight left the pair stuck until a
+  reload. Offers are re-sent after a reconnect, and answers are matched to their offer (044c3c4, 8444326, PR #29).
+- Chromium, mic-test level: RNNoise cuts the fake microphone's beep after about a second; the test only passed when it
+  caught an early beep. Test fixed (c6f2ffa, PR #30).
+- Firefox, opening update: PostHog's script was cut off by the app's own reload onto a new version. PostHog now starts
+  only once the page is staying (3c629ba, PR #30).

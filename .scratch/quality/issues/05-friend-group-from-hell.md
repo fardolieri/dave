@@ -1,6 +1,6 @@
 # 05 · The friend group from hell: a nightly chaos soak
 
-Status: open
+Status: shipped 2026-10-09 to master (830bd71, PR #34)
 Type: task
 
 ## Why
@@ -23,3 +23,11 @@ The e2e suite only covers the sequences someone thought of. A model-based soak c
 ## Verify
 A dispatch run of 15 minutes that passes, and one with a deliberately broken invariant (a temporary commit on a branch) that
 fails, shrinks, and shows the minimal sequence.
+
+## Built
+`e2e/soak/` with `playwright.soak.config.ts` (the normal suite ignores it) and `.github/workflows/soak.yml`: nightly at 01:00
+UTC against nightly, 3 shards of 15 minutes; four friends (two Chromium, two Firefox) take seeded random actions and every
+step is checked against a small model of what everyone should see, plus the invariants. A failure shrinks to a minimal
+action list replayed in fresh rooms and opens or updates an issue labelled `soak` (also when it did not come back on
+replay: a flake is a bug too). Two runs against nightly, about 1,500 steps, found nothing; a deliberately broken reload
+shrank to 5 steps.

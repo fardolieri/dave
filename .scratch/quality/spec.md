@@ -1,6 +1,6 @@
 # Quality program
 
-Status: started 2026-10-08
+Status: 01–07 shipped 2026-10-08/09; 08 later
 Asked for 2026-10-07/08: Daniel: "Imagine being a tech lead or QA manager who is responsible for the quality of the app. What
 would you do? […] Be ambitious! I'm open for WACKY ideas!" and then "Lets do it! The stage is yours."
 
