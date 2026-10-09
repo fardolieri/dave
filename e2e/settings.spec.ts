@@ -157,8 +157,11 @@ test('ticket 40: the mic test plays my voice as friends get it, while friends ge
   // Firefox's fake microphone runs no processing whatever it is asked for: there echo cancellation always reads off.
   if (browserName === 'chromium') await expect.poll(echo, { message: 'echo cancellation steps aside while I hear myself' }).toBe(false);
   expect((await test40()).follows).toBe('processed');
-  // Firefox's fake microphone is a steady tone, which RNNoise takes out entirely; Chromium's beeps get through an open gate.
-  if (browserName === 'chromium') await expect.poll(async () => (await test40()).level ?? 0, { message: 'my processed voice plays' }).toBeGreaterThan(0.001);
+  // Firefox's fake microphone is a steady tone, which RNNoise takes out entirely. Chromium's beeps are no voice either:
+  // RNNoise lets the first ones through, then within a second leaves about 3e-5 of them, against 1e-14 or less with
+  // nothing playing. Flaky until then, 4 in 40 (run 37887013263): it asked for 0.001, which only the first beeps reach.
+  // The level of the voice as it is follows below, with noise removal off.
+  if (browserName === 'chromium') await expect.poll(async () => (await test40()).level ?? 0, { message: 'my processed voice plays' }).toBeGreaterThan(1e-6);
   // A setting changed mid-test: the test follows the voice that would go out, here the microphone as it is.
   await alice.cuesPlayed();
   await carol.join(); // no join cue: I hear nothing but myself
