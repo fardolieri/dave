@@ -64,7 +64,15 @@ jobs:
         run: |
           # The runner's apt mirror sometimes hangs for good (2026-10-09: 45 min, the job's whole budget, on the first
           # `apt-get update`). A hang is cut short and retried; a test never is.
-          for i in 1 2 3; do timeout 7m pnpm exec playwright install --with-deps chromium firefox && exit 0; echo "browser install attempt $i failed"; sleep 15; done; exit 1
+          # `timeout` stops playwright but not the apt-get it started with sudo, which kept the dpkg lock and failed
+          # every later attempt at once (2026-10-09). That apt-get is stopped before the next attempt, a dpkg it left
+          # finishes on its own, and apt waits up to 2 min for the lock instead of failing.
+          echo 'DPkg::Lock::Timeout "120";' | sudo tee /etc/apt/apt.conf.d/99lock-timeout >/dev/null
+          for i in 1 2 3; do
+            timeout 7m pnpm exec playwright install --with-deps chromium firefox && exit 0
+            echo "browser install attempt $i failed"
+            sudo pkill -x apt-get || true; sleep 15; sudo dpkg --configure -a || true
+          done; exit 1
       - run: pnpm exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}/8 --repeat-each=${{ inputs.repeat || 1 }} ${{ inputs.grep && '-g "$E2E_GREP" --pass-with-no-tests' || '' }}
         env:
           E2E_GREP: ${{ inputs.grep }}
