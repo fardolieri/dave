@@ -30,6 +30,8 @@ const OPEN_TAKE_OVER_FALLBACK_MS = 1000;
 /** At most this many opening updates taken in a row within `OPEN_FREEZE_MS` of each other; past that the bar asks. */
 const OPEN_TAKES = 2;
 const TAKEN_KEY = 'dave.update-taken';
+/** The ms from the load to the last take, for `update_taken_on_open`: the page that takes it loads no PostHog, the next one tells. */
+const TAKEN_MS_KEY = 'dave.update-taken-ms';
 /** How long the opening check may take before the app goes on without its answer: the rooms wait for it (Daniel, 2026-10-01). */
 const OPEN_CHECK_MS = 1500;
 /** How long, from the page load, the app may stay frozen for a new version (Daniel, 2026-10-01). */
@@ -82,9 +84,26 @@ export function tabSettled(held: boolean): void {
   else if (installed) takeOpeningUpdate();
 }
 
+/**
+ * Plain mirror of `holding()`, for `whenOpened`, which index.tsx calls right after `watchForUpdates`: a signal read
+ * right after its write still gives the value before it (Solid applies writes in a batch).
+ */
+let holdingNow = false;
+/** Waiting for `whenOpened`. */
+const openedWaiters: Array<() => void> = [];
+/** Resolves once the opening update is over and this page stays; never for a page that takes it, which reloads. */
+export const whenOpened = (): Promise<void> => (!holdingNow ? Promise.resolve() : new Promise<void>((r) => { openedWaiters.push(() => r()); }));
+
 function endOpening(): void {
-  if (opening() === 'over') return;
+  if (!holdingNow) return;
+  holdingNow = false;
   setOpening('over');
+  try {
+    const ms = sessionStorage.getItem(TAKEN_MS_KEY);
+    sessionStorage.removeItem(TAKEN_MS_KEY);
+    if (ms !== null) posthog.capture('update_taken_on_open', { ms: Number(ms) });
+  } catch { /* storage blocked */ }
+  for (const w of openedWaiters.splice(0)) w();
   // Installed meanwhile but not taken (this tab waits behind another, or took it too often): its full line goes, and
   // the bar asks, once this tab runs the app.
   if (installed) { installed = false; setDownload(null); }
@@ -99,7 +118,7 @@ function takeOpeningUpdate(): void {
   try { recent = (JSON.parse(sessionStorage.getItem(TAKEN_KEY) ?? '[]') as number[]).filter((t) => now - t < OPEN_FREEZE_MS); } catch { /* storage blocked */ }
   if (recent.length >= OPEN_TAKES) { posthog.capture('update_on_open_gave_up'); endOpening(); return; }
   try { sessionStorage.setItem(TAKEN_KEY, JSON.stringify([...recent, now])); } catch { /* storage blocked */ }
-  posthog.capture('update_taken_on_open', { ms: Math.round(performance.now()) });
+  try { sessionStorage.setItem(TAKEN_MS_KEY, String(Math.round(performance.now()))); } catch { /* storage blocked */ }
   takeOver(OPEN_TAKE_OVER_FALLBACK_MS);
 }
 
@@ -111,6 +130,7 @@ export function watchForUpdates(): void {
   // The first visit has nothing older to be frozen in; every later page load starts on the version it has, and asks.
   if (container.controller) {
     setOpening('checking');
+    holdingNow = true;
     // Counted from the page load: registering can wait behind the browser's own check, which may be the slow one.
     setTimeout(() => { if (opening() === 'checking') endOpening(); }, Math.max(0, OPEN_CHECK_MS - performance.now()));
     setTimeout(() => {

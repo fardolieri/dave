@@ -23,4 +23,5 @@ export const STORED_STATE: Record<string, unknown> = {
   "IndexedDB history": {"default":[],"shape":[{"at":"number","from":{"fingerprint":"string","name":"string","publicKey":"string"},"text":"string"}],"fixtures":{"2026-09-08, before rooms":[{"from":{"publicKey":"pkA","fingerprint":"ABC123","name":"Anna"},"text":"hi","at":1757500000000}]}},
   "sessionStorage dave.tabHeld": "not parsed",
   "sessionStorage dave.update-taken": "not parsed",
+  "sessionStorage dave.update-taken-ms": "not parsed",
 };

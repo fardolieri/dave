@@ -114,6 +114,15 @@ function forgetStoredData(): void {
   }
 }
 
+/**
+ * Starts PostHog on this page load, for a browser that said yes. Called once the page is sure to stay (client/index.tsx,
+ * after the opening update): a page that reloads by itself for a new version loads no SDK, so the reload cuts nothing
+ * off. Firefox fails an import or a script a reload cuts off, and warns of each, from a page that is going anyway.
+ */
+export function startOnLoad(): void {
+  if (telemetryOn()) start();
+}
+
 /** Records this browser's answer, starts or stops PostHog accordingly, and tells the rooms (the server keeps it per socket). */
 export function setConsent(next: Consent): void {
   local.set('telemetry', next);
@@ -161,7 +170,6 @@ const posthog = {
   },
 };
 
-if (telemetryOn()) start();
-else forgetStoredData();
+if (!telemetryOn()) forgetStoredData();
 
 export default posthog;

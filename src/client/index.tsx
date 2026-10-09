@@ -1,11 +1,13 @@
 import { render } from '@solidjs/web';
 import App from './App';
-import posthog from './posthog';
+import posthog, { startOnLoad } from './posthog';
 import { installConsoleBuffer } from './log';
-import { watchForUpdates } from './update';
+import { watchForUpdates, whenOpened } from './update';
 
 installConsoleBuffer();
 watchForUpdates();
+// Not in a page about to reload onto a new version (ticket 36): its captures wait in PostHog's queue meanwhile.
+void whenOpened().then(startOnLoad);
 
 // If the reactive system halts (an uncaught error inside an effect), the page silently stops updating.
 // Say so, loudly, with a reload, and keep the error visible in the console.

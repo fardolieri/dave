@@ -169,8 +169,10 @@ test('ticket 36: a version left waiting behind the bar is taken by the next relo
   await deploy(alice, 'next');
   await expect(bar(alice.page)).toBeVisible();
 
-  // Chromium answers the reload from the running version, which takes the waiting one and loads again; Firefox lets the
-  // waiting one take over during the reload, as its last page went away, and gets there in one load. Either way:
+  // Both engines answer the reload from the running version, whose opening check takes the waiting one and loads again:
+  // Chromium after its 1 s fallback, Firefox at the controllerchange 100 to 300 ms in (counted 2026-10-09, 40 runs each).
+  // Flaky in Firefox until then, 3 in 40 (run 37887013263): that second reload cut off PostHog's SDK while the page still
+  // imported it, and Firefox warned twice of a module that failed to load. A page that takes the update loads no PostHog now.
   await alice.page.reload();
   await expect.poll(() => versionsNow(alice.page), { message: 'the reload ended on the new version' }).toEqual(['next']);
   await alice.connected();

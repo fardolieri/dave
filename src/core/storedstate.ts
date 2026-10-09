@@ -123,6 +123,7 @@ export type IdbKey = Exclude<keyof typeof IDB, 'history:<roomId>'> | `history:${
 export const SESSION = {
   'dave.tabHeld': { about: 'This tab held the tab lock, so its reload takes it back (client/tablock.ts).', parse: null, fixtures: {} },
   'dave.update-taken': { about: 'When this tab last took an update on open, to stop a reload loop (client/update.ts).', parse: null, fixtures: {} },
+  'dave.update-taken-ms': { about: 'The ms from the load to its last take of an update on open, told to PostHog by the next page (client/update.ts).', parse: null, fixtures: {} },
 } satisfies Record<string, StoredKey<string | null>>;
 
 /**
