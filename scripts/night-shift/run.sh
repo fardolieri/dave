@@ -31,6 +31,15 @@ cd "$WT" && git checkout -q --detach origin/master && git reset -q --hard && git
 since=$(cat "$STATE/last-success" 2>/dev/null || date -u -d '7 days ago' +%FT%TZ)
 prompt=$(sed -e "s|{{SINCE}}|$since|g" -e "s|{{TODAY}}|$today|g" -e "s|{{STATE}}|$STATE|g" "$WT/scripts/night-shift/prompt.md")
 
+# A day session refreshing the shared OAuth token at the same moment makes a new process fail to start (first night,
+# 2026-10-09: the agent hung for two hours, then exited on the refresh error). Check that the CLI answers before the run.
+ok=
+for attempt in 1 2 3 4 5; do
+  if timeout 3m claude -p "Reply with the word ready." --model claude-haiku-4-5-20251001 2>&1 | grep -qi ready; then ok=1; break; fi
+  echo "preflight $attempt failed; retrying in 2 min"; sleep 120
+done
+[ -n "$ok" ] || { echo "the claude CLI never answered; giving up tonight"; exit 1; }
+
 start=$(date -u +%FT%TZ)
 timeout 4h nice -n 10 claude -p "$prompt" --model claude-opus-5-5 --permission-mode bypassPermissions --output-format text
 code=$?
