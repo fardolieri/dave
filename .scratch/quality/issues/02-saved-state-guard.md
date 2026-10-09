@@ -1,6 +1,6 @@
 # 02 · Saved-state guard: a changed default or stored shape cannot slip through unnoticed
 
-Status: shipped 2026-10-08 to master (d1d42a9, PR #27)
+Status: shipped 2026-10-08 to master (d1d42a9, PR #27), 2026-10-09 to prod
 Type: task
 
 ## Why

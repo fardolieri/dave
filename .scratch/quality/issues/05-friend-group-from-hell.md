@@ -1,6 +1,6 @@
 # 05 · The friend group from hell: a nightly chaos soak
 
-Status: shipped 2026-10-09 to master (830bd71, PR #34)
+Status: shipped 2026-10-09 to master (830bd71, PR #34), 2026-10-09 to prod
 Type: task
 
 ## Why

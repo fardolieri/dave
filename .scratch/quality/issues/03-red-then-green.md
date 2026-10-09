@@ -1,6 +1,6 @@
 # 03 · Red-then-green receipt: CI proves a regression test catches its bug
 
-Status: shipped 2026-10-08 to master (b21230d, PR #28)
+Status: shipped 2026-10-08 to master (b21230d, PR #28), 2026-10-09 to prod
 Type: task
 
 ## Why

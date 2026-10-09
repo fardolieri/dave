@@ -1,6 +1,6 @@
 # 01 · Foundation: one definition of done, a gated prod, sessions that know the machine
 
-Status: shipped 2026-10-08 to master (cea9a36), gate fixed in a follow-up the same day
+Status: shipped 2026-10-08 to master (cea9a36), 2026-10-09 to prod, gate fixed in a follow-up the same day
 Type: task
 
 ## Goal

@@ -1,6 +1,6 @@
 # 07 · Night shift: problem reports become failing tests overnight
 
-Status: shipped 2026-10-08 to master (e925593, PR #26); first run the night of 2026-10-09
+Status: shipped 2026-10-08 to master (e925593, PR #26), 2026-10-09 to prod; first run the night of 2026-10-09
 Type: task
 
 ## Why

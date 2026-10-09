@@ -1,6 +1,6 @@
 # 06 · Video receipts: every UI change filmed in CI, viewable on the phone
 
-Status: shipped 2026-10-08 to master (814d5f4, PR #23)
+Status: shipped 2026-10-08 to master (814d5f4, PR #23), 2026-10-09 to prod
 Type: task
 
 ## Why

@@ -1,6 +1,6 @@
 # 04 · Invariants: the app notices when its UI contradicts reality
 
-Status: shipped 2026-10-08 to master (d9b7cdd, PR #24)
+Status: shipped 2026-10-08 to master (d9b7cdd, PR #24), 2026-10-09 to prod
 Type: task
 
 ## Why
