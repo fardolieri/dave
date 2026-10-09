@@ -85,7 +85,12 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Browsers
+        timeout-minutes: 25
+        run: |
+          # The runner's apt mirror sometimes hangs for good (2026-10-09: 45 min, the job's whole budget, on the first
+          # `apt-get update`). A hang is cut short and retried; a test never is.
+          for i in 1 2 3; do timeout 7m pnpm exec playwright install --with-deps chromium && exit 0; echo "browser install attempt $i failed"; sleep 15; done; exit 1
       - run: command -v ffmpeg || sudo apt-get install -y --no-install-recommends ffmpeg
       # A failed test is still filmed up to where it failed and published: the comment says which. The PR's own side fails
       # the job at the end; master's side may fail where the PR adds a receipt for something master does not have.

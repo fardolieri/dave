@@ -59,7 +59,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Both engines in both jobs: a few tests put a Chromium sharer in front of a Firefox viewer or mix engines in one call.
-      - run: pnpm exec playwright install --with-deps chromium firefox
+      - name: Browsers
+        timeout-minutes: 25
+        run: |
+          # The runner's apt mirror sometimes hangs for good (2026-10-09: 45 min, the job's whole budget, on the first
+          # `apt-get update`). A hang is cut short and retried; a test never is.
+          for i in 1 2 3; do timeout 7m pnpm exec playwright install --with-deps chromium firefox && exit 0; echo "browser install attempt $i failed"; sleep 15; done; exit 1
       - run: pnpm exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}/8 --repeat-each=${{ inputs.repeat || 1 }} ${{ inputs.grep && '-g "$E2E_GREP" --pass-with-no-tests' || '' }}
         env:
           E2E_GREP: ${{ inputs.grep }}

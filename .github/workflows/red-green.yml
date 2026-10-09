@@ -45,7 +45,12 @@ jobs:
         run: pnpm install --frozen-lockfile
       # Firefox too: a few tests mix the engines in one call.
       - if: steps.plan.outputs.e2e == 'true'
-        run: pnpm exec playwright install --with-deps chromium firefox
+        name: Browsers
+        timeout-minutes: 25
+        run: |
+          # The runner's apt mirror sometimes hangs for good (2026-10-09: 45 min on the first `apt-get update`). A hang is
+          # cut short and retried; a test never is.
+          for i in 1 2 3; do timeout 7m pnpm exec playwright install --with-deps chromium firefox && exit 0; echo "browser install attempt $i failed"; sleep 15; done; exit 1
       - if: steps.plan.outputs.run == 'true'
         timeout-minutes: 35
         run: node scripts/red-green.mjs run
