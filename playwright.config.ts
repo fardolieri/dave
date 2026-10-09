@@ -17,8 +17,9 @@ const ci = !!process.env['CI'];
 
 export default defineConfig({
   testDir: 'e2e',
-  // The filmed tour (playwright.receipts.config.ts) is not a test of its own.
-  testIgnore: '**/receipts/**',
+  // The filmed tour (playwright.receipts.config.ts) is not a test of its own; the nightly soak (playwright.soak.config.ts)
+  // runs on its own schedule.
+  testIgnore: ['**/receipts/**', '**/soak/**'],
   timeout: 120_000 * slow,
   expect: { timeout: 20_000 * slow },
   // Every test gets rooms of its own (fixtures.ts) and stages deploys through its own cookies (update.spec.ts), so any two can

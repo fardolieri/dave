@@ -1,0 +1,120 @@
+name: soak
+# The friend group from hell (quality ticket 05): four friends, Chromium and Firefox mixed, take seeded random actions in one
+# room for a quarter of an hour while everything they see is checked against a model (e2e/soak/, playwright.soak.config.ts).
+#   - every night at 01:00 UTC against nightly, three shards with seeds of their own, each runner on its own IP: nightly
+#     limits socket upgrades per IP (wrangler.jsonc), and the soak keeps to a few a minute
+#   - by hand from the Actions tab: replay a seed (with its step count) or a reported action list, or soak a branch's local
+#     build (target `local`)
+# A failing shard replays its list in fresh rooms, shrinks it to a shorter one that fails the same way and traces that. The
+# report, the trace and the socket frames are kept as an artifact, and the `issue` job opens an issue labelled `soak` (or
+# comments on the open one with the same list). The release gate is e2e.yml's alone: this writes no commit status and shares
+# no concurrency group with e2e or deploy.
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "nightly, local (a build of the chosen branch), or the URL of a deployed copy"
+        default: nightly
+        required: true
+      seed:
+        description: "replay one seed (one shard); empty for random seeds"
+        default: ""
+      steps:
+        description: "exactly this many steps of the seed; empty to run for `minutes`"
+        default: ""
+      minutes:
+        description: "how long each shard soaks (at most 30)"
+        default: "15"
+      actions:
+        description: "replay exactly this action list, e.g. from an issue (one shard)"
+        default: ""
+      shrink:
+        description: "minutes a failing shard may spend shrinking its list; 0 skips it"
+        default: "20"
+      issue:
+        description: "open or update a `soak` issue when a shard fails"
+        type: boolean
+        default: true
+permissions:
+  contents: read
+jobs:
+  soak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON((inputs.seed || inputs.actions) && '[1]' || '[1, 2, 3]') }}
+    env:
+      E2E_URL: ${{ (inputs.target || 'nightly') != 'local' && (inputs.target || 'nightly') || '' }}
+      SOAK_TARGET: ${{ inputs.target || 'nightly' }}
+      SOAK_STEPS: ${{ inputs.steps }}
+      SOAK_MINUTES: ${{ inputs.minutes || '15' }}
+      SOAK_ACTIONS: ${{ inputs.actions }}
+      SOAK_SHRINK_MINUTES: ${{ inputs.shrink || '20' }}
+      SOAK_COMMIT: ${{ github.sha }}
+      SOAK_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Browsers
+        timeout-minutes: 25
+        run: |
+          # The runner's apt mirror sometimes hangs for good (e2e.yml): a hang is cut short and retried; the soak never is.
+          for i in 1 2 3; do timeout 7m pnpm exec playwright install --with-deps chromium firefox && exit 0; echo "browser install attempt $i failed"; sleep 15; done; exit 1
+      # A seed of its own per shard and night, unless one was given.
+      - name: Soak
+        run: |
+          export SOAK_SEED="${SEED:-$(( (GITHUB_RUN_ID % 1000000) * 10 + ${{ matrix.shard }} ))}"
+          echo "seed $SOAK_SEED"
+          pnpm exec playwright test -c playwright.soak.config.ts
+        env:
+          SEED: ${{ inputs.seed }}
+      - if: failure()
+        run: test -f soak-out/report.md && cat soak-out/report.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: soak-${{ matrix.shard }}-${{ github.run_id }}
+          path: |
+            soak-out
+            soak-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+  issue:
+    needs: soak
+    if: failure() && (github.event_name == 'schedule' || inputs.issue)
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: soak-*
+          path: artifacts
+      # Reports only: the artifacts also hold traces and socket frames, which stay in the artifact.
+      - name: Was nightly redeployed meanwhile?
+        id: deployed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          started=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .run_started_at)
+          urls=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?branch=master&created=>=$started" --jq '[.workflow_runs[].html_url] | join(", ")')
+          echo "urls=$urls" >> "$GITHUB_OUTPUT"
+      - run: node scripts/soak-issue.mjs artifacts/*/soak-out
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DEPLOYED: ${{ steps.deployed.outputs.urls }}
