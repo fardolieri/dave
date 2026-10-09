@@ -94,6 +94,20 @@ type Peer = {
   srdAnswerPending: boolean;
   /** Their join sequence when presence last listed them: a new one means their server socket came back (see resendOffer). */
   joinSeq: number | null;
+  /** How often their server socket came back while this connection lasted (see resendOffer). */
+  returns: number;
+  /**
+   * This connection's id, and theirs once a description of theirs is applied. Every description carries both, so one
+   * meant for a connection that is gone is told apart (onSignalNow).
+   */
+  id: string;
+  remoteId: string | null;
+  /** Offers made on this connection; each goes out with its number, and an answer repeats the number it answers. */
+  offerN: number;
+  /** The number of the offer of theirs last applied, repeated in my answer to it. */
+  answerN: number | undefined;
+  /** The offer that last went out: its number, on which of my sockets, and after how many returns of theirs (resendOffer). */
+  offerSent: { n: number; socket: number; returns: number } | null;
   /** Plays the gain-adjusted voice; sink-selectable. */
   audio: HTMLAudioElement;
   /** Chrome only feeds a remote track into WebAudio while some media element plays it, so the raw track stays attached here, muted. */
@@ -241,6 +255,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   let iceIssuedAt = 0;
   /** Counts RTCPeerConnections built in this tab; the dev hook shows it so a driver can tell a rebuild from a renegotiation. */
   let generation = 0;
+  /** Counts the times the room socket came up; an offer remembers on which one it went out (resendOffer). */
+  let socketEpoch = 0;
   const hasTurn = () => iceServers.some((s) => [s.urls].flat().some((u) => String(u).startsWith('turn')));
   let myJoinSeq: number | null = null;
   let audioCtx: AudioContext | null = null;
@@ -810,7 +826,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     keepAlive.muted = true;
     const { closed, close: markClosed } = closeLatch();
     const peer: Peer = {
-      key, name, pc, closed, markClosed, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, joinSeq: untrack(room.people).find((p) => p.publicKey === key && p.role === 'participant')?.joinSeq ?? null, audio, keepAlive, audioNodes: [], restarts: 0, relayOnly, generation: ++generation,
+      key, name, pc, closed, markClosed, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, joinSeq: untrack(room.people).find((p) => p.publicKey === key && p.role === 'participant')?.joinSeq ?? null,
+      returns: 0, id: crypto.randomUUID().replaceAll('-', ''), remoteId: null, offerN: 0, answerN: undefined, offerSent: null, audio, keepAlive, audioNodes: [], restarts: 0, relayOnly, generation: ++generation,
       view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1, shareVolume: untrack(shareVolumes)[key] ?? 1, rttMs: null },
       viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, sendsRed: false, sendsFec: true, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, framesDecoded: null, framesGrewAt: null, holdOpening: false, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
@@ -966,6 +983,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     try {
       peer.makingOffer = true;
       await peer.pc.setLocalDescription();
+      peer.offerN++;
       await sendDescription(peer);
     } catch (e) {
       console.warn('negotiationneeded failed', e);
@@ -990,13 +1008,19 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
    * for good: no later negotiation starts (renegotiateVoice waits forever, an ICE restart never goes out), though the
    * voice keeps flowing on what was agreed before. Seen on nightly (2026-10-08): the Room dropped both sockets the moment
    * Alice switched low bandwidth voice off, and her voice stayed low. So the offer is sent again once both sockets can
-   * carry it: after my own reconnect, and when they come back with a new join sequence. An offer they did get, whose
-   * answer was lost, is applied again and answered again; the answer that comes second is dropped in onSignalNow.
+   * carry it: after my own reconnect, and when they come back (presence lists them again, or with a new join sequence:
+   * the last to join gets the same one back); not twice on one socket of mine between two returns of theirs (both
+   * happen in one reconnect when both sockets dropped). An offer they did get,
+   * whose answer was lost, is applied again and answered again: its answers carry its number, and one that comes when
+   * a newer offer waits is dropped in onSignalNow. One that reaches a page of theirs that reloaded meanwhile is dropped
+   * there too: it names a connection of theirs that is gone.
    */
-  function resendOffer(peer: Peer): void {
+  function resendOffer(peer: Peer, why: 'own_reconnect' | 'their_return'): void {
     if (peers.get(peer.key) !== peer || peer.makingOffer || peer.pc.signalingState !== 'have-local-offer') return;
-    posthog.capture('offer_resent');
-    void sendDescription(peer);
+    const sent = peer.offerSent;
+    if (sent && sent.n === peer.offerN && sent.socket === socketEpoch && sent.returns === peer.returns) return;
+    posthog.capture('offer_resent', { why });
+    sendDescription(peer).catch((e) => console.warn('offer resend failed', e));
   }
 
   /**
@@ -1006,6 +1030,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   async function sendDescription(peer: Peer): Promise<void> {
     const own = peer.pc.localDescription;
     if (!own) return;
+    const n = own.type === 'offer' ? peer.offerN : peer.answerN;
     const description = { type: own.type, sdp: voiceSdp(own.sdp) };
     const sig = await signDescription({ privateKey: identity.keys.privateKey, from: myKey, to: peer.key, sdp: description.sdp });
     if (!sig) {
@@ -1014,7 +1039,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       posthog.capture('signal_unsignable', { type: description.type });
       return;
     }
-    room.send({ t: 'signal', to: peer.key, data: { description: { type: description.type, sdp: description.sdp }, sig } });
+    const went = room.send({ t: 'signal', to: peer.key, data: {
+      description: { type: description.type, sdp: description.sdp }, sig, conn: peer.id, ...(peer.remoteId ? { forConn: peer.remoteId } : {}), ...(n !== undefined ? { n } : {}),
+    } });
+    if (own.type === 'offer') peer.offerSent = went && n !== undefined ? { n, socket: socketEpoch, returns: peer.returns } : null;
   }
 
   function flushCandidates(peer: Peer): void {
@@ -1044,6 +1072,27 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       }
     }
     let peer = peers.get(from);
+    const self = untrack(room.people).find((p) => p.publicKey === myKey);
+    const them = untrack(room.people).find((p) => p.publicKey === from && p.role === 'participant');
+    /** Whether presence makes me the one to offer to them first (core/mesh.ts); false while either is unknown. */
+    const iOffer = () => !!self && !!them && initiatesTo({ ...self, joinSeq: myJoinSeq }, them);
+    if (isOffer && data.forConn !== undefined && (peer ? peer.id !== data.forConn : iOffer())) {
+      // A renegotiation of a connection of mine that is gone: an offer sent again (resendOffer) that reached this page
+      // after a reload, or my connection was rebuilt since. Taken up, it would tie my connection to one of theirs that
+      // is closed. Their new connection, or mine, offers afresh: a page that reloaded joined last and offers itself.
+      // With no connection to them and not the one to offer, I take it up as before (an ICE restart of theirs after
+      // mine failed): nobody else would offer.
+      posthog.capture('signal_dropped', { reason: 'stale offer', offer: true });
+      return;
+    }
+    if (peer && isOffer && data.forConn === undefined && !peer.pc.remoteDescription && peer.pc.localDescription && self && them) {
+      // Both of us hold a connection that offered and got nothing back: one first offer is left over from before a
+      // reload or a reconnect of the other (sent again by resendOffer, or late). Presence says who offers first now
+      // (core/mesh.ts); politeness would not do, as the polite side would take up the stale one. The one to offer
+      // drops theirs; the other starts over from it.
+      if (iOffer()) { posthog.capture('signal_dropped', { reason: 'offer to the offerer', offer: true }); return; }
+      if (initiatesTo(them, { ...self, joinSeq: myJoinSeq })) { closePeer(from); peer = undefined; }
+    }
     if (peer && isOffer && (peer.view.serverLost || peer.pc.iceConnectionState === 'failed' || peer.pc.connectionState === 'closed'
       || isFreshConnection(peer.pc.remoteDescription?.sdp, (data.description as RTCSessionDescriptionInit).sdp ?? ''))) {
       // A fresh offer from a peer whose old connection is dead, who vanished and came back, or who built a new connection
@@ -1065,11 +1114,19 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     try {
       if (data.description) {
         const description = data.description as RTCSessionDescriptionInit;
-        if (description.type === 'answer' && pc.signalingState === 'stable') return; // a second answer to a resent offer (resendOffer)
+        // An answer counts only for the offer it answers: one to an older offer (a second answer to an offer sent again,
+        // resendOffer) would put stale ICE credentials on the newer one, and the real answer would then find no offer.
+        // An answer without a number comes from a build before numbers and is taken as before.
+        if (description.type === 'answer' && (pc.signalingState !== 'have-local-offer' || (data.n !== undefined && data.n !== peer.offerN) || (data.forConn !== undefined && data.forConn !== peer.id))) {
+          posthog.capture('signal_dropped', { reason: 'stale answer', offer: false });
+          return;
+        }
         const collision = description.type === 'offer' && (peer.makingOffer || (pc.signalingState !== 'stable' && !peer.srdAnswerPending));
         peer.ignoreOffer = !peer.polite && collision;
         if (peer.ignoreOffer) return;
         peer.srdAnswerPending = description.type === 'answer';
+        if (data.conn) peer.remoteId = data.conn;
+        if (description.type === 'offer') peer.answerN = data.n;
         peer.asksLowVoice = asksLowVoice(description.sdp ?? '');
         // My encoder reads its bitrate, packet length, FEC flag and codec order from this description: rewritten, it obeys my settings too.
         const applied = { type: description.type, sdp: voiceSdp(description.sdp ?? '') };
@@ -1380,12 +1437,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       if (p.publicKey === myKey || p.role !== 'participant') continue;
       const existing = peers.get(p.publicKey);
       if (existing) {
+        // Their socket came back: what I sent while it was down never reached them.
+        const back = existing.view.serverLost || (existing.joinSeq !== null && existing.joinSeq !== p.joinSeq);
         if (existing.view.serverLost) { clearTimeout(existing.graceTimer); setView(existing, { serverLost: false, name: p.name }); }
-        if (existing.joinSeq !== p.joinSeq) {
-          const back = existing.joinSeq !== null;
-          existing.joinSeq = p.joinSeq;
-          if (back) resendOffer(existing); // their socket came back: what I sent while it was down never reached them
-        }
+        existing.joinSeq = p.joinSeq;
+        if (back) { existing.returns++; resendOffer(existing, 'their_return'); }
         // Their share ended: my subscription is void, the tile goes back to "click to watch" (spec §6.5).
         if (!p.sharing) { watchIntent.delete(p.publicKey); if (existing.view.watching) setView(existing, { watching: false, shareLive: false, shareKbps: 0, shareFormat: null }); }
         continue;
@@ -1416,6 +1472,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   // Re-declare after our own server reconnect (spec §8.1): peer connections stay, join sequence is fresh.
   createEffect(() => room.status().kind, (kind, prev) => {
+    if (kind === 'connected') socketEpoch++;
     if (kind === 'connected' && prev !== undefined && prev !== 'connected' && joined) void redeclareAfterReconnect();
     if (kind === 'elsewhere' && joined) leave(); // another tab took over; this one is no longer in the call, and the marker goes
     if (kind === 'connected' && pendingRejoin) { const r = pendingRejoin; pendingRejoin = null; void join(r); }
@@ -1432,7 +1489,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       if (s === 'failed' || s === 'disconnected' || s === 'closed') closePeer(peer.key);
     }
     reconcile(room.people());
-    for (const peer of peers.values()) resendOffer(peer); // an offer on my old socket may be lost with it
+    for (const peer of peers.values()) resendOffer(peer, 'own_reconnect'); // an offer on my old socket may be lost with it
     reassertSubscriptions(); // re-ask for any watched share the reconnect dropped (spec §6.5)
   }
 

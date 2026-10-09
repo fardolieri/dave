@@ -30,8 +30,14 @@ export type IceServer = { urls: string | string[]; username?: string; credential
  * Opaque WebRTC signaling payload, relayed untouched between two participants. Candidates travel batched.
  * `sig` is the sender's identity signature over the description's DTLS fingerprints (ADR 0004);
  * the server passes it through and only the receiving client checks it.
+ * `conn`, `forConn` and `n` go with a description: the sender's connection, the receiver's connection as the sender knows
+ * it (absent in a connection's first offer), and the offer's number (an answer repeats the number of the offer it answers).
+ * They let a description meant for another connection, or an answer to an older offer, be told apart and dropped
+ * (client/call.ts, onSignalNow). They stay outside the signature: a server that rewrites them can only get a description
+ * dropped, which blocks a call, and a server can block a call anyway by not relaying it.
  */
-export type SignalData = { description?: unknown; sig?: string; candidates?: unknown[] };
+export type SignalData = { description?: unknown; sig?: string; candidates?: unknown[]; conn?: string; forConn?: string; n?: number };
+const CONN_ID = /^[A-Za-z0-9_-]{1,32}$/;
 export const MAX_CANDIDATES_PER_MESSAGE = 64;
 
 export type ClientMessage =
@@ -219,6 +225,16 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
         if ('sig' in d) {
           if (!b64(d.sig)) return invalid('unrecognised message');
           data.sig = d.sig;
+        }
+        for (const k of ['conn', 'forConn'] as const) {
+          if (!(k in d)) continue;
+          const id = d[k];
+          if (typeof id !== 'string' || !CONN_ID.test(id)) return invalid('unrecognised message');
+          data[k] = id;
+        }
+        if ('n' in d) {
+          if (!Number.isSafeInteger(d.n) || (d.n as number) < 0) return invalid('unrecognised message');
+          data.n = d.n as number;
         }
       }
       if ('candidates' in d) {
