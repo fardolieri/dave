@@ -296,3 +296,40 @@ test('a friend whose server socket drops and comes back while the voice stays up
   expect(await alice.cuesPlayed(), 'Alice hears no cue for Bob').toEqual([]);
   expect(await bob.cuesPlayed(), 'Bob hears no cue for Alice').toEqual([]);
 });
+
+test('a server restart that drops every socket plays no leave or join cue while the call itself stays up', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { picture: '😀' });
+  const bob = await crowd.open('Bob', { picture: '🦊' });
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await bob.connectedTo('Alice');
+  await needHooks(alice);
+  // Cues only play on a running AudioContext. Headless Firefox on a runner without a sound device never gets one.
+  const context = await alice.hook<{ context: string | null }>('playback').then((p) => p.context);
+  test.skip(context !== 'running', `no running AudioContext here (${context}), so no cue can play`);
+  await expect.poll(async () => (await alice.cuesPlayed()).length + (await bob.cuesPlayed()).length, { message: 'the join cues are done' }).toBe(0);
+
+  // The Room goes away for everyone at once (a deploy restarts it), and the friends come back one after the other. The
+  // first presence Alice gets back lists her as a visitor and Bob not at all: her own call is not re-declared yet.
+  await Promise.all([alice.wire.cut(), bob.wire.cut()]);
+  await expect(alice.banner).toContainText(/Reconnecting|Server unavailable/);
+  await expect(bob.banner).toContainText(/Reconnecting|Server unavailable/);
+  const declared = alice.wire.frames('down', 'call').length;
+  alice.wire.restore();
+  await alice.connected();
+  await expect(alice.banner).toHaveCount(0);
+  // Alice is back in the call on the server before Bob's socket returns.
+  await expect.poll(() => alice.wire.frames('down', 'call').length, { message: 'Alice declares her join again' }).toBeGreaterThan(declared);
+  await alice.page.waitForTimeout(2000);
+  bob.wire.restore();
+  await bob.connected();
+  await expect.poll(() => alice.inCall()).toEqual(['Alice', 'Bob']);
+  await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
+  await expect(alice.badge('Bob')).toHaveText('direct');
+  await bob.page.waitForTimeout(2000); // a cue triggered by the last presence would be playing by now
+
+  // The voice never stopped, so nobody left and nobody came back.
+  expect(await alice.cuesPlayed(), 'Alice, back first, hears no cue for Bob').toEqual([]);
+  expect(await bob.cuesPlayed(), 'Bob hears no cue for Alice').toEqual([]);
+});
