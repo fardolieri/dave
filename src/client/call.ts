@@ -257,6 +257,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   let generation = 0;
   /** Counts the times the room socket came up; an offer remembers on which one it went out (resendOffer). */
   let socketEpoch = 0;
+  /** The room socket my join went out on: the server has me in the call there, so signals may go (sendSignal). */
+  let callSocket: number | null = null;
   const hasTurn = () => iceServers.some((s) => [s.urls].flat().some((u) => String(u).startsWith('turn')));
   let myJoinSeq: number | null = null;
   let audioCtx: AudioContext | null = null;
@@ -1039,10 +1041,23 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       posthog.capture('signal_unsignable', { type: description.type });
       return;
     }
-    const went = room.send({ t: 'signal', to: peer.key, data: {
+    const went = sendSignal(peer.key, {
       description: { type: description.type, sdp: description.sdp }, sig, conn: peer.id, ...(peer.remoteId ? { forConn: peer.remoteId } : {}), ...(n !== undefined ? { n } : {}),
-    } });
+    });
     if (own.type === 'offer') peer.offerSent = went && n !== undefined ? { n, socket: socketEpoch, returns: peer.returns } : null;
+  }
+
+  /**
+   * A signal goes out only on a socket the server has me in the call on. One that comes back is open before the server
+   * lets me in, and I am a visitor to it until my join: a signal written meanwhile was refused as "not in the call" (nightly,
+   * 2026-10-10), and an offer refused so counted as sent. Held back here it is lost as on a dropped socket, and made up
+   * for the same way: my offer still unanswered is sent again once my join is answered (redeclareAfterReconnect), with
+   * the candidates gathered so far in its description, and their offer I would have answered comes again when presence
+   * lists me back (their resendOffer). Frames on one socket are handled in order, so a signal written after the join
+   * finds me in the call. The same holds for a request for fresh TURN credentials (requestIce).
+   */
+  function sendSignal(to: string, data: SignalData): boolean {
+    return callSocket === socketEpoch && room.send({ t: 'signal', to, data });
   }
 
   function flushCandidates(peer: Peer): void {
@@ -1050,7 +1065,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (!peer.outgoingCandidates.length) return;
     const candidates = peer.outgoingCandidates.splice(0, 64);
     if (candidates.some((c) => typeof (c as { candidate?: string } | null)?.candidate === 'string' && (c as { candidate: string }).candidate.includes(' relay '))) posthog.capture('relay_candidate_gathered');
-    room.send({ t: 'signal', to: peer.key, data: { candidates } });
+    sendSignal(peer.key, { candidates });
     if (peer.outgoingCandidates.length) peer.candidateTimer = setTimeout(() => flushCandidates(peer), 0);
   }
 
@@ -1353,7 +1368,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     peer.pc.restartIce();
   }
 
-  const requestIce = () => awaitReply('ice', () => room.send({ t: 'ice' }), 5000);
+  /** Only in the call on this socket, as signals (sendSignal); otherwise the old credentials do until the next restart. */
+  const requestIce = () => (callSocket === socketEpoch ? awaitReply('ice', () => room.send({ t: 'ice' }), 5000) : Promise.resolve(null));
 
   async function refreshStats(peer: Peer): Promise<void> {
     if (peer.pc.connectionState === 'closed') return;
@@ -1473,6 +1489,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   // Re-declare after our own server reconnect (spec §8.1): peer connections stay, join sequence is fresh.
   createEffect(() => room.status().kind, (kind, prev) => {
     if (kind === 'connected') socketEpoch++;
+    if (kind !== 'connected') callSocket = null; // not let in on the next socket yet
     if (kind === 'connected' && prev !== undefined && prev !== 'connected' && joined) void redeclareAfterReconnect();
     if (kind === 'elsewhere' && joined) leave(); // another tab took over; this one is no longer in the call, and the marker goes
     if (kind === 'connected' && pendingRejoin) { const r = pendingRejoin; pendingRejoin = null; void join(r); }
@@ -1494,7 +1511,9 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   async function declareJoin(): Promise<Extract<ServerMessage, { t: 'call' }> | null> {
-    const m = await awaitReply('call', () => room.send({ t: 'join', muted: muted() || !voiceTrack || testing !== null, sharing: shareVideo !== null }), 8000);
+    const m = await awaitReply('call', () => {
+      if (room.send({ t: 'join', muted: muted() || !voiceTrack || testing !== null, sharing: shareVideo !== null })) callSocket = socketEpoch;
+    }, 8000);
     if (m) { myJoinSeq = m.joinSeq; iceServers = m.iceServers; iceIssuedAt = m.issuedAt; }
     return m;
   }
@@ -1663,6 +1682,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     posthog.capture('call_left');
     stopShare(false); // the server clears the sharing flag on leave
     room.send({ t: 'leave' });
+    callSocket = null;
     for (const key of [...peers.keys()]) closePeer(key);
     stuckAttempts.clear();
     watchIntent.clear(); // joining again starts with every tile at "click to watch", not with yesterday's subscriptions
