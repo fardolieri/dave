@@ -127,6 +127,38 @@ test('a late second answer to an offer sent again is never applied to a newer of
   await bob.hearing('Alice');
 });
 
+test('an offer made while my socket comes back goes out once I am in the call again, and only then', async ({ crowd }) => {
+  // Nightly, 2026-10-10 (the two tests above, Firefox): "dropped signal not in the call" in Alice's console. A socket that
+  // comes back is open before the server has let her in, and she is a visitor to it until her join: a signal written
+  // meanwhile reaches the server as a visitor's and is refused.
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  const ufrag = (await peerOf(bob))?.remoteUfrag;
+
+  // What the server says to Alice from its welcome on is held at the wire: her new socket is open, the server has let her
+  // in, she does not know yet. Her connection to Bob restarts ICE meanwhile, as it does by itself when the path falters.
+  const held: string[] = [];
+  alice.wire.down = (frame) => (frame.includes('"t":"welcome"') || held.length > 0 ? (held.push(frame), null) : frame);
+  await alice.wire.cut();
+  alice.wire.restore();
+  await expect.poll(() => held.length, { message: 'the server lets Alice in again' }).toBeGreaterThan(0);
+  await alice.hook('restartIce', 'Bob');
+  await expect.poll(async () => (await peerOf(alice))?.signaling, { message: 'Alice makes the offer' }).toBe('have-local-offer');
+  await alice.page.waitForTimeout(500); // an offer is signed before it goes out: time for it to go, if it goes
+  alice.wire.down = null;
+  for (const f of held) alice.wire.deliver(f);
+  await alice.connected();
+
+  await expect.poll(async () => (await peerOf(bob))?.remoteUfrag, { message: "Bob holds Alice's credentials from the restart" }).not.toBe(ufrag);
+  await expect.poll(async () => (await peerOf(alice))?.signaling, { message: 'Alice got the answer' }).toBe('stable');
+  await alice.hearing('Bob');
+  await bob.hearing('Alice');
+});
+
 for (const polite of [true, false]) for (const newest of [true, false]) {
   const who = `the ${polite ? 'polite' : 'impolite'} side reloads, ${newest ? 'the last to join' : 'the first to join'}`;
   test(`an offer stuck for a friend who then reloads leaves their new connection alone (${who})`, async ({ crowd }) => {
