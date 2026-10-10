@@ -119,3 +119,11 @@ Never a longer timeout or another retry without the cause.
   caught an early beep. Test fixed (c6f2ffa, PR #30).
 - Firefox, opening update: PostHog's script was cut off by the app's own reload onto a new version. PostHog now starts
   only once the page is staying (3c629ba, PR #30).
+
+2026-10-10, nightly for e13e1f7 failed the gate on two Firefox resilience tests (flaky: "an offer lost with a dropped
+socket…" and "a late second answer…", run 38063722905), both on Alice's console line "dropped signal not in the call".
+A real app bug: a socket that comes back is open before the server lets her in, and she is a visitor until her join, so
+a signal written in that window (a round trip to nightly wide) was refused, and a refused offer counted as sent. Signals
+(and TURN credential requests) now go out only on the socket the join went out on; held ones are made up for by the
+resend after the join. Regression test: "an offer made while my socket comes back…" holds the welcome at the wire
+(branch fix/signal-before-rejoin). A test that fails on its console alone now keeps the wire log too.
