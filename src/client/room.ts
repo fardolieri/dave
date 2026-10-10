@@ -48,6 +48,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const push = (line: { kind: 'text'; id: string; from: Identity; text: string; at: number } | { kind: 'system'; text: string; at: number }) =>
     setLines((l) => [...l, 'id' in line ? (line as ChatLine) : ({ ...line, id: `sys-${nextId++}` } as ChatLine)]);
   let ws: WebSocket | null = null;
+  /** The socket the server has let in (its welcome came), and how many sockets it has let in so far. */
+  let welcomed: WebSocket | null = null;
+  let welcomes = 0;
   let attempt = 0;
   let downSince: number | null = null;
   let everConnected = false;
@@ -58,9 +61,12 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   let pingTimer: ReturnType<typeof setInterval> | undefined;
   let unavailableTimer: ReturnType<typeof setTimeout> | undefined;
 
-  /** Write a frame if the socket is open; returns whether it went out, so a caller can re-assert what was dropped. */
+  /**
+   * Write a frame if the socket is open and let in; returns whether it went out, so a caller can re-assert what was dropped.
+   * Before the welcome the server takes any frame but the auth for a stranger's, and its error for a wrong invite link.
+   */
   const send = (m: ClientMessage): boolean => {
-    if (ws?.readyState !== WebSocket.OPEN) return false;
+    if (ws?.readyState !== WebSocket.OPEN || welcomed !== ws) return false;
     ws.send(JSON.stringify(m));
     return true;
   };
@@ -91,6 +97,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           return;
         }
         case 'welcome':
+          welcomed = socket;
+          welcomes++;
           attempt = 0;
           setYou(m.you);
           // An answer changed while the handshake ran was not sent then (see onConsentChange below): say it now.
@@ -143,6 +151,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     socket.onclose = (e) => {
       clearInterval(pingTimer);
       if (ws === socket) ws = null;
+      if (welcomed === socket) welcomed = null;
       setYou(null);
       if (stopped) return;
       posthog.capture('server_socket_closed', { code: e.code, ever_connected: everConnected });
@@ -199,6 +208,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     /** The room is on screen: nothing in it is unread. */
     markRead: () => setUnread(0),
     send,
+    /** Counts the sockets the server has let in; read without waiting for any effect, so a frame can name its socket. */
+    welcomes: () => welcomes,
     sendText: (text: string) => { send({ t: 'text', text }); posthog.capture('message_sent'); },
     /** Empties the local history; the server never had it. */
     clearHistory: async () => { await clearHistory(opts.roomId); setLines([]); },

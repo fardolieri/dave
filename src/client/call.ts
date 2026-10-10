@@ -255,8 +255,6 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   let iceIssuedAt = 0;
   /** Counts RTCPeerConnections built in this tab; the dev hook shows it so a driver can tell a rebuild from a renegotiation. */
   let generation = 0;
-  /** Counts the times the room socket came up; an offer remembers on which one it went out (resendOffer). */
-  let socketEpoch = 0;
   /** The room socket my join went out on: the server has me in the call there, so signals may go (sendSignal). */
   let callSocket: number | null = null;
   const hasTurn = () => iceServers.some((s) => [s.urls].flat().some((u) => String(u).startsWith('turn')));
@@ -1020,7 +1018,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   function resendOffer(peer: Peer, why: 'own_reconnect' | 'their_return'): void {
     if (peers.get(peer.key) !== peer || peer.makingOffer || peer.pc.signalingState !== 'have-local-offer') return;
     const sent = peer.offerSent;
-    if (sent && sent.n === peer.offerN && sent.socket === socketEpoch && sent.returns === peer.returns) return;
+    if (sent && sent.n === peer.offerN && sent.socket === room.welcomes() && sent.returns === peer.returns) return;
     posthog.capture('offer_resent', { why });
     sendDescription(peer).catch((e) => console.warn('offer resend failed', e));
   }
@@ -1044,7 +1042,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const went = sendSignal(peer.key, {
       description: { type: description.type, sdp: description.sdp }, sig, conn: peer.id, ...(peer.remoteId ? { forConn: peer.remoteId } : {}), ...(n !== undefined ? { n } : {}),
     });
-    if (own.type === 'offer') peer.offerSent = went && n !== undefined ? { n, socket: socketEpoch, returns: peer.returns } : null;
+    if (own.type === 'offer') peer.offerSent = went && n !== undefined ? { n, socket: room.welcomes(), returns: peer.returns } : null;
   }
 
   /**
@@ -1057,7 +1055,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
    * finds me in the call. The same holds for a request for fresh TURN credentials (requestIce).
    */
   function sendSignal(to: string, data: SignalData): boolean {
-    return callSocket === socketEpoch && room.send({ t: 'signal', to, data });
+    return callSocket === room.welcomes() && room.send({ t: 'signal', to, data });
   }
 
   function flushCandidates(peer: Peer): void {
@@ -1369,7 +1367,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   /** Only in the call on this socket, as signals (sendSignal); otherwise the old credentials do until the next restart. */
-  const requestIce = () => (callSocket === socketEpoch ? awaitReply('ice', () => room.send({ t: 'ice' }), 5000) : Promise.resolve(null));
+  const requestIce = () => (callSocket === room.welcomes() ? awaitReply('ice', () => room.send({ t: 'ice' }), 5000) : Promise.resolve(null));
 
   async function refreshStats(peer: Peer): Promise<void> {
     if (peer.pc.connectionState === 'closed') return;
@@ -1488,7 +1486,6 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   // Re-declare after our own server reconnect (spec §8.1): peer connections stay, join sequence is fresh.
   createEffect(() => room.status().kind, (kind, prev) => {
-    if (kind === 'connected') socketEpoch++;
     if (kind !== 'connected') callSocket = null; // not let in on the next socket yet
     if (kind === 'connected' && prev !== undefined && prev !== 'connected' && joined) void redeclareAfterReconnect();
     if (kind === 'elsewhere' && joined) leave(); // another tab took over; this one is no longer in the call, and the marker goes
@@ -1512,7 +1509,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   async function declareJoin(): Promise<Extract<ServerMessage, { t: 'call' }> | null> {
     const m = await awaitReply('call', () => {
-      if (room.send({ t: 'join', muted: muted() || !voiceTrack || testing !== null, sharing: shareVideo !== null })) callSocket = socketEpoch;
+      if (room.send({ t: 'join', muted: muted() || !voiceTrack || testing !== null, sharing: shareVideo !== null })) callSocket = room.welcomes();
     }, 8000);
     if (m) { myJoinSeq = m.joinSeq; iceServers = m.iceServers; iceIssuedAt = m.issuedAt; }
     return m;
