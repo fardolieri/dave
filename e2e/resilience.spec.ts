@@ -159,6 +159,34 @@ test('an offer made while my socket comes back goes out once I am in the call ag
   await bob.hearing('Alice');
 });
 
+test('a share stopped from the browser while my socket comes back, before the server has let me in, does not get me refused', async ({ crowd, browserName }) => {
+  // Review of the fix above: signals waited for the welcome, the rest did not. The room's buttons are frozen meanwhile, but
+  // the browser's own "stop sharing" control is not, and the frame it sends reached the server before the answer to its
+  // challenge: a stranger's frame, whose error the room took for a wrong invite link, refused until a reload.
+  test.skip(browserName !== 'chromium', 'the sharer is Chromium (its fake screen capture needs no picker); one run is enough');
+  const alice = await crowd.open('Alice', { engine: 'chromium' });
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  await alice.startShare();
+  // Her new socket is open, her answer to the challenge not yet given (a cheap phone still signing it).
+  let challenge: string | null = null;
+  alice.wire.down = (frame) => (challenge === null && frame.includes('"t":"challenge"') ? ((challenge = frame), null) : frame);
+  await alice.wire.cut();
+  alice.wire.restore();
+  await expect.poll(() => challenge, { message: "Alice's socket is open again" }).not.toBeNull();
+  expect(await alice.hook('endShare')).toBe('ended');
+  await alice.page.waitForTimeout(300); // time for the frame to go up, if it goes
+  alice.wire.down = null;
+  alice.wire.deliver(challenge!);
+  await alice.connected();
+  await expect(alice.banner).toHaveCount(0);
+  await expect(alice.button('Share screen')).toBeVisible();
+  await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
+});
+
 for (const polite of [true, false]) for (const newest of [true, false]) {
   const who = `the ${polite ? 'polite' : 'impolite'} side reloads, ${newest ? 'the last to join' : 'the first to join'}`;
   test(`an offer stuck for a friend who then reloads leaves their new connection alone (${who})`, async ({ crowd }) => {

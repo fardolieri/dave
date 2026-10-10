@@ -1818,6 +1818,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         void restartIce(peer);
         return 'restarting';
       },
+      /** My share ends as from the browser's own "stop sharing" control, which no frozen room can hold back. */
+      endShare: () => { if (!shareVideo) return 'not sharing'; shareVideo.dispatchEvent(new Event('ended')); return 'ended'; },
       /** What the invariant watchdog reported in this tab (quality ticket 04). */
       invariants: () => invariants.violations(),
       /** Sets a gain node of `name` off what their controls say, as a path that forgot applyGain would: 'voice' or 'share'. */
