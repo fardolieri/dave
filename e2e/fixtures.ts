@@ -359,14 +359,15 @@ export const test = base.extend<{ crowd: Crowd; film: Film }>({
         return friend;
       },
     });
+    const problems = (await Promise.all(friends.map(async (f) => (await f.unexpectedProblems()).map((p) => `${f.name}: ${p}`)))).flat();
     // A failed test keeps each friend's socket frames and peer state next to its trace: what the server saw and relayed.
-    if (testInfo.status !== testInfo.expectedStatus) {
+    // So does one about to fail on its console alone: a refused frame is told only by its error (nightly, 2026-10-10).
+    if (testInfo.status !== testInfo.expectedStatus || problems.length) {
       for (const f of friends) {
         const peers = await f.peers().catch(() => null);
         writeFileSync(testInfo.outputPath(`${f.name}-wire.json`), JSON.stringify({ peers, problems: f.problems, frames: f.wire.log }, null, 1));
       }
     }
-    const problems = (await Promise.all(friends.map(async (f) => (await f.unexpectedProblems()).map((p) => `${f.name}: ${p}`)))).flat();
     if (problems.length) await testInfo.attach('console problems', { body: problems.join('\n'), contentType: 'text/plain' });
     await Promise.all(friends.map((f) => f.close()));
     await Promise.all([...extra.values()].map(async (b) => (await b).close()));
