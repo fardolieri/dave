@@ -29,8 +29,14 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
   const inCall = () => participants();
   const others = () => participants(myKey);
   const sharers = () => new Set(links().flatMap((l) => l.room.people().filter((p) => p.role === 'participant' && p.sharing && p.publicKey !== myKey).map((p) => tag(l.room.roomId, p.publicKey))));
-  const held = () => new Set(links().flatMap((l) => l.call.views().filter((v) => v.serverLost).map((v) => tag(l.room.roomId, v.publicKey))));
-  /** Profile pictures by participant tag; a leaver is gone from presence, so theirs is read from the previous snapshot. */
+  /**
+   * Friends I still hold a peer connection to. Read straight from the connections, not from `serverLost`: the call sets
+   * that flag in its own effect on the same presence, after this one has already seen the friend gone (report of Oct 8).
+   */
+  const kept = () => new Set(links().flatMap((l) => l.call.views().map((v) => tag(l.room.roomId, v.publicKey))));
+  /** Rooms whose call I am in. My own leave closes every connection, which is no leave of theirs. */
+  const calling = () => new Set(links().filter((l) => l.call.inCall()).map((l) => l.room.roomId));
+  /** Profile pictures by participant tag; a leaver is gone from presence, so theirs is read from an earlier snapshot. */
   const pictures = () => new Map(links().flatMap((l) => l.room.people().map((p) => [tag(l.room.roomId, p.publicKey), p.picture] as const)));
   /** Rooms whose first real snapshot (one that includes me) has arrived; nothing before it is a join. */
   const seeded = () => new Set(links().filter((l) => l.room.people().some((p) => p.publicKey === myKey)).map((l) => l.room.roomId));
@@ -42,18 +48,25 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
   const disarm = armSound();
   /** During a mic test (ticket 40) I hear nothing but myself, cues included. */
   const cue = (c: Cue) => { if (!untrack(() => links().some((l) => l.call.micTest() !== null))) playCue(c); };
+  /** The last picture presence showed for each friend: one kept on a connection leaves after presence has let them go. */
+  const lastPicture = new Map<string, string | undefined>();
   createEffect(
     // Everything reactive is read here, in the compute phase; the apply phase only acts on the snapshot.
-    () => ({ now: others(), sharing: sharers(), seeded: seeded(), held: held(), pictures: pictures() }),
-    ({ now, sharing, seeded, held, pictures }, prev) => {
+    () => ({ now: others(), sharing: sharers(), seeded: seeded(), kept: kept(), calling: calling(), pictures: pictures() }),
+    ({ now, sharing, seeded, kept, calling, pictures }, prev) => {
       if (!prev) return;
       // Only rooms that were seeded before and still are can report a join or a leave.
-      const settled = (t: string) => { const roomId = t.slice(0, t.indexOf(' ')); return seeded.has(roomId) && prev.seeded.has(roomId); };
+      const roomOf = (t: string) => t.slice(0, t.indexOf(' '));
+      const settled = (t: string) => seeded.has(roomOf(t)) && prev.seeded.has(roomOf(t));
+      // Connections count only in rooms whose call I was in before and still am.
+      const held = (t: string) => settled(t) && calling.has(roomOf(t)) && prev.calling.has(roomOf(t));
       const before = new Set([...prev.now].filter(settled));
       const after = new Set([...now].filter(settled));
-      const { joined, left } = callDiff(before, after, '', held); // I am already left out of both sets
+      const snapshot = (present: Set<string>, connected: Set<string>) => ({ present, kept: new Set([...connected].filter(held)) });
+      const { joined, left } = callDiff(snapshot(before, prev.kept), snapshot(after, kept), ''); // I am already left out of every set
+      for (const [t, picture] of prev.pictures) lastPicture.set(t, picture);
       for (const t of joined) cue(joinCue(pictures.get(t)));
-      for (const t of left) cue(leaveCue(prev.pictures.get(t)));
+      for (const t of left) cue(leaveCue(lastPicture.get(t)));
       for (const t of sharesStarted({ present: before, sharing: prev.sharing }, { sharing })) cue(shareCue(pictures.get(t)));
     },
   );

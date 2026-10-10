@@ -7,14 +7,20 @@ export function titleFor(participantsInCall: number, unfocused: boolean): string
   return unfocused && participantsInCall > 0 ? `(${participantsInCall} in call) ${APP_TITLE}` : APP_TITLE;
 }
 
+/** One view of the Call for cues: who presence lists as a participant, and whom I still hold a peer connection to. */
+export type CallView = { present: Set<string>; kept: Set<string> };
+
 /**
- * Who joined and who left between two views of the Call, ignoring yourself. `stillHeld` are participants
- * whose server socket dropped but whose media is kept for the grace period (spec §8.1): a socket blip is
- * neither a leave nor, on return, a join.
+ * Who joined and who left between two views of the Call, ignoring yourself. A friend counts as in the Call while presence
+ * lists them or while I still hold a connection to them: a server socket that drops while the voice stays up (spec §8.1,
+ * ticket 31) is neither a leave nor, on return, a join. They leave once both are gone, whichever goes last. The connection
+ * is read in the same pass as presence on purpose: a flag that the call sets in reaction to that presence comes too late.
  */
-export function callDiff(before: Set<string>, after: Set<string>, me: string, stillHeld: Set<string> = new Set()): { joined: string[]; left: string[] } {
-  const joined = [...after].filter((k) => k !== me && !before.has(k) && !stillHeld.has(k));
-  const left = [...before].filter((k) => k !== me && !after.has(k) && !stillHeld.has(k));
+export function callDiff(before: CallView, after: CallView, me: string): { joined: string[]; left: string[] } {
+  const was = new Set([...before.present, ...before.kept]);
+  const is = new Set([...after.present, ...after.kept]);
+  const joined = [...is].filter((k) => k !== me && !was.has(k));
+  const left = [...was].filter((k) => k !== me && !is.has(k));
   return { joined, left };
 }
 
