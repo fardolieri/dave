@@ -982,6 +982,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   async function offer(peer: Peer): Promise<void> {
     try {
       peer.makingOffer = true;
+      peer.outgoingCandidates.length = 0; // gathered before this offer: its description carries those still current
       await peer.pc.setLocalDescription();
       peer.offerN++;
       await sendDescription(peer);
@@ -1043,6 +1044,18 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       description: { type: description.type, sdp: description.sdp }, sig, conn: peer.id, ...(peer.remoteId ? { forConn: peer.remoteId } : {}), ...(n !== undefined ? { n } : {}),
     });
     if (own.type === 'offer') peer.offerSent = went && n !== undefined ? { n, socket: room.welcomes(), returns: peer.returns } : null;
+    if (own.type === 'offer' && went) peer.candidateTimer ??= setTimeout(() => flushCandidates(peer), 0); // the ones held for it
+  }
+
+  /**
+   * My offer is made but has not reached them yet: being signed, held back while my socket comes back (sendSignal), or
+   * sent on a socket of mine or theirs that dropped since. In each case it goes (again) before its candidates do: the
+   * same test as resendOffer's.
+   */
+  function offerPending(peer: Peer): boolean {
+    if (peer.makingOffer) return true;
+    const sent = peer.offerSent;
+    return peer.pc.signalingState === 'have-local-offer' && !(sent && sent.n === peer.offerN && sent.socket === room.welcomes() && sent.returns === peer.returns);
   }
 
   /**
@@ -1060,7 +1073,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   function flushCandidates(peer: Peer): void {
     peer.candidateTimer = undefined;
-    if (!peer.outgoingCandidates.length) return;
+    // Candidates go after the offer they belong to. Ahead of it, they name ICE credentials the other side does not know yet:
+    // after an ICE restart held back while my socket came back, the new candidates went out once my join did, the offer only
+    // once the join was answered, and Firefox refused them with "Unknown ufrag" (nightly, 2026-10-10). Held, they go
+    // when the offer has gone (sendDescription).
+    if (peers.get(peer.key) !== peer || !peer.outgoingCandidates.length || offerPending(peer)) return;
     const candidates = peer.outgoingCandidates.splice(0, 64);
     if (candidates.some((c) => typeof (c as { candidate?: string } | null)?.candidate === 'string' && (c as { candidate: string }).candidate.includes(' relay '))) posthog.capture('relay_candidate_gathered');
     sendSignal(peer.key, { candidates });
