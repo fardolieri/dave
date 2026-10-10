@@ -262,3 +262,37 @@ test('after a stalled attempt the rebuild goes through the TURN relay, and both 
   await alice.hearing('Bob');
   await bob.hearing('Alice');
 });
+
+test('a friend whose server socket drops and comes back while the voice stays up plays no leave or join cue', async ({ crowd }) => {
+  // Problem report, 2026-10-08: a friend's app reconnected to the server on its own, the call itself never broke, yet
+  // rejoin sounds played.
+  const alice = await crowd.open('Alice', { picture: '😀' });
+  const bob = await crowd.open('Bob', { picture: '🦊' });
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await bob.connectedTo('Alice');
+  await needHooks(alice);
+  // Cues only play on a running AudioContext. Headless Firefox on a runner without a sound device never gets one.
+  const context = await alice.hook<{ context: string | null }>('playback').then((p) => p.context);
+  test.skip(context !== 'running', `no running AudioContext here (${context}), so no cue can play`);
+  await alice.page.waitForTimeout(2000); // the join cues are done
+  await alice.cuesPlayed();
+  await bob.cuesPlayed();
+
+  // Bob's socket drops and stays away long enough for the Room to tell Alice he is gone, then comes back.
+  await bob.wire.cut();
+  await expect(bob.banner).toContainText(/Reconnecting|Server unavailable/);
+  await expect(alice.selectedRoom.locator('li.lost')).toContainText('connection to server lost');
+  bob.wire.restore();
+  await bob.connected();
+  await expect(bob.banner).toHaveCount(0);
+  await expect.poll(() => alice.inCall()).toEqual(['Alice', 'Bob']);
+  await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
+  await expect(alice.badge('Bob')).toHaveText('direct');
+  await alice.page.waitForTimeout(2000); // a cue set off by the last presence would have played by now
+
+  // The voice never stopped, so nobody left and nobody came back.
+  expect(await alice.cuesPlayed(), 'Alice hears no cue for Bob').toEqual([]);
+  expect(await bob.cuesPlayed(), 'Bob hears no cue for Alice').toEqual([]);
+});
