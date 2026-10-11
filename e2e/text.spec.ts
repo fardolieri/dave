@@ -59,6 +59,8 @@ test('received history survives a reload, and "Clear chat history" empties it', 
   await alice.say('one');
   await bob.say('two');
   await expect.poll(() => bob.chatTexts()).toEqual(['one', 'two']);
+  // A line shows before it is written to the history; a reload in between loses it (ticket 35 accepts that gap).
+  await expect.poll(() => bob.storedTexts()).toEqual(['one', 'two']);
   await bob.page.reload();
   await bob.connected();
   await expect.poll(() => bob.chatTexts()).toEqual(['one', 'two']);
@@ -82,6 +84,8 @@ test('leaving a room forgets its history: the link brings the room back, not the
   bob.page.once('dialog', (d) => void d.accept());
   await bob.page.getByRole('button', { name: `Leave ${crowd.room.name}` }).click();
   await expect(bob.page.locator('button.room-name', { hasText: crowd.room.name })).toHaveCount(0);
+  // The room goes from the list at once, its history a moment later: the same gap as a reload after a line (ticket 43).
+  await expect.poll(() => bob.storedTexts()).toEqual([]);
   await bob.page.goto(`/#${crowd.room.secret}/${encodeURIComponent(crowd.room.name)}`);
   await bob.connected();
   await expect(bob.selectedRoom.locator('.room-title')).toHaveText(crowd.room.name);

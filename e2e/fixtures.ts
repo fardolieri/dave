@@ -228,6 +228,25 @@ export class Friend {
     });
   }
   async chatTexts(): Promise<string[]> { return (await this.chat()).map((l) => l.text); }
+  /**
+   * The texts this browser has written to its chat history (IndexedDB, client/history.ts), every room's in turn. A line
+   * shows before its write ends, and a reload in between loses it, a gap ticket 35 accepts: before a reload that a test
+   * expects to keep the lines, wait for them here (ticket 43).
+   */
+  async storedTexts(): Promise<string[]> {
+    return this.page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('dave'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+      try {
+        const store = db.transaction('kv', 'readonly').objectStore('kv');
+        const all = await new Promise<{ keys: IDBValidKey[]; values: unknown[] }>((resolve, reject) => {
+          const keys = store.getAllKeys(), values = store.getAll();
+          values.onsuccess = () => resolve({ keys: keys.result, values: values.result });
+          values.onerror = () => reject(values.error);
+        });
+        return all.keys.flatMap((k, i) => (String(k).startsWith('history:') ? (all.values[i] as Array<{ text: string }>).map((m) => m.text) : []));
+      } finally { db.close(); }
+    });
+  }
 
   /**
    * Sends a text and waits for it to come back from the server, which shows every line, your own too, in the order the Room
