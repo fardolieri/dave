@@ -6,7 +6,10 @@ export type BuildInfo = {
   /** ISO timestamps. */
   committedAt: string;
   builtAt: string;
-  /** 'live' (prod), 'nightly', or 'local' for a build outside the deploy workflow. */
+  /**
+   * 'live' (prod), 'nightly', 'preview' (a pull request's own Worker), 'e2e' (the suite's build in CI), or 'local' for a
+   * build outside GitHub Actions. Sent as `build_target` with every PostHog event (client/posthog.ts).
+   */
   target: string;
   /** Built from a working tree with uncommitted changes. */
   dirty: boolean;

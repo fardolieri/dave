@@ -7,6 +7,7 @@ interface __BaseEnv_Env {
 	TURN_KEY_API_TOKEN: string;
 	POSTHOG_KEY?: string;
 	POSTHOG_HOST?: string;
+	BUILD_TARGET: "live" | "nightly" | "preview" | "e2e";
 	ROOM: DurableObjectNamespace<import("./src/worker/index").Room>;
 }
 declare namespace Cloudflare {

@@ -34,6 +34,12 @@ test('a yes starts PostHog and tells the server; stopping forgets it again', asy
   await alice.page.getByRole('region', { name: 'Help find bugs' }).getByRole('button', { name: 'Sure!' }).click();
   await expect.poll(() => alice.posthog.length, { message: 'PostHog started after the yes' }).toBeGreaterThan(0);
   await expect.poll(() => alice.posthog.some((u) => /\/e\/(\?|$)/.test(u)), { message: 'and sends events: opted in, not only loaded' }).toBe(true);
+  // The build goes on every event as a super property, which the SDK keeps with its own state (its event bodies are compressed).
+  const superProperties = () => alice.page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('ph_'))
+    .map((k) => { try { return JSON.parse(localStorage.getItem(k)!) as Record<string, unknown>; } catch { return null; } })
+    .find((v) => v && 'build_target' in v) ?? null);
+  await expect.poll(superProperties, { message: 'the build is registered with the SDK' })
+    .toMatchObject({ build_commit: expect.stringMatching(/^[0-9a-f]{40}$/), build_target: expect.stringMatching(/^(live|nightly|preview|e2e|local)$/) });
   await expect.poll(() => alice.wire.frames('up', 'telemetry')).toEqual([{ t: 'telemetry', on: true }]);
   await alice.page.reload();
   await alice.connected();
@@ -77,8 +83,14 @@ test('a problem report still goes without the opt-in, alone and saying where it 
   await expect(dialog.locator('.hint')).toContainText('sent to PostHog');
   await expect(dialog.locator('.hint')).toContainText('Only this report goes');
   await dialog.locator('textarea').fill('automated test report, please ignore');
+  const sent = alice.page.waitForRequest(/posthog\.com\/i\/v0\/e\/$/);
   await dialog.getByRole('button', { name: 'Send' }).click();
   await expect(dialog.locator('.ok')).toContainText('Sent, thank you');
   await expect.poll(() => alice.posthog).toEqual([expect.stringMatching(/\/i\/v0\/e\/$/)]);
+  // It says which copy of the app sent it, so a report from a preview or a test build is not taken for one from prod.
+  expect((await sent).postDataJSON()).toMatchObject({
+    event: 'bug_report',
+    properties: { build_commit: expect.stringMatching(/^[0-9a-f]{40}$/), build_target: expect.stringMatching(/^(live|nightly|preview|e2e|local)$/) },
+  });
   expect(await posthogStorage(alice.page)).toEqual([]);
 });

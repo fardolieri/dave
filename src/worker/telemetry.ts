@@ -4,7 +4,8 @@ import type { Outcome } from '../core/room';
  * A frame the Room refused (ticket 30), logged from the server: the sender's own tab may block PostHog or be on a line
  * too flaky to deliver its events, which is exactly when frames go wrong. One line in the Worker logs always; one
  * `server_frame_rejected` event on the sender's person when PostHog is configured (prod and nightly, not tests) and
- * the sender opted in to PostHog (ticket 32). The frame itself is never sent anywhere, only its type, length and why it was refused.
+ * the sender opted in to PostHog (ticket 32). It says which copy of the app refused it (`build_target`, as on the client's
+ * events; the Worker does not know its commit). The frame itself is never sent anywhere, only its type, length and why it was refused.
  */
 export function logRejected(env: Env, ctx: DurableObjectState, rejected: NonNullable<Outcome['rejected']>): void {
   console.warn('frame rejected', JSON.stringify({ ref: rejected.ref ?? null, reason: rejected.reason, length: rejected.length }));
@@ -15,7 +16,7 @@ export function logRejected(env: Env, ctx: DurableObjectState, rejected: NonNull
     api_key: key,
     event: 'server_frame_rejected',
     distinct_id: rejected.from,
-    properties: { ref: rejected.ref ?? null, reason: rejected.reason, length: rejected.length, $lib: 'dave-worker' },
+    properties: { ref: rejected.ref ?? null, reason: rejected.reason, length: rejected.length, build_target: env.BUILD_TARGET, $lib: 'dave-worker' },
     timestamp: new Date().toISOString(),
   };
   ctx.waitUntil(

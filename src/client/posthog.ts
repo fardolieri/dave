@@ -10,6 +10,7 @@
 import type { PostHog } from 'posthog-js';
 import { createSignal } from 'solid-js';
 import { local } from './storage';
+import { build } from './version';
 
 /**
  * A browser the e2e fixtures seeded with `dave.test = true`. Its events carry `is_test_account` and its person is marked
@@ -17,6 +18,13 @@ import { local } from './storage';
  * filter drops it from insights.
  */
 export const isTestAccount: boolean = local.read('test');
+
+/**
+ * On every event, so one can tell which copy of the app sent it: prod ('live'), nightly, a pull request's preview
+ * ('preview') or a test build ('e2e', 'local'). They all send to the same project. Registered with the SDK, and added by
+ * hand to what goes without it.
+ */
+const buildProps = { build_commit: build.commit, build_target: build.target };
 
 const key = import.meta.env['VITE_POSTHOG_KEY'] as string | undefined;
 const host = import.meta.env['VITE_POSTHOG_HOST'] as string | undefined;
@@ -66,6 +74,7 @@ function start(): void {
       },
     });
     if (!ph.has_opted_in_capturing()) ph.opt_in_capturing({ captureEventName: false });
+    ph.register(buildProps);
     if (isTestAccount) ph.register({ is_test_account: true });
     if (person) ph.identify(person.id, person.props);
     sdk = ph;
@@ -149,7 +158,7 @@ export function captureOnce(event: string, props: Props): void {
     api_key: key,
     event,
     distinct_id: person?.id ?? 'anonymous',
-    properties: { ...props, $process_person_profile: false, ...(isTestAccount ? { is_test_account: true } : {}) },
+    properties: { ...props, ...buildProps, $process_person_profile: false, ...(isTestAccount ? { is_test_account: true } : {}) },
     timestamp: new Date().toISOString(),
   };
   void fetch(`${host}/i/v0/e/`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), credentials: 'omit', keepalive: true })
