@@ -54,6 +54,8 @@ test('text is plain: markup arrives as text and links are clickable', async ({ c
 test('received history survives a reload, and "Clear chat history" empties it', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
+  // A slow disk, as Firefox's on a busy runner: Bob's history is written well after his lines show (ticket 43).
+  await bob.slowStorage(1500);
   await alice.say('one');
   await bob.say('two');
   await expect.poll(() => bob.chatTexts()).toEqual(['one', 'two']);

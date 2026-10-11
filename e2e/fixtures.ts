@@ -277,6 +277,26 @@ export class Friend {
     for (const n of names) await expect(this.badge(n)).toHaveText(/^(direct|via relay)$/);
   }
 
+  /**
+   * Makes this page's IndexedDB slow until the page goes: every database it opens from now on answers `ms` later, as
+   * Firefox's sometimes does on a busy CI runner. A history write (client/history.ts) then ends well after its line shows
+   * (ticket 43). The app opens the database for each read and write (client/storage.ts), so every one of them waits.
+   */
+  async slowStorage(ms: number): Promise<void> {
+    await this.page.evaluate((delay) => {
+      const open = IDBFactory.prototype.open;
+      IDBFactory.prototype.open = function (this: IDBFactory, ...a: [string, number?]) {
+        const req = open.apply(this, a);
+        // Registered before the app sets `onsuccess`, so it runs first: hold the event back and hand it on later.
+        req.addEventListener('success', (e) => {
+          e.stopImmediatePropagation();
+          setTimeout(() => req.dispatchEvent(new Event('success')), delay);
+        }, { once: true });
+        return req;
+      };
+    }, ms);
+  }
+
   // --- inspection hooks (dev server and e2e build only) ---
   async hasHooks(): Promise<boolean> { return this.page.evaluate(() => '__dave' in window); }
   /** `window.__dave.peers()`: per-peer state of the call joined last. */
