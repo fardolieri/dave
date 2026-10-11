@@ -162,6 +162,32 @@ test('ticket 36: a new version found as the app opens downloads behind a line, t
   await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
 });
 
+test('ticket 36: a new version the browser is still downloading as the page loads is taken the same way, though registering waits for that download', async ({ crowd }) => {
+  needPreview();
+  const alice = await crowd.open('Alice');
+  await controlled(alice.page);
+
+  // The browser's own check finds the new version before the page asks (Firefox checks as a navigation starts): its
+  // install runs, and `register()` in the page loaded meanwhile waits for it to end, past the 1.5 s the opening check
+  // has. Flaky that way in Firefox for the test above (ticket 44, 1 in 80); staged here for sure: the check starts in
+  // the page before, and the reload comes while the download, about 6 s at 1 MB/s, goes on.
+  await stageBigDeploy(alice, 1_000_000);
+  await alice.page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r?.update()));
+  await expect(line(alice.page), 'downloading').toBeVisible();
+  const count = countLoads(alice.page);
+  await alice.page.reload();
+  await expect(line(alice.page), 'the download shows after the reload too').toBeVisible();
+  await expect(alice.composer, 'and the app waits for it').toBeDisabled();
+  expect(alice.wire.open, 'not connected').toBe(0);
+  await expect(bar(alice.page), 'nothing to click').toHaveCount(0);
+
+  await expect.poll(() => versionsNow(alice.page), { message: 'the page reloaded onto the new version by itself', timeout: 30_000 }).toEqual(['next']);
+  await alice.connected();
+  expect(count.loads, 'her reload, then the one for the update').toBe(2);
+  await expect(line(alice.page)).toHaveCount(0);
+  await expect(bar(alice.page)).toHaveCount(0);
+});
+
 test('ticket 36: a version left waiting behind the bar is taken by the next reload', async ({ crowd }) => {
   needPreview();
   const alice = await crowd.open('Alice');
