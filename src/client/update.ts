@@ -152,7 +152,8 @@ export function watchForUpdates(): void {
     else if (controlled) setReady(true);
     controlled = true;
   });
-  container.register('/sw.js').then((reg) => {
+  const watch = (reg: ServiceWorkerRegistration | undefined) => {
+    if (!reg || registration) return;
     registration = reg;
     const offerWaiting = () => {
       if (!reg.waiting || !container.controller) return;
@@ -191,7 +192,12 @@ export function watchForUpdates(): void {
     setInterval(check, CHECK_MS);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
     window.addEventListener('online', check);
-  }, (e: unknown) => { endOpening(); console.warn('service worker not registered', e); });
+  };
+  // A page already served has its registration at once. `register()` waits behind any install under way, the browser's
+  // own check at a navigation included (Firefox starts it before the page asks): a big download kept it from resolving
+  // past the opening check's 1.5 s, and the opening ended with no line, then the bar asked (ticket 44).
+  if (container.controller) void container.getRegistration().then(watch, () => {});
+  container.register('/sw.js').then(watch, (e: unknown) => { if (!registration) endOpening(); console.warn('service worker not registered', e); });
 }
 
 /** The update bar's Reload. A reload in a call rejoins it (ticket 24). */
