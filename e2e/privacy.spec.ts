@@ -54,6 +54,14 @@ test('a yes starts PostHog and tells the server; stopping forgets it again', asy
   await expect(alice.page.getByRole('button', { name: 'Help find bugs', exact: true })).toBeVisible();
   await expect.poll(() => alice.wire.frames('up', 'telemetry').at(-1)).toEqual({ t: 'telemetry', on: false });
   await expect.poll(() => posthogStorage(alice.page)).toEqual([]);
+  // A yes again on the same page: the SDK is still loaded, and its reset on the no dropped the build, which comes back
+  await alice.page.getByRole('button', { name: 'Help find bugs', exact: true }).click();
+  await notice.getByRole('button', { name: 'Sure!' }).click();
+  await expect.poll(superProperties, { message: 'the build is registered again after a no and a yes' })
+    .toMatchObject({ build_commit: expect.stringMatching(/^[0-9a-f]{40}$/), build_target: expect.stringMatching(/^(live|nightly|preview|e2e|local)$/) });
+  await alice.page.getByRole('button', { name: 'Stop helping find bugs' }).click();
+  await notice.getByRole('button', { name: 'Maybe later' }).click();
+  await expect.poll(() => posthogStorage(alice.page)).toEqual([]);
   await alice.page.reload();
   await alice.connected();
   const before = alice.posthog.length;

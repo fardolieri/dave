@@ -11,6 +11,7 @@
     "POSTHOG_KEY": "phc_qN9fsscYFP3YPfBdoNu4gyK2VsqGaXzALoASMUfJqm7q",
     "POSTHOG_HOST": "https://eu.i.posthog.com",
     // Which copy of the app this Worker is, sent as `build_target` with its PostHog events like the client's (vite.config.ts buildInfo).
+    // `pnpm dev` runs with these top-level vars: .dev.vars sets it to "local" there (.dev.vars.example); one without it says "live".
     "BUILD_TARGET": "live"
   },
   "durable_objects": {

@@ -1,2 +1,4 @@
 # Copy to .dev.vars for local development. Never commit .dev.vars.
 TURN_KEY_API_TOKEN=unused-locally
+# The dev server is not a deploy: its server events say so, as its client events do (wrangler.jsonc).
+BUILD_TARGET=local

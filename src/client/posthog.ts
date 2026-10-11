@@ -45,9 +45,15 @@ const MAX_QUEUE = 100;
 let person: { id: string; props: Props } | null = null;
 const listeners = new Set<(on: boolean) => void>();
 
+/** The super properties: on every event the SDK sends from here on. */
+function register(ph: PostHog): void {
+  ph.register(isTestAccount ? { ...buildProps, is_test_account: true } : buildProps);
+}
+
 function start(): void {
   if (sdk) {
     sdk.opt_in_capturing();
+    register(sdk); // the reset of the last no dropped them
     if (person) sdk.identify(person.id, person.props);
     sdk.startSessionRecording();
     return;
@@ -74,8 +80,7 @@ function start(): void {
       },
     });
     if (!ph.has_opted_in_capturing()) ph.opt_in_capturing({ captureEventName: false });
-    ph.register(buildProps);
-    if (isTestAccount) ph.register({ is_test_account: true });
+    register(ph);
     if (person) ph.identify(person.id, person.props);
     sdk = ph;
     for (const [event, props] of queue) ph.capture(event, props);
