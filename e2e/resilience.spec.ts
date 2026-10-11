@@ -21,6 +21,33 @@ test('the call survives the server going away and coming back', async ({ crowd }
   await bob.connectedTo('Alice');
 });
 
+test('a frame on its way to the server as it goes away is lost with the socket, and nothing is written to it closing', async ({ crowd }) => {
+  // CI, 2026-10-11 (the test above, Chromium, run 38162513698): "WebSocket is already in CLOSING or CLOSED state." in
+  // Alice's console. The app never writes to a socket that is not open; the wire did: `cut` closes the browser's socket to
+  // the server first and Alice's side of it after, and a frame of hers that reached the wire in between was still passed
+  // on to the closing socket. Here her frame reaches the wire the moment the cut begins. The browser's socket is closing
+  // only until the server answers its close, which on a local build can come before the frame: one try caught it on the
+  // first run and missed it on the retry, so the test tries five times. Firefox writes nothing to its console for it.
+  const alice = await crowd.open('Alice');
+  await alice.connected();
+  for (let i = 0; i < 5; i++) {
+    let cutting: Promise<void> | null = null;
+    alice.wire.up = (frame) => {
+      if (!cutting && frame.includes('"t":"text"')) cutting = alice.wire.cut();
+      return frame;
+    };
+    await alice.composer.fill(`on its way ${i}`);
+    await alice.composer.press('Enter');
+    await expect.poll(() => cutting !== null, { message: 'the text reaches the wire' }).toBe(true);
+    await cutting;
+    await expect(alice.banner).toContainText(/Reconnecting|Server unavailable/);
+    alice.wire.up = null;
+    alice.wire.restore();
+    await alice.connected();
+    await expect(alice.banner).toHaveCount(0);
+  }
+});
+
 test('a friend whose socket drops without a goodbye is shown as lost, then recovers', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
