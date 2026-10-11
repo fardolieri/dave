@@ -81,10 +81,13 @@ test('leaving a room forgets its history: the link brings the room back, not the
   const bob = await crowd.open('Bob', { rooms: [crowd.room, other] });
   await alice.say('before');
   await expect.poll(() => bob.chatTexts()).toEqual(['before']);
+  // Written first, so that the empty history waited for below is the delete's and not the write's still to come.
+  await expect.poll(() => bob.storedTexts()).toEqual(['before']);
   bob.page.once('dialog', (d) => void d.accept());
   await bob.page.getByRole('button', { name: `Leave ${crowd.room.name}` }).click();
   await expect(bob.page.locator('button.room-name', { hasText: crowd.room.name })).toHaveCount(0);
-  // The room goes from the list at once, its history a moment later: the same gap as a reload after a line (ticket 43).
+  // The room goes from the list at once, its history a moment later; the room the link brings back loads its history
+  // without waiting for that delete (ticket 43).
   await expect.poll(() => bob.storedTexts()).toEqual([]);
   await bob.page.goto(`/#${crowd.room.secret}/${encodeURIComponent(crowd.room.name)}`);
   await bob.connected();
