@@ -178,7 +178,7 @@ test('ticket 36: a new version the browser is still downloading as the page load
   await alice.page.reload();
   await expect(line(alice.page), 'the download shows after the reload too').toBeVisible();
   await expect(alice.composer, 'and the app waits for it').toBeDisabled();
-  expect(alice.wire.open, 'not connected').toBe(0);
+  await expect.poll(() => alice.wire.open, { message: 'the room does not connect while it downloads' }).toBe(0);
   await expect(bar(alice.page), 'nothing to click').toHaveCount(0);
 
   await expect.poll(() => versionsNow(alice.page), { message: 'the page reloaded onto the new version by itself', timeout: 30_000 }).toEqual(['next']);
