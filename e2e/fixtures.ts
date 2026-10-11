@@ -26,7 +26,7 @@ export type Tamper = (frame: string) => string | null;
 
 /** The WebSocket proxy between one friend and the server. */
 export class Wire {
-  private routes = new Set<{ page: WebSocketRoute; server: WebSocketRoute }>();
+  private routes = new Set<{ page: WebSocketRoute; server: WebSocketRoute; closing: boolean }>();
   private refusing = false;
   /** Client to server. */
   up: Tamper | null = null;
@@ -40,13 +40,16 @@ export class Wire {
   attach(route: WebSocketRoute): void {
     if (this.refusing) { void route.close({ code: 1011, reason: 'e2e: server down' }); return; }
     const server = route.connectToServer();
-    const pair = { page: route, server };
+    const pair = { page: route, server, closing: false };
     this.routes.add(pair);
+    // The socket to the server lives in the page (Playwright's routeWebSocket). Once one side closes, a frame still on its
+    // way is lost with the connection, as on a real drop: written to the closing socket, it made Chromium log "WebSocket is
+    // already in CLOSING or CLOSED state." in the friend's console, a line the app itself never causes (ticket 41).
     route.onMessage((m) => {
       const frame = typeof m === 'string' ? m : m.toString();
       this.log.push({ dir: 'up', frame });
       const out = this.up ? this.up(frame) : frame;
-      if (out !== null) server.send(out);
+      if (out !== null && !pair.closing) server.send(out);
     });
     server.onMessage((m) => {
       const frame = typeof m === 'string' ? m : m.toString();
@@ -54,14 +57,19 @@ export class Wire {
       const out = this.down ? this.down(frame) : frame;
       if (out !== null) route.send(out);
     });
-    route.onClose((code, reason) => { this.routes.delete(pair); void server.close({ code, reason }); });
-    server.onClose((code, reason) => { this.routes.delete(pair); void route.close({ code, reason }); });
+    route.onClose((code, reason) => { pair.closing = true; this.routes.delete(pair); void server.close({ code, reason }); });
+    server.onClose((code, reason) => { pair.closing = true; this.routes.delete(pair); void route.close({ code, reason }); });
   }
 
   /** The server goes away: open sockets close as if the connection dropped, and reconnects are refused until `restore`. */
   async cut(): Promise<void> {
     this.refusing = true;
-    for (const { page, server } of [...this.routes]) { await server.close().catch(() => {}); await page.close({ code: 1011, reason: 'e2e: cut' }).catch(() => {}); }
+    for (const pair of [...this.routes]) {
+      // Before the first await: the server side is closing from here on, with the page's side still open a moment longer.
+      pair.closing = true;
+      await pair.server.close().catch(() => {});
+      await pair.page.close({ code: 1011, reason: 'e2e: cut' }).catch(() => {});
+    }
     this.routes.clear();
   }
 
