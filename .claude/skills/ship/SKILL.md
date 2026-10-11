@@ -42,7 +42,8 @@ Then:
 
 1. Push the branch (`git push -u origin HEAD`). If a PR exists or the owner works with PRs, open or update it and link it
    in the thread (`link_pull_request` when the t3-code MCP server is up).
-2. Wait for both `ci` and `e2e` on the branch head: **one** loop polling the Actions API (see `CLAUDE.md` for the curl form
+2. Wait for both `ci` and `e2e` on the branch head, and with an open (not draft) PR also `preview` (its deploy, then the
+   e2e suite against the preview, real Cloudflare before master): **one** loop polling the Actions API (see `CLAUDE.md` for the curl form
    when `gh` times out), checking every 60 s, about 15 min at most. Never several watchers.
 3. If red, read the failing job's log (`curl -L` on `/actions/jobs/<id>/logs`), fix, and push again. A test that failed and
    then passed on retry is a flake to explain, not a pass: check the report for `flaky`.
@@ -60,6 +61,7 @@ Lead with the outcome. Then:
 
 ```
 Verified: rung 3 (nightly e2e passed for <sha>). Not verified: <phone / real device / whatever is true>.
+Preview: <the PR's preview link, if it had one>, e2e against it <passed / not run>.
 Review: <n> findings, <fixed / left for you: …>. Grumpy Friend: <n> tests added (<names>), <n> dropped as covered.
 Saved state: <none touched | migrated | not migrated: who will not see it>.
 ```

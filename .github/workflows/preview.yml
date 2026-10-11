@@ -1,0 +1,119 @@
+name: preview
+# A preview of every open pull request, deployed so it can be tried from a phone in one tap: a Worker of its own,
+# dave-pr-<number>, built like nightly (CLOUDFLARE_ENV=preview, with the inspection hooks) and redeployed on every push.
+# One comment on the PR carries the link and is rewritten in place. The Worker is deleted when the PR closes or turns into
+# a draft; preview-sweep.yml catches any left behind.
+# The link is an invite to a room of the PR's own (the bare URL shows only the invite notice), the same on every push, so
+# a friend tapping it lands where the PR is being tried. Its secret is public (so is the repo), which is fine for a
+# throwaway Worker; any other invite link works there too with the host swapped (a room is only its secret, ADR 0004).
+# Once deployed, the browser suite runs against the preview (e2e.yml, called), as it runs against nightly after a master
+# deploy: real Cloudflare, before master, flakes failing it like there.
+# Draft PRs (the night shift's "Repro:" PRs) get none until marked ready, and lose theirs when turned back into one, which
+# keeps the account far from its Worker limit. PRs from forks are skipped: they get no secrets.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, closed]
+permissions:
+  contents: read
+  pull-requests: write
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+env:
+  WORKER: dave-pr-${{ github.event.pull_request.number }}
+jobs:
+  deploy:
+    if: github.event.action != 'closed' && github.event.action != 'converted_to_draft' && !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      url: ${{ steps.deploy.outputs.deployment-url }}
+    env:
+      CLOUDFLARE_ENV: preview
+      VITE_E2E: '1'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The branch's commit, not GitHub's merge commit, so About names a commit that exists on the branch.
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # The Vite plugin writes the deploy config (named dave-preview) and points .wrangler/deploy/config.json at it.
+      - name: Name the Worker after the PR
+        run: |
+          config=$(node -e 'const p=require("path"),r=".wrangler/deploy/config.json";console.log(p.resolve(p.dirname(r),require(p.resolve(r)).configPath))')
+          node -e 'const fs=require("fs"),[f,n]=process.argv.slice(1),c=JSON.parse(fs.readFileSync(f));c.name=n;fs.writeFileSync(f,JSON.stringify(c))' "$config" "$WORKER"
+      - uses: cloudflare/wrangler-action@v4
+        id: deploy
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+          secrets: |
+            TURN_KEY_API_TOKEN
+        env:
+          TURN_KEY_API_TOKEN: ${{ secrets.TURN_KEY_API_TOKEN }}
+      - name: Link the preview on the PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          URL: ${{ steps.deploy.outputs.deployment-url }}
+        # With pipefail: a failed read of the comment must fail the step, not post a second comment or a new room secret.
+        shell: bash
+        run: |
+          # wrangler-action carries on without a URL it could not find; an empty target would make e2e.yml test a local build.
+          test -n "$URL" || { echo "::error::the deploy printed no URL"; exit 1; }
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate --jq '.[] | select(.body | startswith("<!-- preview -->")) | .id' | sed -n 1p)
+          # The room's secret is made once per PR and read back from the comment after that, so the link stays the same.
+          secret=
+          if [ -n "$id" ]; then
+            old=$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" --jq .body)
+            secret=$(grep -oP '<!-- room \K[A-Za-z0-9_-]+(?= -->)' <<<"$old" || true)
+          fi
+          [ -n "$secret" ] || secret=$(openssl rand 16 | basenc --base64url | tr -d =)
+          body="<!-- preview --><!-- room $secret -->
+          **[Try this PR](${URL}/#${secret}/PR%20${PR})** (preview of ${SHA:0:7}, the same room on every push)"
+          if [ -n "$id" ]; then gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" >/dev/null
+          else gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$body" >/dev/null; fi
+  e2e:
+    needs: deploy
+    uses: ./.github/workflows/e2e.yml
+    # The called workflow's last job writes commit statuses (only after a nightly run, never here), and a called job gets no
+    # more permissions than its caller grants.
+    permissions:
+      contents: read
+      statuses: write
+    with:
+      target: ${{ needs.deploy.outputs.url }}
+      ref: ${{ github.event.pull_request.head.sha }}
+  cleanup:
+    if: (github.event.action == 'closed' || github.event.action == 'converted_to_draft') && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      # A PR that never had a preview (a draft closed as draft) has no Worker to delete (Cloudflare error 10007); that is not
+      # a failure, anything else is.
+      - run: |
+          if ! out=$(npx --yes wrangler@4.146.0 delete --name "$WORKER" --force 2>&1); then
+            echo "$out"
+            echo "$out" | grep -q 10007 && echo "::notice::no Worker $WORKER to delete" || exit 1
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # The room marker stays, so a reopened PR gets its old room link back.
+      - name: Mark the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          WHEN: ${{ github.event.action == 'closed' && 'this PR closed' || 'this PR became a draft' }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate --jq '.[] | select(.body | startswith("<!-- preview -->")) | .id' | head -1)
+          [ -n "$id" ] || exit 0
+          room=$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" --jq .body | grep -o '<!-- room [A-Za-z0-9_-]* -->' || true)
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="<!-- preview -->$room
+          The preview was deleted when $WHEN." >/dev/null

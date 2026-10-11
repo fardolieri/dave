@@ -1,0 +1,39 @@
+name: preview-sweep
+# A preview Worker (preview.yml) is deleted when its PR closes or turns into a draft. A run that failed or was cancelled
+# then would leave it behind, and the free plan allows 100 Workers. Once a week, and by hand from the Actions tab, every
+# dave-pr-<n> whose PR is closed or a draft is deleted.
+on:
+  schedule:
+    - cron: '0 4 * * 1' # Mondays 04:00 UTC, clear of the soak (01:00) and the night shift (02:30)
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # A failed listing fails the run instead of passing having swept nothing.
+        shell: bash
+        run: |
+          scripts=$(curl -sSf -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts")
+          workers=$(jq -r '.result[].id | select(test("^dave-pr-[0-9]+$"))' <<<"$scripts")
+          [ -n "$workers" ] || echo "no preview Workers"
+          failed=0
+          for w in $workers; do
+            pr=${w#dave-pr-}
+            # Only a PR GitHub says is closed, a draft or not there is swept: an API error keeps the Worker for next week.
+            if ! state=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr" --jq 'if .draft then "draft" else .state end' 2>&1); then
+              grep -q 'HTTP 404' <<<"$state" || { echo "::warning::$w: $state"; failed=1; continue; }
+              state=gone
+            fi
+            if [ "$state" = open ]; then echo "$w: PR open, kept"; continue; fi
+            echo "$w: PR $state, deleting"
+            npx --yes wrangler@4.146.0 delete --name "$w" --force || { echo "::warning::$w: delete failed"; failed=1; }
+          done
+          exit $failed

@@ -37,7 +37,7 @@ Every change climbs this ladder, and every report says which rung it reached, in
 |---|---|---|
 | 0 typed | `pnpm typecheck` passes | here or CI |
 | 1 unit | `pnpm test` passes | CI (`ci.yml`) |
-| 2 browser | the e2e suite passes against a local build, both engines | CI (`e2e.yml` on the branch) |
+| 2 browser | the e2e suite passes against a local build, both engines; with an open PR, also against its preview | CI (`e2e.yml` on the branch, `preview.yml` on the PR) |
 | 3 nightly | deployed to nightly and the e2e suite passed against it | CI (`e2e.yml` after deploy) |
 | 4 seen | a human or a recording looked at the real thing (real browser, real device for phone features) | owner, or video receipt |
 
@@ -74,6 +74,10 @@ Rules:
 - **CI on every branch:** typecheck and unit tests in both Wrangler envs (`ci.yml`), the browser suite in both engines
   (`e2e.yml`), the red-then-green check of regression tests (`red-green.yml`), video receipts for client changes
   (`receipts.yml`, GIFs in one PR comment; add `{ tag: '@receipt' }` to a test to film it).
+- **On every open PR** (not drafts): a preview Worker of its own, `dave-pr-<n>` (`preview.yml`), built like nightly, with
+  the whole e2e suite run against it once deployed. One comment on the PR links it and a room of the PR's own, so the owner
+  can try a change from the phone before it reaches master. It starts with empty storage: a change that meets old saved
+  state is only really seen on nightly. A weekly sweep (`preview-sweep.yml`) deletes previews whose PR closed or is a draft.
 - **Inside every e2e test:** unexpected console warnings and runtime invariants (`src/client/invariants.ts`: UI that
   contradicts the call) fail the test.
 - **Nightly:** the suite against nightly is the release gate; the chaos soak (`soak.yml`, 01:00 UTC) opens `soak` issues

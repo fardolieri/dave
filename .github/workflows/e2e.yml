@@ -3,6 +3,7 @@ name: e2e
 #   - every pushed branch except master and prod: against a local build (Worker and Room in workerd, inspection hooks on)
 #   - after each successful master deploy: against nightly, which master builds with the same hooks
 #   - by hand from the Actions tab: local, nightly, or any deployed URL
+#   - called by preview.yml after each pull request preview deploy: against that preview, which is built like nightly
 # Each engine is split into shards on runners of their own (Playwright's --shard): the whole suite on one runner took
 # about 7 minutes. Eight per engine: 16 jobs stay under the 20 a free account runs at once, and beyond that each runner's
 # ~40 s of setup outweighs its share of the tests. A runner has its own IP, so nightly's upgrade limit sees one shard.
@@ -30,8 +31,19 @@ on:
       repeat:
         description: "runs of each test (--repeat-each), spread over the shards"
         default: "1"
+  workflow_call:
+    inputs:
+      target:
+        description: "the URL of a deployed copy"
+        type: string
+        required: true
+      ref:
+        description: "the commit deployed there"
+        type: string
+        required: true
 concurrency:
-  group: e2e-${{ github.event_name == 'workflow_run' && 'nightly' || github.ref }}
+  # When called, the caller's event and ref apply: preview.yml's concurrency already cancels a superseded preview run.
+  group: e2e-${{ github.event_name == 'workflow_run' && 'nightly' || github.event_name == 'pull_request' && format('preview-{0}', github.ref) || github.ref }}
   cancel-in-progress: true
 jobs:
   e2e:
@@ -51,7 +63,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           # After a deploy, test the commit that was deployed.
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha || inputs.ref || github.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
@@ -90,7 +102,8 @@ jobs:
     # success only when every shard of both engines passed. A ruleset on `prod` requires that status. It is a commit status
     # and not this job's own check because GitHub's rules do not count checks from workflow_run runs (tried 2026-10-08).
     # Branch runs of the same commit never write it.
-    name: release gate
+    # Called from preview.yml it gates nothing, and is named so.
+    name: ${{ github.event_name == 'pull_request' && 'result' || 'release gate' }}
     needs: e2e
     if: always()
     runs-on: ubuntu-latest
