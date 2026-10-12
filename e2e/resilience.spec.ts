@@ -71,6 +71,45 @@ test('a join lost with a socket that drops is asked again on the next one, and t
   await bob.connectedTo('Alice');
 });
 
+test('a join asked again after a reconnect and left unanswered is not asked once more for the next join', async ({ crowd }) => {
+  // Grumpy Friend, PR #46 (ticket 47): in the call on bad Wi-Fi, Alice's socket drops and the join she declares again on
+  // the next one gets no answer. She presses Leave, then Join, and her microphone takes its time to open. If her socket
+  // drops once more meanwhile, the old declaration must not be asked again: it would put her in the call before her own
+  // join, with her button still at Join.
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  alice.wire.down = (frame) => (frame.includes('"t":"call"') ? null : frame); // the answer to her declaration never comes
+  const declared = alice.wire.frames('up', 'join').length;
+  await alice.wire.cut();
+  alice.wire.restore();
+  await expect.poll(() => alice.wire.frames('up', 'join').length, { message: 'she declares her join on the new socket' }).toBe(declared + 1);
+  await alice.leave();
+  alice.wire.down = null;
+  await alice.page.evaluate(() => { // a slow permission prompt: the microphone opens only when the test says so
+    const md = navigator.mediaDevices;
+    const open = md.getUserMedia.bind(md);
+    md.getUserMedia = (c) => new Promise((resolve) => { (window as unknown as { micGo: () => void }).micGo = () => resolve(open(c)); });
+  });
+  await alice.selectedRoom.locator('button.join').click();
+  await expect.poll(() => alice.page.evaluate(() => typeof (window as unknown as { micGo?: unknown }).micGo)).toBe('function');
+  const atClick = alice.wire.frames('up', 'join').length;
+  const welcomes = alice.wire.frames('down', 'welcome').length;
+  await alice.wire.cut();
+  alice.wire.restore();
+  await expect.poll(() => alice.wire.frames('down', 'welcome').length).toBeGreaterThan(welcomes);
+  await alice.connected();
+  await alice.page.waitForTimeout(1000); // what the old declaration would send, it sends on the welcome
+  expect(alice.wire.frames('up', 'join').length, 'no join before her microphone is open').toBe(atClick);
+  await alice.page.evaluate(() => (window as unknown as { micGo: () => void }).micGo());
+  await expect(alice.selectedRoom.locator('button.leave')).toBeVisible();
+  expect(alice.wire.frames('up', 'join').length, 'one join for one click').toBe(atClick + 1);
+  await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
+  await alice.connectedTo('Bob');
+});
+
 test('a friend whose socket drops without a goodbye is shown as lost, then recovers', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
