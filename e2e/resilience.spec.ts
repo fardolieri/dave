@@ -234,6 +234,15 @@ test('a Rejoin left for another room\'s call is not taken up by the next reload'
   await expect.poll(() => bob.inCall(), { message: 'Room\'s server has her out of its call' }).toEqual(['Bob']);
 });
 
+test('a socket the server never answers is given up and tried again, and the room connects', async ({ crowd }) => {
+  // Nightly e2e, 2026-10-12 (share.spec.ts, Chromium, run 38219476267): Alice's first socket heard no challenge for 20 s and
+  // she stayed on "Connecting…", with nothing in the app to end the wait (ticket 48). Here her first socket is never answered.
+  const alice = await crowd.open('Alice', { connect: false });
+  alice.wire.unanswered = 1;
+  await alice.open();
+  await expect(alice.banner).toHaveCount(0);
+});
+
 test('a friend whose socket drops without a goodbye is shown as lost, then recovers', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
