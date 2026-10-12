@@ -142,6 +142,25 @@ describe('presence', () => {
     expect(fromFreshInstance).toEqual(expect.arrayContaining(seenByClient));
     a.ws.close(1000, 'bye');
   });
+
+  it('a socket that errored stays out of presence, also in the snapshot of the next friend who comes in', async () => {
+    // The runtime can keep an errored socket in getWebSockets() until its close comes, or the sweep 90 to 150 s later.
+    const secret = 'presence-error-room';
+    const b = await attach('Bob', undefined, undefined, secret);
+    const a = await attach('Alice', undefined, undefined, secret);
+    await b.next((m) => m.t === 'presence' && names(m).includes('Alice'));
+    b.inbox.length = 0;
+    const stub = env.ROOM.get(env.ROOM.idFromName(await roomIdOf(secret)));
+    await runInDurableObject(stub, async (instance: Room, state) => {
+      const ws = state.getWebSockets().find((s) => (s.deserializeAttachment() as { person?: Person } | null)?.person?.publicKey === a.you.publicKey);
+      if (!ws) throw new Error("Alice's socket is not in the room");
+      await instance.webSocketError(ws);
+    });
+    expect(names(await b.next((m) => m.t === 'presence'))).toEqual(['Bob']);
+    const c = await attach('Carol', undefined, undefined, secret);
+    expect(names(await b.next((m) => m.t === 'presence'))).toEqual(['Bob', 'Carol']);
+    a.ws.close(1000, 'bye'); b.ws.close(1000, 'bye'); c.ws.close(1000, 'bye');
+  });
 });
 
 describe('text', () => {
