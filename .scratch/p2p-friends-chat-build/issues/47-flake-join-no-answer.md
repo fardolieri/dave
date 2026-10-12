@@ -61,3 +61,50 @@ Left for Daniel, older than this ticket: switching rooms while a join waits for 
 friend in two calls; and answers are matched by kind only, so a redeclare's late answer can answer the next join and
 leave `myJoinSeq` out of step with the server (who offers to whom could then disagree). The second needs a request id
 in the protocol.
+
+## Comments
+
+2026-10-12, the two left for Daniel, both real, fixed on branch fix/followups (PR #48):
+- **Two calls at once.** Alice clicks Join in Room, its answer is slow, and she joins Other meanwhile. `joinCall` left only
+  `active`, a call already joined, and `leave()` did nothing for a join under way: Room's server already had her in its
+  call, and its answer put her in it in this tab too, her microphone with it. `resilience.spec.ts` "joining another room's
+  call while a join waits for its answer leaves that join…" holds Room's answer, joins Other, lets the answer go.
+- **A late answer taken for the next join's.** In the call, a socket drop, her declaration's answer slow, Leave, Join:
+  the old answer was taken for the new join's, and her join sequence was not the one the server listed.
+  `resilience.spec.ts` "a late answer to a join declared again is not taken for the answer to the next join". Its first
+  version passed on the old app: with nobody joining in between, both answers carried the same sequence; Bob now leaves
+  and joins again between.
+- Red, on the tests alone: e2e run 38267913881 (0d47f72, the first test; the second passed there, see above) and
+  e2e run 38268396213 (72badca), both tests, Chromium and Firefox, failed on both tries, the only failing tests.
+- Green with the fix (236a00b): ci run 38269017089, e2e run 38269017085 and preview run 38269026256 (`dave-pr-48`, its
+  whole browser suite), both engines, no test retried; red-green run 38269016873 saw all four new tests (the two above,
+  `call.test.ts` and `core.test.ts` on the id) fail on the app from before the branch.
+
+Fix: `join` and `ice` carry a request id (`RequestId`, core/protocol.ts) that the server repeats in `call` and `ice`; the
+client takes an answer only for the request it names. Either side takes messages without one, for the mixed fleet a
+deploy leaves: an old client gets answers without an id as before, and an answer without one (an old server) goes to the
+request of its kind, as before. Joining a call now leaves every other room's call, its join under way, or its Rejoin
+waiting for a socket (`joinCall`, App.tsx; also when the tab steps back). A join left while under way ends without a
+call (`endJoinWithoutCall`, client/call.ts): its wait ends at once, it is not asked again, the server hears Leave on the
+socket the join went out on, and the microphone closes. A join the server never answered ends the same way besides the
+error, since the server may have taken it and lost only its answer: before, it could list the friend in a call her
+button said she was not in, her microphone open.
+
+Review of the diff (before master, read-only): nothing real; the judgment calls are below. Grumpy Friend: two real holes
+in the fix, closed red then green, and one older leak the fix now meets every time:
+- A join left while its microphone was still opening (Firefox on a phone asks on every visit) stayed under way until it
+  opened, so Join in that room meanwhile did nothing, and both joins ended without a call. Join there now lets it go on.
+  `resilience.spec.ts` "Join in Room, then in Other, then in Room again while the microphone opens ends in Room's call".
+- Leaving a Rejoin kept its marker, so a reload within 30 s put the friend back in the call she had left for another
+  room's. Leaving a Rejoin, waiting for its socket or under way, now removes the marker. `resilience.spec.ts` "a Rejoin
+  left for another room's call is not taken up by the next reload".
+- Red, on the tests alone (1dd756f): e2e run 38271493467, both tests, Chromium and Firefox, failed on both tries. Green
+  with the fix (476a38c and the head after it): see PR #48.
+- Not fixed here, for the ghost and TURN leak part of PR #48 (ticket 45's leftovers): the Leave a join left under way
+  sends can reach the Room during that join's TURN mint, before `turnUser` is set; the mint's patch then writes it onto a
+  visitor, and nobody revokes it (`apply` in worker/room.ts only checks the socket is attached). Before this, a join
+  under way was never told to leave, so this was rare; now it is the normal path when switching rooms mid-join.
+
+Left as judgment calls: a tab taken over while a join is under way still waits out the 8 s and shows the error (the
+`elsewhere` branch of the status effect leaves only when joined; `leave()` now handles a join too). An old server
+answers without ids, so until a deploy reaches the Room a late answer can still be taken for a newer join, as before.
