@@ -57,20 +57,23 @@ async function enterOnce(secret: string): Promise<void> {
 
 describe('worker routing', () => {
   it.skipIf(!('UPGRADE_LIMIT' in env))('rate-limits upgrade attempts per IP', async () => {
-    const headers = { Upgrade: 'websocket', 'cf-connecting-ip': '203.0.113.9' };
-    const path = await wsPath(SECRET);
-    // Past twice the highest limit in wrangler.jsonc (nightly's 120; ci.yml and deploy.yml also run the tests with
-    // CLOUDFLARE_ENV=nightly). The limiter's windows are aligned to the wall clock, so a loop that crosses a minute boundary
-    // starts counting again from zero; with only one window's worth of attempts that failed about one run in thirty.
-    let last = 0;
-    for (let i = 0; i < 250; i++) {
-      const res = await exports.default.fetch(new Request(`https://dave.test${path}`, { headers }));
-      last = res.status;
+    const ip = '203.0.113.9';
+    const path = await wsPath(freshSecret());
+    // This address's attempts are used up on the binding itself, which the Worker asks with the same key. Through the Worker
+    // each one also opens a socket in a Room: nightly's limit of 120 (ci.yml and deploy.yml run the tests with
+    // CLOUDFLARE_ENV=nightly) took up to 5 s that way on a busy runner, past the test's timeout, and the loop went on
+    // opening and closing sockets under the tests after it (ticket 45).
+    // The limiter's windows are aligned to the wall clock: one that rolls over between using up and the attempt starts
+    // counting from zero, so the attempt gets in. That can only happen once a minute; the next round finds the new window.
+    let status = 0;
+    for (let round = 0; round < 3 && status !== 429; round++) {
+      for (let n = 0; n < 1000 && (await env.UPGRADE_LIMIT.limit({ key: ip })).success; n++);
+      const res = await exports.default.fetch(new Request(`https://dave.test${path}`, { headers: { Upgrade: 'websocket', 'cf-connecting-ip': ip } }));
+      status = res.status;
       res.webSocket?.accept();
       res.webSocket?.close();
-      if (last === 429) break;
     }
-    expect(last).toBe(429);
+    expect(status).toBe(429);
   });
   it('serves 404 for unknown paths (assets are handled by the platform)', async () => {
     expect((await exports.default.fetch('https://dave.test/nope')).status).toBe(404);
@@ -229,14 +232,13 @@ describe('gate', () => {
     const ws = await openRoomSocket(SECRET);
     const id = await identity();
     const auth = await authMessage(ws, id);
-    let reply = nextMessage(ws);
+    const box = inbox(ws);
     ws.send(JSON.stringify(auth));
-    expect((await reply).t).toBe('welcome');
-    // the welcome is followed by a presence snapshot; skip it
-    await nextMessage(ws);
-    reply = nextMessage(ws);
+    await box.until('welcome');
+    // Presence snapshots come and go meanwhile (this one's join, and leaves of earlier tests' friends in the shared room).
     ws.send(JSON.stringify(auth));
-    expect(await reply).toEqual({ t: 'error', reason: 'already authenticated', ref: 'auth' });
+    expect(await box.until('error')).toEqual({ t: 'error', reason: 'already authenticated', ref: 'auth' });
+    expect(box.frames.filter((m) => m.t !== 'presence').map((m) => m.t)).toEqual(['welcome', 'error']);
     ws.close();
   });
 
