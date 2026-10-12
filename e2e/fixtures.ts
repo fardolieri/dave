@@ -121,7 +121,8 @@ export type FriendOptions = {
   /**
    * Holds this friend's share video to a trickle for its first `ms` after a viewer asks for it (1 frame a second, a
    * quarter of the size, 30 kbps), then lets it go as the app set it. What Chromium's own bandwidth estimate can do to a
-   * share that starts right after its connection came up: 30 to 75 kbps for about 2.5 s (ticket 46).
+   * share that starts right after its connection came up: 30 to 75 kbps for about 2.3 s, seen with a Firefox viewer
+   * against nightly (ticket 46).
    */
   slowShareStart?: number;
 };
@@ -185,8 +186,10 @@ export class Friend {
         let until = 0;
         const release = (s: RTCRtpSender, a: RTCRtpEncodingParameters) => {
           const p = s.getParameters();
-          Object.assign(p.encodings[0]!, a);
-          set.call(s, p).catch(() => setTimeout(() => release(s, a), 100)); // the app's own call may be under way
+          if (!p.encodings?.[0]) return; // the share or the connection is gone
+          Object.assign(p.encodings[0], a);
+          // The app's own call may be under way; any other error means the sender is closed.
+          set.call(s, p).catch((e: DOMException) => { if (e.name === 'InvalidModificationError') setTimeout(() => release(s, a), 100); });
         };
         RTCRtpSender.prototype.setParameters = function (this: RTCRtpSender, p: RTCRtpSendParameters, ...rest: unknown[]) {
           const e = p.encodings?.[0];
@@ -198,7 +201,7 @@ export class Friend {
             if (Date.now() < until) {
               asked.set(this, { maxBitrate: e.maxBitrate, maxFramerate: e.maxFramerate, scaleResolutionDownBy: e.scaleResolutionDownBy });
               Object.assign(e, { maxBitrate: 30_000, maxFramerate: 1, scaleResolutionDownBy: 4 });
-            }
+            } else asked.delete(this); // a late release must not undo what the app asked since
           }
           return (set as (...a: unknown[]) => Promise<void>).call(this, p, ...rest);
         };
