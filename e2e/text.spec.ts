@@ -147,6 +147,8 @@ test('a text in a room not on screen counts as unread and chimes; own texts neve
   alice.wire.up = (frame, pass) => { if (!frame.includes(otherKey)) return frame; setTimeout(() => pass(frame), 6000); return null; };
   await alice.open();
   const bob = await crowd.open('Bob', { rooms: [other] });
+  // A text goes to those in the room as it is sent; the server keeps none for later.
+  await expect.poll(() => bob.online(), { message: 'Alice is in Other too' }).toContain('Alice');
   const cuesBefore = await alice.cues();
   await bob.say('psst');
   const unread = alice.page.locator('button.room-name', { hasText: 'Other' }).locator('.unread');
