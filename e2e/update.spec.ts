@@ -188,6 +188,32 @@ test('ticket 36: a new version the browser is still downloading as the page load
   await expect(bar(alice.page)).toHaveCount(0);
 });
 
+test('ticket 44: a register() that fails holds nothing, and a new version is still taken through the registration the page has', async ({ crowd }) => {
+  needPreview();
+  const alice = await crowd.open('Alice');
+  await controlled(alice.page);
+  // Storage in a bad state, an add-on, an old Firefox for Android: the page is served, but registering again fails.
+  alice.expectWarning(/service worker not registered/);
+  await alice.page.addInitScript(() => {
+    ServiceWorkerContainer.prototype.register = () => Promise.reject(new Error('flaky'));
+  });
+
+  await alice.page.reload();
+  await alice.connected(); // nothing new: the opening ends, the composer is not left disabled
+  await expect(line(alice.page)).toHaveCount(0);
+  await expect(bar(alice.page)).toHaveCount(0);
+
+  await stageBigDeploy(alice, 1_500_000);
+  const count = countLoads(alice.page);
+  await alice.page.reload();
+  await expect(line(alice.page), 'found through the registration the page has').toBeVisible();
+  await expect(alice.composer).toBeDisabled();
+  await expect.poll(() => versionsNow(alice.page), { message: 'taken by itself', timeout: 30_000 }).toEqual(['next']);
+  await alice.connected();
+  expect(count.loads, 'her reload, then the one for the update').toBe(2);
+  await expect(bar(alice.page)).toHaveCount(0);
+});
+
 test('ticket 36: a version left waiting behind the bar is taken by the next reload', async ({ crowd }) => {
   needPreview();
   const alice = await crowd.open('Alice');
