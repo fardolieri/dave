@@ -31,7 +31,9 @@ test('a share tile left on "Opening…" while its video decodes is reported (sha
   // What the problem report of Oct 3 saw: the share's frames arrive, the tile never turns live.
   expect(await bob.hook('holdOpening', 'Alice')).toBe('holding');
   await expect(bob.tile('Alice')).toHaveClass(/share-opening/);
-  expect(await bob.receivingShareFrom('Alice')).toBe(true);
+  // The share has only just started: its sender may still be sending little (ticket 46). Asked until the frames flow, as
+  // every other check of a share's frames does.
+  await expect.poll(() => bob.receivingShareFrom('Alice')).toBe(true);
   await expect.poll(fired(bob), { timeout: REPORTED_WITHIN }).toEqual(['share_opening']);
   const [report] = await bob.invariants();
   expect(report!.heldMs).toBeGreaterThanOrEqual(10_000);
