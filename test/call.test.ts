@@ -1,9 +1,10 @@
 import { env } from 'cloudflare:workers';
-import { runDurableObjectAlarm } from 'cloudflare:test';
+import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import { generateIdentityKeyPair } from '../src/core/identity';
 import type { IceServer, Person, ServerMessage } from '../src/core/protocol';
 import { CLOSE_SILENT, SILENT_TIMEOUT_MS } from '../src/worker/room';
+import type { SocketState } from '../src/core/room';
 import { CLOSE_SUPERSEDED, MAX_MESSAGE_BYTES } from '../src/core/protocol';
 import { roomIdOf } from '../src/core/rooms';
 import { authFrame, openRoomSocket, type Challenge, type Keys } from './harness';
@@ -152,6 +153,27 @@ describe('sweep', () => {
       vi.useRealTimers();
     }
     expect(await a.closed).toBe(CLOSE_SILENT);
+  });
+
+  it('a socket the sweep drops leaves the presence of those still there, from the sweep itself', async () => {
+    // The close the runtime reports later finds the socket closing and broadcasts nothing, so the sweep's own snapshot is the only one.
+    const a = await attach('Alice');
+    const b = await attach('Bob');
+    await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => p.name === 'Alice'));
+    const stub = env.ROOM.get(env.ROOM.idFromName(await roomIdOf(SECRET)));
+    await runInDurableObject(stub, (_i, state) => {
+      for (const ws of state.getWebSockets()) {
+        const s = ws.deserializeAttachment() as SocketState | null;
+        if (s?.stage === 'attached' && s.person.publicKey === a.you.publicKey) ws.serializeAttachment({ ...s, attachedAt: Date.now() - SILENT_TIMEOUT_MS - 1000 });
+      }
+    });
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    expect(await a.closed).toBe(CLOSE_SILENT);
+    const snap = await b.next((m) => m.t === 'presence' && !(m as { people: Person[] }).people.some((p) => p.name === 'Alice'));
+    expect((snap as { people: Person[] }).people.map((p) => p.name)).toContain('Bob');
+    b.ws.send('{"t":"ping"}');
+    expect((await b.next((m) => m.t === 'pong')).t).toBe('pong'); // Bob was not swept with her
+    b.ws.close(1000);
   });
 });
 

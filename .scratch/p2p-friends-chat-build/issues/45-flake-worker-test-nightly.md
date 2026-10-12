@@ -54,3 +54,10 @@ overruns. None does now.
 Found by the review, older than this ticket and not its business: the sweep marks a silent attached socket `closing`
 without revoking its TURN credentials (`alarm` in `worker/room.ts`), and `webSocketClose` only revokes for an attached
 socket, so a swept participant's TURN user is never revoked; supersede does revoke. Needs its own ticket.
+
+Found by the Grumpy Friend pass before master, also older than this ticket: `webSocketError` on an attached socket
+neither marks it `closing` nor revokes its TURN user, so an errored socket the runtime has not let go of yet can show up
+again in later snapshots (a ghost) until the close or the sweep comes; and a TURN user minted during a join leaks when
+the socket closes or is superseded while the mint is under way. Both need their own ticket. The same pass added
+`call.test.ts` "a socket the sweep drops leaves the presence of those still there, from the sweep itself": since the
+close the runtime reports later now broadcasts nothing for a closing socket, the sweep's own snapshot is the only one.
