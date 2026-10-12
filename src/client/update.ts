@@ -196,8 +196,12 @@ export function watchForUpdates(): void {
   // A page already served has its registration at once. `register()` waits behind any install under way, the browser's
   // own check at a navigation included (Firefox starts it before the page asks): a big download kept it from resolving
   // past the opening check's 1.5 s, and the opening ended with no line, then the bar asked (ticket 44).
-  if (container.controller) void container.getRegistration().then(watch, () => {});
-  container.register('/sw.js').then(watch, (e: unknown) => { if (!registration) endOpening(); console.warn('service worker not registered', e); });
+  // A register() that fails may say so before that registration is found: only with none at all does the opening end.
+  const had = container.controller ? container.getRegistration().then(watch, () => {}) : Promise.resolve();
+  container.register('/sw.js').then(watch, (e: unknown) => {
+    console.warn('service worker not registered', e);
+    void had.then(() => { if (!registration) endOpening(); });
+  });
 }
 
 /** The update bar's Reload. A reload in a call rejoins it (ticket 24). */
