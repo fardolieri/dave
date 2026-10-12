@@ -13,9 +13,14 @@ export const CHALLENGE_TIMEOUT_MS = 10_000;
 
 export type SocketState =
   | { stage: 'challenge'; nonce: string; attempts: number; since: number }
-  /** `telemetry`: the browser opted in to PostHog (ticket 32). Kept here, never in `person`, so presence does not carry it. */
-  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; attachedAt: number; turnUser?: string; telemetry?: true }
-  /** Told to close (superseded, or silent too long) but still attached until the runtime finishes the handshake; invisible meanwhile. */
+  /**
+   * `telemetry`: the browser opted in to PostHog (ticket 32). Kept here, never in `person`, so presence does not carry it.
+   * `turnUsers`: every TURN user this friend's peer connections may still relay through, those of her earlier sockets
+   * included; revoked when she leaves the call. `joins`: how many times this socket joined the call, so a TURN user
+   * minted for an earlier join is told from the call's (settleTurnUser).
+   */
+  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; attachedAt: number; turnUsers?: string[]; joins?: number; telemetry?: true }
+  /** Told to close (superseded, silent too long, errored) or closed, but still attached until the runtime finishes the handshake; invisible meanwhile. */
   | { stage: 'closing' };
 
 export type Outcome = {
@@ -35,11 +40,11 @@ export type Outcome = {
   /**
    * Replies that need I/O (TURN minting). The adapter stores `state` first, then awaits this and
    * sends what it returns, so a second join arriving mid-fetch already sees the new join sequence.
-   * The returned state patch is merged into the attachment afterwards.
+   * A TURN user it minted goes where settleTurnUser says, by the socket's state by then.
    */
-  after?: () => Promise<{ replies: ServerMessage[]; patch?: Partial<Extract<SocketState, { stage: 'attached' }>> }>;
-  /** A TURN credential to revoke (participant left). */
-  revokeTurn?: string;
+  after?: () => Promise<{ replies: ServerMessage[]; minted?: MintedTurn }>;
+  /** TURN credentials to revoke (participant left). */
+  revokeTurn?: string[];
   close?: { code: number; reason: string };
   /**
    * An authenticated frame the server refused as malformed or oversized: a client bug or a limit worth knowing about,
@@ -60,6 +65,27 @@ export type RoomContext = {
   /** Mints ICE servers (TURN credentials) for a participant. Provided by the adapter. */
   mintIce: () => Promise<{ iceServers: IceServer[]; turnUser: string | null }>;
 };
+
+/** A TURN user minted for the socket's join number `forJoin` (SocketState `joins`). */
+export type MintedTurn = { turnUser: string; forJoin: number };
+
+/**
+ * TURN users kept per friend at most. Each join or ice refresh adds one, and a reconnect carries them over, so a long call
+ * on flaky Wi-Fi could grow the list past the attachment's 16 KB; the oldest are let go unrevoked, to run out on their own.
+ */
+export const MAX_TURN_USERS = 16;
+
+/**
+ * Where a TURN user goes once its mint is back: onto the socket if it is still in the join it was minted for, or revoked
+ * if the socket left that join meanwhile (a Leave, a Join again, closed, superseded, swept, errored): nobody was given it,
+ * and nothing else would ever revoke it. The adapter sends the answer only with a user it kept.
+ */
+export function settleTurnUser(current: SocketState | null, minted: MintedTurn): { state: SocketState } | { revoke: string } {
+  if (current?.stage === 'attached' && current.person.role === 'participant' && (current.joins ?? 0) === minted.forJoin) {
+    return { state: { ...current, turnUsers: [...(current.turnUsers ?? []), minted.turnUser].slice(-MAX_TURN_USERS) } };
+  }
+  return { revoke: minted.turnUser };
+}
 
 /** A socket has just been accepted: challenge it. `fresh` tells the client the room has no verifier yet. */
 export function openSocket(now: number, fresh = false): Outcome {
@@ -180,23 +206,24 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       // The sequence is fixed and stored before the TURN fetch so concurrent joins cannot collide.
       const joinSeq = nextJoinSeq([...ctx.others, state.person]);
       const person: Person = { ...state.person, role: 'participant', joinSeq, muted: msg.muted, sharing: msg.sharing === true };
+      const joins = (state.joins ?? 0) + 1;
       const now = ctx.now;
       const id = msg.id !== undefined ? { id: msg.id } : {}; // a client from before request ids sends none (protocol.ts, RequestId)
       return {
-        state: { ...next, person },
+        state: { ...next, person, joins },
         replies: [],
         presenceChanged: true,
         after: async () => {
           const { iceServers, turnUser } = await ctx.mintIce();
-          return { replies: [{ t: 'call', joinSeq, iceServers, issuedAt: now, ...id }], patch: turnUser ? { turnUser } : {} };
+          return { replies: [{ t: 'call', joinSeq, iceServers, issuedAt: now, ...id }], ...(turnUser ? { minted: { turnUser, forJoin: joins } } : {}) };
         },
       };
     }
     case 'leave': {
       if (state.person.role !== 'participant') return { state: next, replies: [] };
       const person: Person = { ...state.person, role: 'visitor', joinSeq: null, sharing: false, muted: false };
-      const { turnUser, ...rest } = next;
-      return { state: { ...rest, person }, replies: [], broadcast: [{ t: 'left', publicKey: person.publicKey }], presenceChanged: true, revokeTurn: turnUser };
+      const { turnUsers, ...rest } = next;
+      return { state: { ...rest, person }, replies: [], broadcast: [{ t: 'left', publicKey: person.publicKey }], presenceChanged: true, ...(turnUsers?.length ? { revokeTurn: turnUsers } : {}) };
     }
     case 'mute': {
       if (state.person.role !== 'participant' || state.person.muted === msg.muted) return { state: next, replies: [] };
@@ -219,7 +246,8 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       if (state.person.role !== 'participant') return notInCall('ice');
       const now = ctx.now;
       const id = msg.id !== undefined ? { id: msg.id } : {};
-      return { state: next, replies: [], after: async () => { const { iceServers, turnUser } = await ctx.mintIce(); return { replies: [{ t: 'ice', iceServers, issuedAt: now, ...id }], patch: turnUser ? { turnUser } : {} }; } };
+      const forJoin = state.joins ?? 0;
+      return { state: next, replies: [], after: async () => { const { iceServers, turnUser } = await ctx.mintIce(); return { replies: [{ t: 'ice', iceServers, issuedAt: now, ...id }], ...(turnUser ? { minted: { turnUser, forJoin } } : {}) }; } };
     }
     case 'share': {
       if (state.person.role !== 'participant') return notInCall('share');

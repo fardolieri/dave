@@ -11,14 +11,11 @@ import { generateIdentityKeyPair } from '../src/core/identity';
 import { CLOSE_SUPERSEDED, type Person, type ServerMessage } from '../src/core/protocol';
 import type { SocketState } from '../src/core/room';
 import { roomIdOf } from '../src/core/rooms';
-import { CLOSE_SILENT, SILENT_TIMEOUT_MS, type Room } from '../src/worker/room';
+import { CLOSE_SILENT, SILENT_TIMEOUT_MS, TURN_AWAY_GRACE_MS, type Room } from '../src/worker/room';
 import { mintIceServers, revokeIce } from '../src/worker/turn';
 import { authFrame, openRoomSocket, type Challenge, type Keys } from './harness';
 
 vi.mock('../src/worker/turn', () => ({ mintIceServers: vi.fn(), revokeIce: vi.fn() }));
-
-/** How long a friend may stay away and keep her TURN users (TURN_AWAY_GRACE_MS, worker/room.ts). */
-const TURN_AWAY_GRACE_MS = 30 * 60_000;
 
 type Client = { ws: WebSocket; you: Person; inbox: ServerMessage[]; next: (pred?: (m: ServerMessage) => boolean) => Promise<ServerMessage>; closed: Promise<number> };
 

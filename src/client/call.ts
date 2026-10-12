@@ -1763,6 +1763,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     // while the next join opens the microphone, nor its late answer.
     joinAgain = null;
     pending.get('call')?.cancel();
+    pending.get('ice')?.cancel(); // fresh credentials for peers about to close: the server sends no answer after the Leave
     for (const key of [...peers.keys()]) closePeer(key);
     stuckAttempts.clear();
     watchIntent.clear(); // joining again starts with every tile at "click to watch", not with yesterday's subscriptions
