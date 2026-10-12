@@ -48,6 +48,29 @@ test('a frame on its way to the server as it goes away is lost with the socket, 
   }
 });
 
+test('a join lost with a socket that drops is asked again on the next one, and the call starts', async ({ crowd }) => {
+  // PR #44's preview, 2026-10-11 (call.spec.ts "Chromium and Firefox in one call…", Chromium, run 38180213444, attempt 1):
+  // "The server did not answer the join request." Chris's join went out and his socket dropped before the answer; the
+  // server never let him in (nobody saw him in the call), and it let his next socket in a second later. Nothing asked
+  // again: eight seconds after the click the app gave up on a server that was there (ticket 47). Here the server never
+  // gets Alice's join, as it never got Chris's, and her socket comes back at once.
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await bob.join();
+  let cutting: Promise<void> | null = null;
+  alice.wire.up = (frame) => {
+    if (cutting || !frame.includes('"t":"join"')) return frame;
+    cutting = alice.wire.cut().then(() => alice.wire.restore());
+    return null;
+  };
+  await alice.join();
+  expect(cutting, 'the join reached the wire and was lost').not.toBeNull();
+  await expect(alice.selectedRoom.getByText('did not answer')).toHaveCount(0);
+  await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
+  await alice.connectedTo('Bob');
+  await bob.connectedTo('Alice');
+});
+
 test('a friend whose socket drops without a goodbye is shown as lost, then recovers', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
