@@ -160,6 +160,9 @@ test('a late answer to a join declared again is not taken for the answer to the 
   alice.wire.restore();
   await expect.poll(() => held.length, { message: 'the server answers her declaration on the new socket' }).toBe(1);
   await alice.leave();
+  // Bob leaves and joins again meanwhile: the server's next join sequence moves on, so the two answers differ.
+  await bob.leave();
+  await bob.join();
   await alice.selectedRoom.locator('button.join').click();
   await expect.poll(() => held.length, { message: 'the server answers her new join' }).toBe(2);
   alice.wire.down = null;
