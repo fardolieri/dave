@@ -23,6 +23,14 @@ export type ChatLine =
 
 const UNAVAILABLE_AFTER_MS = 30_000;
 const BACKOFF_MAX_MS = 30_000;
+/**
+ * A socket the server has not let in after this long is given up and tried again. The upgrade or the handshake can hang
+ * on the way to the Room, and no close comes for it: the app sat on "Connecting…" for good (nightly, ticket 48). The
+ * server gives an answer to its challenge as long.
+ */
+const HANDSHAKE_TIMEOUT_MS = 10_000;
+/** What a handshake given up is reported as (no close event says it). */
+const HANDSHAKE_GIVEN_UP = 4008;
 
 /**
  * The client's view of one Room: one WebSocket with the challenge handshake,
@@ -76,6 +84,13 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
     const socket = new WebSocket(`${scheme}://${location.host}/ws/${opts.roomId}`);
     ws = socket;
+    const handshake = setTimeout(() => {
+      if (ws !== socket || welcomed === socket || stopped) return;
+      // Its close could come late or never, with a server that does not answer: go on without it.
+      socket.onopen = socket.onmessage = socket.onclose = null;
+      socket.close();
+      lost(socket, HANDSHAKE_GIVEN_UP);
+    }, HANDSHAKE_TIMEOUT_MS);
 
     socket.onopen = () => {
       pingTimer = setInterval(() => socket.readyState === WebSocket.OPEN && socket.send(PING_FRAME), PING_INTERVAL_MS);
@@ -97,6 +112,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           return;
         }
         case 'welcome':
+          clearTimeout(handshake);
           welcomed = socket;
           welcomes++;
           attempt = 0;
@@ -148,35 +164,38 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       }
     };
 
-    socket.onclose = (e) => {
-      clearInterval(pingTimer);
-      if (ws === socket) ws = null;
-      if (welcomed === socket) welcomed = null;
-      setYou(null);
-      if (stopped) return;
-      posthog.capture('server_socket_closed', { code: e.code, ever_connected: everConnected });
-      if (e.code === CLOSE_SUPERSEDED) {
-        stopped = true;
-        setStatus({ kind: 'elsewhere' });
-        return;
-      }
-      if (e.code === CLOSE_AUTH_FAILED) {
-        stopped = true;
-        setStatus({ kind: 'refused', reason: 'the invite link is wrong or has been rotated' });
-        return;
-      }
-      if (downSince === null) {
-        downSince = Date.now();
-        const since = downSince;
-        // Escalate on a clock of its own, not only when a further attempt fails (spec §7.2).
-        unavailableTimer = setTimeout(() => { if (downSince === since && !stopped) setStatus({ kind: 'unavailable', since }); }, UNAVAILABLE_AFTER_MS);
-      }
-      const down = Date.now() - downSince;
-      setStatus(down >= UNAVAILABLE_AFTER_MS ? { kind: 'unavailable', since: downSince } : { kind: 'reconnecting', since: downSince });
-      const delay = Math.min(BACKOFF_MAX_MS, 1000 * 2 ** attempt) * (0.5 + Math.random() / 2);
-      attempt++;
-      reconnectTimer = setTimeout(open, delay);
-    };
+    socket.onclose = (e) => { clearTimeout(handshake); lost(socket, e.code); };
+  }
+
+  /** A socket is gone, closed or given up: try again after a while, unless the close says that cannot help. */
+  function lost(socket: WebSocket, code: number) {
+    clearInterval(pingTimer);
+    if (ws === socket) ws = null;
+    if (welcomed === socket) welcomed = null;
+    setYou(null);
+    if (stopped) return;
+    posthog.capture('server_socket_closed', { code, ever_connected: everConnected });
+    if (code === CLOSE_SUPERSEDED) {
+      stopped = true;
+      setStatus({ kind: 'elsewhere' });
+      return;
+    }
+    if (code === CLOSE_AUTH_FAILED) {
+      stopped = true;
+      setStatus({ kind: 'refused', reason: 'the invite link is wrong or has been rotated' });
+      return;
+    }
+    if (downSince === null) {
+      downSince = Date.now();
+      const since = downSince;
+      // Escalate on a clock of its own, not only when a further attempt fails (spec §7.2).
+      unavailableTimer = setTimeout(() => { if (downSince === since && !stopped) setStatus({ kind: 'unavailable', since }); }, UNAVAILABLE_AFTER_MS);
+    }
+    const down = Date.now() - downSince;
+    setStatus(down >= UNAVAILABLE_AFTER_MS ? { kind: 'unavailable', since: downSince } : { kind: 'reconnecting', since: downSince });
+    const delay = Math.min(BACKOFF_MAX_MS, 1000 * 2 ** attempt) * (0.5 + Math.random() / 2);
+    attempt++;
+    reconnectTimer = setTimeout(open, delay);
   }
 
   // The first connection waits while `hold` says so: a new version downloading as the app opens (ticket 36) would only
