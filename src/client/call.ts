@@ -257,19 +257,33 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   let generation = 0;
   /** The room socket my join went out on: the server has me in the call there, so signals may go (sendSignal). */
   let callSocket: number | null = null;
+  /** Asks the server for the join in flight once more; null while none is waiting for its answer. */
+  let joinAgain: (() => void) | null = null;
   const hasTurn = () => iceServers.some((s) => [s.urls].flat().some((u) => String(u).startsWith('turn')));
   let myJoinSeq: number | null = null;
   let audioCtx: AudioContext | null = null;
   let localAnalyser: AnalyserNode | null = null;
   const pending = new Map<'call' | 'ice', (m: ServerMessage) => void>();
-  /** Send a request and wait for the one reply type that answers it, or null on timeout. */
-  function awaitReply<K extends 'call' | 'ice'>(kind: K, request: () => void, timeoutMs: number): Promise<Extract<ServerMessage, { t: K }> | null> {
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => { pending.delete(kind); resolve(null); }, timeoutMs);
-      pending.set(kind, (m) => { clearTimeout(timer); pending.delete(kind); resolve(m as Extract<ServerMessage, { t: K }>); });
+  /**
+   * Send a request and wait for the one reply type that answers it, or null once the server has had `timeoutMs` without
+   * answering. `again` sends it once more, on a socket that came back after the first was lost with the request, and
+   * gives the server the full time from then.
+   */
+  function askServer<K extends 'call' | 'ice'>(kind: K, request: () => void, timeoutMs: number): { reply: Promise<Extract<ServerMessage, { t: K }> | null>; again: () => void } {
+    let again = () => {};
+    const reply = new Promise<Extract<ServerMessage, { t: K }> | null>((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const answered = (m: ServerMessage) => { clearTimeout(timer); pending.delete(kind); resolve(m as Extract<ServerMessage, { t: K }>); };
+      // A later request of the same kind may have taken the slot meanwhile: this one's timeout must not end that one's wait.
+      const arm = () => { clearTimeout(timer); timer = setTimeout(() => { if (pending.get(kind) === answered) pending.delete(kind); resolve(null); }, timeoutMs); };
+      pending.set(kind, answered);
+      again = () => { if (pending.get(kind) !== answered) return; arm(); request(); };
+      arm();
       request();
     });
+    return { reply, again };
   }
+  const awaitReply = <K extends 'call' | 'ice'>(kind: K, request: () => void, timeoutMs: number) => askServer(kind, request, timeoutMs).reply;
   const sources = new Map<string, MediaStreamAudioSourceNode>();
 
   const me = (): Person | null => room.people().find((p) => p.publicKey === myKey) ?? null;
@@ -1507,6 +1521,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (kind === 'connected' && prev !== undefined && prev !== 'connected' && joined) void redeclareAfterReconnect();
     if (kind === 'elsewhere' && joined) leave(); // another tab took over; this one is no longer in the call, and the marker goes
     if (kind === 'connected' && pendingRejoin) { const r = pendingRejoin; pendingRejoin = null; void join(r); }
+    // A join (or Rejoin) still unanswered was lost with the socket it went out on, or never went out: ask on the one
+    // now let in, unless it already went out there. A friend already in the call declares again above instead, and one who
+    // left meanwhile is asking nothing (ticket 47).
+    if (kind === 'connected' && prev !== undefined && prev !== 'connected' && joining && callSocket !== room.welcomes()) joinAgain?.();
   });
 
   /** Not a Rejoin: the page never reloaded, only the server socket came back. */
@@ -1525,9 +1543,12 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   async function declareJoin(): Promise<Extract<ServerMessage, { t: 'call' }> | null> {
-    const m = await awaitReply('call', () => {
+    const ask = askServer('call', () => {
       if (room.send({ t: 'join', muted: muted() || !voiceTrack || testing !== null, sharing: shareVideo !== null })) callSocket = room.welcomes();
     }, 8000);
+    joinAgain = ask.again;
+    const m = await ask.reply;
+    if (joinAgain === ask.again) joinAgain = null;
     if (m) { myJoinSeq = m.joinSeq; iceServers = m.iceServers; iceIssuedAt = m.issuedAt; }
     return m;
   }
