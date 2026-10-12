@@ -173,6 +173,67 @@ test('a late answer to a join declared again is not taken for the answer to the 
   await alice.connectedTo('Bob');
 });
 
+test('Join in Room, then in Other, then in Room again while the microphone opens ends in Room\'s call', async ({ crowd }) => {
+  // Grumpy Friend, PR #48: on a phone the microphone takes its time (Firefox asks on every visit). Joining Other left
+  // Room's join still opening the microphone, and her next Join in Room found that join under way and did nothing:
+  // once the microphone opened, both joins ended, and she was in no call, her last click for Room.
+  const other = { secret: newSecret(), name: 'Other' };
+  const bob = await crowd.open('Bob', { rooms: [crowd.room, other] });
+  const alice = await crowd.open('Alice', { rooms: [crowd.room, other], connect: false });
+  await alice.context.addInitScript(() => { // each request for the microphone waits until the test lets it go
+    const w = window as unknown as { __mic: Array<() => void> };
+    w.__mic = [];
+    const md = navigator.mediaDevices;
+    const open = md.getUserMedia.bind(md);
+    md.getUserMedia = (c) => new Promise((resolve, reject) => { w.__mic.push(() => open(c).then(resolve, reject)); });
+  });
+  await alice.open();
+  await bob.join();
+  const asked = () => alice.page.evaluate(() => (window as unknown as { __mic: unknown[] }).__mic.length);
+  await alice.selectedRoom.locator('button.join').click();
+  await expect.poll(asked, { message: 'Room asks for the microphone' }).toBe(1);
+  await alice.selectRoom('Other');
+  await alice.selectedRoom.locator('button.join').click();
+  await expect.poll(asked, { message: 'Other asks for the microphone' }).toBe(2);
+  await alice.selectRoom('Room');
+  await alice.selectedRoom.locator('button.join').click(); // Room after all
+  await alice.page.evaluate(() => { for (const go of (window as unknown as { __mic: Array<() => void> }).__mic.splice(0)) go(); });
+  await expect(alice.selectedRoom.locator('button.leave'), 'her last click wins').toBeVisible();
+  await expect(alice.page.locator('button.leave'), 'she is in one call').toHaveCount(1);
+  await expect.poll(() => bob.inCall(), { message: 'Room\'s server has her in its call' }).toEqual(['Bob', 'Alice']);
+  await bob.selectRoom('Other');
+  await expect.poll(() => bob.inCall(), { message: 'and Other\'s has her out of its call' }).toEqual([]);
+});
+
+test('a Rejoin left for another room\'s call is not taken up by the next reload', async ({ crowd }) => {
+  // Grumpy Friend, PR #48: in Room's call, Alice reloads and the Rejoin starts; she joins Other instead, which leaves the
+  // Rejoin. Her Wi-Fi loses Other's answer, so she reloads again, within the Rejoin window. Leaving the Rejoin kept its
+  // marker, and the reload put her back in Room's call without a click, her microphone with it.
+  const other = { secret: newSecret(), name: 'Other' };
+  const bob = await crowd.open('Bob', { rooms: [crowd.room, other] });
+  const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
+  await bob.join();
+  await alice.join();
+  await alice.connectedTo('Bob');
+  alice.wire.down = (frame) => (frame.includes('"t":"call"') ? null : frame); // every answer to a join is lost from here on
+  const joins = () => alice.wire.frames('up', 'join').length;
+  const before = joins();
+  await alice.page.reload(); // the marker names Room
+  await alice.connected();
+  await expect.poll(joins, { message: 'the Rejoin asks Room' }).toBeGreaterThan(before);
+  await alice.selectRoom('Other');
+  await alice.selectedRoom.locator('button.join').click();
+  await expect(alice.selectedRoom.locator('.warn', { hasText: 'The server did not answer' })).toBeVisible({ timeout: 15_000 });
+  alice.wire.down = null;
+  const asked = joins();
+  await alice.page.reload(); // well inside the marker's 30 s
+  await alice.connected();
+  await alice.page.waitForTimeout(3000); // a Rejoin asks as soon as Room's socket is let in
+  expect(joins(), 'no Rejoin').toBe(asked);
+  await expect(alice.page.locator('button.leave'), 'she is in no call').toHaveCount(0);
+  await expect.poll(() => bob.inCall(), { message: 'Room\'s server has her out of its call' }).toEqual(['Bob']);
+});
+
 test('a friend whose socket drops without a goodbye is shown as lost, then recovers', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
