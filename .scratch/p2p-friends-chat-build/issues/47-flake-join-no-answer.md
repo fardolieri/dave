@@ -1,6 +1,6 @@
 # 47 · Flake: "The server did not answer the join request." after the socket drops mid-join
 
-Status: fixed on branch flake/join-no-answer (PR #46), 2026-10-12; outcome 2 of ticket 35 (the app is wrong)
+Status: shipped 2026-10-12 to nightly and prod (prod ca1a9ac, nightly e2e green first); fixed on branch flake/join-no-answer (PR #46), 2026-10-12; outcome 2 of ticket 35 (the app is wrong)
 Seen 2026-10-11: preview run 38180213444, attempt 1 (PR #44, against `dave-pr-44`, real Cloudflare), job 114591116592,
 Chromium shard 1: `call.spec.ts` "Chromium and Firefox in one call connect and hear each other" failed on its first try
 and passed on the retry; the job was then re-run. Chris clicked Join, the Leave button never came, and the page said

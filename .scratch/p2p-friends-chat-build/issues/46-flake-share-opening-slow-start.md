@@ -1,6 +1,6 @@
 # 46 · Flake: the share_opening test checked a share's frames before a slow share had sent 20 KB
 
-Status: fixed on branch flake/share-tile-opening (PR #47), 2026-10-12; outcome 1 of ticket 35 (the test is wrong)
+Status: shipped 2026-10-12 to nightly and prod (prod ca1a9ac, nightly e2e green first); fixed on branch flake/share-tile-opening (PR #47), 2026-10-12; outcome 1 of ticket 35 (the test is wrong)
 Seen 2026-10-11: the preview run of d770a63 (38178624935, against `dave-pr-44`), job 114586445816, Firefox:
 `invariants.spec.ts` "a share tile left on "Opening…" while its video decodes is reported" failed on its first try and
 passed on the retry, `bob.receivingShareFrom('Alice')` false at line 31 (ticket 44's comments).

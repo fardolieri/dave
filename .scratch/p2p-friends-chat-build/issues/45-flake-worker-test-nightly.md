@@ -1,6 +1,6 @@
 # 45 · Flake: the worker tests on nightly, a timed-out rate-limit loop and a presence nobody asked for
 
-Status: fixed on branch flake/worker-test-nightly (PR #45), 2026-10-12; outcome 1 of ticket 35 (the test is wrong) and
+Status: shipped 2026-10-12 to nightly and prod (prod ca1a9ac, nightly e2e green first); fixed on branch flake/worker-test-nightly (PR #45), 2026-10-12; outcome 1 of ticket 35 (the test is wrong) and
 outcome 2 (the app), one each
 Seen 2026-10-11: ci.yml run 38176731497 (commit ac8fb94, branch flake/text-reload, an e2e-only change), job
 114580584837, `check (nightly)` only; `check (prod)` of the same run passed. In `test/worker.test.ts`, "rate-limits
