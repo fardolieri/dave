@@ -21,8 +21,12 @@ export const newSecret = (): string => randomBytes(16).toString('base64url');
 
 export type RoomSeed = { secret: string; name: string };
 
-/** A frame rewriter: return the frame (changed or not) to pass it on, or null to drop it. Frames are the JSON strings on the wire. */
-export type Tamper = (frame: string) => string | null;
+/**
+ * A frame rewriter: return the frame (changed or not) to pass it on, or null to drop it. Frames are the JSON strings on the wire.
+ * `pass` sends a frame on later, along the socket this one came on (nothing once that socket is closed): a frame held back
+ * and let go, as a slow server would send it.
+ */
+export type Tamper = (frame: string, pass: (frame: string) => void) => string | null;
 
 /** The WebSocket proxy between one friend and the server. */
 export class Wire {
@@ -48,13 +52,13 @@ export class Wire {
     route.onMessage((m) => {
       const frame = typeof m === 'string' ? m : m.toString();
       this.log.push({ dir: 'up', frame });
-      const out = this.up ? this.up(frame) : frame;
+      const out = this.up ? this.up(frame, (f) => { if (!pair.closing) server.send(f); }) : frame;
       if (out !== null && !pair.closing) server.send(out);
     });
     server.onMessage((m) => {
       const frame = typeof m === 'string' ? m : m.toString();
       this.log.push({ dir: 'down', frame });
-      const out = this.down ? this.down(frame) : frame;
+      const out = this.down ? this.down(frame, (f) => { if (!pair.closing) route.send(f); }) : frame;
       if (out !== null) route.send(out);
     });
     route.onClose((code, reason) => { pair.closing = true; this.routes.delete(pair); void server.close({ code, reason }); });

@@ -1,4 +1,4 @@
-import { expect, needHooks, test, type Friend } from './fixtures';
+import { expect, needHooks, newSecret, test, type Friend } from './fixtures';
 
 test('the call survives the server going away and coming back', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
@@ -107,6 +107,66 @@ test('a join asked again after a reconnect and left unanswered is not asked once
   await expect(alice.selectedRoom.locator('button.leave')).toBeVisible();
   expect(alice.wire.frames('up', 'join').length, 'one join for one click').toBe(atClick + 1);
   await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
+  await alice.connectedTo('Bob');
+});
+
+test('joining another room\'s call while a join waits for its answer leaves that join: one call, and nothing goes to the room left', async ({ crowd }) => {
+  // Ticket 47, left for Daniel: Alice clicks Join in Room, and its answer is slow (the Room mints TURN credentials first,
+  // up to 5 s). Meanwhile she joins the call in Other. Joining there left only a call already joined, not one still
+  // waiting: Room's server already had her in its call, and its answer, when it came, put her in that call too, her
+  // microphone with it, in a room she thinks she left.
+  const other = { secret: newSecret(), name: 'Other' };
+  const bob = await crowd.open('Bob', { rooms: [crowd.room, other] });
+  const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
+  await bob.join();
+  const held: Array<() => void> = [];
+  alice.wire.down = (frame, pass) => {
+    if (held.length || !frame.includes('"t":"call"')) return frame;
+    held.push(() => pass(frame));
+    return null;
+  };
+  await alice.selectedRoom.locator('button.join').click();
+  await expect.poll(() => held.length, { message: 'Room answers her join, and the answer is held' }).toBe(1);
+  await alice.selectRoom('Other');
+  await alice.join();
+  held[0]!();
+  await alice.page.waitForTimeout(3000); // what the late answer would start, it starts at once: the call, then an offer to Bob
+  await expect(alice.page.locator('button.leave'), 'she is in one call').toHaveCount(1);
+  await expect(alice.selectedRoom.locator('button.leave')).toBeVisible();
+  await expect.poll(() => bob.inCall(), { message: 'Room\'s server has her out of its call' }).toEqual(['Bob']);
+  expect((await bob.peers()).map((p) => p.name), 'no connection to Bob, so no voice of hers in Room').toEqual([]);
+  await bob.selectRoom('Other');
+  await expect.poll(() => bob.inCall(), { message: 'Other\'s server has her in its call' }).toEqual(['Alice']);
+});
+
+test('a late answer to a join declared again is not taken for the answer to the next join', async ({ crowd }) => {
+  // Ticket 47, left for Daniel: answers were matched to requests by their kind alone. In the call, Alice's socket drops
+  // and she declares her join again on the next one; that answer is slow (a TURN mint). She leaves and joins again, and
+  // the old answer, arriving first, was taken for the new join's: her join sequence was then not the one the server
+  // listed for her, so who offers to whom could disagree.
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await needHooks(alice);
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  const held: Array<() => void> = [];
+  alice.wire.down = (frame, pass) => {
+    if (!frame.includes('"t":"call"')) return frame;
+    held.push(() => pass(frame));
+    return null;
+  };
+  await alice.wire.cut();
+  alice.wire.restore();
+  await expect.poll(() => held.length, { message: 'the server answers her declaration on the new socket' }).toBe(1);
+  await alice.leave();
+  await alice.selectedRoom.locator('button.join').click();
+  await expect.poll(() => held.length, { message: 'the server answers her new join' }).toBe(2);
+  alice.wire.down = null;
+  for (const pass of held) pass(); // the old answer first, as a declaration's slow TURN mint would send them
+  await expect(alice.selectedRoom.locator('button.leave')).toBeVisible();
+  type State = { myJoinSeq: number | null; participants: string[] };
+  await expect.poll(async () => { const s = await alice.hook<State>('state'); return s.participants.includes(`Alice#${s.myJoinSeq}`); }, { message: 'her join sequence is the one the server lists' }).toBe(true);
   await alice.connectedTo('Bob');
 });
 
