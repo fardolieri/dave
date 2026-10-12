@@ -16,8 +16,8 @@ export type SocketState =
   /**
    * `telemetry`: the browser opted in to PostHog (ticket 32). Kept here, never in `person`, so presence does not carry it.
    * `turnUsers`: every TURN user this friend's peer connections may still relay through, those of her earlier sockets
-   * included; revoked when she leaves the call. `joins`: how many times this socket joined the call, so a TURN user
-   * minted for an earlier join is told from the call's (settleTurnUser).
+   * included (`takeOverTurn`); revoked when she leaves the call. `joins`: how many times this socket joined the call, so
+   * a TURN user minted for an earlier join is told from the call's (settleTurnUser).
    */
   | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; attachedAt: number; turnUsers?: string[]; joins?: number; telemetry?: true }
   /** Told to close (superseded, silent too long, errored) or closed, but still attached until the runtime finishes the handshake; invisible meanwhile. */
@@ -42,7 +42,9 @@ export type Outcome = {
    * sends what it returns, so a second join arriving mid-fetch already sees the new join sequence.
    * A TURN user it minted goes where settleTurnUser says, by the socket's state by then.
    */
-  after?: () => Promise<{ replies: ServerMessage[]; minted?: MintedTurn }>;
+  after?: () => Promise<{ replies: ServerMessage[]; minted: MintedTurn }>;
+  /** This friend joined the call: the adapter hands this socket the TURN users her earlier sockets left. Her public key. */
+  takeOverTurn?: string;
   /** TURN credentials to revoke (participant left). */
   revokeTurn?: string[];
   close?: { code: number; reason: string };
@@ -66,8 +68,8 @@ export type RoomContext = {
   mintIce: () => Promise<{ iceServers: IceServer[]; turnUser: string | null }>;
 };
 
-/** A TURN user minted for the socket's join number `forJoin` (SocketState `joins`). */
-export type MintedTurn = { turnUser: string; forJoin: number };
+/** ICE servers minted for the socket's join number `forJoin` (SocketState `joins`); `turnUser` null when STUN only. */
+export type MintedTurn = { turnUser: string | null; forJoin: number };
 
 /**
  * TURN users kept per friend at most. Each join or ice refresh adds one, and a reconnect carries them over, so a long call
@@ -76,13 +78,14 @@ export type MintedTurn = { turnUser: string; forJoin: number };
 export const MAX_TURN_USERS = 16;
 
 /**
- * Where a TURN user goes once its mint is back: onto the socket if it is still in the join it was minted for, or revoked
- * if the socket left that join meanwhile (a Leave, a Join again, closed, superseded, swept, errored): nobody was given it,
- * and nothing else would ever revoke it. The adapter sends the answer only with a user it kept.
+ * Where minted ICE servers go once the mint is back. If the socket is still in the join they were minted for, its TURN user
+ * goes onto the socket and the answer is sent. If it left that join meanwhile (a Leave, a Join again, closed, superseded,
+ * swept, errored), the answer is not sent, since a client from before request ids would take it for its next join, and
+ * the TURN user is revoked: nobody was given it, and nothing else would ever revoke it.
  */
-export function settleTurnUser(current: SocketState | null, minted: MintedTurn): { state: SocketState } | { revoke: string } {
+export function settleTurnUser(current: SocketState | null, minted: MintedTurn): { state: SocketState } | { revoke: string | null } {
   if (current?.stage === 'attached' && current.person.role === 'participant' && (current.joins ?? 0) === minted.forJoin) {
-    return { state: { ...current, turnUsers: [...(current.turnUsers ?? []), minted.turnUser].slice(-MAX_TURN_USERS) } };
+    return { state: minted.turnUser ? { ...current, turnUsers: [...(current.turnUsers ?? []), minted.turnUser].slice(-MAX_TURN_USERS) } : current };
   }
   return { revoke: minted.turnUser };
 }
@@ -213,9 +216,10 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
         state: { ...next, person, joins },
         replies: [],
         presenceChanged: true,
+        takeOverTurn: person.publicKey,
         after: async () => {
           const { iceServers, turnUser } = await ctx.mintIce();
-          return { replies: [{ t: 'call', joinSeq, iceServers, issuedAt: now, ...id }], ...(turnUser ? { minted: { turnUser, forJoin: joins } } : {}) };
+          return { replies: [{ t: 'call', joinSeq, iceServers, issuedAt: now, ...id }], minted: { turnUser, forJoin: joins } };
         },
       };
     }
@@ -247,7 +251,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       const now = ctx.now;
       const id = msg.id !== undefined ? { id: msg.id } : {};
       const forJoin = state.joins ?? 0;
-      return { state: next, replies: [], after: async () => { const { iceServers, turnUser } = await ctx.mintIce(); return { replies: [{ t: 'ice', iceServers, issuedAt: now, ...id }], ...(turnUser ? { minted: { turnUser, forJoin } } : {}) }; } };
+      return { state: next, replies: [], after: async () => { const { iceServers, turnUser } = await ctx.mintIce(); return { replies: [{ t: 'ice', iceServers, issuedAt: now, ...id }], minted: { turnUser, forJoin } }; } };
     }
     case 'share': {
       if (state.person.role !== 'participant') return notInCall('share');

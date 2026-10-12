@@ -10,18 +10,15 @@ export const SWEEP_INTERVAL_MS = 60_000;
 export const CLOSE_SILENT = 4003;
 /** An attached socket the runtime reported an error on is closed with this, should it still reach the client (it reconnects). */
 export const CLOSE_ERRORED = 4005;
-/**
- * How long a friend may stay away from the room without leaving the call and keep her TURN users. Her peer connections can
- * outlive her socket (ticket 31): a phone with its screen off stops its pings and is swept, yet its call goes on, and a
- * revoked user ends a relayed call at the allocation's next refresh. Keeping one costs nothing (it runs out after
- * ICE_TTL_SECONDS anyway), so the grace is long.
- */
-export const TURN_AWAY_GRACE_MS = 30 * 60_000;
 /** Storage key of the room's verifier, set by the first friend to enter (ADR 0004). */
 const AUTH_KEY = 'authKey';
-/** Storage key prefix of the TURN users of a friend away from the room, by public key: `{ users, since }` (Away). */
+/**
+ * Storage key prefix of the TURN users a friend's sockets left behind, by public key (letGo). Her peer connections can
+ * outlive her socket (ticket 31): a phone with its screen off stops its pings and is swept, yet its call goes on, and a
+ * revoked user ends a relayed call at the allocation's next refresh. So they wait for her next join, and are revoked
+ * when the call is over (the sweep finds nobody in it); one that waits for nothing runs out after ICE_TTL_SECONDS.
+ */
 const AWAY_PREFIX = 'away:';
-type Away = { users: string[]; since: number };
 
 // One Room per room id (ADR 0004). Uses the WebSocket Hibernation API so the object can be
 // evicted while sockets stay attached. The per-socket state machine lives in
@@ -93,6 +90,7 @@ export class Room extends DurableObject<Env> {
     let dropped = false;
     let attachedLeft = 0;
     let challengesLeft = 0;
+    let inCall = false;
     for (const ws of this.ctx.getWebSockets()) {
       const state = ws.deserializeAttachment() as SocketState | null;
       if (!state) continue;
@@ -107,20 +105,23 @@ export class Room extends DurableObject<Env> {
         this.letGo(ws, state); // out of presence now, whenever the runtime lets go
         ws.close(CLOSE_SILENT, 'no sign of life');
         dropped = true;
-      } else attachedLeft++;
+      } else {
+        attachedLeft++;
+        if (state.person.role === 'participant') inCall = true;
+      }
     }
     if (dropped) this.broadcastPresence();
-    // A friend away past the grace is not coming back to the call her TURN users were for.
-    let nextAwayEnds = Infinity;
-    for (const [key, away] of [...this.ctx.storage.kv.list<Away>({ prefix: AWAY_PREFIX })]) {
-      if (now - away.since < TURN_AWAY_GRACE_MS) { nextAwayEnds = Math.min(nextAwayEnds, away.since + TURN_AWAY_GRACE_MS); continue; }
-      for (const user of away.users) this.ctx.waitUntil(revokeIce(this.env, user));
-      this.ctx.storage.kv.delete(key);
+    // The call is over: nobody away from it is coming back to the call her TURN users were for. Checked here, not at each
+    // Leave or close, so that everyone dropping at once (the Wi-Fi of the house) does not end a call they reconnect to.
+    if (!inCall) {
+      for (const [key, users] of [...this.ctx.storage.kv.list<string[]>({ prefix: AWAY_PREFIX })]) {
+        for (const user of users) this.ctx.waitUntil(revokeIce(this.env, user));
+        this.ctx.storage.kv.delete(key);
+      }
     }
     // Pending challenges need the short interval; attached sockets only the long one.
     if (challengesLeft > 0) await this.scheduleSweep(CHALLENGE_TIMEOUT_MS);
     else if (attachedLeft > 0) await this.scheduleSweep(SWEEP_INTERVAL_MS);
-    if (nextAwayEnds < Infinity) await this.scheduleSweep(Math.max(0, nextAwayEnds - now));
   }
 
   private async scheduleSweep(inMs: number): Promise<void> {
@@ -136,7 +137,7 @@ export class Room extends DurableObject<Env> {
     if (outcome.broadcast) for (const m of outcome.broadcast) this.fanOut(m);
     if (outcome.relay) this.deliver(outcome.relay.to, outcome.relay.message);
     const superseded = outcome.supersede ? this.supersede(ws, outcome.supersede) : [];
-    if (outcome.supersede) this.comeBack(ws, outcome.supersede);
+    if (outcome.takeOverTurn) this.takeOverTurn(ws, outcome.takeOverTurn);
     if (outcome.presenceChanged) this.broadcastPresence(...superseded);
     for (const user of outcome.revokeTurn ?? []) this.ctx.waitUntil(revokeIce(this.env, user));
     if (outcome.close) ws.close(outcome.close.code, outcome.close.reason);
@@ -144,15 +145,12 @@ export class Room extends DurableObject<Env> {
     if (outcome.after) {
       // State is already stored; other messages may interleave with this I/O safely, a Leave or the close among them.
       const { replies, minted } = await outcome.after();
-      if (minted) {
-        const settled = settleTurnUser(ws.deserializeAttachment() as SocketState | null, minted);
-        if ('revoke' in settled) {
-          // Not sent: a client from before request ids would take a late answer for its next join, revoked user and all.
-          this.ctx.waitUntil(revokeIce(this.env, settled.revoke));
-          return;
-        }
-        ws.serializeAttachment(settled.state);
+      const settled = settleTurnUser(ws.deserializeAttachment() as SocketState | null, minted);
+      if ('revoke' in settled) {
+        if (settled.revoke) this.ctx.waitUntil(revokeIce(this.env, settled.revoke));
+        return; // its answer is not sent either
       }
+      ws.serializeAttachment(settled.state);
       for (const reply of replies) this.trySend(ws, JSON.stringify(reply));
     }
   }
@@ -176,25 +174,27 @@ export class Room extends DurableObject<Env> {
   }
 
   /**
-   * Out of presence for good: marked closing. Its TURN users are kept for this friend's next socket, since her peer
-   * connections may outlive this one (TURN_AWAY_GRACE_MS); the sweep revokes them if she stays away. The caller closes it.
+   * Out of presence for good: marked closing. Its TURN users wait for this friend's next join (AWAY_PREFIX), since her
+   * peer connections may outlive this socket. The caller closes it.
    */
   private letGo(ws: WebSocket, state: Extract<SocketState, { stage: 'attached' }>): void {
     ws.serializeAttachment({ stage: 'closing' } satisfies SocketState);
     if (!state.turnUsers?.length) return;
     const key = AWAY_PREFIX + state.person.publicKey;
-    const away = this.ctx.storage.kv.get<Away>(key);
-    this.ctx.storage.kv.put<Away>(key, { users: [...(away?.users ?? []), ...state.turnUsers].slice(-MAX_TURN_USERS), since: Date.now() });
+    this.ctx.storage.kv.put(key, [...(this.ctx.storage.kv.get<string[]>(key) ?? []), ...state.turnUsers].slice(-MAX_TURN_USERS));
   }
 
-  /** A friend's new socket takes over the TURN users her earlier ones left (letGo); her Leave revokes them. */
-  private comeBack(ws: WebSocket, publicKey: string): void {
-    const key = AWAY_PREFIX + publicKey;
-    const away = this.ctx.storage.kv.get<Away>(key);
-    if (!away) return;
-    this.ctx.storage.kv.delete(key);
+  /**
+   * A friend's join takes over the TURN users her earlier sockets left (letGo); her Leave revokes them. On the join, not
+   * on coming back: a reconnect joins again at once, while a tab reloaded past its Rejoin may never join.
+   */
+  private takeOverTurn(ws: WebSocket, publicKey: string): void {
     const state = ws.deserializeAttachment() as SocketState | null;
-    if (state?.stage === 'attached') ws.serializeAttachment({ ...state, turnUsers: [...away.users, ...(state.turnUsers ?? [])].slice(-MAX_TURN_USERS) });
+    const key = AWAY_PREFIX + publicKey;
+    const users = this.ctx.storage.kv.get<string[]>(key);
+    if (state?.stage !== 'attached' || !users) return;
+    this.ctx.storage.kv.delete(key);
+    ws.serializeAttachment({ ...state, turnUsers: [...users, ...(state.turnUsers ?? [])].slice(-MAX_TURN_USERS) });
   }
 
   /** The presence snapshot as computed right now from attachments alone. Public so tests can compare a fresh instance's view. */
