@@ -1688,6 +1688,9 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   let joinAbandoned = false;
   /** Join from the button, or as a Rejoin from the marker a reload left behind: the same steps without the click. */
   async function join(rejoin?: RejoinMarker): Promise<void> {
+    // A join left while its microphone opens is still under way, and wanted again: it goes on. Left later, while it waits
+    // for its answer, it has already ended by the next click (the wait ends at once, the rest follows in a microtask).
+    if (joining && joinAbandoned) { joinAbandoned = false; return; }
     if (joined || joining) return;
     joining = true;
     joinAbandoned = false;
@@ -1747,7 +1750,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   function leave(): void {
-    pendingRejoin = null; // a Rejoin still waiting for its socket is not wanted either
+    // A Rejoin still waiting for its socket, or under way, is not wanted either, nor on the next reload.
+    if (pendingRejoin || (joining && !joined)) { pendingRejoin = null; if (rejoinFor(local.read(REJOIN_KEY), room.roomId, Date.now())) local.remove(REJOIN_KEY); }
     // A join under way ends where it stands: its answer, however late, finds nobody waiting (ticket 47).
     if (joining && !joined) { joinAbandoned = true; joinAgain = null; pending.get('call')?.cancel(); return; }
     if (!joined) return;
