@@ -1718,6 +1718,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     stopShare(false); // the server clears the sharing flag on leave
     room.send({ t: 'leave' });
     callSocket = null;
+    // A declaration after a reconnect may still wait for its answer: nobody wants it now, nor to have it asked again
+    // while the next join opens the microphone, nor its late answer.
+    joinAgain = null;
+    pending.delete('call');
     for (const key of [...peers.keys()]) closePeer(key);
     stuckAttempts.clear();
     watchIntent.clear(); // joining again starts with every tile at "click to watch", not with yesterday's subscriptions
