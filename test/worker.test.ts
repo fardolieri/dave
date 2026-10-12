@@ -14,6 +14,20 @@ const freshSecret = () => `fresh-${Math.random().toString(36).slice(2)}`;
 function nextMessage(ws: WebSocket): Promise<ServerMessage> {
   return new Promise((resolve) => ws.addEventListener('message', (e) => resolve(JSON.parse(e.data as string)), { once: true }));
 }
+/** Every frame a socket receives, in order, and a way to wait for the first one of a type. */
+function inbox(ws: WebSocket) {
+  const frames: ServerMessage[] = [];
+  let arrived = () => {};
+  ws.addEventListener('message', (e) => { frames.push(JSON.parse(e.data as string)); arrived(); });
+  async function until(t: ServerMessage['t']): Promise<ServerMessage> {
+    for (;;) {
+      const found = frames.find((m) => m.t === t);
+      if (found) return found;
+      await new Promise<void>((resolve) => { arrived = resolve; });
+    }
+  }
+  return { frames, until };
+}
 function closed(ws: WebSocket): Promise<CloseEvent> {
   return new Promise((resolve) => ws.addEventListener('close', (e) => resolve(e as CloseEvent), { once: true }));
 }
@@ -224,5 +238,28 @@ describe('gate', () => {
     ws.send(JSON.stringify(auth));
     expect(await reply).toEqual({ t: 'error', reason: 'already authenticated', ref: 'auth' });
     ws.close();
+  });
+
+  it('a socket that leaves without ever authenticating sends no presence to the people in the room', async () => {
+    const secret = freshSecret();
+    const a = await openRoomSocket(secret);
+    const box = inbox(a);
+    const auth = await authFrame((await box.until('challenge')) as Challenge, (await identity()).keys, secret, 'Dave');
+    a.send(JSON.stringify(auth));
+    await box.until('presence');
+    // Strangers at the gate: each gets its challenge and goes. Presence did not change, so Dave hears nothing of it.
+    // Several, so a close the Room handles late still shows before the sentinel below.
+    for (let i = 0; i < 5; i++) {
+      const s = await openRoomSocket(secret);
+      await nextMessage(s); // challenge
+      const done = closed(s);
+      s.close();
+      await done;
+    }
+    // A reply Dave is sure to get, after anything the closes made the Room send him.
+    a.send(JSON.stringify(auth));
+    await box.until('error');
+    expect(box.frames.map((m) => m.t)).toEqual(['challenge', 'welcome', 'presence', 'error']);
+    a.close();
   });
 });
