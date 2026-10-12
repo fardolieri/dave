@@ -118,6 +118,12 @@ export type FriendOptions = {
   telemetry?: 'on' | 'off' | null;
   /** Records this friend's pages as video into this folder, at the viewport's size (CSS pixels: the screencast ignores the density). For showing a change, not for asserting. */
   video?: string;
+  /**
+   * Holds this friend's share video to a trickle for its first `ms` after a viewer asks for it (1 frame a second, a
+   * quarter of the size, 30 kbps), then lets it go as the app set it. What Chromium's own bandwidth estimate can do to a
+   * share that starts right after its connection came up: 30 to 75 kbps for about 2.5 s (ticket 46).
+   */
+  slowShareStart?: number;
 };
 
 export class Friend {
@@ -171,6 +177,33 @@ export class Friend {
       const start = OscillatorNode.prototype.start;
       OscillatorNode.prototype.start = function (this: OscillatorNode, ...a: [number?]) { played.push(`${this.type} ${Math.round(this.frequency.value)}`); return start.apply(this, a); };
     });
+    if (this.options.slowShareStart) {
+      await this.context.addInitScript((ms) => {
+        const set = RTCRtpSender.prototype.setParameters;
+        /** What the app asked of each held sender, applied once the hold ends. */
+        const asked = new Map<RTCRtpSender, RTCRtpEncodingParameters>();
+        let until = 0;
+        const release = (s: RTCRtpSender, a: RTCRtpEncodingParameters) => {
+          const p = s.getParameters();
+          Object.assign(p.encodings[0]!, a);
+          set.call(s, p).catch(() => setTimeout(() => release(s, a), 100)); // the app's own call may be under way
+        };
+        RTCRtpSender.prototype.setParameters = function (this: RTCRtpSender, p: RTCRtpSendParameters, ...rest: unknown[]) {
+          const e = p.encodings?.[0];
+          if (this.track?.kind === 'video' && e?.active) {
+            if (!until) {
+              until = Date.now() + ms;
+              setTimeout(() => { for (const [s, a] of asked) release(s, a); asked.clear(); }, ms);
+            }
+            if (Date.now() < until) {
+              asked.set(this, { maxBitrate: e.maxBitrate, maxFramerate: e.maxFramerate, scaleResolutionDownBy: e.scaleResolutionDownBy });
+              Object.assign(e, { maxBitrate: 30_000, maxFramerate: 1, scaleResolutionDownBy: 4 });
+            }
+          }
+          return (set as (...a: unknown[]) => Promise<void>).call(this, p, ...rest);
+        };
+      }, this.options.slowShareStart);
+    }
     this.page = await this.context.newPage();
     this.watch(this.page);
   }

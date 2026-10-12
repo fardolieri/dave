@@ -4,9 +4,12 @@ import { expect, needHooks, test, type Friend } from './fixtures';
 // warnings fail a test like any other warning (fixtures.ts). Here each invariant is broken on purpose through the inspection
 // hooks, and must be reported. The sharer is Chromium, as in share.spec.ts: its fake screen capture needs no picker.
 
-/** Alice and Bob in a call, connected both ways; Alice in Chromium when she is to share. */
+/**
+ * Alice and Bob in a call, connected both ways; Alice in Chromium when she is to share. Her share then starts as slowly as
+ * Chromium's bandwidth estimate can start it, every time and not only now and then (ticket 46).
+ */
 async function pair(crowd: { open: (n: string, o?: object) => Promise<Friend> }, aliceShares = false): Promise<[Friend, Friend]> {
-  const alice = await crowd.open('Alice', aliceShares ? { engine: 'chromium' } : {});
+  const alice = await crowd.open('Alice', aliceShares ? { engine: 'chromium', slowShareStart: 4_000 } : {});
   const bob = await crowd.open('Bob');
   await alice.join();
   await bob.join();
