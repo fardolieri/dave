@@ -1,9 +1,9 @@
 // What becomes of the TURN users the Room mints (ticket 45's leftovers, ticket 47's comments). A friend's live peer
-// connections may still relay through a user minted on an earlier socket of hers, so a user is revoked only when she
-// leaves the call, or stays away from the room past TURN_AWAY_GRACE_MS; a socket that goes hands its users to her next
-// one. A user minted for a join the socket has left meanwhile never reached anyone and is revoked at once, its answer
-// unsent. Cloudflare's TURN API is a mock here: each mint hands out the next user, and one can be held so that something
-// happens to the socket while it is under way.
+// connections may still relay through a user minted on an earlier socket of hers, so a user is revoked when she leaves
+// the call, or when the call is over (nobody left in it) while she is away; otherwise it runs out after 12 h. A socket
+// that goes leaves its users for her next join. A user minted for a join the socket has left meanwhile never reached
+// anyone and is revoked at once, its answer unsent. Cloudflare's TURN API is a mock here: each mint hands out the next
+// user, and one can be held so that something happens to the socket while it is under way.
 import { env } from 'cloudflare:workers';
 import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,7 +11,7 @@ import { generateIdentityKeyPair } from '../src/core/identity';
 import { CLOSE_SUPERSEDED, type Person, type ServerMessage } from '../src/core/protocol';
 import type { SocketState } from '../src/core/room';
 import { roomIdOf } from '../src/core/rooms';
-import { CLOSE_SILENT, SILENT_TIMEOUT_MS, TURN_AWAY_GRACE_MS, type Room } from '../src/worker/room';
+import { CLOSE_SILENT, SILENT_TIMEOUT_MS, type Room } from '../src/worker/room';
 import { mintIceServers, revokeIce } from '../src/worker/turn';
 import { authFrame, openRoomSocket, type Challenge, type Keys } from './harness';
 
@@ -45,8 +45,16 @@ async function attach(secret: string, name: string, keys?: Keys): Promise<Client
 const send = (c: Client, m: object) => c.ws.send(JSON.stringify(m));
 const names = (m: ServerMessage) => (m as { people: Person[] }).people.map((p) => p.name).sort();
 const roomOf = async (secret: string) => env.ROOM.get(env.ROOM.idFromName(await roomIdOf(secret)));
-/** A round trip through the Room: everything it was sent before has been handled. */
-const settled = async (c: Client) => { send(c, { t: 'ping' }); await c.next((m) => m.t === 'pong'); };
+/**
+ * A round trip through the Room: everything it was sent before has been handled, and what it sent back has arrived. A text,
+ * which comes back to its sender; a ping would not do, the runtime answers it without waking the Room.
+ */
+let roundTrips = 0;
+const settled = async (c: Client) => {
+  const text = `round trip ${++roundTrips}`;
+  send(c, { t: 'text', text });
+  await c.next((m) => m.t === 'text' && m.text === text);
+};
 
 /** Every TURN user the mock handed out, in order: plain data, which the Room's code and the test's may share. */
 const minted: string[] = [];
@@ -63,14 +71,14 @@ beforeEach(() => {
  * a promise that one side resolves runs the other side's code on in the wrong context ("Cannot perform I/O on behalf of
  * a different Durable Object").
  */
-function holdNextMint(): { started: () => Promise<string>; release: () => void } {
+function holdNextMint({ stunOnly = false } = {}): { started: () => Promise<string>; release: () => void } {
   let user: string | null = null;
   let released = false;
   vi.mocked(mintIceServers).mockImplementationOnce(async () => {
     const turnUser = nextUser();
     user = turnUser;
     while (!released) await new Promise((r) => setTimeout(r, 5));
-    return { iceServers: [], turnUser };
+    return { iceServers: [], turnUser: stunOnly ? null : turnUser }; // STUN only: Cloudflare's API failed, as it may
   });
   return {
     started: () => vi.waitFor(() => { if (user === null) throw new Error('the Room has not asked for a TURN user yet'); return user; }),
@@ -93,29 +101,45 @@ async function leave(c: Client): Promise<void> {
   await c.next((m) => m.t === 'left' && m.publicKey === c.you.publicKey);
 }
 
-/** Moves the Room's clock past `ms` from now and runs its sweep. */
-async function sweepAfter(secret: string, ms: number): Promise<void> {
+/**
+ * Moves the Room's clock `ms` on and runs its sweep. The sockets of `fresh` count as having just shown a sign of life;
+ * they must not have pinged, since the runtime stamps pings with the real time.
+ */
+async function sweepAfterKeeping(secret: string, ms: number, fresh: Client[] = []): Promise<void> {
   vi.useFakeTimers({ toFake: ['Date'] });
   try {
     vi.setSystemTime(Date.now() + ms);
+    await runInDurableObject(await roomOf(secret), (_i, state) => {
+      for (const ws of state.getWebSockets()) {
+        const s = ws.deserializeAttachment() as SocketState | null;
+        if (s?.stage === 'attached' && fresh.some((c) => c.you.publicKey === s.person.publicKey)) ws.serializeAttachment({ ...s, attachedAt: Date.now() });
+      }
+    });
     expect(await runDurableObjectAlarm(await roomOf(secret))).toBe(true);
   } finally {
     vi.useRealTimers();
   }
 }
 
-describe('a friend who goes without leaving keeps her TURN users for her next socket', () => {
+/** Makes the sockets of `c` look silent past SILENT_TIMEOUT_MS, for the next sweep to drop. */
+async function silence(secret: string, c: Client): Promise<void> {
+  await runInDurableObject(await roomOf(secret), (_i, state) => {
+    for (const ws of state.getWebSockets()) {
+      const s = ws.deserializeAttachment() as SocketState | null;
+      if (s?.stage === 'attached' && s.person.publicKey === c.you.publicKey) ws.serializeAttachment({ ...s, attachedAt: Date.now() - SILENT_TIMEOUT_MS - 1000 });
+    }
+  });
+}
+
+describe('a friend who goes without leaving keeps her TURN users while the call goes on', () => {
   it('swept for silence (a phone with its screen off) and back: nothing is revoked until she leaves the call', async () => {
     const secret = 'turn-sweep-room';
     const keys = await generateIdentityKeyPair();
+    const b = await attach(secret, 'Bob');
+    await join(b);
     const a = await attach(secret, 'Alice', keys);
     const first = await join(a);
-    await runInDurableObject(await roomOf(secret), (_i, state) => {
-      for (const ws of state.getWebSockets()) {
-        const s = ws.deserializeAttachment() as SocketState | null;
-        if (s?.stage === 'attached' && s.person.publicKey === a.you.publicKey) ws.serializeAttachment({ ...s, attachedAt: Date.now() - SILENT_TIMEOUT_MS - 1000 });
-      }
-    });
+    await silence(secret, a);
     expect(await runDurableObjectAlarm(await roomOf(secret))).toBe(true);
     expect(await a.closed).toBe(CLOSE_SILENT);
     const back = await attach(secret, 'Alice', keys);
@@ -124,7 +148,25 @@ describe('a friend who goes without leaving keeps her TURN users for her next so
     expect(revoked()).toEqual([]); // her peer connections may still relay through the first
     await leave(back);
     await vi.waitFor(() => expect(revoked()).toEqual([first, second].sort()));
-    back.ws.close(1000);
+    back.ws.close(1000); b.ws.close(1000);
+  });
+
+  it('swept from a call that goes on (a phone in a pocket for an hour): nothing is revoked while Bob still hears her', async () => {
+    const secret = 'turn-pocket-room';
+    const b = await attach(secret, 'Bob');
+    const bobs = await join(b);
+    const a = await attach(secret, 'Alice');
+    const alices = await join(a);
+    await silence(secret, a);
+    expect(await runDurableObjectAlarm(await roomOf(secret))).toBe(true);
+    expect(await a.closed).toBe(CLOSE_SILENT);
+    await sweepAfterKeeping(secret, 60 * 60_000, [b]);
+    expect(revoked()).toEqual([]);
+    await leave(b); // the call is over: nobody is left in it
+    await vi.waitFor(() => expect(revoked()).toEqual([bobs]));
+    await sweepAfterKeeping(secret, 60 * 60_000 + SILENT_TIMEOUT_MS, [b]);
+    expect(revoked()).toEqual([alices, bobs].sort());
+    b.ws.close(1000);
   });
 
   it('superseded by her own new socket (a reconnect the Room had not noticed): nothing is revoked until she leaves', async () => {
@@ -159,20 +201,24 @@ describe('a friend who goes without leaving keeps her TURN users for her next so
     back.ws.close(1000); b.ws.close(1000);
   });
 
-  it('a friend who stays away past the grace has her TURN users revoked by the sweep, not before', async () => {
-    const secret = 'turn-away-room';
-    const a = await attach(secret, 'Alice');
+  it('back as a visitor who never joins again (a tab reloaded past its Rejoin): her old user is revoked once nobody is in the call', async () => {
+    const secret = 'turn-visitor-room';
+    const keys = await generateIdentityKeyPair();
+    const a = await attach(secret, 'Alice', keys);
     const user = await join(a);
     a.ws.close(1000);
     await a.closed;
-    await sweepAfter(secret, TURN_AWAY_GRACE_MS - 60_000);
-    expect(revoked()).toEqual([]);
-    await sweepAfter(secret, TURN_AWAY_GRACE_MS + 1000);
+    const back = await attach(secret, 'Alice', keys);
+    await settled(back);
+    await sweepAfterKeeping(secret, 31 * 60_000, [back]);
     expect(revoked()).toEqual([user]);
+    back.ws.close(1000);
   });
 
-  it('a socket that errored counts as gone: its TURN user waits for her too, then the grace', async () => {
+  it('a socket that errored counts as gone: its TURN user waits for her too, until the call is over', async () => {
     const secret = 'turn-error-room';
+    const b = await attach(secret, 'Bob');
+    const bobs = await join(b);
     const a = await attach(secret, 'Alice');
     const user = await join(a);
     await runInDurableObject(await roomOf(secret), async (instance: Room, state) => {
@@ -180,10 +226,12 @@ describe('a friend who goes without leaving keeps her TURN users for her next so
       if (!ws) throw new Error("Alice's socket is not in the room");
       await instance.webSocketError(ws);
     });
+    await sweepAfterKeeping(secret, 0, [b]);
     expect(revoked()).toEqual([]);
-    await sweepAfter(secret, TURN_AWAY_GRACE_MS + 1000);
-    expect(revoked()).toEqual([user]);
-    a.ws.close(1000);
+    await leave(b);
+    await sweepAfterKeeping(secret, 0, [b]);
+    expect(revoked()).toEqual([user, bobs].sort());
+    a.ws.close(1000); b.ws.close(1000);
   });
 });
 
@@ -248,6 +296,21 @@ describe('a TURN user minted for a join the socket has left meanwhile is revoked
     expect(a.inbox.filter((m) => m.t === 'call')).toEqual([]);
     await leave(a);
     await vi.waitFor(() => expect(revoked()).toEqual([first, second].sort()));
+    a.ws.close(1000);
+  });
+
+  it('Leave and Join again while the first join\'s mint is under way and comes back STUN only: its answer is not sent either', async () => {
+    const secret = 'turn-rejoin-stun-room';
+    const a = await attach(secret, 'Alice');
+    const mint = holdNextMint({ stunOnly: true });
+    send(a, { t: 'join', muted: false });
+    await mint.started();
+    send(a, { t: 'leave' });
+    await join(a);
+    mint.release();
+    await vi.waitFor(() => expect(vi.mocked(mintIceServers).mock.settledResults.filter((r) => r.type !== 'incomplete')).toHaveLength(2));
+    await settled(a);
+    expect(a.inbox.filter((m) => m.t === 'call')).toEqual([]);
     a.ws.close(1000);
   });
 });
