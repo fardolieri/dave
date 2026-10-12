@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { expect, newSecret, test } from './fixtures';
 
 // Text chat as it works today (server relay, history per browser). These tests pin the behaviour friends see, so they
@@ -137,7 +138,14 @@ test('texts from more than 18 h before the room came on screen wait behind a but
 
 test('a text in a room not on screen counts as unread and chimes; own texts never chime', async ({ crowd }) => {
   const other = { secret: newSecret(), name: 'Other' };
-  const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
+  // Alice's open waits for the room on screen only. Her way into Other is slow here: her answer to its challenge goes out
+  // 6 s late (well inside the server's 10 s). Preview run of PR #44, Firefox: her socket there was let in 0.3 s after
+  // Bob's "psst" had gone round, so it never reached her (ticket 49). Told apart by the room's verifier, which a first
+  // answer carries (`authKeyOf` in core/rooms.ts).
+  const otherKey = createHash('sha256').update(`dave/auth-key\n${other.secret}`).digest('base64url');
+  const alice = await crowd.open('Alice', { rooms: [crowd.room, other], connect: false });
+  alice.wire.up = (frame, pass) => { if (!frame.includes(otherKey)) return frame; setTimeout(() => pass(frame), 6000); return null; };
+  await alice.open();
   const bob = await crowd.open('Bob', { rooms: [other] });
   const cuesBefore = await alice.cues();
   await bob.say('psst');
