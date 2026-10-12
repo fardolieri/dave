@@ -54,12 +54,13 @@ export class Room extends DurableObject<Env> {
     const valid = code === 1000 || (code >= 3000 && code <= 4999);
     ws.close(valid ? code : 1000, reason);
     const state = ws.deserializeAttachment() as SocketState | null;
-    if (state?.stage === 'attached' && state.turnUser) this.ctx.waitUntil(revokeIce(this.env, state.turnUser));
+    if (state?.stage !== 'attached') return; // never in presence (a challenge), or out of it since it was told to close
+    if (state.turnUser) this.ctx.waitUntil(revokeIce(this.env, state.turnUser));
     this.broadcastPresence(ws);
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
-    this.broadcastPresence(ws);
+    if (this.personOf(ws)) this.broadcastPresence(ws);
   }
 
   /**
