@@ -108,3 +108,11 @@ in the fix, closed red then green, and one older leak the fix now meets every ti
 Left as judgment calls: a tab taken over while a join is under way still waits out the 8 s and shows the error (the
 `elsewhere` branch of the status effect leaves only when joined; `leave()` now handles a join too). An old server
 answers without ids, so until a deploy reaches the Room a late answer can still be taken for a newer join, as before.
+
+2026-10-12, the TURN leak above, fixed on branch fix/followups (PR #48): a join's TURN user is minted after the join is
+stored, so a Leave (now sent by every join left under way), a close or a supersede during the mint found no user to
+revoke, and the mint's patch then wrote it onto a visitor or a dead socket, or dropped it. A mint now keeps its user only
+if the socket is still in the join it was minted for; otherwise it is revoked at once and its answer is not sent, so a
+client from before request ids cannot take it for its next join. The client's Leave also stops waiting for an ice
+answer. `test/turn.test.ts` "a TURN user minted for a join the socket has left meanwhile…", red in ci.yml runs
+38302854786 and 38307993393. The rest (what becomes of the users of a socket that goes) is in ticket 45's comments.

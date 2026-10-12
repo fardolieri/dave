@@ -61,3 +61,36 @@ again in later snapshots (a ghost) until the close or the sweep comes; and a TUR
 the socket closes or is superseded while the mint is under way. Both need their own ticket. The same pass added
 `call.test.ts` "a socket the sweep drops leaves the presence of those still there, from the sweep itself": since the
 close the runtime reports later now broadcasts nothing for a closing socket, the sweep's own snapshot is the only one.
+
+## Comments
+
+2026-10-12, the two leftovers above, fixed on branch fix/followups (PR #48), red then green:
+- **Ghost presence.** `webSocketError` broadcast a snapshot without the socket but left its attachment attached; the
+  runtime can keep an errored socket in `getWebSockets()` until its close or the sweep, so the next snapshot (someone
+  joining or muting) listed the friend again. An errored socket is now marked closing and closed (4005, which the client
+  takes like any drop: it reconnects). `presence.test.ts` "a socket that errored stays out of presence, also in the
+  snapshot of the next friend who comes in". Red: ci.yml run 38294584234, both envs (Carol's snapshot had Alice in it).
+- **TURN users.** The rule now: a TURN user is revoked only when its friend leaves the call (her Leave revokes every
+  user she holds, those carried from earlier sockets too); otherwise it runs out after 12 h (ICE_TTL_SECONDS). A socket
+  that goes (close, supersede, sweep, error) leaves its users in storage under her public key (`away:<key>`,
+  `{ users, since }`), her next join takes them over, and the sweep forgets entries older than the TTL without revoking
+  them. Her peer connections can outlive the socket (ticket 31), and media can flow with every socket gone (two phones
+  talking with their screens off are both swept), which the server cannot see; revoking under them drops a relayed call
+  at the allocation's next refresh. Before, close and supersede revoked at once (that dropped calls), and the sweep and
+  an error revoked nothing. A mint that comes back after its socket left the join it was for (a Leave, a Join again,
+  closed, superseded) is revoked at once and its answer not sent, STUN only or not (`settleTurnUser`; a `joins` count per
+  socket, since a Leave and a Join can give the same join sequence). `test/turn.test.ts`, Cloudflare's TURN API mocked.
+  Red, ci.yml, both envs: runs 38302854786 (nine tests), 38307993393 (four), 38313724153 (five).
+  On the way, two rules were tried and dropped before master after the Grumpy Friend and the review: a 30 min grace
+  after a socket goes (a phone in a pocket on a longer call dropped), then "revoke once the sweep finds nobody in the
+  call" (two swept phones still talking dropped).
+- **What the rule costs**, known and left: the users of a friend who never says Leave (closes the tab, loses the
+  network for good) stay valid up to 12 h. An ice refresh or a Join again in the call adds a user rather than replacing
+  one; all are revoked at Leave, but at most 16 are kept per friend (an attachment holds 16 KB), so on very flaky Wi-Fi
+  the oldest is let go to run out. A deploy drops sockets, probably without `webSocketClose` (unconfirmed): a mint under
+  way then runs out at 12 h. Attachments from before the deploy with the old single `turnUser` are not read; a deploy
+  drops those sockets anyway. `away:` entries live in a room's storage until a sweep after their TTL, and a room nobody
+  visits again keeps them (a few hundred bytes per friend).
+- The rate-limit test timed out at 5 s again on nightly (ci.yml run 38298003264, a branch that does not touch the gate).
+  Likely cause, not proven (no timings were kept): in Miniflare each of nightly's 121 attempts is a round trip to the
+  limiter's own Durable Object and a write there, one after the other. They now go 40 at a time.
