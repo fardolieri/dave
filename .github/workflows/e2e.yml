@@ -96,6 +96,15 @@ jobs:
             e2e-report
             e2e-results
           retention-days: 14
+      # A test that failed once and passed on its retry fails no job, but its failed try kept its trace and wire logs
+      # (retain-on-failure): kept too, or a flake that shows once cannot be read (tickets 41, 44 and 50 had nothing).
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: e2e-flaky-${{ matrix.project }}-${{ matrix.shard }}-${{ github.run_id }}
+          path: e2e-results
+          if-no-files-found: ignore
+          retention-days: 14
 
   gate:
     # The release gate. After the run against nightly it writes the commit status `nightly e2e passed` on the tested commit,
