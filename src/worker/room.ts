@@ -8,6 +8,8 @@ import { logRejected } from './telemetry';
 export const SILENT_TIMEOUT_MS = 90_000;
 export const SWEEP_INTERVAL_MS = 60_000;
 export const CLOSE_SILENT = 4003;
+/** An attached socket the runtime reported an error on is closed with this, should it still reach the client (it reconnects). */
+export const CLOSE_ERRORED = 4005;
 /** Storage key of the room's verifier, set by the first friend to enter (ADR 0004). The only thing a Room persists. */
 const AUTH_KEY = 'authKey';
 
@@ -59,8 +61,15 @@ export class Room extends DurableObject<Env> {
     this.broadcastPresence(ws);
   }
 
+  /**
+   * The runtime may keep an errored socket in getWebSockets() until its close comes, so it is marked closing here, like a
+   * superseded one: before, the next snapshot (someone else joining or muting) listed the friend again, until the sweep.
+   */
   async webSocketError(ws: WebSocket): Promise<void> {
-    if (this.personOf(ws)) this.broadcastPresence(ws);
+    if (!this.personOf(ws)) return;
+    ws.serializeAttachment({ stage: 'closing' } satisfies SocketState);
+    try { ws.close(CLOSE_ERRORED, 'socket error'); } catch { /* already gone */ }
+    this.broadcastPresence(ws);
   }
 
   /**
