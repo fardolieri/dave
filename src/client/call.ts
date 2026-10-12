@@ -263,27 +263,38 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   let myJoinSeq: number | null = null;
   let audioCtx: AudioContext | null = null;
   let localAnalyser: AnalyserNode | null = null;
-  const pending = new Map<'call' | 'ice', (m: ServerMessage) => void>();
+  /** The request of each kind waiting for its answer: one at a time per kind, a newer one takes the slot. */
+  const pending = new Map<'call' | 'ice', { id: number; answered: (m: ServerMessage) => void; cancel: () => void }>();
+  /** Numbers this call's requests, so an answer is taken only by the request it answers (protocol.ts, RequestId). */
+  let lastRequestId = 0;
   /**
    * Send a request and wait for the one reply type that answers it, or null once the server has had `timeoutMs` without
-   * answering. `again` sends it once more, on a socket that came back after the first was lost with the request, and
-   * gives the server the full time from then.
+   * answering, or at once when `cancel` is called. `again` sends it once more, with the same id, on a socket that came
+   * back after the first was lost with the request, and gives the server the full time from then.
    */
-  function askServer<K extends 'call' | 'ice'>(kind: K, request: () => void, timeoutMs: number): { reply: Promise<Extract<ServerMessage, { t: K }> | null>; again: () => void } {
+  function askServer<K extends 'call' | 'ice'>(kind: K, request: (id: number) => void, timeoutMs: number): { reply: Promise<Extract<ServerMessage, { t: K }> | null>; again: () => void; cancel: () => void } {
+    const id = ++lastRequestId;
     let again = () => {};
+    let cancel = () => {};
     const reply = new Promise<Extract<ServerMessage, { t: K }> | null>((resolve) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const answered = (m: ServerMessage) => { clearTimeout(timer); pending.delete(kind); resolve(m as Extract<ServerMessage, { t: K }>); };
-      // A later request of the same kind may have taken the slot meanwhile: this one's timeout must not end that one's wait.
-      const arm = () => { clearTimeout(timer); timer = setTimeout(() => { if (pending.get(kind) === answered) pending.delete(kind); resolve(null); }, timeoutMs); };
-      pending.set(kind, answered);
-      again = () => { if (pending.get(kind) !== answered) return; arm(); request(); };
+      // A later request of the same kind may have taken the slot meanwhile: this one's end must not end that one's wait.
+      const done = (m: Extract<ServerMessage, { t: K }> | null) => { clearTimeout(timer); if (pending.get(kind)?.id === id) pending.delete(kind); resolve(m); };
+      const arm = () => { clearTimeout(timer); timer = setTimeout(() => done(null), timeoutMs); };
+      cancel = () => done(null);
+      pending.set(kind, { id, answered: (m) => done(m as Extract<ServerMessage, { t: K }>), cancel });
+      again = () => { if (pending.get(kind)?.id !== id) return; arm(); request(id); };
       arm();
-      request();
+      request(id);
     });
-    return { reply, again };
+    return { reply, again, cancel };
   }
-  const awaitReply = <K extends 'call' | 'ice'>(kind: K, request: () => void, timeoutMs: number) => askServer(kind, request, timeoutMs).reply;
+  const awaitReply = <K extends 'call' | 'ice'>(kind: K, request: (id: number) => void, timeoutMs: number) => askServer(kind, request, timeoutMs).reply;
+  /** An answer goes to the request it names. One without an id, from a server older than request ids, goes to the one waiting. */
+  function onAnswer(m: Extract<ServerMessage, { t: 'call' | 'ice' }>): void {
+    const waiting = pending.get(m.t);
+    if (waiting && (m.id === undefined || m.id === waiting.id)) waiting.answered(m);
+  }
   const sources = new Map<string, MediaStreamAudioSourceNode>();
 
   const me = (): Person | null => room.people().find((p) => p.publicKey === myKey) ?? null;
@@ -1398,7 +1409,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   /** Only in the call on this socket, as signals (sendSignal); otherwise the old credentials do until the next restart. */
-  const requestIce = () => (callSocket === room.welcomes() ? awaitReply('ice', () => room.send({ t: 'ice' }), 5000) : Promise.resolve(null));
+  const requestIce = () => (callSocket === room.welcomes() ? awaitReply('ice', (id) => room.send({ t: 'ice', id }), 5000) : Promise.resolve(null));
 
   async function refreshStats(peer: Peer): Promise<void> {
     if (peer.pc.connectionState === 'closed') return;
@@ -1543,8 +1554,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   async function declareJoin(): Promise<Extract<ServerMessage, { t: 'call' }> | null> {
-    const ask = askServer('call', () => {
-      if (room.send({ t: 'join', muted: muted() || !voiceTrack || testing !== null, sharing: shareVideo !== null })) callSocket = room.welcomes();
+    const ask = askServer('call', (id) => {
+      if (room.send({ t: 'join', muted: muted() || !voiceTrack || testing !== null, sharing: shareVideo !== null, id })) callSocket = room.welcomes();
     }, 8000);
     joinAgain = ask.again;
     const m = await ask.reply;
@@ -1555,8 +1566,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   const unsubscribe = room.subscribe((m) => {
     switch (m.t) {
-      case 'call': pending.get('call')?.(m); return;
-      case 'ice': pending.get('ice')?.(m); return;
+      case 'call': case 'ice': onAnswer(m); return;
       case 'signal': onSignal(m.from, m.data); return;
       case 'left': watchIntent.delete(m.publicKey); stuckAttempts.delete(m.publicKey); closePeer(m.publicKey); return;
       case 'subscribe': {
@@ -1674,10 +1684,13 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   // ---- actions
   let joining = false;
+  /** Leave came while the join was under way: it is to end without a call (ticket 47, another room's call was joined meanwhile). */
+  let joinAbandoned = false;
   /** Join from the button, or as a Rejoin from the marker a reload left behind: the same steps without the click. */
   async function join(rejoin?: RejoinMarker): Promise<void> {
     if (joined || joining) return;
     joining = true;
+    joinAbandoned = false;
     setJoinError(null);
     setMicProblem(null);
     try {
@@ -1690,9 +1703,17 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         audioCtx ??= new AudioContext();
         if (audioCtx.state === 'suspended') void audioCtx.resume().catch(() => {});
       }
+      if (joinAbandoned) { endJoinWithoutCall(); return; }
       if (rejoin) tryUnlockSound();
       const reply = await declareJoin();
-      if (!reply) { setJoinError('The server did not answer the join request.'); posthog.capture('join_error', { reason: 'server_no_answer' }); return; }
+      if (joinAbandoned) { endJoinWithoutCall(); return; }
+      if (!reply) {
+        // The server may have taken the join and lost only its answer: Leave, so it does not list me in a call I am not in.
+        endJoinWithoutCall();
+        setJoinError('The server did not answer the join request.');
+        posthog.capture('join_error', { reason: 'server_no_answer' });
+        return;
+      }
       if (rejoin) {
         // Watched shares come back: intents set before reconcile builds the connections are subscribed as each one appears.
         // Only for friends still sharing, or a later share of theirs would start flowing to me without a click.
@@ -1712,7 +1733,23 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     }
   }
 
+  /**
+   * A join that ends without a call leaves nothing behind: no question to the server still open or asked again, no Leave
+   * missing where the join already went out (the server may have me in its call, its answer only slow), no microphone.
+   */
+  function endJoinWithoutCall(): void {
+    joinAgain = null;
+    pending.get('call')?.cancel();
+    if (callSocket !== null) room.send({ t: 'leave' });
+    callSocket = null;
+    setMicProblem(null);
+    closeMicrophone();
+  }
+
   function leave(): void {
+    pendingRejoin = null; // a Rejoin still waiting for its socket is not wanted either
+    // A join under way ends where it stands: its answer, however late, finds nobody waiting (ticket 47).
+    if (joining && !joined) { joinAbandoned = true; joinAgain = null; pending.get('call')?.cancel(); return; }
     if (!joined) return;
     posthog.capture('call_left');
     stopShare(false); // the server clears the sharing flag on leave
@@ -1721,7 +1758,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     // A declaration after a reconnect may still wait for its answer: nobody wants it now, nor to have it asked again
     // while the next join opens the microphone, nor its late answer.
     joinAgain = null;
-    pending.delete('call');
+    pending.get('call')?.cancel();
     for (const key of [...peers.keys()]) closePeer(key);
     stuckAttempts.clear();
     watchIntent.clear(); // joining again starts with every tile at "click to watch", not with yesterday's subscriptions

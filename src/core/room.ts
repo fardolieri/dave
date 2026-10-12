@@ -181,13 +181,14 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       const joinSeq = nextJoinSeq([...ctx.others, state.person]);
       const person: Person = { ...state.person, role: 'participant', joinSeq, muted: msg.muted, sharing: msg.sharing === true };
       const now = ctx.now;
+      const id = msg.id !== undefined ? { id: msg.id } : {}; // a client from before request ids sends none (protocol.ts, RequestId)
       return {
         state: { ...next, person },
         replies: [],
         presenceChanged: true,
         after: async () => {
           const { iceServers, turnUser } = await ctx.mintIce();
-          return { replies: [{ t: 'call', joinSeq, iceServers, issuedAt: now }], patch: turnUser ? { turnUser } : {} };
+          return { replies: [{ t: 'call', joinSeq, iceServers, issuedAt: now, ...id }], patch: turnUser ? { turnUser } : {} };
         },
       };
     }
@@ -217,7 +218,8 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     case 'ice': {
       if (state.person.role !== 'participant') return notInCall('ice');
       const now = ctx.now;
-      return { state: next, replies: [], after: async () => { const { iceServers, turnUser } = await ctx.mintIce(); return { replies: [{ t: 'ice', iceServers, issuedAt: now }], patch: turnUser ? { turnUser } : {} }; } };
+      const id = msg.id !== undefined ? { id: msg.id } : {};
+      return { state: next, replies: [], after: async () => { const { iceServers, turnUser } = await ctx.mintIce(); return { replies: [{ t: 'ice', iceServers, issuedAt: now, ...id }], patch: turnUser ? { turnUser } : {} }; } };
     }
     case 'share': {
       if (state.person.role !== 'participant') return notInCall('share');

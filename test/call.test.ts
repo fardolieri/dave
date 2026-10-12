@@ -76,6 +76,19 @@ describe('joining and leaving the call', () => {
     a.ws.close(1000);
   });
 
+  it('an answer repeats the id of the request it answers, and a request without one gets an answer without one', async () => {
+    const a = await attach('Alice');
+    send(a, { t: 'join', muted: false, id: 41 });
+    expect(await a.next((m) => m.t === 'call')).toMatchObject({ t: 'call', id: 41 });
+    send(a, { t: 'ice', id: 42 });
+    expect(await a.next((m) => m.t === 'ice')).toMatchObject({ t: 'ice', id: 42 });
+    send(a, { t: 'join', muted: false });
+    expect(await a.next((m) => m.t === 'call')).not.toHaveProperty('id');
+    send(a, { t: 'ice' });
+    expect(await a.next((m) => m.t === 'ice')).not.toHaveProperty('id');
+    a.ws.close(1000);
+  });
+
   it('visitors cannot signal or fetch ICE', async () => {
     const a = await attach('Alice');
     send(a, { t: 'ice' });

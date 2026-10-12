@@ -4,6 +4,17 @@ import { onMessage, presenceSnapshot, type SocketState } from '../src/core/room'
 import { newBucket } from '../src/core/ratelimit';
 
 describe('protocol', () => {
+  it('a join or ice request may name itself; one without an id, from an older client, is taken as before', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'join', muted: false, id: 7 }))).toEqual({ t: 'join', muted: false, sharing: false, id: 7 });
+    expect(parseClientMessage(JSON.stringify({ t: 'join', muted: true }))).toEqual({ t: 'join', muted: true, sharing: false });
+    expect(parseClientMessage(JSON.stringify({ t: 'ice', id: 8 }))).toEqual({ t: 'ice', id: 8 });
+    expect(parseClientMessage(JSON.stringify({ t: 'ice' }))).toEqual({ t: 'ice' });
+    for (const id of ['7', -1, 1.5, null]) {
+      expect(parseClientMessage(JSON.stringify({ t: 'join', muted: false, id }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'join' });
+      expect(parseClientMessage(JSON.stringify({ t: 'ice', id }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'ice' });
+    }
+  });
+
   it('parses known messages and rejects the rest', () => {
     expect(parseClientMessage(JSON.stringify({ t: 'ping' }))).toEqual({ t: 'ping' });
     expect(parseClientMessage(JSON.stringify({ t: 'text', text: ' x ' }))).toEqual({ t: 'text', text: 'x' });

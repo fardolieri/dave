@@ -40,6 +40,15 @@ export type SignalData = { description?: unknown; sig?: string; candidates?: unk
 const CONN_ID = /^[A-Za-z0-9_-]{1,32}$/;
 export const MAX_CANDIDATES_PER_MESSAGE = 64;
 
+/**
+ * Names a `join` or `ice` request; the `call` or `ice` that answers it repeats it, so an answer that comes late (a slow TURN
+ * mint) is never taken for the answer to a newer request of the same kind (ticket 47). Optional both ways while the
+ * fleet is mixed after a deploy: the server answers a request without one as before, and the client takes an answer
+ * without one as the answer to whatever of that kind it waits for.
+ */
+export type RequestId = number;
+const isRequestId = (v: unknown): v is RequestId => Number.isSafeInteger(v) && (v as number) >= 0;
+
 export type ClientMessage =
   /**
    * `authKey` is sent only in answer to a `fresh` challenge: it becomes the room's verifier (ADR 0004).
@@ -52,7 +61,8 @@ export type ClientMessage =
   | { t: 'text'; text: string }
   /** Enter the Call (or re-declare after a server reconnect). */
   /** `sharing` lets a re-join after a server reconnect keep an ongoing share visible to everyone. */
-  | { t: 'join'; muted: boolean; sharing?: boolean }
+  /** `id` names the request; the answer repeats it (see RequestId). */
+  | { t: 'join'; muted: boolean; sharing?: boolean; id?: RequestId }
   | { t: 'leave' }
   | { t: 'mute'; muted: boolean }
   /** Change the self-declared display name; everyone learns through presence. Texts already sent keep the old one. */
@@ -62,7 +72,7 @@ export type ClientMessage =
   /** Point-to-point signaling to another participant, by public key. */
   | { t: 'signal'; to: string; data: SignalData }
   /** Ask for fresh TURN credentials (before an ICE restart with expired ones). */
-  | { t: 'ice' }
+  | { t: 'ice'; id?: RequestId }
   /** Announce that my share started or stopped; everyone learns through the presence flag. */
   | { t: 'share'; on: boolean }
   /** Ask a sharer to start or stop sending me their share; `scale` asks for a downscaled encoding (small screens). */
@@ -75,12 +85,12 @@ export type ServerMessage =
   | { t: 'presence'; people: Person[] }
   | { t: 'text'; from: Identity; text: string; at: number }
   /** Reply to join: your place in the Call and the ICE servers to build peer connections with. */
-  | { t: 'call'; joinSeq: number; iceServers: IceServer[]; issuedAt: number }
+  | { t: 'call'; joinSeq: number; iceServers: IceServer[]; issuedAt: number; id?: RequestId }
   /** A participant left on purpose; peers close that connection at once. A vanished socket only drops out of presence. */
   | { t: 'left'; publicKey: string }
   | { t: 'signal'; from: string; data: SignalData }
   | { t: 'subscribe'; from: string; on: boolean; scale?: number }
-  | { t: 'ice'; iceServers: IceServer[]; issuedAt: number }
+  | { t: 'ice'; iceServers: IceServer[]; issuedAt: number; id?: RequestId }
   | { t: 'pong' }
   /** `ref` names the client message type that was rejected, when known, so the client can attribute it. */
   | { t: 'error'; reason: string; ref?: ClientMessage['t'] };
@@ -189,7 +199,8 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
     case 'ping':
       return { t: 'ping' };
     case 'join':
-      return typeof m.muted === 'boolean' ? { t: 'join', muted: m.muted, sharing: m.sharing === true } : invalid('unrecognised message');
+      if (typeof m.muted !== 'boolean' || (m.id !== undefined && !isRequestId(m.id))) return invalid('unrecognised message');
+      return isRequestId(m.id) ? { t: 'join', muted: m.muted, sharing: m.sharing === true, id: m.id } : { t: 'join', muted: m.muted, sharing: m.sharing === true };
     case 'leave':
       return { t: 'leave' };
     case 'mute':
@@ -206,7 +217,8 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
       return picture ? { t: 'picture', picture } : invalid('invalid picture');
     }
     case 'ice':
-      return { t: 'ice' };
+      if (m.id !== undefined && !isRequestId(m.id)) return invalid('unrecognised message');
+      return isRequestId(m.id) ? { t: 'ice', id: m.id } : { t: 'ice' };
     case 'share':
       return typeof m.on === 'boolean' ? { t: 'share', on: m.on } : invalid('unrecognised message');
     case 'telemetry':

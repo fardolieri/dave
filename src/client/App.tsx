@@ -262,7 +262,7 @@ function Workspace(props: WorkspaceProps) {
     return { get saved() { return (last = props.rooms.find((r) => r.secret === secret) ?? last); }, room, call };
   });
   createAttention(links, me);
-  onCleanup(props.onStepBack(() => untrack(active)?.call.leave()));
+  onCleanup(props.onStepBack(() => { for (const l of untrack(links)) l.call.leave(); })); // a join under way too
   /** The room on screen. Null only for the moment between leaving the last room and the workspace going away. */
   const current = createMemo(() => links().find((l) => l.saved.secret === props.selected) ?? links()[0] ?? null);
   /** The room whose call I am in, if any. */
@@ -348,10 +348,12 @@ function Workspace(props: WorkspaceProps) {
     link?.room.markRead();
     if (prev && prev.link !== link) setJumpToken((n) => n + 1);
   });
-  /** At most one call at a time: joining here leaves the call in another room first. */
+  /**
+   * At most one call at a time: joining here leaves the call in every other room first, and a join there still waiting
+   * for its answer, or a Rejoin waiting for its socket: either would put me in two calls (ticket 47).
+   */
   const joinCall = (l: Link) => {
-    const a = untrack(active);
-    if (a && a !== l) a.call.leave();
+    for (const o of untrack(links)) if (o !== l) o.call.leave();
     void l.call.join();
   };
   const renameSelf = (n: string) => { for (const l of links()) l.room.rename(n); props.onRename(n); posthog.capture('name_changed'); };
