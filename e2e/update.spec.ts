@@ -214,6 +214,33 @@ test('ticket 44: a register() that fails holds nothing, and a new version is sti
   await expect(bar(alice.page)).toHaveCount(0);
 });
 
+test('ticket 44: a second tab opened while the first downloads waits behind it with no line, and only the first is asked', async ({ crowd }) => {
+  needPreview();
+  const alice = await crowd.open('Alice');
+  await controlled(alice.page);
+  const count = countLoads(alice.page);
+
+  await stageBigDeploy(alice, 1_000_000);
+  await alice.page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r?.update()));
+  await expect(line(alice.page)).toBeVisible();
+
+  // The second tab finds the download under way as it opens, but the tab lock puts it behind the first.
+  const second = await alice.context.newPage();
+  alice.watch(second);
+  await second.goto('/');
+  const notice = (p: Page) => p.locator('main.notice h2', { hasText: 'already open in another tab' });
+  await expect(notice(second)).toBeVisible();
+  await second.evaluate(() => { (window as unknown as { __stayed: boolean }).__stayed = true; });
+  await expect(line(second), 'a waiting tab shows no line').toHaveCount(0);
+  await expect(alice.composer, 'the first is not frozen by it').toBeEnabled();
+
+  await expect(bar(alice.page), 'once it is in, the first asks').toBeVisible({ timeout: 30_000 });
+  await expect(bar(second), 'a waiting tab is not asked').toHaveCount(0);
+  await expect(line(second)).toHaveCount(0);
+  expect(count.loads, 'the first did not reload').toBe(0);
+  expect(await second.evaluate(() => (window as unknown as { __stayed?: boolean }).__stayed), 'nor the second').toBe(true);
+});
+
 test('ticket 36: a version left waiting behind the bar is taken by the next reload', async ({ crowd }) => {
   needPreview();
   const alice = await crowd.open('Alice');
