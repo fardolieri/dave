@@ -16,8 +16,8 @@ export type SocketState =
   /**
    * `telemetry`: the browser opted in to PostHog (ticket 32). Kept here, never in `person`, so presence does not carry it.
    * `turnUsers`: every TURN user this friend's peer connections may still relay through, those of her earlier sockets
-   * included (`takeOverTurn`); revoked when she leaves the call. `joins`: how many times this socket joined the call, so
-   * a TURN user minted for an earlier join is told from the call's (settleTurnUser).
+   * included (`takeOverTurn`); revoked when she leaves the call, and by nothing else. `joins`: how many times this
+   * socket joined the call, so a TURN user minted for an earlier join is told from the call's (settleTurnUser).
    */
   | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; attachedAt: number; turnUsers?: string[]; joins?: number; telemetry?: true }
   /** Told to close (superseded, silent too long, errored) or closed, but still attached until the runtime finishes the handshake; invisible meanwhile. */

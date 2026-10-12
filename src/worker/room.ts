@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { CHALLENGE_TIMEOUT_MS, challengeExpired, onMessage, openSocket, presenceSnapshot, settleTurnUser, MAX_TURN_USERS, type Outcome, type SocketState } from '../core/room';
 import { CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, PING_FRAME, PONG_FRAME, type Person, type ServerMessage } from '../core/protocol';
+import { ICE_TTL_SECONDS } from '../core/mesh';
 import { mintIceServers, revokeIce } from './turn';
 import { logRejected } from './telemetry';
 
@@ -13,12 +14,19 @@ export const CLOSE_ERRORED = 4005;
 /** Storage key of the room's verifier, set by the first friend to enter (ADR 0004). */
 const AUTH_KEY = 'authKey';
 /**
- * Storage key prefix of the TURN users a friend's sockets left behind, by public key (letGo). Her peer connections can
- * outlive her socket (ticket 31): a phone with its screen off stops its pings and is swept, yet its call goes on, and a
- * revoked user ends a relayed call at the allocation's next refresh. So they wait for her next join, and are revoked
- * when the call is over (the sweep finds nobody in it); one that waits for nothing runs out after ICE_TTL_SECONDS.
+ * Storage key prefix of the TURN users a friend's sockets left behind, by public key (letGo): `{ users, since }`. Her peer
+ * connections can outlive her socket (ticket 31), and media can flow with every socket gone (two phones talking with
+ * their screens off are both swept), which the server cannot see; a revoked user ends a relayed call at the
+ * allocation's next refresh. So they wait for her next join, and only her Leave revokes them; otherwise they run out
+ * after ICE_TTL_SECONDS, and the sweep then forgets them.
  */
 const AWAY_PREFIX = 'away:';
+type Away = { users: string[]; since: number };
+/** An entry as stored, or null for one of a shape this build does not know (an earlier build's): no entry. */
+const awayOf = (v: unknown): Away | null => {
+  const a = v as Partial<Away> | null | undefined;
+  return a != null && typeof a === 'object' && Array.isArray(a.users) && a.users.every((u) => typeof u === 'string') && typeof a.since === 'number' ? (a as Away) : null;
+};
 
 // One Room per room id (ADR 0004). Uses the WebSocket Hibernation API so the object can be
 // evicted while sockets stay attached. The per-socket state machine lives in
@@ -90,7 +98,6 @@ export class Room extends DurableObject<Env> {
     let dropped = false;
     let attachedLeft = 0;
     let challengesLeft = 0;
-    let inCall = false;
     for (const ws of this.ctx.getWebSockets()) {
       const state = ws.deserializeAttachment() as SocketState | null;
       if (!state) continue;
@@ -105,19 +112,13 @@ export class Room extends DurableObject<Env> {
         this.letGo(ws, state); // out of presence now, whenever the runtime lets go
         ws.close(CLOSE_SILENT, 'no sign of life');
         dropped = true;
-      } else {
-        attachedLeft++;
-        if (state.person.role === 'participant') inCall = true;
-      }
+      } else attachedLeft++;
     }
     if (dropped) this.broadcastPresence();
-    // The call is over: nobody away from it is coming back to the call her TURN users were for. Checked here, not at each
-    // Leave or close, so that everyone dropping at once (the Wi-Fi of the house) does not end a call they reconnect to.
-    if (!inCall) {
-      for (const [key, users] of [...this.ctx.storage.kv.list<string[]>({ prefix: AWAY_PREFIX })]) {
-        for (const user of users) this.ctx.waitUntil(revokeIce(this.env, user));
-        this.ctx.storage.kv.delete(key);
-      }
+    // TURN users left behind that have run out are forgotten, not revoked; so is an entry this build cannot read.
+    for (const [key, value] of [...this.ctx.storage.kv.list({ prefix: AWAY_PREFIX })]) {
+      const away = awayOf(value);
+      if (!away || now - away.since >= ICE_TTL_SECONDS * 1000) this.ctx.storage.kv.delete(key);
     }
     // Pending challenges need the short interval; attached sockets only the long one.
     if (challengesLeft > 0) await this.scheduleSweep(CHALLENGE_TIMEOUT_MS);
@@ -181,7 +182,8 @@ export class Room extends DurableObject<Env> {
     ws.serializeAttachment({ stage: 'closing' } satisfies SocketState);
     if (!state.turnUsers?.length) return;
     const key = AWAY_PREFIX + state.person.publicKey;
-    this.ctx.storage.kv.put(key, [...(this.ctx.storage.kv.get<string[]>(key) ?? []), ...state.turnUsers].slice(-MAX_TURN_USERS));
+    const users = [...(awayOf(this.ctx.storage.kv.get(key))?.users ?? []), ...state.turnUsers].slice(-MAX_TURN_USERS);
+    this.ctx.storage.kv.put<Away>(key, { users, since: Date.now() });
   }
 
   /**
@@ -191,10 +193,10 @@ export class Room extends DurableObject<Env> {
   private takeOverTurn(ws: WebSocket, publicKey: string): void {
     const state = ws.deserializeAttachment() as SocketState | null;
     const key = AWAY_PREFIX + publicKey;
-    const users = this.ctx.storage.kv.get<string[]>(key);
-    if (state?.stage !== 'attached' || !users) return;
+    const away = awayOf(this.ctx.storage.kv.get(key));
+    if (state?.stage !== 'attached' || !away) return;
     this.ctx.storage.kv.delete(key);
-    ws.serializeAttachment({ ...state, turnUsers: [...users, ...(state.turnUsers ?? [])].slice(-MAX_TURN_USERS) });
+    ws.serializeAttachment({ ...state, turnUsers: [...away.users, ...(state.turnUsers ?? [])].slice(-MAX_TURN_USERS) });
   }
 
   /** The presence snapshot as computed right now from attachments alone. Public so tests can compare a fresh instance's view. */
