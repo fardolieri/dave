@@ -1,6 +1,6 @@
 # 43 · Flake: a reload right after a line shows loses it from the history
 
-Status: fixed on branch flake/text-reload (PR #43), 2026-10-11; outcome 1 of ticket 35 (the test is wrong)
+Status: shipped 2026-10-12 to nightly and prod (prod 961c90a, nightly e2e green first); fixed on branch flake/text-reload (PR #43), 2026-10-11; outcome 1 of ticket 35 (the test is wrong)
 Seen 2026-10-11: e2e run 38169890832 (local build, branch fix/send-on-closed-socket, PR #42), job 114560098813,
 Firefox: `text.spec.ts` "received history survives a reload, and "Clear chat history" empties it" failed on its first
 try and passed on the retry. After the reload Bob's chat held "one" without "two" for the whole 20 s poll (line 62).

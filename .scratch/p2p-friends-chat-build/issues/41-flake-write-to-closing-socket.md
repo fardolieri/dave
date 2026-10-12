@@ -1,6 +1,6 @@
 # 41 · Flake: "WebSocket is already in CLOSING or CLOSED state." after the server goes away
 
-Status: fixed on branch fix/send-on-closed-socket (PR #42), 2026-10-11; outcome 1 of ticket 35 (the test is wrong)
+Status: shipped 2026-10-11 to nightly and 2026-10-12 to prod (prod 961c90a, nightly e2e green first); fixed on branch fix/send-on-closed-socket (PR #42), 2026-10-11; outcome 1 of ticket 35 (the test is wrong)
 Seen 2026-10-11: e2e run 38162513698 (local build, branch ci/pr-previews, a CI-only change, no app code changed), job
 114538213827, Chromium: `resilience.spec.ts` "the call survives the server going away and coming back" failed on its
 first try and passed on the retry. The assertion passed; the console check did not: `Alice: error: WebSocket is already

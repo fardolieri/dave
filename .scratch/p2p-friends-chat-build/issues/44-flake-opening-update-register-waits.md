@@ -1,6 +1,6 @@
 # 44 · Flake: the opening update showed no line in Firefox when the browser found the new version first
 
-Status: fixed on branch flake/update-134 (PR #44), 2026-10-11; outcome 2 of ticket 35 (the app)
+Status: shipped 2026-10-12 to nightly and prod (prod 961c90a, nightly e2e green first); fixed on branch flake/update-134 (PR #44), 2026-10-11; outcome 2 of ticket 35 (the app)
 Seen 2026-10-11: e2e run 38170369815 (local build, branch fix/send-on-closed-socket, PR #42, no update code changed),
 job 114561541355, Firefox: `update.spec.ts` "ticket 36: a new version found as the app opens downloads behind a line…"
 failed on its first try and passed on the retry. `.update-line` never showed in 20 s after Alice's reload. The job
