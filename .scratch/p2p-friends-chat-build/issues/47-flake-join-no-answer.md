@@ -49,3 +49,15 @@ Independent review of the diff before the first push of the fix: one real findin
 the friend was not in the call, and a redeclare's join also counts as waiting: Leave within 8 s of a reconnect, then
 another reconnect, and the stale join went out again, putting a friend who had left back in the call on the server. It
 now runs only while `join` itself runs, and not on a socket the join already went out on.
+
+## Grumpy Friend
+Adversarial pass before master, three sequences. One was a real hole in the fix above, now closed red then green: Leave
+did not forget a redeclare still waiting for its answer, so a reconnect while the next Join opened the microphone asked
+it again, and the server had the friend in the call with her button at Join (`resilience.spec.ts` "a join asked again
+after a reconnect and left unanswered is not asked once more for the next join"; Leave now clears it).
+
+Left for Daniel, older than this ticket: switching rooms while a join waits for its answer leaves that join alive
+(`joinCall` in `App.tsx` only leaves the room already in the call), so its late answer, or now its re-ask, can put the
+friend in two calls; and answers are matched by kind only, so a redeclare's late answer can answer the next join and
+leave `myJoinSeq` out of step with the server (who offers to whom could then disagree). The second needs a request id
+in the protocol.
