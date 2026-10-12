@@ -65,9 +65,12 @@ describe('worker routing', () => {
     // opening and closing sockets under the tests after it (ticket 45).
     // The limiter's windows are aligned to the wall clock: one that rolls over between using up and the attempt starts
     // counting from zero, so the attempt gets in. That can only happen once a minute; the next round finds the new window.
+    // The attempts go 40 at a time: in Miniflare each one is a round trip to the limiter's own Durable Object and a write
+    // there, and nightly's 121 one after the other are the likely reason this took past 5 s again on a busy runner (ci.yml
+    // run 38298003264, ticket 45's comments).
     let status = 0;
     for (let round = 0; round < 3 && status !== 429; round++) {
-      for (let n = 0; n < 1000 && (await env.UPGRADE_LIMIT.limit({ key: ip })).success; n++);
+      for (let n = 0; n < 25 && (await Promise.all(Array.from({ length: 40 }, () => env.UPGRADE_LIMIT.limit({ key: ip })))).every((r) => r.success); n++);
       const res = await exports.default.fetch(new Request(`https://dave.test${path}`, { headers: { Upgrade: 'websocket', 'cf-connecting-ip': ip } }));
       status = res.status;
       res.webSocket?.accept();
