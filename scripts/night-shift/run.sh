@@ -43,7 +43,7 @@ prompt=$(sed -e "s|{{SINCE}}|$since|g" -e "s|{{TODAY}}|$today|g" -e "s|{{STATE}}
 # 2026-10-09: the agent hung for two hours, then exited on the refresh error). Check that the CLI answers before the run.
 ok=
 for attempt in 1 2 3 4 5; do
-  said=$(timeout 3m claude -p "Reply with the word ready." --model claude-haiku-4-5-20251001 2>&1); code=$?
+  said=$(timeout 3m claude -p "Reply with the word ready." --model claude-haiku-4-5-20251001 </dev/null 2>&1); code=$?
   if grep -qi ready <<<"$said"; then ok=1; break; fi
   # What the CLI said, or that it said nothing before the timeout (exit 124): the first two nights it failed, nobody knew why.
   echo "preflight $attempt failed (exit $code): $(tail -c 300 <<<"$said" | tr '\n' ' ')"; sleep 120
@@ -51,7 +51,7 @@ done
 [ -n "$ok" ] || { result failed "the claude CLI never answered (exit $code): $(tail -c 120 <<<"$said" | tr '\n' ' ')"; exit 1; }
 
 start=$(date -u +%FT%TZ)
-timeout 4h nice -n 10 claude -p "$prompt" --model claude-opus-5-5 --permission-mode bypassPermissions --output-format text
+timeout 4h nice -n 10 claude -p "$prompt" --model claude-opus-5-5 --permission-mode bypassPermissions --output-format text </dev/null
 code=$?
 echo "=== agent exited $code at $(date -u +%FT%TZ)"
 if [ "$code" = 0 ]; then echo "$start" > "$STATE/last-success"; result ok "digest-$today.md"; else result failed "the agent exited $code"; fi
