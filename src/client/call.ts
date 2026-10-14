@@ -2,7 +2,7 @@ import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
 import { distinctFormats, type VideoFormat } from '../core/format';
 import { stuckDelay, transportPolicyFor } from '../core/mesh';
 import posthog from './posthog';
-import { exposeHooks } from './hooks';
+import { exposeHooks, failAudioContext } from './hooks';
 import { isFreshConnection, signDescription, verifyDescription } from '../core/dtls';
 import { CLOSED, closeLatch, keyedChain, unlessClosed } from '../core/signalchain';
 import { LOW_VOICE_BUFFER_MS, asksLowVoice, lowVoiceSdp } from '../core/lowvoice';
@@ -22,7 +22,7 @@ import {
 } from '../core/settings';
 import { REJOIN_HEARTBEAT_MS, rejoinFor, type RejoinMarker } from '../core/rejoin';
 import type { createRoom } from './room';
-import { tryUnlockSound } from './sound';
+import { cueContext, tryUnlockSound } from './sound';
 import { local, type LocalValue } from './storage';
 import { canRemoveNoise, createVoiceProcessor, type VoiceLevel, type VoiceLoad, type VoiceProcessor } from './voice';
 import { createVoiceGuard, sendRatePct, type ClockSample, type GuardFault } from '../core/voiceclock';
@@ -1867,9 +1867,16 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         for (let i = 0; i + step <= data.length; i += step) { let sum = 0; for (let j = i; j < i + step; j++) sum += data[j]! * data[j]!; peak = Math.max(peak, Math.sqrt(sum / step)); }
         return { seconds: buf.duration, peak };
       },
-      playback: () => untrack(() => ({ context: audioCtx?.state ?? null, blocked: audioBlocked(), paused: [...peers.values()].map((p) => ({ name: p.name, voice: p.audio.paused, keepAlive: p.keepAlive.paused })) })),
+      playback: () => untrack(() => ({ context: audioCtx?.state ?? null, clock: audioCtx?.currentTime ?? null, cues: cueContext()?.state ?? null, blocked: audioBlocked(), paused: [...peers.values()].map((p) => ({ name: p.name, voice: p.audio.paused, keepAlive: p.keepAlive.paused })) })),
       volumes: () => ({ master: untrack(audioSettings).masterVolume, peers: [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, shareView: p.view.shareVolume, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })) }),
       dropSocket: () => room.dropSocket(),
+      /** Fails the call's AudioContext ('call') or the cues' ('cues') as Chromium does when the audio device errs (hooks.ts). */
+      failAudio: async (which: 'call' | 'cues') => {
+        const c = which === 'call' ? audioCtx : cueContext();
+        if (!c) return 'no context';
+        await failAudioContext(c);
+        return 'failed';
+      },
       /** What the stuck-connecting watchdog does, on demand (ticket 22): tear the connection to `name` down and offer again from a fresh one; `stalled` attempts already counted make the rebuild relay-only. */
       rebuild: (name: string, stalled = 0) => {
         const peer = [...peers.values()].find((p) => p.name === name);

@@ -28,6 +28,9 @@ export function armSound(): () => void {
   return () => { stopUnlocking(); void ctx?.close(); ctx = null; };
 }
 
+/** The cues' context, for the inspection hooks; null until the first unlock. */
+export const cueContext = (): AudioContext | null => ctx;
+
 /** The low-pass cutoff for a note: follows the pitch, so a square at C4 and one at A5 keep the same overtones and a low note does not buzz; on the soft side, since soft tones won the picks. */
 export const cutoffFor = (freq: number): number => Math.min(5000, Math.max(1000, freq * 4));
 

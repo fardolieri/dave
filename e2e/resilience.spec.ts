@@ -615,3 +615,35 @@ test('a server restart that drops every socket plays no leave or join cue while 
   expect(await alice.cuesPlayed(), 'Alice, back first, hears no cue for Bob').toEqual([]);
   expect(await bob.cuesPlayed(), 'Bob hears no cue for Alice').toEqual([]);
 });
+
+test('a call whose audio device fails under it plays again: the friends\' voices and the cues', async ({ crowd }) => {
+  // Soak issues #39, #49, #50, #51: Chromium logged "The AudioContext encountered an error from the audio device or the
+  // WebAudio renderer." It then stops that context and leaves it "suspended", and nothing in the app started it again:
+  // the friends' voices, which play through the call's context, or the cues stayed silent until a reload. The hook
+  // fails both contexts the way Chromium does.
+  const alice = await crowd.open('Alice', { picture: '😀' });
+  const bob = await crowd.open('Bob', { picture: '🦊' });
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  type Playback = { context: string | null; clock: number | null; cues: string | null; blocked: boolean };
+  const playback = () => alice.hook<Playback>('playback');
+  // Headless Firefox on a runner without a sound device never gets a running AudioContext: nothing to fail.
+  const before = await playback();
+  test.skip(before.context !== 'running' || before.cues !== 'running', `no running AudioContexts here (call ${before.context}, cues ${before.cues})`);
+  await expect.poll(async () => (await alice.cuesPlayed()).length + (await bob.cuesPlayed()).length, { message: 'the join cues are done' }).toBe(0);
+
+  expect(await alice.hook('failAudio', 'call')).toBe('failed');
+  expect(await alice.hook('failAudio', 'cues')).toBe('failed');
+
+  // The call's context runs again without a click, and its clock moves: Bob's voice plays through it.
+  await expect.poll(async () => (await playback()).context, { message: 'the call\'s context runs again' }).toBe('running');
+  const clock = (await playback()).clock!;
+  await expect.poll(async () => (await playback()).clock!, { message: 'the call\'s context renders' }).toBeGreaterThan(clock + 0.5);
+  expect((await playback()).blocked, 'no "Click to hear the call" was needed').toBe(false);
+  // And the cues: Bob's leave plays one for Alice.
+  await expect.poll(async () => (await playback()).cues, { message: 'the cues\' context runs again' }).toBe('running');
+  await bob.leave();
+  await expect.poll(async () => (await alice.cuesPlayed()).length, { message: 'Alice hears Bob leave' }).toBeGreaterThan(0);
+});

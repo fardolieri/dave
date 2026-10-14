@@ -4,3 +4,13 @@
  * from the bundles deployed to friends.
  */
 export const exposeHooks: boolean = import.meta.env.DEV || import.meta.env['VITE_E2E'] === '1';
+
+/**
+ * Fails an AudioContext the way Chromium does when the audio device or its renderer errs under it
+ * (AudioContext::HandleRenderError): rendering stops, an `error` event fires, the state reads "suspended". Chromium's
+ * console line about it is left out. A suite has no device to pull out, so this is a copy of that path, not the real thing.
+ */
+export async function failAudioContext(ctx: AudioContext): Promise<void> {
+  await ctx.suspend();
+  ctx.dispatchEvent(new Event('error'));
+}
