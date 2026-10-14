@@ -219,6 +219,30 @@ test('regression: a text not yet back from the Room survives a reload, shows onc
   expect(await alice.pendingTexts()).toEqual([]);
 });
 
+// Oct 2026, Grumpy Friend review of ticket 10 step 2a: a friend knew the texts he had shown by id in memory only, and his
+// history keeps no ids. A text sent again after he reloaded, now likelier since a text waiting survives the writer's
+// reload, showed twice, and stayed twice in his history.
+test('regression: a text sent again after my reload shows once for a friend who reloaded meanwhile', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  // The Room brings the text to Bob; the copy back to Alice is lost.
+  alice.wire.down = (frame) => (frame.includes('"t":"text"') ? null : frame);
+  await alice.composer.fill('on my way');
+  await alice.composer.press('Enter');
+  await expect.poll(() => bob.chatTexts()).toEqual(['on my way']);
+  await expect.poll(() => bob.storedTexts()).toEqual(['on my way']);
+  await bob.page.reload();
+  await bob.connected();
+  alice.wire.down = null;
+  await alice.page.reload(); // the line still waits: it goes out again
+  await alice.connected();
+  await expect.poll(() => alice.chatTexts()).toEqual(['on my way']);
+  await alice.say('after');
+  await expect.poll(() => bob.chatTexts()).toContain('after');
+  expect(await bob.chatTexts()).toEqual(['on my way', 'after']);
+  await expect.poll(() => bob.storedTexts()).toEqual(['on my way', 'after']);
+});
+
 // Oct 2026, ticket 51: the network drops a socket now and then (1006, the Room none the wiser), and a text written into it
 // was gone: never shown to anyone, the sender's own included, and nothing said.
 test('regression: a text lost with its socket is sent again on the next one', async ({ crowd }) => {
