@@ -202,7 +202,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       return { state: next, replies: [{ t: 'pong' }] };
     case 'text': {
       const { publicKey, fingerprint: fp, name, picture } = state.person;
-      return { state: next, replies: [], broadcast: [{ t: 'text', from: { publicKey, fingerprint: fp, name, ...(picture ? { picture } : {}) }, text: msg.text, at: ctx.now }] };
+      return { state: next, replies: [], broadcast: [{ t: 'text', from: { publicKey, fingerprint: fp, name, ...(picture ? { picture } : {}) }, text: msg.text, at: ctx.now, ...(msg.id !== undefined ? { id: msg.id } : {}) }] };
     }
     case 'join': {
       // Joining twice (after a server reconnect) is fine: a fresh join sequence, same identity.

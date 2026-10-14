@@ -178,6 +178,17 @@ describe('text', () => {
     b.ws.close(1000, 'bye');
   });
 
+  it("passes the writer's id of a text on, and adds none to a text without one (ticket 51)", async () => {
+    const a = await attach('Alice');
+    const b = await attach('Bob');
+    b.ws.send(JSON.stringify({ t: 'text', text: 'with id', id: 'c0ffee' }));
+    expect(await a.next((m) => m.t === 'text')).toMatchObject({ text: 'with id', id: 'c0ffee' });
+    b.ws.send(JSON.stringify({ t: 'text', text: 'without' }));
+    expect(await a.next((m) => m.t === 'text' && m.text === 'without')).not.toHaveProperty('id');
+    a.ws.close(1000, 'bye');
+    b.ws.close(1000, 'bye');
+  });
+
   it('rejects empty and over-long text', async () => {
     const a = await attach('Alice');
     a.ws.send(JSON.stringify({ t: 'text', text: '   ' }));

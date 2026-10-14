@@ -22,6 +22,8 @@ export type ChatLine =
   | { kind: 'system'; id: string; text: string; at: number };
 
 const UNAVAILABLE_AFTER_MS = 30_000;
+/** Texts shown remembered by writer and id, to show a text sent again only once (ticket 51); the oldest are forgotten. */
+const SEEN_TEXTS_MAX = 1000;
 const BACKOFF_MAX_MS = 30_000;
 /**
  * A socket the server has not let in after this long is given up and tried again. The upgrade or the handshake can hang
@@ -50,6 +52,13 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const listeners = new Set<(m: ServerMessage) => void>();
   const textListeners = new Set<(m: Extract<ServerMessage, { t: 'text' }>) => void>();
   let nextId = 1;
+  /**
+   * Own texts not back from the Room yet, oldest first. The network can drop a socket under a text (1006, the Room none the
+   * wiser), and the text was gone for everyone: each is sent again on the next socket, until it comes back or is refused.
+   */
+  const unconfirmed: Array<{ id: string; text: string }> = [];
+  /** `publicKey:id` of the texts shown, oldest first: one sent again may have reached us the first time. */
+  const seenTexts = new Set<string>();
   // Recent history from this browser, loaded once; live lines append after it.
   const fromStored = (m: StoredText): ChatLine => ({ kind: 'text', id: textKey(m), ...m });
   void loadHistory(opts.roomId).then((stored) => setLines((l) => [...stored.map(fromStored), ...l]));
@@ -117,6 +126,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           welcomes++;
           attempt = 0;
           setYou(m.you);
+          // Texts the last socket took and never brought back, in their order; the Room answers them in that order too.
+          for (const u of unconfirmed) send({ t: 'text', text: u.text, id: u.id });
           // An answer changed while the handshake ran was not sent then (see onConsentChange below): say it now.
           if (telemetryOn() !== authTelemetry) send({ t: 'telemetry', on: telemetryOn() });
           setStatus({ kind: 'connected' });
@@ -134,6 +145,16 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           setPeople(m.people);
           return;
         case 'text': {
+          if (m.id !== undefined) {
+            const key = `${m.from.publicKey}:${m.id}`;
+            if (seenTexts.has(key)) return;
+            seenTexts.add(key);
+            if (seenTexts.size > SEEN_TEXTS_MAX) seenTexts.delete(seenTexts.values().next().value!);
+            if (m.from.publicKey === opts.identity.publicKey) {
+              const i = unconfirmed.findIndex((u) => u.id === m.id);
+              if (i >= 0) unconfirmed.splice(i, 1);
+            }
+          } else if (m.from.publicKey === opts.identity.publicKey) unconfirmed.shift(); // a Room from before ids: in order
           push({ kind: 'text', id: textKey(m), from: m.from, text: m.text, at: m.at });
           void appendHistory(opts.roomId, { from: m.from, text: m.text, at: m.at });
           if (m.from.publicKey !== opts.identity.publicKey) {
@@ -150,6 +171,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             posthog.capture('frame_dropped', { ref: m.ref ?? 'unknown', reason: m.reason });
             if (!m.ref || m.ref === 'signal' || m.ref === 'ice') console.warn('dropped', m.ref ?? 'unknown', m.reason);
             else push({ kind: 'system', text: `${m.ref === 'text' ? 'Not sent' : 'Dropped'}: ${m.reason}.`, at: Date.now() });
+            // The Room answers texts in the order they came: a refusal is for the oldest one still waiting. The chat said
+            // it was not sent, so it is not sent again.
+            if (m.ref === 'text') unconfirmed.shift();
           } else if (status().kind !== 'refused') {
             // A wrong answer during the handshake: our stored secret is wrong. Retrying cannot help.
             setStatus({ kind: 'refused', reason: m.reason });
@@ -229,7 +253,13 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     send,
     /** Counts the sockets the server has let in; read without waiting for any effect, so a frame can name its socket. */
     welcomes: () => welcomes,
-    sendText: (text: string) => { send({ t: 'text', text }); posthog.capture('message_sent'); },
+    /** Sends a text; it shows when the Room brings it back. A socket lost meanwhile sends it again on the next one. */
+    sendText: (text: string) => {
+      const id = Array.from(crypto.getRandomValues(new Uint8Array(12)), (x) => x.toString(16).padStart(2, '0')).join(''); // not randomUUID: http on a LAN too
+      unconfirmed.push({ id, text });
+      send({ t: 'text', text, id });
+      posthog.capture('message_sent');
+    },
     /** Empties the local history; the server never had it. */
     clearHistory: async () => { await clearHistory(opts.roomId); setLines([]); },
     /** Dev aid for scripts/drive.mjs: drops the socket so the reconnect path runs. */

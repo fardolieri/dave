@@ -49,6 +49,14 @@ export const MAX_CANDIDATES_PER_MESSAGE = 64;
 export type RequestId = number;
 const isRequestId = (v: unknown): v is RequestId => Number.isSafeInteger(v) && (v as number) >= 0;
 
+/**
+ * Names a text, chosen at random by its writer; the Room passes it on with the text. A text whose socket was lost before it
+ * came back is sent again on the next one, and may have reached the others the first time: they show a writer's text of
+ * an id they have shown already no more (ticket 51). Optional both ways, like RequestId: a client from before sends none.
+ */
+export type TextId = string;
+const isTextId = (v: unknown): v is TextId => typeof v === 'string' && CONN_ID.test(v);
+
 export type ClientMessage =
   /**
    * `authKey` is sent only in answer to a `fresh` challenge: it becomes the room's verifier (ADR 0004).
@@ -58,7 +66,7 @@ export type ClientMessage =
   /** The PostHog opt-in changed while connected (ticket 32). Only the server keeps it; nobody else learns of it. */
   | { t: 'telemetry'; on: boolean }
   | { t: 'ping' }
-  | { t: 'text'; text: string }
+  | { t: 'text'; text: string; id?: TextId }
   /** Enter the Call (or re-declare after a server reconnect). */
   /** `sharing` lets a re-join after a server reconnect keep an ongoing share visible to everyone. */
   /** `id` names the request; the answer repeats it (see RequestId). */
@@ -83,7 +91,7 @@ export type ServerMessage =
   | { t: 'challenge'; nonce: string; fresh?: true }
   | { t: 'welcome'; you: Person }
   | { t: 'presence'; people: Person[] }
-  | { t: 'text'; from: Identity; text: string; at: number }
+  | { t: 'text'; from: Identity; text: string; at: number; id?: TextId }
   /** Reply to join: your place in the Call and the ICE servers to build peer connections with. */
   | { t: 'call'; joinSeq: number; iceServers: IceServer[]; issuedAt: number; id?: RequestId }
   /** A participant left on purpose; peers close that connection at once. A vanished socket only drops out of presence. */
@@ -257,11 +265,11 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
       return { t: 'signal', to: m.to, data };
     }
     case 'text': {
-      if (typeof m.text !== 'string') return invalid('unrecognised message');
+      if (typeof m.text !== 'string' || (m.id !== undefined && !isTextId(m.id))) return invalid('unrecognised message');
       const text = m.text.trim();
       if (text.length === 0) return invalid('empty message');
       if (text.length > MAX_TEXT_LENGTH) return invalid(`message longer than ${MAX_TEXT_LENGTH} characters`);
-      return { t: 'text', text };
+      return isTextId(m.id) ? { t: 'text', text, id: m.id } : { t: 'text', text };
     }
     default:
       return invalid('unrecognised message');

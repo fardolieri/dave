@@ -18,6 +18,10 @@ describe('protocol', () => {
   it('parses known messages and rejects the rest', () => {
     expect(parseClientMessage(JSON.stringify({ t: 'ping' }))).toEqual({ t: 'ping' });
     expect(parseClientMessage(JSON.stringify({ t: 'text', text: ' x ' }))).toEqual({ t: 'text', text: 'x' });
+    expect(parseClientMessage(JSON.stringify({ t: 'text', text: 'x', id: 'a1b2' }))).toEqual({ t: 'text', text: 'x', id: 'a1b2' });
+    for (const id of [7, '', 'no spaces', 'x'.repeat(33)]) {
+      expect(parseClientMessage(JSON.stringify({ t: 'text', text: 'x', id }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'text' });
+    }
     const bad = { t: 'invalid', reason: 'unrecognised message' };
     expect(parseClientMessage(JSON.stringify({ t: 'text' }))).toEqual({ ...bad, ref: 'text' });
     expect(parseClientMessage(JSON.stringify({ t: 'nope' }))).toEqual(bad);
