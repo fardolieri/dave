@@ -163,16 +163,60 @@ test('a text in a room not on screen counts as unread and chimes; own texts neve
   if (bobCues >= 0) expect(await bob.cues()).toBe(bobCues);
 });
 
-test('the composer refuses to send while the server is unreachable, and works again after', async ({ crowd }) => {
+// Oct 2026, ticket 53: the composer was disabled while the app reconnected, and a text written in that second stayed in
+// the box, or was lost with the Enter pressed just as the socket dropped. It is queued now, as the owner decided (ticket 10).
+test('regression: a text written while the server is unreachable waits, shown as such, and goes out once when it is back', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   await alice.wire.cut();
-  await expect(alice.composer).toBeDisabled();
   await expect(alice.banner).toContainText(/Reconnecting|Server unavailable/);
+  await expect(alice.composer).toBeEnabled();
+  await alice.composer.fill('written while away');
+  await alice.composer.press('Enter');
+  await expect(alice.composer).toHaveValue('');
+  await expect.poll(() => alice.pendingTexts()).toEqual(['written while away']);
+  expect(alice.wire.frames('up', 'text')).toEqual([]);
   alice.wire.restore();
   await alice.connected();
+  await expect.poll(() => bob.chatTexts()).toEqual(['written while away']);
+  await expect.poll(() => alice.chatTexts()).toEqual(['written while away']);
+  expect(await alice.pendingTexts()).toEqual([]);
   await alice.say('back');
-  await expect.poll(() => bob.chatTexts()).toEqual(['back']);
+  await expect.poll(() => bob.chatTexts()).toEqual(['written while away', 'back']);
+  expect(await alice.chatTexts()).toEqual(['written while away', 'back']);
+});
+
+// Oct 2026 (review of ticket 53): a text not yet back from the Room was kept in memory only, and a reload lost it for good.
+test('regression: a text not yet back from the Room survives a reload, shows once as waiting, and goes out with its id', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  // The socket is dying: Alice's text leaves her browser and never reaches the Room, and she reloads.
+  alice.wire.up = (frame) => (frame.includes('"t":"text"') ? null : frame);
+  await alice.composer.fill('kept over the reload');
+  await alice.composer.press('Enter');
+  await expect.poll(() => alice.wire.frames('up', 'text').length).toBe(1);
+  const id = alice.wire.frames<{ id?: string }>('up', 'text')[0]?.id;
+  expect(id).toBeTruthy();
+  await alice.page.reload();
+  await alice.connected();
+  await expect.poll(() => alice.wire.frames<{ id?: string }>('up', 'text').map((m) => m.id), 'sent again after the welcome, with its id').toEqual([id, id]);
+  await expect.poll(() => alice.pendingTexts()).toEqual(['kept over the reload']);
+  expect(await alice.chatTexts()).toEqual([]);
+  // The next socket gets it through.
+  alice.wire.up = null;
+  await alice.wire.cut();
+  alice.wire.restore();
+  await alice.connected();
+  await expect.poll(() => bob.chatTexts()).toEqual(['kept over the reload']);
+  await expect.poll(() => alice.chatTexts()).toEqual(['kept over the reload']);
+  expect(await alice.pendingTexts()).toEqual([]);
+  // Once through, it is forgotten: a further reload does not send it again.
+  await alice.page.reload();
+  await alice.connected();
+  await alice.say('after');
+  await expect.poll(() => bob.chatTexts()).toEqual(['kept over the reload', 'after']);
+  expect(alice.wire.frames<{ id?: string }>('up', 'text').filter((m) => m.id === id)).toHaveLength(3);
+  expect(await alice.pendingTexts()).toEqual([]);
 });
 
 // Oct 2026, ticket 51: the network drops a socket now and then (1006, the Room none the wiser), and a text written into it

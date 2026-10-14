@@ -29,7 +29,7 @@ export type Tamper = (frame: string, pass: (frame: string) => void) => string | 
 
 /** The WebSocket proxy between one friend and the server. */
 export class Wire {
-  private routes = new Set<{ page: WebSocketRoute; server: WebSocketRoute; closing: boolean }>();
+  private routes = new Set<{ page: WebSocketRoute; server: WebSocketRoute; closing: boolean; severed: boolean }>();
   private refusing = false;
   /**
    * This many of the next sockets open and are never answered, as when the upgrade or the handshake hangs somewhere on the
@@ -58,7 +58,7 @@ export class Wire {
     // Not connected to the server, the page's socket opens all the same (Playwright's mock) and hears nothing.
     if (this.unanswered > 0) { this.unanswered--; return; }
     const server = route.connectToServer();
-    const pair = { page: route, server, closing: false };
+    const pair = { page: route, server, closing: false, severed: false };
     this.routes.add(pair);
     // The socket to the server lives in the page (Playwright's routeWebSocket). Once one side closes, a frame still on its
     // way is lost with the connection, as on a real drop: written to the closing socket, it made Chromium log "WebSocket is
@@ -66,20 +66,23 @@ export class Wire {
     route.onMessage((m) => {
       const frame = typeof m === 'string' ? m : m.toString();
       this.log.push({ dir: 'up', frame });
+      if (pair.severed) return;
       const out = this.up ? this.up(frame, (f) => { if (!pair.closing) server.send(f); }) : frame;
       if (out !== null && !pair.closing) server.send(out);
     });
     server.onMessage((m) => {
       const frame = typeof m === 'string' ? m : m.toString();
       this.log.push({ dir: 'down', frame });
+      if (pair.severed) return;
       const out = this.down ? this.down(frame, (f) => { if (!pair.closing) route.send(f); }) : frame;
       if (out !== null) route.send(out);
     });
     const ended = (side: 'page' | 'server', code?: number, reason?: string) => {
       if (!pair.closing) this.closes.push({ side, code, reason, at: Date.now(), frames: this.log.length });
     };
-    route.onClose((code, reason) => { ended('page', code, reason); pair.closing = true; this.routes.delete(pair); void server.close({ code, reason }); });
-    server.onClose((code, reason) => { ended('server', code, reason); pair.closing = true; this.routes.delete(pair); void route.close({ code, reason }); });
+    // A severed socket's close reaches neither end either: each side finds out on its own.
+    route.onClose((code, reason) => { ended('page', code, reason); pair.closing = true; this.routes.delete(pair); if (!pair.severed) void server.close({ code, reason }); });
+    server.onClose((code, reason) => { ended('server', code, reason); pair.closing = true; this.routes.delete(pair); if (!pair.severed) void route.close({ code, reason }); });
   }
 
   /** The server goes away: open sockets close as if the connection dropped, and reconnects are refused until `restore`. */
@@ -93,6 +96,13 @@ export class Wire {
     }
     this.routes.clear();
   }
+
+  /**
+   * The network cuts the open sockets without a word to either end, as in the field (ticket 54): from here on no frame and
+   * no close crosses them. The Room keeps its side and writes into it until it closes it itself (a supersede, its silence
+   * sweep), and the page's side stays open until the app gives it up. Unlike `cut`, new sockets get through.
+   */
+  sever(): void { for (const pair of this.routes) pair.severed = true; }
 
   restore(): void { this.refusing = false; }
 

@@ -672,3 +672,19 @@ test('a call context the audio device failed for good while I was out of the cal
   await expect.poll(async () => (await playback()).context, { message: 'the call\'s context runs at the join' }).toBe('running');
   await alice.hearing('Bob');
 });
+
+// Oct 2026, ticket 54: the network can cut a socket with no close reaching either end. The browser then took it for open
+// for good: nothing waited for the answer to its ping, a text went into it and nowhere else, and the app said all was well.
+test('regression: a socket gone silent without a close is given up, and the text written into it arrives once', async ({ crowd }) => {
+  test.slow(); // the app waits for two unanswered pings, 30 s apart, before it gives the socket up
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  alice.wire.sever();
+  await alice.composer.fill('into the silence');
+  await alice.composer.press('Enter');
+  await expect.poll(() => bob.chatTexts(), { message: 'the text arrives on the socket that replaced the silent one', timeout: 150_000 })
+    .toEqual(['into the silence']);
+  expect(alice.wire.closes.filter((c) => c.side === 'page').map((c) => c.code), 'Alice gave the silent socket up herself').toEqual([4009]);
+  await alice.connected();
+  await expect.poll(() => alice.chatTexts()).toEqual(['into the silence']);
+});
