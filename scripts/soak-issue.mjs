@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Files what a failed soak shard found (soak.yml): one issue labelled `soak` per shortest failing list. A report whose list
- * an open issue already carries (the `soak-sequence` marker, a hash of the list) becomes a comment there instead of a
- * second issue.
+ * Files what a failed soak shard found (soak.yml): one issue labelled `soak` per way of failing. A report whose signature
+ * (the `soak-signature` marker: its kinds and first line without names or large numbers, e2e/soak/model.ts) an open issue
+ * already carries becomes a comment there, and the issue's title counts the times.
  *
  *   node scripts/soak-issue.mjs <folder with report.json and report.md> [...]
  *
@@ -31,11 +31,17 @@ for (const dir of process.argv.slice(2)) {
   const r = JSON.parse(readFileSync(join(dir, 'report.json'), 'utf8'));
   let body = readFileSync(join(dir, 'report.md'), 'utf8');
   if (process.env.DEPLOYED) body = `> Nightly was redeployed while this ran (${process.env.DEPLOYED}): the change of version may be what failed.\n\n${body}`;
-  const marker = `<!-- soak-sequence: ${r.hash} -->`;
-  const same = open.find((i) => i.body?.includes(marker));
+  const sequence = `<!-- soak-sequence: ${r.hash} -->`;
+  const signed = r.signature ? `<!-- soak-signature: ${r.signature} -->` : null;
+  // By signature when the report has one; the list only for reports from before signatures. Two different failures of
+  // one list must not share an issue.
+  const same = open.find((i) => (signed ? i.body?.includes(signed) : i.body?.includes(sequence)));
   if (same) {
     await api(`/issues/${same.number}/comments`, { method: 'POST', body: JSON.stringify({ body: `Seen again${process.env.RUN_URL ? ` in ${process.env.RUN_URL}` : ''}.\n\n${body}` }) });
-    console.log(`${dir}: commented on #${same.number}`);
+    const seen = Number(/\(seen (\d+) times\)$/.exec(same.title)?.[1] ?? 1) + 1;
+    same.title = `${same.title.replace(/ \(seen \d+ times\)$/, '')} (seen ${seen} times)`;
+    await api(`/issues/${same.number}`, { method: 'PATCH', body: JSON.stringify({ title: same.title }) });
+    console.log(`${dir}: commented on #${same.number}, seen ${seen} times`);
   } else {
     const made = await api('/issues', { method: 'POST', body: JSON.stringify({ title: r.title, body, labels: ['soak'] }) });
     open.push(made);

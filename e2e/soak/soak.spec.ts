@@ -23,7 +23,7 @@ import { join } from 'node:path';
 import type { Browser } from '@playwright/test';
 import { launchOptions, target } from '../browsers';
 import { Friend, expect, newSecret, test, type RoomSeed } from '../fixtures';
-import { FRIENDS, NAMES, applicable, apply, effective, format, formatList, generate, initialModel, parseList, participants, sharers, shrink, SHRINK_FIRST, volumeOf, type Action, type Model, type Name } from './model';
+import { FRIENDS, NAMES, applicable, apply, effective, format, formatList, generate, initialModel, parseList, participants, sharers, shrink, SHRINK_FIRST, signature, volumeOf, type Action, type Model, type Name } from './model';
 
 const env = process.env;
 const SEED = env['SOAK_SEED'] ? Number(env['SOAK_SEED']) : Math.floor(Math.random() * 1e9);
@@ -334,13 +334,15 @@ function report(r: { failure: Failure; ran: Action[]; minimal: Action[]; complet
   const { failure, ran, minimal } = r;
   const sequence = formatList(minimal);
   const hash = createHash('sha256').update(sequence).digest('hex').slice(0, 12);
+  const sig = signature(failure.kinds, failure.problems[0]!);
+  const sigHash = createHash('sha256').update(sig).digest('hex').slice(0, 12);
   const targetInput = env['SOAK_TARGET'] ?? (target ? 'nightly' : 'local');
   const runUrl = env['SOAK_RUN_URL'];
   const shrunk = minimal.length < ran.length;
   const replayList = `gh workflow run soak.yml -f target=${targetInput} -f actions="${sequence}"`;
   const replaySeed = ACTIONS ? null : `gh workflow run soak.yml -f target=${targetInput} -f seed=${SEED} -f steps=${ran.length}`;
-  const first = failure.problems[0]!.replace(/^(console|invariant): /, '');
-  const title = `Soak: ${first.length > 90 ? `${first.slice(0, 89)}…` : first} (${minimal.length} step${minimal.length === 1 ? '' : 's'}${r.reproduced === 0 ? ', did not come back on a replay' : ''})`;
+  const first = sig.split(' | ')[1]!.replace(/^(console|invariant): /, '');
+  const title = `Soak: ${first.length > 100 ? `${first.slice(0, 99)}…` : first}`;
   const md = [
     `**${failure.kinds.join(', ')}** at step ${failure.step} (\`${failure.action ? format(failure.action) : 'opening the room'}\`) of a soak against ${targetInput}${env['SOAK_COMMIT'] ? ` at ${env['SOAK_COMMIT'].slice(0, 7)}` : ''}, seed ${ACTIONS ? 'none (a given list)' : SEED}.${runUrl ? ` [Run](${runUrl}), with the trace of the shortest list in its artifact.` : ''}`,
     '',
@@ -366,8 +368,9 @@ function report(r: { failure: Failure; ran: Action[]; minimal: Action[]; complet
     ...(shrunk ? ['', `<details><summary>The whole run (${ran.length} steps)</summary>`, '', '```', formatList(ran), '```', '</details>'] : []),
     '',
     `<!-- soak-sequence: ${hash} -->`,
+    `<!-- soak-signature: ${sigHash} -->`,
   ].join('\n');
   writeFileSync(join(OUT, 'report.md'), md);
-  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ title, hash, seed: ACTIONS ? null : SEED, target: targetInput, kinds: failure.kinds, steps: ran.length, minimal: sequence, reproduced: r.reproduced, minutes: Math.round(r.minutes) }, null, 1));
+  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ title, hash, signature: sigHash, seed: ACTIONS ? null : SEED, target: targetInput, kinds: failure.kinds, steps: ran.length, minimal: sequence, reproduced: r.reproduced, minutes: Math.round(r.minutes) }, null, 1));
   log(`report written to ${OUT}/report.md`);
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applicable, apply, effective, format, formatList, generate, initialModel, parse, parseList, shrink, SHRINK_FIRST, type Action } from '../e2e/soak/model';
+import { applicable, apply, effective, format, formatList, generate, initialModel, parse, parseList, shrink, SHRINK_FIRST, signature, type Action } from '../e2e/soak/model';
 
 // The model of the nightly soak (e2e/soak/): a seed must give the same run every time, a report's list must read back as
 // the same actions, and the shrinking must find the few actions a failure needs.
@@ -48,5 +48,15 @@ describe('soak model', () => {
     // Out of budget, it keeps what it has.
     const cut = await shrink(run, fails, () => false);
     expect(cut).toMatchObject({ list: run, complete: false, replays: 0 });
+  });
+
+  it('signs a failure the same way whoever hit it and whenever, and apart from a different failure', () => {
+    const a = signature(['console'], 'console: Alice: error: The AudioContext encountered an error from the audio device (step 149)');
+    expect(signature(['console'], 'console: Carol: error: The AudioContext encountered an error from the audio device (step 212)')).toBe(a);
+    expect(a).not.toMatch(/Alice|149/);
+    expect(signature(['tile'], 'tile of Bob: Dan sees "closed", should see "live"')).toBe(signature(['tile'], 'tile of Alice: Carol sees "closed", should see "live"'));
+    expect(signature(['tile'], 'tile of Bob: Dan sees "locked", should see "live"')).not.toBe(signature(['tile'], 'tile of Bob: Dan sees "closed", should see "live"'));
+    expect(signature(['console', 'tile'], 'x')).toBe(signature(['tile', 'console'], 'x'));
+    expect(signature(['peers'], 'peers: Alice sees 0, should see 2')).not.toBe(signature(['peers'], 'peers: Alice sees 2, should see 0'));
   });
 });

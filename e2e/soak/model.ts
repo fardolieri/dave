@@ -245,3 +245,16 @@ export async function shrink<T>(list: T[], fails: (l: T[]) => Promise<boolean>, 
   }
   return { list: current, replays, complete: true };
 }
+
+/**
+ * What a failure is, apart from who hit it and when: its kinds and its first line with the friends' names taken out, and
+ * every number of three digits or more (steps, milliseconds, seeds) or with a fraction (seconds); small counts stay, so
+ * "saw 0 peers" and "saw 2 peers" are told apart. Two runs that fail the same way share it, whatever their seeds and action lists, so a failure that keeps coming
+ * back grows one issue instead of filing a new one each night (scripts/soak-issue.mjs; four issues for one AudioContext
+ * error, 2026-10-11 to 10-14).
+ */
+export function signature(kinds: readonly string[], firstProblem: string): string {
+  const names = new RegExp(`\\b(${NAMES.join('|')})\\b`, 'g');
+  const line = firstProblem.replace(names, '*').replace(/\d+\.\d+|\d{3,}/g, 'N').replace(/\s+/g, ' ').trim().slice(0, 300);
+  return `${[...kinds].sort().join(', ')} | ${line}`;
+}
