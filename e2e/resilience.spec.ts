@@ -647,3 +647,28 @@ test('a call whose audio device fails under it plays again: the friends\' voices
   await bob.leave();
   await expect.poll(async () => (await alice.cuesPlayed()).length, { message: 'Alice hears Bob leave' }).toBeGreaterThan(0);
 });
+
+test('a call context the audio device failed for good while I was out of the call plays when I join again', async ({ crowd }) => {
+  // Review of the fix above: the call's context outlives a Leave. Failing again and again while nobody is in the call,
+  // it gives up with no "Click to hear the call" to show, and the next Join started it with a plain resume(), which a
+  // context in that state ignores (probe run 38597053278): a call with no sound and nothing to click.
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  type Playback = { context: string | null; blocked: boolean };
+  const playback = () => alice.hook<Playback>('playback');
+  const before = await playback();
+  test.skip(before.context !== 'running', `no running AudioContext here (${before.context})`);
+  await alice.leave();
+  alice.expectWarning(/^warning: \[audio\] the call AudioContext stopped after \d+ failures/);
+  for (let i = 0; i < 5; i++) expect(await alice.hook('failAudio', 'call', true)).toBe('failed');
+  await expect.poll(async () => (await playback()).context, { message: 'the call\'s context gave up' }).toBe('suspended');
+
+  await alice.join();
+  await alice.connectedTo('Bob');
+  await expect.poll(async () => (await playback()).context, { message: 'the call\'s context runs at the join' }).toBe('running');
+  await alice.hearing('Bob');
+});

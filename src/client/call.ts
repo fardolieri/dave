@@ -1879,11 +1879,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       playback: () => untrack(() => ({ context: audioCtx?.state ?? null, clock: audioCtx?.currentTime ?? null, cues: cueContext()?.state ?? null, blocked: audioBlocked(), paused: [...peers.values()].map((p) => ({ name: p.name, voice: p.audio.paused, keepAlive: p.keepAlive.paused })) })),
       volumes: () => ({ master: untrack(audioSettings).masterVolume, peers: [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, shareView: p.view.shareVolume, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })) }),
       dropSocket: () => room.dropSocket(),
-      /** Fails the call's AudioContext ('call') or the cues' ('cues') as Chromium does when the audio device errs (hooks.ts). */
-      failAudio: async (which: 'call' | 'cues') => {
+      /** Fails the call's AudioContext ('call') or the cues' ('cues') as Chromium does when the audio device errs; `stuck`, as after a start that failed again (hooks.ts). */
+      failAudio: async (which: 'call' | 'cues', stuck = false) => {
         const c = which === 'call' ? audioCtx : cueContext();
         if (!c) return 'no context';
-        await failAudioContext(c);
+        await failAudioContext(c, stuck);
         return 'failed';
       },
       /** What the stuck-connecting watchdog does, on demand (ticket 22): tear the connection to `name` down and offer again from a fresh one; `stalled` attempts already counted make the rebuild relay-only. */
