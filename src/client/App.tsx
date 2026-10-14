@@ -7,7 +7,7 @@ import { getName, getPicture, inviteLinkFor, setName, setPicture, takeInviteLink
 import { addRoom, forgetRoom, getSelectedRoom, loadRooms, setSelectedRoom, type SavedRoom } from './rooms';
 import { newRoomSecret, normaliseRoomName, parseInviteText, type InviteLink } from '../core/rooms';
 import { encodeQr, qrPath } from '../core/qr';
-import { createRoom, type ChatLine, type ServerStatus } from './room';
+import { createRoom, type ChatLine, type Reaction, type ServerStatus } from './room';
 import { MIC_TEST_RECORD_MS, createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
 import { createAttention, type RoomLink } from './attention';
 import { contactOf, isKnown, markKnown, setNickname } from './contacts';
@@ -318,6 +318,11 @@ function Workspace(props: WorkspaceProps) {
     return !active() ? [...others, self] : others;
   });
   const viewOf = (l: Link, key: string): PeerView | undefined => l.call.views().find((v) => v.publicKey === key);
+  /** The name a reaction floats up with: as this browser names the friend, "you" for my own. */
+  const reactorName = (key: string): string => { if (key === me) return 'you'; const p = present(key); return p ? labelOf(p).shown : ''; };
+  /** A friend's newest reaction in a room, for the pop beside their avatar. */
+  const lastReaction = (l: Link, key: string): Reaction | undefined => l.room.reactions().findLast((r) => r.from === key);
+  const react = (l: Link, emoji: string) => { if (l.room.react(emoji)) posthog.capture('reacted', { quick: QUICK_REACTIONS.includes(emoji) }); };
   const [panel, setPanel] = createSignal<'audio' | 'share' | null>(null);
   // Sharers, from the staged room's presence (tiles render from signaling state, never from track events).
   const sharers = createMemo(() => stage()?.room.people().filter((p) => p.role === 'participant' && p.sharing) ?? []);
@@ -419,14 +424,14 @@ function Workspace(props: WorkspaceProps) {
                   </div>
                   <Show when={selected() && inviteOpen()}><InvitePanel link={inviteLinkFor(l.saved)} name={l.saved.name} /></Show>
                   <ul class="plist">
-                    <Show when={participants().self}>{(s) => <ParticipantRow p={s()} isMe label={labelOf(s())} onProfile={(el) => openProfile(s(), el)} speaking={l.call.speakingSelf()} />}</Show>
-                    <For each={participants().others}>{(p) => <ParticipantRow p={p} isMe={false} label={labelOf(p)} onProfile={(el) => openProfile(p, el)} view={inThis() ? viewOf(l, p.publicKey) : undefined} speaking={viewOf(l, p.publicKey)?.speaking ?? false} onVolume={inThis() ? (v) => l.call.setVolume(p.publicKey, v) : undefined} />}</For>
+                    <Show when={participants().self}>{(s) => <ParticipantRow p={s()} isMe label={labelOf(s())} onProfile={(el) => openProfile(s(), el)} speaking={l.call.speakingSelf()} reaction={lastReaction(l, me)} />}</Show>
+                    <For each={participants().others}>{(p) => <ParticipantRow p={p} isMe={false} label={labelOf(p)} onProfile={(el) => openProfile(p, el)} view={inThis() ? viewOf(l, p.publicKey) : undefined} speaking={viewOf(l, p.publicKey)?.speaking ?? false} onVolume={inThis() ? (v) => l.call.setVolume(p.publicKey, v) : undefined} reaction={lastReaction(l, p.publicKey)} />}</For>
                     <For each={participants().lost}>{(v) => <li class="lost"><span class="avatar">{displayName(v.name, contactOf(v.publicKey))[0]}</span><span class="pname">{displayName(v.name, contactOf(v.publicKey))} <em>connection to server lost</em></span></li>}</For>
                     <Show when={selected() && !participants().self && participants().others.length === 0}><li class="dim">nobody in the call</li></Show>
                   </ul>
                   <Show when={selected() || inThis()}>
                     <div class="actions">
-                      <Show when={!inThis()} fallback={<CallControls call={l.call} panel={panel()} onPanel={setPanel} canShare={canShare} />}>
+                      <Show when={!inThis()} fallback={<CallControls call={l.call} panel={panel()} onPanel={setPanel} canShare={canShare} onReact={(e) => react(l, e)} />}>
                         <button class="join" disabled={l.room.status().kind !== 'connected'} title={holding() ? 'A new version of dave is loading' : elsewhere() ? `Leaves the call in ${elsewhere()!.saved.name}` : undefined} onClick={() => joinCall(l)}>Join</button>
                       </Show>
                       <Show when={l.call.joinError()}>{(e) => <div class="warn">{e()}</div>}</Show>
@@ -472,6 +477,9 @@ function Workspace(props: WorkspaceProps) {
                     onFullscreen={() => s().call.watchOnly(key)}
                     onVolume={s().call.inCall() ? (v) => s().call.setShareVolume(key, v) : undefined}
                     onBlack={(element) => void s().call.reportBlackShare(key, element)}
+                    reactions={s().room.reactions()}
+                    reactorName={reactorName}
+                    onReact={s().call.inCall() ? (e) => react(s(), e) : undefined}
                   />
                 )}
               </For>
@@ -479,6 +487,7 @@ function Workspace(props: WorkspaceProps) {
           )}</Show>
           <ChatLog lines={cur().room.lines()} openedAt={openedAt()} jumpToken={jumpToken()} label={labelOf} />
         </div>
+        <Show when={stage()}>{(s) => <ReactionLayer reactions={s().room.reactions()} nameOf={reactorName} />}</Show>
         <Composer connected={connected()} roomName={cur().saved.name} onSend={(text) => { cur().room.sendText(text); setJumpToken((n) => n + 1); }}>
           {/* Anchored to the composer's top edge, whatever its height on this device (ticket 32) */}
           <Show when={consent() === null || askingConsent()}><TelemetryNotice onAnswer={(c) => { setConsent(c); setAskingConsent(false); }} /></Show>
@@ -489,7 +498,7 @@ function Workspace(props: WorkspaceProps) {
 }
 
 /** The controls while in a call: mute and audio settings, share and share settings, leave. */
-function CallControls(props: { call: Call; panel: 'audio' | 'share' | null; onPanel: (p: 'audio' | 'share' | null) => void; canShare: boolean }) {
+function CallControls(props: { call: Call; panel: 'audio' | 'share' | null; onPanel: (p: 'audio' | 'share' | null) => void; canShare: boolean; onReact: (emoji: string) => void }) {
   const toggle = (p: 'audio' | 'share') => props.onPanel(props.panel === p ? null : p);
   return (
     <>
@@ -509,8 +518,40 @@ function CallControls(props: { call: Call; panel: 'audio' | 'share' | null; onPa
         </div>
       </Show>
       <Show when={props.panel === 'share'}><SharePanel call={props.call} /></Show>
+      <ReactionBar onReact={props.onReact} />
       <button class="leave" onClick={props.call.leave}>Leave</button>
     </>
+  );
+}
+
+/** The reactions one tap away (ticket 55), in the order a friend group reaches for them. */
+const QUICK_REACTIONS = ['👍', '😂', '❤️', '🔥', '😮', '👏'];
+
+/** One tap floats an emoji up over everyone's screen; + offers every other one and stays open for more. */
+function ReactionBar(props: { onReact: (emoji: string) => void }) {
+  let more: HTMLButtonElement | undefined;
+  return (
+    <div class="reacts" role="group" aria-label="React">
+      <For each={QUICK_REACTIONS}>{(e) => <button class="react" title={`React ${e}`} aria-label={`React ${e}`} onClick={() => props.onReact(e)}>{e}</button>}</For>
+      <button class="react more" ref={more} popovertarget="react-emoji" title="React with any emoji" aria-label="React with any emoji">+</button>
+      <EmojiPicker id="react-emoji" anchor={() => more} onPick={props.onReact} />
+    </div>
+  );
+}
+
+/**
+ * Reactions floating up over the room (ticket 55): each rises from a spot of its own along the bottom, swaying, with
+ * the sender's name under it, and is gone after REACTION_MS. Only to look at: clicks go through to what is under it.
+ */
+function ReactionLayer(props: { reactions: Reaction[]; nameOf: (publicKey: string) => string }) {
+  return (
+    <div class="reactions" aria-hidden="true">
+      <For each={props.reactions}>{(r) => {
+        // Drawn once per reaction, so it keeps its spot and its sway while others come and go.
+        const style = `--x: ${(6 + Math.random() * 82).toFixed(1)}%; --sway: ${((Math.random() < 0.5 ? -1 : 1) * (10 + Math.random() * 22)).toFixed(0)}px; --tilt: ${((Math.random() - 0.5) * 30).toFixed(0)}deg`;
+        return <div class="reaction" style={style} data-from={r.from}><span class="re">{r.emoji}</span><span class="rn">{props.nameOf(r.from)}</span></div>;
+      }}</For>
+    </div>
   );
 }
 
@@ -875,7 +916,7 @@ function badgesFitWhole(line: HTMLElement): boolean {
   return avatar.offsetWidth + floor + need + 2 * gap(line) <= line.clientWidth;
 }
 
-function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: PeerView; speaking: boolean; onVolume?: (v: number) => void; onProfile: (anchor: HTMLElement) => void }) {
+function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: PeerView; speaking: boolean; onVolume?: (v: number) => void; onProfile: (anchor: HTMLElement) => void; reaction?: Reaction }) {
   const [sliderOpen, setSliderOpen] = createSignal(false);
   const volume = () => props.view?.volume ?? 1;
   const percent = () => Math.round(volume() * 100);
@@ -892,7 +933,11 @@ function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: 
   return (
     <li class="prow">
       <div class={`pline ${tight() ? 'tight' : ''}`} ref={watchFit}>
-      <Avatar initial={props.label.shown[0]!} picture={props.label.picture} speaking={props.speaking} title={props.isMe ? 'Your profile' : 'Profile'} onOpen={props.onProfile} />
+      <span class="avwrap">
+        <Avatar initial={props.label.shown[0]!} picture={props.label.picture} speaking={props.speaking} title={props.isMe ? 'Your profile' : 'Profile'} onOpen={props.onProfile} />
+        {/* Keyed by the reaction itself: every new one is a new element, so its pop starts over */}
+        <For each={props.reaction ? [props.reaction] : []}>{(r) => <span class="avatar-react" aria-hidden="true">{r.emoji}</span>}</For>
+      </span>
       <span class="pname" title={props.label.title}><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span></span>
       <span class="pflags">
         <Show when={props.p.muted}><em>muted</em></Show>
@@ -937,6 +982,10 @@ type ShareTileProps = {
   onWatch: (on: boolean) => void; onFullscreen: () => void; onVolume?: (v: number) => void;
   /** The tile has been live for a while and still shows no frame (ticket 12). */
   onBlack?: (element: Record<string, unknown>) => void;
+  /** The room's reactions, shown over the tile while it is fullscreen (the rest of the page is not on screen then). */
+  reactions?: Reaction[]; reactorName?: (publicKey: string) => string;
+  /** Present while I am in the call: the quick reactions sit in the fullscreen bar. */
+  onReact?: (emoji: string) => void;
 };
 
 /** A live tile must have shown a frame this long after going live, or it is reported as black. */
@@ -1091,6 +1140,11 @@ function ShareTile(props: ShareTileProps) {
       <Show when={running()}>
         <div class="share-bar" onClick={(e) => e.stopPropagation()} onPointerEnter={() => setOnControls(true)} onPointerLeave={() => setOnControls(false)}>
           <span class="share-stats">{stats()}</span>
+          <Show when={fullscreen() && props.onReact}>
+            <span class="reacts fs-reacts" role="group" aria-label="React">
+              <For each={QUICK_REACTIONS}>{(e) => <button class="react" title={`React ${e}`} aria-label={`React ${e}`} onClick={(ev) => { ev.stopPropagation(); props.onReact?.(e); }}>{e}</button>}</For>
+            </span>
+          </Show>
           <Show when={fullscreen() && props.onVolume}>
             <label class="share-vol" title="This share's sound for you, their voice stays as it is. Double-click to reset.">
               <span>{percent() === 0 ? '🔇' : '🔊'}</span>
@@ -1101,6 +1155,7 @@ function ShareTile(props: ShareTileProps) {
           <button class="fs" title={fullscreen() ? 'Leave fullscreen' : 'Fullscreen'} onClick={(e) => { e.stopPropagation(); if (fullscreen()) exitFullscreenSafely(); else enterFullscreen(); }}>{fullscreen() ? '⤡' : '⛶'}</button>
         </div>
       </Show>
+      <Show when={fullscreen() && props.reactions && props.reactorName}><ReactionLayer reactions={props.reactions!} nameOf={props.reactorName!} /></Show>
     </div>
   );
 }

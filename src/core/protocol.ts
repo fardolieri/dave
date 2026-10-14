@@ -84,7 +84,9 @@ export type ClientMessage =
   /** Announce that my share started or stopped; everyone learns through the presence flag. */
   | { t: 'share'; on: boolean }
   /** Ask a sharer to start or stop sending me their share; `scale` asks for a downscaled encoding (small screens). */
-  | { t: 'subscribe'; to: string; on: boolean; scale?: number };
+  | { t: 'subscribe'; to: string; on: boolean; scale?: number }
+  /** A reaction in the call: one emoji that floats up over everyone's screen for a moment. Kept nowhere. */
+  | { t: 'react'; emoji: string };
 
 export type ServerMessage =
   /** `fresh`: nobody has entered this room yet, so the answer must carry the auth key derived from the secret. */
@@ -98,6 +100,8 @@ export type ServerMessage =
   | { t: 'left'; publicKey: string }
   | { t: 'signal'; from: string; data: SignalData }
   | { t: 'subscribe'; from: string; on: boolean; scale?: number }
+  /** A participant's reaction, by public key: name and picture come from presence. */
+  | { t: 'react'; from: string; emoji: string }
   | { t: 'ice'; iceServers: IceServer[]; issuedAt: number; id?: RequestId }
   | { t: 'pong' }
   /** `ref` names the client message type that was rejected, when known, so the client can attribute it. */
@@ -149,7 +153,7 @@ export function normalisePicture(raw: string): string | null {
 export type Invalid = { t: 'invalid'; reason: string; ref?: ClientMessage['t'] };
 const invalid = (reason: string): Invalid => ({ t: 'invalid', reason });
 
-const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'text', 'join', 'leave', 'mute', 'name', 'picture', 'signal', 'ice', 'share', 'subscribe', 'telemetry']);
+const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'text', 'join', 'leave', 'mute', 'name', 'picture', 'signal', 'ice', 'share', 'subscribe', 'telemetry', 'react']);
 const isClientType = (v: unknown): v is ClientMessage['t'] => typeof v === 'string' && CLIENT_TYPES.has(v);
 
 /**
@@ -227,6 +231,11 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
     case 'ice':
       if (m.id !== undefined && !isRequestId(m.id)) return invalid('unrecognised message');
       return isRequestId(m.id) ? { t: 'ice', id: m.id } : { t: 'ice' };
+    case 'react': {
+      if (!str(m.emoji, 64)) return invalid('unrecognised message');
+      const emoji = normalisePicture(m.emoji); // the same rule as a profile picture: exactly one emoji
+      return emoji ? { t: 'react', emoji } : invalid('not one emoji');
+    }
     case 'share':
       return typeof m.on === 'boolean' ? { t: 'share', on: m.on } : invalid('unrecognised message');
     case 'telemetry':

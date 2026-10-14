@@ -1,6 +1,6 @@
 import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
 import { callDiff, sharesStarted, titleFor } from '../core/attention';
-import { MESSAGE_CUE, joinCue, leaveCue, shareCue, type Cue } from '../core/cue';
+import { MESSAGE_CUE, joinCue, leaveCue, reactionCue, shareCue, type Cue } from '../core/cue';
 import { armSound, playCue } from './sound';
 import { getPicture } from './invite';
 import type { createRoom } from './room';
@@ -13,8 +13,9 @@ export type RoomLink = { room: ReturnType<typeof createRoom>; call: ReturnType<t
 /**
  * Attention cues (spec §7.4) and the screen wake lock (spec §6.5) across every room: title badge while
  * the window is unfocused, quiet chimes when others join or leave a call or start sharing, each friend's own, a tick for
- * messages, and the screen kept awake while watching a share or, on a phone, while in a call. Platform state (focus,
- * visibility) is mirrored into a signal once; everything else derives from room and call signals.
+ * messages, a plink per reaction in my call, and the screen kept awake while watching a share or, on a phone, while in a
+ * call. Platform state (focus, visibility) is mirrored into a signal once; everything else derives from room and call
+ * signals.
  */
 export function createAttention(links: () => RoomLink[], myKey: string): void {
   const [unfocused, setUnfocused] = createSignal(document.hidden || !document.hasFocus());
@@ -90,6 +91,19 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
     return () => { for (const stop of stops) stop(); };
   });
   if (exposeHooks) (window as unknown as { __daveCues?: () => number }).__daveCues = () => cues;
+
+  // ---- reactions (ticket 55): each emoji's own note, mine too, but only in the call I am in: a room I only read shows
+  // its reactions without a sound. Several friends hammering at once are thinned to a plink every 60 ms.
+  let lastPlink = 0;
+  createEffect(() => links(), (rooms) => {
+    const stops = rooms.map((l) => l.room.onReact((r) => {
+      const now = performance.now();
+      if (!untrack(l.call.inCall) || now - lastPlink < 60) return;
+      lastPlink = now;
+      cue(reactionCue(r.emoji));
+    }));
+    return () => { for (const stop of stops) stop(); };
+  });
 
   // ---- wake lock while watching at least one live share, or while in a call on a touch device: a phone that
   // dims to black mid-call drops the call (report of Sep 23). Serialised so overlapping triggers cannot double-request.

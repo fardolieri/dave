@@ -4,7 +4,7 @@
 // No Cloudflare, Node, or DOM imports; scripts/check-core-isolation.mjs enforces that.
 import { fromBase64Url, fingerprint, randomNonce, toBase64Url, verifyAnswer } from './identity';
 import { CLOSE_AUTH_FAILED, parseClientMessage, type ClientMessage, type IceServer, type Person, type ServerMessage } from './protocol';
-import { SIGNAL_BURST, SIGNAL_RATE_PER_SECOND, newBucket, takeToken, type Bucket } from './ratelimit';
+import { REACT_BURST, REACT_RATE_PER_SECOND, SIGNAL_BURST, SIGNAL_RATE_PER_SECOND, newBucket, takeToken, type Bucket } from './ratelimit';
 import { nextJoinSeq } from './mesh';
 
 export const MAX_AUTH_ATTEMPTS = 3;
@@ -19,7 +19,7 @@ export type SocketState =
    * included (`takeOverTurn`); revoked when she leaves the call, and by nothing else. `joins`: how many times this
    * socket joined the call, so a TURN user minted for an earlier join is told from the call's (settleTurnUser).
    */
-  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; attachedAt: number; turnUsers?: string[]; joins?: number; telemetry?: true }
+  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; reactBucket?: Bucket; attachedAt: number; turnUsers?: string[]; joins?: number; telemetry?: true }
   /** Told to close (superseded, silent too long, errored) or closed, but still attached until the runtime finishes the handshake; invisible meanwhile. */
   | { stage: 'closing' };
 
@@ -178,6 +178,10 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     const taken = takeToken(state.signalBucket ?? newBucket(ctx.now, SIGNAL_BURST), ctx.now, SIGNAL_RATE_PER_SECOND, SIGNAL_BURST);
     next = { ...state, signalBucket: taken.bucket };
     if (!taken.ok) return { state: next, replies: [error('rate limited', 'signal')] };
+  } else if (msg.t === 'react') {
+    const taken = takeToken(state.reactBucket ?? newBucket(ctx.now, REACT_BURST), ctx.now, REACT_RATE_PER_SECOND, REACT_BURST);
+    next = { ...state, reactBucket: taken.bucket };
+    if (!taken.ok) return { state: next, replies: [error('rate limited', 'react')] };
   } else {
     const taken = takeToken(state.bucket, ctx.now);
     next = { ...state, bucket: taken.bucket };
@@ -263,6 +267,10 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       if (!participantByKey(msg.to)) return { state: next, replies: [{ t: 'error', reason: 'that participant is not in the call', ref: 'subscribe' }] };
       return { state: next, replies: [], relay: { to: msg.to, message: { t: 'subscribe', from: state.person.publicKey, on: msg.on, ...(msg.scale ? { scale: msg.scale } : {}) } } };
     }
+    case 'react':
+      // Only from inside the call, to everyone in the room: a friend reading along sees the call's mood too.
+      if (state.person.role !== 'participant') return notInCall('react');
+      return { state: next, replies: [], broadcast: [{ t: 'react', from: state.person.publicKey, emoji: msg.emoji }] };
     case 'signal': {
       if (state.person.role !== 'participant') return notInCall('signal');
       if (!participantByKey(msg.to)) return { state: next, replies: [{ t: 'error', reason: 'that participant is not in the call', ref: 'signal' }] };

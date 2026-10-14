@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CUE_GAIN, MINOR_SCALE, TIMBRES, VIBRATOS, joinCue, joinParts, leaveCue, melodySteps, noteGain, shareCue } from '../src/core/cue';
-import { EMOJI_CATEGORIES } from '../src/core/emoji';
+import { CUE_GAIN, MESSAGE_GAIN, MINOR_SCALE, SCALE, TIMBRES, VIBRATOS, joinCue, joinParts, leaveCue, melodySteps, noteGain, reactionCue, shareCue } from '../src/core/cue';
+import { ALL_EMOJI, EMOJI_CATEGORIES } from '../src/core/emoji';
 
 const signature = (emoji: string) => JSON.stringify(joinCue(emoji));
 
@@ -100,5 +100,31 @@ describe('share cue', () => {
       expect(share.notes.at(-1)!.freq).toBeCloseTo(1046.5, 0);
       expect(share.notes.at(-2)!.seconds).toBeGreaterThanOrEqual(0.09);
     }
+  });
+});
+
+describe('reaction cue (ticket 55)', () => {
+  const all = ALL_EMOJI.map((e) => e.char);
+  const C5 = 261.63 * 2;
+
+  it('plays one short note, the same for the same emoji, quieter than a message tick', () => {
+    expect(reactionCue('🔥')).toEqual(reactionCue('🔥'));
+    expect(reactionCue('🔥').notes).toHaveLength(1);
+    expect(reactionCue('🔥').gain).toBeLessThan(MESSAGE_GAIN);
+  });
+
+  it('keeps every emoji on the bright scale from C5 to E6, so a flurry never clashes', () => {
+    const allowed = SCALE.map((s) => C5 * 2 ** (s / 12));
+    for (const e of all) {
+      const f = reactionCue(e).notes[0]!.freq;
+      expect(allowed.some((a) => Math.abs(a - f) < 0.1), `${e} at ${f} Hz`).toBe(true);
+    }
+  });
+
+  it('spreads the quick reactions and the picker over the scale', () => {
+    const pitches = new Set(all.map((e) => reactionCue(e).notes[0]!.freq));
+    expect(pitches.size).toBe(SCALE.length);
+    const quick = new Set(['👍', '😂', '❤️', '🔥', '😮', '👏'].map((e) => reactionCue(e).notes[0]!.freq));
+    expect(quick.size).toBeGreaterThanOrEqual(3);
   });
 });

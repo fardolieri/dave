@@ -25,3 +25,10 @@ export function takeToken(bucket: Bucket, now: number, rate = RATE_PER_SECOND, b
   if (tokens < 1) return { bucket: { tokens, at: now }, ok: false };
   return { bucket: { tokens: tokens - 1, at: now }, ok: true };
 }
+
+/**
+ * Reactions have a bucket of their own, so a friend hammering 🔥 never starves their texts or mutes, and a room is not
+ * flooded: ten a second, twenty at once. The client holds itself under this (client/room.ts), so it never sees a refusal.
+ */
+export const REACT_RATE_PER_SECOND = 10;
+export const REACT_BURST = 20;

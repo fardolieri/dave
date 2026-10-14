@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, type Person } from '../src/core/protocol';
 import { onMessage, presenceSnapshot, type SocketState } from '../src/core/room';
-import { newBucket } from '../src/core/ratelimit';
+import { REACT_BURST, newBucket } from '../src/core/ratelimit';
 
 describe('protocol', () => {
   it('a join or ice request may name itself; one without an id, from an older client, is taken as before', () => {
@@ -76,6 +76,15 @@ describe('protocol', () => {
     expect(parseClientMessage(JSON.stringify({ t: 'telemetry' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'telemetry' });
   });
 
+  it('takes exactly one emoji as a reaction (ticket 55)', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'react', emoji: ' 🔥 ' }))).toEqual({ t: 'react', emoji: '🔥' });
+    expect(parseClientMessage(JSON.stringify({ t: 'react', emoji: '👨‍👩‍👧‍👦' }))).toEqual({ t: 'react', emoji: '👨‍👩‍👧‍👦' });
+    expect(parseClientMessage(JSON.stringify({ t: 'react', emoji: 'lol' }))).toEqual({ t: 'invalid', reason: 'not one emoji', ref: 'react' });
+    expect(parseClientMessage(JSON.stringify({ t: 'react', emoji: '🔥🔥' }))).toEqual({ t: 'invalid', reason: 'not one emoji', ref: 'react' });
+    expect(parseClientMessage(JSON.stringify({ t: 'react', emoji: 'x'.repeat(65) }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'react' });
+    expect(parseClientMessage(JSON.stringify({ t: 'react' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'react' });
+  });
+
   it('normalises names', () => {
     expect(normaliseName(' a  b ')).toBe('a b');
     expect(normaliseName('')).toBeNull();
@@ -118,5 +127,39 @@ describe('telemetry consent on the server (ticket 32)', () => {
   it('never shows the opt-in in presence', async () => {
     const on = await onMessage(attached, JSON.stringify({ t: 'telemetry', on: true }), ctx);
     expect(presenceSnapshot([on.state]).people).toEqual([person]);
+  });
+});
+
+describe('reactions on the server (ticket 55)', () => {
+  const visitor: Person = { publicKey: 'k', fingerprint: 'f', name: 'Alice', role: 'visitor', joinSeq: null, sharing: false, muted: false };
+  const ctx = (now: number) => ({ authKey: 'a', now, others: [], mintIce: async () => ({ iceServers: [], turnUser: null }) });
+  const attached = (person: Person): SocketState => ({ stage: 'attached', person, bucket: newBucket(0), attachedAt: 0 });
+  const react = JSON.stringify({ t: 'react', emoji: '🔥' });
+
+  it('goes from a participant to everyone in the room, by public key', async () => {
+    const out = await onMessage(attached({ ...visitor, role: 'participant', joinSeq: 1 }), react, ctx(0));
+    expect(out.replies).toEqual([]);
+    expect(out.broadcast).toEqual([{ t: 'react', from: 'k', emoji: '🔥' }]);
+    expect(out.presenceChanged).toBeFalsy();
+  });
+
+  it('is refused from a visitor', async () => {
+    const out = await onMessage(attached(visitor), react, ctx(0));
+    expect(out.broadcast).toBeUndefined();
+    expect(out.replies).toEqual([{ t: 'error', reason: 'not in the call', ref: 'react' }]);
+  });
+
+  it('has a bucket of its own: a burst of reactions is cut off, and texts still go through', async () => {
+    let state = attached({ ...visitor, role: 'participant', joinSeq: 1 });
+    let passed = 0;
+    for (let i = 0; i < 30; i++) {
+      const out = await onMessage(state, react, ctx(0));
+      state = out.state;
+      if (out.broadcast) passed++;
+      else expect(out.replies).toEqual([{ t: 'error', reason: 'rate limited', ref: 'react' }]);
+    }
+    expect(passed).toBe(REACT_BURST);
+    expect((await onMessage(state, JSON.stringify({ t: 'text', text: 'still here' }), ctx(0))).broadcast).toHaveLength(1);
+    expect((await onMessage(state, react, ctx(1000))).broadcast).toHaveLength(1); // refilled a second later
   });
 });

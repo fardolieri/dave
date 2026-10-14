@@ -9,6 +9,7 @@ import {
   afterJoin, afterWelcome, carried, declare, declared, forgetEnded, forgetWatch, inCallOnly, joinDeclares, leaveCall,
   type Carried, type Declaration,
 } from '../core/declarations';
+import { newBucket, takeToken } from '../core/ratelimit';
 import type { LocalIdentity } from './identity';
 import { appendHistory, clearHistory, loadHistory, textKey, type StoredText } from './history';
 
@@ -24,6 +25,16 @@ export type ServerStatus =
 export type ChatLine =
   | { kind: 'text'; id: string; from: Identity; text: string; at: number }
   | { kind: 'system'; id: string; text: string; at: number };
+
+/** A reaction floating over the call (ticket 55): who sent it, and a number to key its element by. */
+export type Reaction = { id: number; from: string; emoji: string };
+/** How long a reaction stays on screen: its float takes this long (styles.css, `.reaction`). */
+export const REACTION_MS = 3200;
+/** More at once than this and the oldest go early: a room of friends hammering 🔥 must not pile up elements. */
+const MAX_REACTIONS = 40;
+/** Below the server's bucket (core/ratelimit.ts), with room for frames bunching up on the way, so it never refuses one. */
+const REACT_RATE = 6;
+const REACT_BURST = 12;
 
 const UNAVAILABLE_AFTER_MS = 30_000;
 /** Texts shown remembered by writer and id, to show a text sent again only once (ticket 51); the oldest are forgotten. */
@@ -57,6 +68,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const [unread, setUnread] = createSignal(0);
   const listeners = new Set<(m: ServerMessage) => void>();
   const textListeners = new Set<(m: Extract<ServerMessage, { t: 'text' }>) => void>();
+  /** Reactions on screen now, oldest first; each leaves by itself when its float is over. */
+  const [reactions, setReactions] = createSignal<Reaction[]>([]);
+  const reactListeners = new Set<(r: Reaction) => void>();
+  const reactTimers = new Set<ReturnType<typeof setTimeout>>();
+  let reactBucket = newBucket(Date.now(), REACT_BURST);
   let nextId = 1;
   /**
    * Own texts not back from the Room yet, oldest first. The network can drop a socket under a text (1006, the Room none the
@@ -184,7 +200,20 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           }
           return;
         }
+        case 'react': {
+          const r: Reaction = { id: nextId++, from: m.from, emoji: m.emoji };
+          setReactions((rs) => [...rs.slice(-(MAX_REACTIONS - 1)), r]);
+          const timer = setTimeout(() => { reactTimers.delete(timer); setReactions((rs) => rs.filter((x) => x !== r)); }, REACTION_MS);
+          reactTimers.add(timer);
+          for (const l of reactListeners) l(r);
+          return;
+        }
         case 'error':
+          if (m.ref === 'react') {
+            // A reaction the server held back is gone, and saying so in the chat would be louder than the reaction was.
+            posthog.capture('frame_dropped', { ref: m.ref, reason: m.reason });
+            return;
+          }
           if (you()) {
             // After the welcome an error means a frame of ours was dropped. Chat-related ones are said in the chat;
             // signaling ones, and any the server cannot attribute, are a developer concern and would only confuse in the
@@ -268,6 +297,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     clearTimeout(reconnectTimer);
     clearTimeout(unavailableTimer);
     clearInterval(pingTimer);
+    for (const t of reactTimers) clearTimeout(t);
     ws?.close(1000, 'bye');
   });
 
@@ -321,6 +351,22 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     takeOver: () => { if (status().kind !== 'elsewhere') return; stopped = false; attempt = 0; downSince = null; setStatus({ kind: 'connecting' }); open(); },
     /** Fires for texts from other people (for the message cue). */
     onText: (l: (m: Extract<ServerMessage, { t: 'text' }>) => void) => { textListeners.add(l); return () => textListeners.delete(l); },
+    reactions,
+    /**
+     * Sends a reaction; everyone in the room sees it float up when the server hands it back, me included. Returns false
+     * when it was not sent: not in the call on this socket, or quicker than the server takes them (the button just does
+     * nothing then). Best effort (ticket 10): never held for a later socket nor sent again, as a reaction a few seconds
+     * late would float up over a different moment.
+     */
+    react: (emoji: string): boolean => {
+      const taken = takeToken(reactBucket, Date.now(), REACT_RATE, REACT_BURST);
+      if (!taken.ok) { reactBucket = taken.bucket; return false; }
+      if (!inCall() || !send({ t: 'react', emoji })) return false;
+      reactBucket = taken.bucket;
+      return true;
+    },
+    /** Fires for every reaction, mine too (for its sound). */
+    onReact: (l: (r: Reaction) => void) => { reactListeners.add(l); return () => reactListeners.delete(l); },
     /** Messages the room store does not handle itself (call, left, signal, ice) go to subscribers. */
     subscribe: (l: (m: ServerMessage) => void) => { listeners.add(l); return () => listeners.delete(l); },
   };

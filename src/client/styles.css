@@ -292,6 +292,48 @@ dialog.report .warn { margin: 10px 0 0; }
 dialog.report .row, dialog.about .row { display: flex; gap: 6px; margin-top: 12px; }
 dialog.report .row button:first-child { flex: 1; }
 
+/* Reactions (ticket 55): a row of quick ones under the call buttons; each tap floats the emoji up over the room for
+   everyone, from a spot of its own, swaying, with the sender's name under it; and pops it out beside their avatar. The
+   layer covers the room's side of the app (all of it on a phone) and a fullscreen share; clicks go through it. */
+.actions .reacts { display: flex; gap: 2px; }
+.reacts button.react { flex: 1; min-width: 0; width: auto; padding: 4px 0; font-size: 18px; line-height: 1.25; background: none; border-color: transparent; transition: transform .12s; }
+.reacts button.react:hover { background: var(--panel2); border-color: var(--line); }
+.reacts button.react:active { transform: scale(1.3); }
+.reacts button.react.more { flex: .8; font-size: 16px; color: var(--dim); }
+.share-bar .fs-reacts { display: flex; gap: 2px; }
+.share-bar .fs-reacts button.react { flex: none; padding: 0 4px; font-size: 20px; }
+.reactions { position: absolute; top: 0; bottom: 0; left: var(--side-w); right: 0; z-index: 25; overflow: hidden; pointer-events: none; container-type: size; }
+.share .reactions { left: 0; z-index: 2; }
+.reaction { position: absolute; left: var(--x); bottom: 64px; display: flex; flex-direction: column; align-items: center; translate: -50% 0; animation: reaction-rise 3.2s cubic-bezier(.25, .7, .45, 1) forwards; }
+.reaction .re { font-size: 40px; line-height: 1; filter: drop-shadow(0 3px 6px rgba(0,0,0,.45)); animation: reaction-sway 1.4s ease-in-out infinite alternate; }
+.reaction .rn { margin-top: 3px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 600; color: #fff; background: rgba(0,0,0,.55); border-radius: 999px; padding: 1px 7px; animation: reaction-name 3.2s forwards; }
+.reaction .rn:empty { display: none; }
+@keyframes reaction-rise {
+  0% { transform: translateY(0) scale(.2); opacity: 0; }
+  8% { transform: translateY(-3cqh) scale(1.3); opacity: 1; }
+  16% { transform: translateY(-7cqh) scale(1); }
+  70% { opacity: 1; }
+  100% { transform: translateY(-72cqh) scale(.85); opacity: 0; }
+}
+@keyframes reaction-sway { from { transform: translateX(calc(var(--sway) * -1)) rotate(calc(var(--tilt) * -1)); } to { transform: translateX(var(--sway)) rotate(var(--tilt)); } }
+@keyframes reaction-name { 0%, 40% { opacity: 1; } 65%, 100% { opacity: 0; } }
+.avwrap { position: relative; display: inline-grid; flex: none; }
+.avatar-react { position: absolute; right: -9px; top: -9px; font-size: 17px; line-height: 1; pointer-events: none; animation: avatar-pop 2.4s ease-out forwards; }
+@keyframes avatar-pop {
+  0% { transform: scale(0); opacity: 0; }
+  14% { transform: scale(1.5) translateY(-3px); opacity: 1; }
+  28% { transform: scale(1); }
+  75% { opacity: 1; }
+  100% { transform: translateY(-8px); opacity: 0; }
+}
+@keyframes reaction-fade { 0% { opacity: 0; } 10%, 80% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .reaction { bottom: 50%; animation: reaction-fade 3.2s forwards; }
+  .reaction .re { animation: none; }
+  .avatar-react { animation: reaction-fade 2.4s forwards; }
+  .reacts button.react:active { transform: none; }
+}
+
 /* Phone rules come last so they override every desktop placement above. */
 /* Phone width (spec §7.3): one column, presence never clips, shares stack above the chat. The composer is the last
    row of a one-screen-tall app, so it can never cover a line. Above it, lists, shares and the chat scroll as one:

@@ -150,6 +150,16 @@ export function shareCue(picture: string | null | undefined): Cue {
 }
 
 /**
+ * A reaction (ticket 55): one short, soft note from the emoji's hash, on the bright scale an octave above C4, C5 to E6.
+ * Every emoji has its pitch, the same in every browser, so 🔥🔥🔥 taps one key and a flurry of mixed reactions from
+ * friends plays a little pentatonic tune that never clashes. Quieter than a message tick: they come in bursts.
+ */
+export const REACTION_GAIN = 0.035;
+export function reactionCue(emoji: string): Cue {
+  return { timbre: 'sine', gain: REACTION_GAIN, notes: [{ freq: semitones(12 + SCALE[hash(emoji) % SCALE.length]!), seconds: STEP_SECONDS }], vibrato: 0 };
+}
+
+/**
  * The gain one note is played at: the cue's, raised for low notes, which the ear finds quieter (roughly the 40-phon
  * equal-loudness curve over this range, taken halfway so small speakers are not pushed into bass they cannot play).
  */

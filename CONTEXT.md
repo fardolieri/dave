@@ -40,6 +40,10 @@ _Avoid_: Roster, online list
 One screen or window stream published by a participant. Several participants may share at once; each other participant chooses which shares to view.
 _Avoid_: Screencast, stream (transport term)
 
+**Reaction**:
+One emoji a participant taps that floats up over the room for everyone in it for a few seconds, with their name under it, and pops out beside their avatar. Each emoji plays its own soft note to those in the call. Kept nowhere: not in the chat, not on the server.
+_Avoid_: Emote, sticker, react (as a noun)
+
 **Viewer**:
 A participant who has chosen to watch a particular share. A share has zero or more viewers; a participant may view several shares.
 _Avoid_: Subscriber, watcher, spectator
