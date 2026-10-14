@@ -175,6 +175,42 @@ test('the composer refuses to send while the server is unreachable, and works ag
   await expect.poll(() => bob.chatTexts()).toEqual(['back']);
 });
 
+// Oct 2026, ticket 51: the network drops a socket now and then (1006, the Room none the wiser), and a text written into it
+// was gone: never shown to anyone, the sender's own included, and nothing said.
+test('regression: a text lost with its socket is sent again on the next one', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  // The socket is dying: Alice's text leaves her browser and never reaches the Room.
+  alice.wire.up = (frame) => (frame.includes('"t":"text"') ? null : frame);
+  await alice.composer.fill('lost on the way');
+  await alice.composer.press('Enter');
+  await expect.poll(() => alice.wire.frames('up', 'text').length).toBe(1);
+  alice.wire.up = null;
+  await alice.wire.cut();
+  alice.wire.restore();
+  await alice.connected();
+  await expect.poll(() => bob.chatTexts()).toEqual(['lost on the way']);
+  await expect.poll(() => alice.chatTexts()).toEqual(['lost on the way']);
+});
+
+test('regression: a text that reached the Room before its socket was lost shows once, for the others too', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  // The Room relays Alice's text, and the socket dies before it comes back to her.
+  alice.wire.down = (frame) => (frame.includes('"t":"text"') ? null : frame);
+  await alice.composer.fill('half way');
+  await alice.composer.press('Enter');
+  await expect.poll(() => bob.chatTexts()).toEqual(['half way']);
+  alice.wire.down = null;
+  await alice.wire.cut();
+  alice.wire.restore();
+  await alice.connected();
+  await expect.poll(() => alice.chatTexts()).toEqual(['half way']);
+  await alice.say('after');
+  await expect.poll(() => bob.chatTexts()).toEqual(['half way', 'after']);
+  expect(await alice.chatTexts()).toEqual(['half way', 'after']);
+});
+
 test('regression: the chat keeps its place when the share strip comes and goes', async ({ crowd }) => {
   // Sep 2026: the strip halving the log hid the newest line; a reader who had scrolled up was snapped to the bottom.
   const alice = await crowd.open('Alice', { engine: 'chromium' });

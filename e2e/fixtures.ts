@@ -43,6 +43,12 @@ export class Wire {
   down: Tamper | null = null;
   /** Every frame seen, both directions, for assertions about what the server gets to see. */
   readonly log: Array<{ dir: 'up' | 'down'; frame: string }> = [];
+  /**
+   * Every socket's end: the side that closed it first, when, and how long the log was then (where it falls among the frames).
+   * A server side closed with 1006 on a socket that was let in is the network dropping it (seen against nightly and the
+   * previews, ticket 51), not the Room, which closes with a code of its own.
+   */
+  readonly closes: Array<{ side: 'page' | 'server'; code?: number; reason?: string; at: number; frames: number }> = [];
   /** Sockets open to the server right now. */
   get open(): number { return this.routes.size; }
 
@@ -68,8 +74,11 @@ export class Wire {
       const out = this.down ? this.down(frame, (f) => { if (!pair.closing) route.send(f); }) : frame;
       if (out !== null) route.send(out);
     });
-    route.onClose((code, reason) => { pair.closing = true; this.routes.delete(pair); void server.close({ code, reason }); });
-    server.onClose((code, reason) => { pair.closing = true; this.routes.delete(pair); void route.close({ code, reason }); });
+    const ended = (side: 'page' | 'server', code?: number, reason?: string) => {
+      if (!pair.closing) this.closes.push({ side, code, reason, at: Date.now(), frames: this.log.length });
+    };
+    route.onClose((code, reason) => { ended('page', code, reason); pair.closing = true; this.routes.delete(pair); void server.close({ code, reason }); });
+    server.onClose((code, reason) => { ended('server', code, reason); pair.closing = true; this.routes.delete(pair); void route.close({ code, reason }); });
   }
 
   /** The server goes away: open sockets close as if the connection dropped, and reconnects are refused until `restore`. */
@@ -459,7 +468,7 @@ export const test = base.extend<{ crowd: Crowd; film: Film }>({
     if (testInfo.status !== testInfo.expectedStatus || problems.length) {
       for (const f of friends) {
         const peers = await f.peers().catch(() => null);
-        writeFileSync(testInfo.outputPath(`${f.name}-wire.json`), JSON.stringify({ peers, problems: f.problems, frames: f.wire.log }, null, 1));
+        writeFileSync(testInfo.outputPath(`${f.name}-wire.json`), JSON.stringify({ peers, problems: f.problems, closes: f.wire.closes, frames: f.wire.log }, null, 1));
       }
     }
     if (problems.length) await testInfo.attach('console problems', { body: problems.join('\n'), contentType: 'text/plain' });
