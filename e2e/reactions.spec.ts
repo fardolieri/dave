@@ -1,5 +1,5 @@
 import { reactionCue } from '../src/core/cue';
-import { expect, test, type Friend } from './fixtures';
+import { expect, newSecret, test, type Friend } from './fixtures';
 
 // Ticket 55: reactions float up over the room for everyone, with the sender's name, and pop out beside their avatar.
 
@@ -59,4 +59,39 @@ test('ticket 55: hammering a reaction is held back in the browser, never refused
   expect(sent(), 'the browser sends a burst, not every tap').toBeLessThan(40);
   expect(alice.wire.frames<{ ref?: string }>('down', 'error').filter((e) => e.ref === 'react'), 'the server refused none').toEqual([]);
   expect(await alice.page.locator('.msg-sys').count(), 'no "Dropped" line').toBe(0);
+});
+
+test('ticket 55: a reaction floats over the room I am reading, while my call is in another', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  const vera = await crowd.open('Vera', { rooms: [crowd.room, other] });
+  await vera.selectRoom('Other');
+  await vera.join();
+  await alice.join();
+  await bob.join();
+  await vera.selectRoom('Room');
+  await alice.button('React 🔥').click();
+  // The pop beside Alice's avatar in the room Vera reads, and the float over it, not only over the call she is in
+  await expect(vera.selectedRoom.locator('li.prow', { hasText: 'Alice' }).locator('.avatar-react')).toHaveText('🔥');
+  await expect.poll(() => floating(vera), { message: 'Vera, reading Room from Other\'s call, sees Alice\'s 🔥', intervals: [50] }).toContain('🔥 Alice');
+});
+
+test('ticket 55: on a phone, the fullscreen bar with its reactions keeps every button on the screen', async ({ crowd, browserName }) => {
+  test.skip(browserName !== 'chromium', 'headless Firefox does not grant fullscreen');
+  const phone = { width: 360, height: 740 };
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob', { viewport: phone });
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await alice.startShare();
+  await bob.watchShare('Alice');
+  await bob.tile('Alice').click();
+  await expect.poll(() => bob.page.evaluate(() => document.fullscreenElement?.classList.contains('share') ?? false)).toBe(true);
+  const tile = bob.tile('Alice');
+  for (const b of [tile.locator('button.fs'), tile.locator('.share-vol'), tile.getByRole('button', { name: 'React 👏' })]) {
+    const box = (await b.boundingBox())!;
+    expect(box.x + box.width, `${await b.evaluate((e) => e.className || e.textContent)} inside the screen`).toBeLessThanOrEqual(phone.width);
+  }
 });
