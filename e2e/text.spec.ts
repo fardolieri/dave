@@ -219,8 +219,16 @@ test('regression: the chat keeps its place when the share strip comes and goes',
   await bob.join();
   await bob.connectedTo('Alice');
   // Enough to overflow the log even without the strip; one writer's lines sit close together under one name.
+  const start = Date.now();
   for (let i = 0; i < 24; i++) await alice.say(`filler line ${i}`);
-  await expect.poll(async () => (await bob.chatTexts()).length).toBe(24);
+  // Every line reaches Bob, unless the network dropped his socket meanwhile: what the Room sent into it is gone (ticket 51,
+  // the Room keeps none), which is not this test's claim (ticket 53). Once he is back, Alice makes up for the lost lines,
+  // each seen by Bob before the next, so none is still on its way when he starts reading.
+  await expect.poll(async () => (await bob.chatTexts()).length === 24 || (bob.wire.droppedSince(start) && await bob.composer.isEnabled())).toBe(true);
+  for (let i = 24; (await bob.chatTexts()).length < 24; i++) {
+    await alice.say(`filler line ${i}`);
+    await expect.poll(() => bob.chatTexts()).toContain(`filler line ${i}`);
+  }
   const log = bob.page.locator('.chat-log');
   const gap = () => log.evaluate((l) => Math.round(l.scrollHeight - l.clientHeight - l.scrollTop));
   await expect.poll(gap).toBeLessThan(8);

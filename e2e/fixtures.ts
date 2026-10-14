@@ -50,6 +50,8 @@ export class Wire {
   readonly closes: Array<{ side: 'page' | 'server'; code?: number; reason?: string; at: number; frames: number }> = [];
   /** Sockets open to the server right now. */
   get open(): number { return this.routes.size; }
+  /** Whether the network dropped a socket (see `closes`) at or after this time (`Date.now()`). */
+  droppedSince(at: number): boolean { return this.closes.some((c) => c.side === 'server' && c.code === 1006 && c.at >= at); }
 
   attach(route: WebSocketRoute): void {
     if (this.refusing) { void route.close({ code: 1011, reason: 'e2e: server down' }); return; }
@@ -310,9 +312,21 @@ export class Friend {
   async say(text: string): Promise<void> {
     const copies = async () => (await this.chatTexts()).filter((t) => t === text).length;
     const before = await copies();
+    // The wire hears of a drop a moment before the page does: one just before this call can still disable the composer.
+    const since = Date.now() - 2000;
     await this.composer.fill(text);
     await this.composer.press('Enter');
-    await expect(this.composer).toHaveValue('');
+    // A socket the network drops (ticket 51) between the fill and the Enter disables the composer, which keeps the text and
+    // sends nothing, as it does while disconnected. A friend presses Enter again once it is back, and so does this, only
+    // after a drop: a text still in the enabled composer then is one that was never sent (ticket 53).
+    await expect.poll(async () => {
+      let value = await this.composer.inputValue();
+      if (value === text && this.wire.droppedSince(since) && await this.composer.isEnabled()) {
+        await this.composer.press('Enter');
+        value = await this.composer.inputValue();
+      }
+      return value;
+    }, { message: `${this.name}'s composer empties` }).toBe('');
     await expect.poll(copies, { message: `${this.name}'s "${text}" comes back from the server` }).toBeGreaterThan(before);
   }
 
