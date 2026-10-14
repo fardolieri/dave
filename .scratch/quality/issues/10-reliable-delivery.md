@@ -1,6 +1,6 @@
 # 10 · Reliable delivery: one way for a message to survive a dropped socket
 
-Status: step 1 (declarations) shipped 2026-10-14 to prod (3a4474e, PR #55); step 2a (heartbeat, texts while reconnecting
+Status: step 1 (declarations) shipped 2026-10-14 to prod (3a4474e, PR #55); step 2a (heartbeat, texts queued while reconnecting and kept over a reload, socket-end data) shipped 2026-10-14 to prod (accda12, PR #57); server-side catch-up declined by the owner for now; signals, ice and leave still open
 and over a reload, drop instrumentation) on branch `quality/10-step2a`; later steps open
 Type: task
 
