@@ -80,11 +80,25 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     setPending([...unconfirmed]);
     if (keep) keepUnsent(opts.roomId, unconfirmed);
   };
-  /** `publicKey:id` of the texts shown, oldest first: one sent again may have reached us the first time. */
+  /**
+   * `publicKey:id` of the texts shown, oldest first: one sent again may have reached us the first time, before a reload of
+   * ours too, so the history's ids count.
+   */
   const seenTexts = new Set<string>();
+  /** Whether a writer's text of this id was shown already; remembers it if not. */
+  const seen = (publicKey: string, id: string): boolean => {
+    const key = `${publicKey}:${id}`;
+    if (seenTexts.has(key)) return true;
+    seenTexts.add(key);
+    if (seenTexts.size > SEEN_TEXTS_MAX) seenTexts.delete(seenTexts.values().next().value!);
+    return false;
+  };
   // Recent history from this browser, loaded once; live lines append after it.
-  const fromStored = (m: StoredText): ChatLine => ({ kind: 'text', id: textKey(m), ...m });
-  void loadHistory(opts.roomId).then((stored) => setLines((l) => [...stored.map(fromStored), ...l]));
+  const fromStored = ({ from, text, at }: StoredText): ChatLine => ({ kind: 'text', id: textKey({ from, at }), from, text, at });
+  void loadHistory(opts.roomId).then((stored) => {
+    for (const m of stored) if (m.id !== undefined) seen(m.from.publicKey, m.id);
+    setLines((l) => [...stored.map(fromStored), ...l]);
+  });
   const push = (line: { kind: 'text'; id: string; from: Identity; text: string; at: number } | { kind: 'system'; text: string; at: number }) =>
     setLines((l) => [...l, 'id' in line ? (line as ChatLine) : ({ ...line, id: `sys-${nextId++}` } as ChatLine)]);
   let ws: WebSocket | null = null;
@@ -199,17 +213,14 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           return;
         case 'text': {
           if (m.id !== undefined) {
-            const key = `${m.from.publicKey}:${m.id}`;
-            if (seenTexts.has(key)) return;
-            seenTexts.add(key);
-            if (seenTexts.size > SEEN_TEXTS_MAX) seenTexts.delete(seenTexts.values().next().value!);
             if (m.from.publicKey === opts.identity.publicKey) {
               const i = unconfirmed.findIndex((u) => u.id === m.id);
               if (i >= 0) { unconfirmed.splice(i, 1); unconfirmedChanged(); }
             }
+            if (seen(m.from.publicKey, m.id)) return;
           } else if (m.from.publicKey === opts.identity.publicKey) { unconfirmed.shift(); unconfirmedChanged(); } // a Room from before ids: in order
           push({ kind: 'text', id: textKey(m), from: m.from, text: m.text, at: m.at });
-          void appendHistory(opts.roomId, { from: m.from, text: m.text, at: m.at });
+          void appendHistory(opts.roomId, { from: m.from, text: m.text, at: m.at, ...(m.id !== undefined ? { id: m.id } : {}) });
           if (m.from.publicKey !== opts.identity.publicKey) {
             setUnread((n) => n + 1);
             for (const l of textListeners) l(m);

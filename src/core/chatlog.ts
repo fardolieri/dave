@@ -1,4 +1,4 @@
-import type { Identity } from './protocol';
+import type { Identity, TextId } from './protocol';
 
 /** Texts from more than this long before a room came on screen start out folded away above the log (ticket 38). */
 export const FOLD_OLDER_MS = 18 * 3600 * 1000;
@@ -12,8 +12,11 @@ export function olderCount(lines: ReadonlyArray<{ at: number }>, cutoff: number)
   return i === -1 ? lines.length : i;
 }
 
-/** One text as this browser keeps it in its history (ticket 09, IndexedDB `history:<roomId>`). */
-export type StoredText = { from: Identity; text: string; at: number };
+/**
+ * One text as this browser keeps it in its history (ticket 09, IndexedDB `history:<roomId>`). `id`: the writer's, since
+ * 2026-10-14 (quality ticket 10), so a text sent again after a reload is still shown once; none in texts from before.
+ */
+export type StoredText = { from: Identity; text: string; at: number; id?: TextId };
 /** The history keeps the most recent texts only. */
 export const MAX_HISTORY = 500;
 

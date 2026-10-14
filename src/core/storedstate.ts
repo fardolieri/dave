@@ -116,6 +116,10 @@ export const IDB = {
     fixtures: {
       '2026-09-16, with reconnect notes': [{ from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna' }, text: 'hi', at: 1757500000000 }, { note: 'Reconnected after 12 s', at: 1757500001000 }],
       '2026-09-20, texts only': [{ from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna', picture: '🦕' }, text: 'hi', at: 1758300000000 }],
+      '2026-10-14, text ids': [
+        { from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna', picture: '🦕' }, text: 'hi', at: 1760450000000, id: '0a1b2c3d4e5f60718293a4b5' },
+        { from: { publicKey: 'pkB', fingerprint: 'DEF456', name: 'Ben' }, text: 'from an old client', at: 1760450001000 },
+      ],
     },
   },
   history: {
