@@ -330,6 +330,9 @@ function Workspace(props: WorkspaceProps) {
   const sharerOf = (key: string): Person => sharers().find((p) => p.publicKey === key) ?? sharers()[0]!;
   const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
   const connected = () => current()?.room.status().kind === 'connected';
+  // A text can be written while the socket is away and coming back: it waits, shown as such, and goes out once the Room
+  // lets this browser in again (quality ticket 10). Not while the room has never connected, or stepped back for another tab.
+  const writable = () => { const k = current()?.room.status().kind; return k === 'connected' || k === 'reconnecting' || k === 'unavailable'; };
   // The room is on screen; friends arriving now let the phone's splash fade first. The first connection gets a moment
   // before the pill says so: your own row, dimmed until the room is connected, already tells.
   onSettled(() => { roomShownAt = performance.now(); });
@@ -479,7 +482,7 @@ function Workspace(props: WorkspaceProps) {
           )}</Show>
           <ChatLog lines={cur().room.lines()} openedAt={openedAt()} jumpToken={jumpToken()} label={labelOf} />
         </div>
-        <Composer connected={connected()} roomName={cur().saved.name} onSend={(text) => { cur().room.sendText(text); setJumpToken((n) => n + 1); }}>
+        <Composer connected={connected()} writable={writable()} roomName={cur().saved.name} onSend={(text) => { cur().room.sendText(text); setJumpToken((n) => n + 1); }}>
           {/* Anchored to the composer's top edge, whatever its height on this device (ticket 32) */}
           <Show when={consent() === null || askingConsent()}><TelemetryNotice onAnswer={(c) => { setConsent(c); setAskingConsent(false); }} /></Show>
         </Composer>
@@ -1110,8 +1113,8 @@ function Banner(props: { status: ServerStatus; onTakeOver: () => void }) {
     <Switch>
       <Match when={props.status.kind === 'elsewhere'}><div class="banner banner-warn">This room is open in another tab or window of this browser. <button class="link" onClick={props.onTakeOver}>Use it here instead</button></div></Match>
       <Match when={props.status.kind === 'connecting'}><div class="banner banner-warn">Connecting…</div></Match>
-      <Match when={props.status.kind === 'reconnecting'}><div class="banner banner-warn">Reconnecting to server… voice and shares continue, chat is paused</div></Match>
-      <Match when={props.status.kind === 'unavailable'}><div class="banner banner-bad">Server unavailable, retrying. Voice and shares continue.</div></Match>
+      <Match when={props.status.kind === 'reconnecting'}><div class="banner banner-warn">Reconnecting to server… voice and shares continue, texts go out once it is back</div></Match>
+      <Match when={props.status.kind === 'unavailable'}><div class="banner banner-bad">Server unavailable, retrying. Voice and shares continue, texts wait.</div></Match>
       <Match when={props.status.kind === 'refused' && props.status}>{(s) => <div class="banner banner-bad">Refused: {s().reason}. Ask for a fresh invite link.</div>}</Match>
     </Switch>
   );
@@ -1247,14 +1250,14 @@ const when = (at: number): string => new Date(at).toLocaleString([], { hour: '2-
  * The message input. A separate grid item from the log so phones can keep it as the bottom row of the screen.
  * The emoji button opens the picker (issue #3); a pick lands at the caret and the picker stays for the next one.
  */
-function Composer(props: { connected: boolean; roomName: string; onSend: (text: string) => void; children?: any }) {
+function Composer(props: { connected: boolean; writable: boolean; roomName: string; onSend: (text: string) => void; children?: any }) {
   const [draft, setDraft] = createSignal('');
   let input: HTMLInputElement | undefined;
   let emojiButton: HTMLButtonElement | undefined;
   const submit = (e: Event) => {
     e.preventDefault();
     const text = draft().trim();
-    if (!text || !props.connected) return;
+    if (!text || !props.writable) return;
     props.onSend(text);
     setDraft('');
   };
@@ -1270,11 +1273,11 @@ function Composer(props: { connected: boolean; roomName: string; onSend: (text: 
   };
   return (
     <form class="chat-input" onSubmit={submit}>
-      <button type="button" class="emoji-open" ref={emojiButton} popovertarget="composer-emoji" disabled={!props.connected} title="Emoji" aria-label="Emoji">🙂</button>
+      <button type="button" class="emoji-open" ref={emojiButton} popovertarget="composer-emoji" disabled={!props.writable} title="Emoji" aria-label="Emoji">🙂</button>
       <EmojiPicker id="composer-emoji" anchor={() => emojiButton} onPick={insert} />
-      <input ref={input} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!props.connected} maxlength={MAX_TEXT_LENGTH}
-             placeholder={props.connected ? `Message ${props.roomName}` : holding() ? 'A new version of dave is loading…' : "Can't send while disconnected"} />
-      <button disabled={!props.connected || !draft().trim()}>Send</button>
+      <input ref={input} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!props.writable} maxlength={MAX_TEXT_LENGTH}
+             placeholder={props.connected ? `Message ${props.roomName}` : props.writable ? `Message ${props.roomName}, sent once reconnected` : holding() ? 'A new version of dave is loading…' : "Can't send while disconnected"} />
+      <button disabled={!props.writable || !draft().trim()}>Send</button>
       {props.children}
     </form>
   );
@@ -1330,9 +1333,9 @@ function ChatLog(props: { lines: ChatLine[]; openedAt: number; jumpToken: number
               <Match when={l.kind === 'text' && l}>
                 {(m) => (
                   <Show when={!continues(lines(), i())} fallback={
-                    <div class="msg msg-cont" title={when(m().at)}><div class="msg-text"><Linkified text={m().text} /></div></div>
+                    <div class={m().pending ? 'msg msg-cont msg-pending' : 'msg msg-cont'} title={m().pending ? 'Not sent yet' : when(m().at)}><div class="msg-text"><Linkified text={m().text} /></div></div>
                   }>
-                    <div class="msg">
+                    <div class={m().pending ? 'msg msg-pending' : 'msg'} title={m().pending ? 'Not sent yet' : undefined}>
                       <span class="msg-from" title={props.label(m().from).title}>{props.label(m().from).shown}</span>
                       <span class="msg-at">{when(m().at)}</span>
                       <div class="msg-text"><Linkified text={m().text} /></div>

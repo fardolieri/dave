@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 import posthog, { onConsentChange, telemetryOn } from './posthog';
 import { buildAuthMessage } from '../core/identity';
 import {
@@ -23,7 +23,8 @@ export type ServerStatus =
   | { kind: 'elsewhere' };
 
 export type ChatLine =
-  | { kind: 'text'; id: string; from: Identity; text: string; at: number }
+  /** `pending`: my own text the Room has not brought back yet; it waits at the end of the log, `at` my own clock's. */
+  | { kind: 'text'; id: string; from: Identity; text: string; at: number; pending?: true }
   | { kind: 'system'; id: string; text: string; at: number };
 
 const UNAVAILABLE_AFTER_MS = 30_000;
@@ -65,7 +66,10 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
    * Own texts not back from the Room yet, oldest first. The network can drop a socket under a text (1006, the Room none the
    * wiser), and the text was gone for everyone: each is sent again on the next socket, until it comes back or is refused.
    */
-  const unconfirmed: Array<{ id: string; text: string }> = [];
+  const unconfirmed: Array<{ id: string; text: string; at: number }> = [];
+  /** `unconfirmed` as shown: after the lines, as waiting. */
+  const [pending, setPending] = createSignal<typeof unconfirmed>([]);
+  const unconfirmedChanged = () => setPending([...unconfirmed]);
   /** `publicKey:id` of the texts shown, oldest first: one sent again may have reached us the first time. */
   const seenTexts = new Set<string>();
   // Recent history from this browser, loaded once; live lines append after it.
@@ -187,9 +191,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             if (seenTexts.size > SEEN_TEXTS_MAX) seenTexts.delete(seenTexts.values().next().value!);
             if (m.from.publicKey === opts.identity.publicKey) {
               const i = unconfirmed.findIndex((u) => u.id === m.id);
-              if (i >= 0) unconfirmed.splice(i, 1);
+              if (i >= 0) { unconfirmed.splice(i, 1); unconfirmedChanged(); }
             }
-          } else if (m.from.publicKey === opts.identity.publicKey) unconfirmed.shift(); // a Room from before ids: in order
+          } else if (m.from.publicKey === opts.identity.publicKey) { unconfirmed.shift(); unconfirmedChanged(); } // a Room from before ids: in order
           push({ kind: 'text', id: textKey(m), from: m.from, text: m.text, at: m.at });
           void appendHistory(opts.roomId, { from: m.from, text: m.text, at: m.at });
           if (m.from.publicKey !== opts.identity.publicKey) {
@@ -208,7 +212,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             else push({ kind: 'system', text: `${m.ref === 'text' ? 'Not sent' : 'Dropped'}: ${m.reason}.`, at: Date.now() });
             // The Room answers texts in the order they came: a refusal is for the oldest one still waiting. The chat said
             // it was not sent, so it is not sent again.
-            if (m.ref === 'text') unconfirmed.shift();
+            if (m.ref === 'text') { unconfirmed.shift(); unconfirmedChanged(); }
           } else if (status().kind !== 'refused') {
             // A wrong answer during the handshake: our stored secret is wrong. Retrying cannot help.
             setStatus({ kind: 'refused', reason: m.reason });
@@ -245,6 +249,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       stopped = true;
       // The room is another tab's now: a text still out would be sent when this one takes it back, maybe hours later.
       unconfirmed.length = 0;
+      unconfirmedChanged();
       setStatus({ kind: 'elsewhere' });
       return;
     }
@@ -290,7 +295,14 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     status,
     you,
     people,
-    lines,
+    /** The chat: what came back from the Room, then my own texts still on their way, as waiting. */
+    lines: createMemo((): ChatLine[] => {
+      const waiting = pending();
+      if (!waiting.length) return lines();
+      const { name, picture } = carried(latest);
+      const me: Identity = you() ?? { publicKey: opts.identity.publicKey, fingerprint: opts.identity.fingerprint, name, ...(picture ? { picture } : {}) };
+      return [...lines(), ...waiting.map((u): ChatLine => ({ kind: 'text', id: `pending:${u.id}`, from: me, text: u.text, at: u.at, pending: true }))];
+    }),
     unread,
     /** The room is on screen: nothing in it is unread. */
     markRead: () => setUnread(0),
@@ -316,10 +328,14 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     inCall,
     /** Counts the sockets the server has let in; read without waiting for any effect, so a frame can name its socket. */
     welcomes: () => welcomes,
-    /** Sends a text; it shows when the Room brings it back. A socket lost meanwhile sends it again on the next one. */
+    /**
+     * Sends a text, or keeps it for the next socket while there is none. It shows as waiting until the Room brings it back;
+     * a socket lost meanwhile sends it again on the next one.
+     */
     sendText: (text: string) => {
       const id = Array.from(crypto.getRandomValues(new Uint8Array(12)), (x) => x.toString(16).padStart(2, '0')).join(''); // not randomUUID: http on a LAN too
-      unconfirmed.push({ id, text });
+      unconfirmed.push({ id, text, at: Date.now() });
+      unconfirmedChanged();
       send({ t: 'text', text, id });
       posthog.capture('message_sent');
     },
