@@ -9,6 +9,7 @@ import {
   afterJoin, afterWelcome, carried, declare, declared, forgetEnded, forgetWatch, inCallOnly, joinDeclares, leaveCall,
   type Carried, type Declaration,
 } from '../core/declarations';
+import { beat, heard, heartbeat } from '../core/heartbeat';
 import type { LocalIdentity } from './identity';
 import { appendHistory, clearHistory, loadHistory, textKey, type StoredText } from './history';
 
@@ -37,6 +38,8 @@ const BACKOFF_MAX_MS = 30_000;
 const HANDSHAKE_TIMEOUT_MS = 10_000;
 /** What a handshake given up is reported as (no close event says it). */
 const HANDSHAKE_GIVEN_UP = 4008;
+/** What a socket given up for its unanswered pings (core/heartbeat.ts) is closed with, and reported as. */
+const PINGS_UNANSWERED = 4009;
 
 /**
  * The client's view of one Room: one WebSocket with the challenge handshake,
@@ -112,19 +115,30 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
     const socket = new WebSocket(`${scheme}://${location.host}/ws/${opts.roomId}`);
     ws = socket;
+    /** Gives the socket up: its close could come late or never, with a server or a network that does not answer. */
+    const giveUp = (code: number) => {
+      socket.onopen = socket.onmessage = socket.onclose = null;
+      if (code === HANDSHAKE_GIVEN_UP) socket.close();
+      else socket.close(code, 'pings unanswered');
+      lost(socket, code);
+    };
     const handshake = setTimeout(() => {
       if (ws !== socket || welcomed === socket || stopped) return;
-      // Its close could come late or never, with a server that does not answer: go on without it.
-      socket.onopen = socket.onmessage = socket.onclose = null;
-      socket.close();
-      lost(socket, HANDSHAKE_GIVEN_UP);
+      giveUp(HANDSHAKE_GIVEN_UP);
     }, HANDSHAKE_TIMEOUT_MS);
+    const beats = heartbeat(Date.now());
 
     socket.onopen = () => {
-      pingTimer = setInterval(() => socket.readyState === WebSocket.OPEN && socket.send(PING_FRAME), PING_INTERVAL_MS);
+      pingTimer = setInterval(() => {
+        if (socket.readyState !== WebSocket.OPEN) return;
+        // A socket the network cut without a close (ticket 54) would otherwise look open for good, its texts gone into it.
+        if (beat(beats, Date.now()) === 'ping') socket.send(PING_FRAME);
+        else giveUp(PINGS_UNANSWERED);
+      }, PING_INTERVAL_MS);
     };
 
     socket.onmessage = async (e) => {
+      heard(beats);
       const m = JSON.parse(e.data as string) as ServerMessage;
       switch (m.t) {
         case 'challenge': {
