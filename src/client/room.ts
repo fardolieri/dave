@@ -41,6 +41,12 @@ const HANDSHAKE_TIMEOUT_MS = 10_000;
 const HANDSHAKE_GIVEN_UP = 4008;
 /** What a socket given up for its unanswered pings (core/heartbeat.ts) is closed with, and reported as. */
 const PINGS_UNANSWERED = 4009;
+/** Why this client gave a socket up itself, for `server_socket_closed`. */
+const GIVEN_UP: Record<number, string> = { [HANDSHAKE_GIVEN_UP]: 'handshake_timeout', [PINGS_UNANSWERED]: 'pong_overdue' };
+/** The sockets this tab holds, one per room it shows. */
+const sockets = new Set<WebSocket>();
+/** One socket's life, for `server_socket_closed`: when the Room let it in, when its last frame came. */
+type Life = { welcomedAt: number | null; frameAt: number | null };
 
 /**
  * The client's view of one Room: one WebSocket with the challenge handshake,
@@ -123,12 +129,14 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
     const socket = new WebSocket(`${scheme}://${location.host}/ws/${opts.roomId}`);
     ws = socket;
+    sockets.add(socket);
+    const life: Life = { welcomedAt: null, frameAt: null };
     /** Gives the socket up: its close could come late or never, with a server or a network that does not answer. */
     const giveUp = (code: number) => {
       socket.onopen = socket.onmessage = socket.onclose = null;
       if (code === HANDSHAKE_GIVEN_UP) socket.close();
       else socket.close(code, 'pings unanswered');
-      lost(socket, code);
+      lost(socket, code, life);
     };
     const handshake = setTimeout(() => {
       if (ws !== socket || welcomed === socket || stopped) return;
@@ -147,6 +155,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
 
     socket.onmessage = async (e) => {
       heard(beats);
+      life.frameAt = Date.now();
       const m = JSON.parse(e.data as string) as ServerMessage;
       switch (m.t) {
         case 'challenge': {
@@ -164,6 +173,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
         }
         case 'welcome':
           clearTimeout(handshake);
+          life.welcomedAt = Date.now();
           welcomed = socket;
           welcomes++;
           attempt = 0;
@@ -238,17 +248,30 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       for (const l of listeners) l(m);
     };
 
-    socket.onclose = (e) => { clearTimeout(handshake); lost(socket, e.code); };
+    socket.onclose = (e) => { clearTimeout(handshake); lost(socket, e.code, life); };
   }
 
   /** A socket is gone, closed or given up: try again after a while, unless the close says that cannot help. */
-  function lost(socket: WebSocket, code: number) {
+  function lost(socket: WebSocket, code: number, life: Life) {
+    const rooms = sockets.size;
+    sockets.delete(socket);
     clearInterval(pingTimer);
     if (ws === socket) ws = null;
     if (welcomed === socket) welcomed = null;
     setYou(null);
     if (stopped) return;
-    posthog.capture('server_socket_closed', { code, ever_connected: everConnected });
+    // What tells a network that cut one socket from a phone that lost its network, or a tab asleep (ticket 54).
+    const now = Date.now();
+    posthog.capture('server_socket_closed', {
+      code,
+      ever_connected: everConnected,
+      age_ms: life.welcomedAt === null ? null : now - life.welcomedAt,
+      since_frame_ms: life.frameAt === null ? null : now - life.frameAt,
+      visible: document.visibilityState === 'visible',
+      online: navigator.onLine,
+      rooms,
+      ...(GIVEN_UP[code] ? { reason: GIVEN_UP[code] } : {}),
+    });
     if (code === CLOSE_SUPERSEDED) {
       stopped = true;
       // The room is another tab's now, and so are the texts still out: it took them from the browser's storage as it
@@ -292,6 +315,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     clearTimeout(reconnectTimer);
     clearTimeout(unavailableTimer);
     clearInterval(pingTimer);
+    if (ws) sockets.delete(ws);
     ws?.close(1000, 'bye');
   });
 

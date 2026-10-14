@@ -20,8 +20,11 @@ export type SocketState =
    * socket joined the call, so a TURN user minted for an earlier join is told from the call's (settleTurnUser).
    */
   | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; attachedAt: number; turnUsers?: string[]; joins?: number; telemetry?: true }
-  /** Told to close (superseded, silent too long, errored) or closed, but still attached until the runtime finishes the handshake; invisible meanwhile. */
-  | { stage: 'closing' };
+  /**
+   * Told to close (superseded, silent too long, errored) or closed, but still attached until the runtime finishes the handshake; invisible meanwhile.
+   * `attachedAt` as it was when attached, for the log of its close (worker/room.ts); none in sockets from before it was kept.
+   */
+  | { stage: 'closing'; attachedAt?: number };
 
 export type Outcome = {
   state: SocketState;

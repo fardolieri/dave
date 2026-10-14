@@ -28,6 +28,17 @@ const awayOf = (v: unknown): Away | null => {
   return a != null && typeof a === 'object' && Array.isArray(a.users) && a.users.every((u) => typeof u === 'string') && typeof a.since === 'number' ? (a as Away) : null;
 };
 
+/**
+ * One line in Workers observability per socket end the runtime reports: does the Room ever hear of a socket the network
+ * cut (1006), and how long after it was let in (ticket 54)? `attached` is whether it was still in presence; a socket the
+ * Room had told to close already is `closing`. `age_ms` counts from the welcome, or from the challenge for a socket never
+ * let in. No names or keys.
+ */
+function logEnd(event: 'close' | 'error', code: number | null, state: SocketState | null): void {
+  const since = state?.stage === 'attached' || state?.stage === 'closing' ? state.attachedAt : state?.stage === 'challenge' ? state.since : undefined;
+  console.log('socket end', JSON.stringify({ event, code, stage: state?.stage ?? null, attached: state?.stage === 'attached', age_ms: since === undefined ? null : Date.now() - since }));
+}
+
 // One Room per room id (ADR 0004). Uses the WebSocket Hibernation API so the object can be
 // evicted while sockets stay attached. The per-socket state machine lives in
 // the attachment (16 KB cap); this class deliberately has no fields of its own,
@@ -70,6 +81,7 @@ export class Room extends DurableObject<Env> {
     // 1005/1006 mean "no status" and may not be passed back into close().
     const valid = code === 1000 || (code >= 3000 && code <= 4999);
     const state = ws.deserializeAttachment() as SocketState | null;
+    logEnd('close', code, state);
     if (state?.stage === 'attached') this.letGo(ws, state); // before the close, while the attachment is surely writable
     ws.close(valid ? code : 1000, reason);
     if (state?.stage !== 'attached') return; // never in presence (a challenge), or out of it since it was told to close
@@ -82,6 +94,7 @@ export class Room extends DurableObject<Env> {
    */
   async webSocketError(ws: WebSocket): Promise<void> {
     const state = ws.deserializeAttachment() as SocketState | null;
+    logEnd('error', null, state);
     if (state?.stage !== 'attached') return;
     this.letGo(ws, state);
     try { ws.close(CLOSE_ERRORED, 'socket error'); } catch { /* already gone */ }
@@ -179,7 +192,7 @@ export class Room extends DurableObject<Env> {
    * peer connections may outlive this socket. The caller closes it.
    */
   private letGo(ws: WebSocket, state: Extract<SocketState, { stage: 'attached' }>): void {
-    ws.serializeAttachment({ stage: 'closing' } satisfies SocketState);
+    ws.serializeAttachment({ stage: 'closing', attachedAt: state.attachedAt } satisfies SocketState);
     if (!state.turnUsers?.length) return;
     const key = AWAY_PREFIX + state.person.publicKey;
     const users = [...(awayOf(this.ctx.storage.kv.get(key))?.users ?? []), ...state.turnUsers].slice(-MAX_TURN_USERS);
