@@ -1,6 +1,6 @@
 # 06 · Video receipts: every UI change filmed in CI, viewable on the phone
 
-Status: shipped 2026-10-08 to master (814d5f4, PR #23), 2026-10-09 to prod
+Status: removed 2026-10-14 (shipped 2026-10-08); see ticket 09
 Type: task
 
 ## Why
@@ -26,3 +26,7 @@ A PR with a small visible change shows a comment with the phone and desktop reco
 
 ## Built
 .github/workflows/receipts.yml films e2e/receipts/tour.spec.ts plus any test tagged @receipt at phone and desktop size, master's build next to the PR's, as GIFs (under 3 MB, inline on a phone) on the orphan `receipts` branch, and keeps one PR comment up to date. Per-PR preview Workers were researched and left out: Workers with Durable Objects get no preview URLs, and a separate Worker would share prod's free-plan quotas.
+
+## Removed
+2026-10-14, Daniel: "Yes we can remove the video receipts." In a week of sessions nobody looked at one; previews (a
+real deployed copy per PR, linked from the PR) answer "what does it look like" better than a GIF.

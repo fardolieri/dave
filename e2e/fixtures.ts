@@ -9,8 +9,7 @@
  * (quality ticket 04): a test in which the UI contradicted the call fails, unless it declared `friend.expectInvariant(kind)`.
  */
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { writeFileSync } from 'node:fs';
 import { test as base, expect, type Browser, type BrowserContext, type Locator, type Page, type WebSocketRoute } from '@playwright/test';
 import { environmentNoise, launchOptions, originFor, type Autoplay, type Engine } from './browsers';
 
@@ -411,19 +410,6 @@ export class Friend {
 const clean = (s: string) => s.replace(/\s*\(you\)\s*$/, '').trim();
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/**
- * A video receipt (playwright.receipts.config.ts, .github/workflows/receipts.yml): the first friend a test opens is filmed at
- * this viewport, unless the test gives that friend a viewport of its own, and the video lands in `dir` named after the test.
- * Null, the default, in the normal suite.
- */
-export type Film = { viewport: { width: number; height: number }; dir: string } | null;
-
-/** The file name a receipt gets: its spec file, then its test's title, lower case, words joined by dashes, the tag left out. */
-export const filmName = (file: string, title: string): string => {
-  const slug = (s: string) => s.replace(/@\w+/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  return `${slug(basename(file).replace(/\.spec\.ts$/, ''))}--${slug(title).slice(0, 80)}`;
-};
-
 type Crowd = {
   /** Opens a friend in the given rooms (default: one room shared by the test) and waits until connected. */
   open(name: string, options?: Partial<FriendOptions> & { connect?: boolean }): Promise<Friend>;
@@ -431,15 +417,12 @@ type Crowd = {
   room: RoomSeed;
 };
 
-export const test = base.extend<{ crowd: Crowd; film: Film }>({
-  film: [null, { option: true }],
-  crowd: async ({ browser, browserName, playwright, film }, use, testInfo) => {
+export const test = base.extend<{ crowd: Crowd }>({
+  crowd: async ({ browser, browserName, playwright }, use, testInfo) => {
     const friends: Friend[] = [];
     const room: RoomSeed = { secret: newSecret(), name: 'Room' };
     // Extra browsers (another engine, another autoplay policy), launched on first use and closed with the test.
     const extra = new Map<string, Promise<Browser>>();
-    // Seconds from the start of the film until its friend's page is up: the blank page before that is cut from the receipt.
-    let filmReady = 0;
     const browserFor = (o: Partial<FriendOptions>): Promise<Browser> => {
       const engine = o.engine ?? (browserName as Engine);
       const autoplay = o.autoplay ?? 'allowed';
@@ -451,14 +434,10 @@ export const test = base.extend<{ crowd: Crowd; film: Film }>({
     await use({
       room,
       async open(name, options = {}) {
-        const filming = film && friends.length === 0;
-        if (filming) options = { viewport: film.viewport, ...options, video: testInfo.outputPath('film') };
         const friend = new Friend(name, { ...options, rooms: options.rooms ?? [room] });
         friends.push(friend);
-        const started = Date.now();
         await friend.launch(await browserFor(options), options.engine ?? (browserName as Engine));
         if (options.connect !== false) await friend.open();
-        if (filming) filmReady = (Date.now() - started) / 1000;
         return friend;
       },
     });
@@ -474,14 +453,6 @@ export const test = base.extend<{ crowd: Crowd; film: Film }>({
     if (problems.length) await testInfo.attach('console problems', { body: problems.join('\n'), contentType: 'text/plain' });
     await Promise.all(friends.map((f) => f.close()));
     await Promise.all([...extra.values()].map(async (b) => (await b).close()));
-    // The video is complete once its context is closed. A failed run is kept too: it shows how far the change got.
-    const filmed = film && friends[0]?.page?.video();
-    if (filmed) {
-      const name = filmName(testInfo.file, testInfo.title);
-      mkdirSync(film.dir, { recursive: true });
-      await filmed.saveAs(join(film.dir, `${name}.webm`));
-      writeFileSync(join(film.dir, `${name}.json`), JSON.stringify({ title: testInfo.title.replace(/\s*@\w+/g, ''), skip: filmReady, status: testInfo.status === testInfo.expectedStatus && !problems.length ? 'passed' : 'failed' }));
-    }
     expect(problems, 'console warnings, errors or exceptions nobody expected').toEqual([]);
   },
 });

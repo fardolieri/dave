@@ -39,7 +39,7 @@ Every change climbs this ladder, and every report says which rung it reached, in
 | 1 unit | `pnpm test` passes | CI (`ci.yml`) |
 | 2 browser | the e2e suite passes against a local build, both engines; with an open PR, also against its preview | CI (`e2e.yml` on the branch, `preview.yml` on the PR) |
 | 3 nightly | deployed to nightly and the e2e suite passed against it | CI (`e2e.yml` after deploy) |
-| 4 seen | a human or a recording looked at the real thing (real browser, real device for phone features) | owner, or video receipt |
+| 4 seen | a human or a recording looked at the real thing (real browser, real device for phone features) | owner, or a recording |
 
 Rules:
 - **Say what you did not verify.** "Verified: rung 2. Not verified: on a phone." is a good report. A check on a copy, a
@@ -72,8 +72,7 @@ Rules:
 ## What watches the app
 
 - **CI on every branch:** typecheck and unit tests in both Wrangler envs (`ci.yml`), the browser suite in both engines
-  (`e2e.yml`), the red-then-green check of regression tests (`red-green.yml`), video receipts for client changes
-  (`receipts.yml`, GIFs in one PR comment; add `{ tag: '@receipt' }` to a test to film it).
+  (`e2e.yml`), the red-then-green check of regression tests (`red-green.yml`).
 - **On every open PR** (not drafts): a preview Worker of its own, `dave-pr-<n>` (`preview.yml`), built like nightly, with
   the whole e2e suite run against it once deployed. One comment on the PR links it and a room of the PR's own, so the owner
   can try a change from the phone before it reaches master. It starts with empty storage: a change that meets old saved
