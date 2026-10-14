@@ -132,6 +132,21 @@ test('a Stop watching lost with its socket is said again after the reconnect', a
   await expect.poll(async () => (await sam.peers()).find((p) => p.name === 'Vic'), { message: 'Sam stops sending to Vic' }).toMatchObject({ subscribedToMe: false });
 });
 
+test('a Stop sharing lost with its socket still ends the share for everyone', async ({ crowd }) => {
+  // The join after the reconnect says what was declared last (quality ticket 10), not what the lost frame said.
+  const [sam, vic] = await callOf(crowd, ['Sam', 'Vic']);
+  await sam.startShare();
+  await expect(vic.tile('Sam')).toBeVisible();
+  sam.wire.up = (frame) => (frame.includes('"t":"share"') ? null : frame);
+  await sam.stopShare();
+  sam.wire.up = null;
+  await sam.wire.cut();
+  sam.wire.restore();
+  await sam.connected();
+  await expect(vic.page.locator('.share')).toHaveCount(0);
+  await expect(vic.selectedRoom.locator('li.prow', { hasText: 'Sam' })).not.toContainText('sharing');
+});
+
 test('leaving while sharing ends the share; rejoining does not bring it back', async ({ crowd }) => {
   const [alice, bob] = await callOf(crowd, ['Alice', 'Bob']);
   await alice.startShare();
