@@ -41,7 +41,11 @@ const MIN = 60_000;
 /** The longest list the report traces: about two minutes of replay. */
 const TRACE_MAX_STEPS = 40;
 
-type Browsers = Record<'chromium' | 'firefox', Browser>;
+/**
+ * Each friend's browser. Chromium friends get one each, as friends do: a browser holds a limited number of audio output
+ * streams, and two friends in one ran out of them (soak issues #39, #49, #50, #51; browsers.ts). The Firefox friends share one.
+ */
+type Browsers = Record<Name, Browser>;
 type Failure = { step: number; action: Action | null; problems: string[]; kinds: string[] };
 type Outcome = { steps: number; failure: Failure | null; aborted: boolean };
 
@@ -64,7 +68,7 @@ class Group {
     for (const { name, engine } of FRIENDS) {
       const f = new Friend(name, { rooms: [this.room] });
       this.friends.set(name, f);
-      await f.launch(browsers[engine], engine);
+      await f.launch(browsers[name], engine);
       if (tracing) await f.context.tracing.start({ screenshots: true, snapshots: true });
       await f.open();
     }
@@ -281,7 +285,13 @@ test('the friend group from hell', async ({ browser, playwright }) => {
   const list = ACTIONS ?? generate(SEED, STEPS ?? 5000);
   log(ACTIONS ? `replaying ${ACTIONS.length} given actions` : `seed ${SEED}, ${STEPS !== null ? `${STEPS} steps` : `${MINUTES} minutes`}`);
   const firefox = await playwright.firefox.launch(launchOptions('firefox'));
-  const browsers: Browsers = { chromium: browser, firefox };
+  const launched = [firefox];
+  const browsers = {} as Browsers;
+  for (const { name, engine } of FRIENDS) {
+    if (engine === 'firefox') browsers[name] = firefox;
+    else if (!Object.values(browsers).includes(browser)) browsers[name] = browser;
+    else launched.push(browsers[name] = await playwright.chromium.launch(launchOptions('chromium')));
+  }
   mkdirSync(OUT, { recursive: true });
   try {
     const first = await play(browsers, list, { stopAt: playUntil, keep: join(OUT, 'run'), verbose: true });
@@ -325,7 +335,7 @@ test('the friend group from hell', async ({ browser, playwright }) => {
     report({ failure, ran, minimal, complete, reproduced, replays, traced: traced && sameWay(traced), minutes: (Date.now() - started) / MIN });
     throw new Error(`the soak found a difference at step ${failure.step} (${failure.action ? format(failure.action) : 'opening'}):\n${failure.problems.join('\n')}\nshortest failing list: ${formatList(minimal)}`);
   } finally {
-    await firefox.close();
+    for (const b of launched) await b.close();
   }
 });
 

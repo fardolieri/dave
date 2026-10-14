@@ -30,9 +30,19 @@ function lanAddress(): string {
   return 'localhost';
 }
 
-/** Console output Firefox adds that is not the app misbehaving. Chromium adds none. */
+/** Console output the browsers add that is not the app misbehaving. */
 export function environmentNoise(engine: Engine): RegExp[] {
-  if (engine !== 'firefox') return [];
+  if (engine === 'chromium') {
+    return noSound ? [
+      // Without a sound device Chromium runs with --disable-audio-output (below), whose fake audio manager holds 16 output
+      // streams for the whole browser, and friends sharing a browser share them. The 17th that starts fails with this
+      // line: 16 contexts ran and the 17th to 20th failed with it on a runner (probe run 38593477719, Oct 14), as in soak
+      // issues #39, #49, #50, #51, where two Chromium friends shared a browser (each has their own now). A friend's
+      // browser holds 50 (10 on Android). The app starts a failed context again (client/audiofailure.ts) and warns when
+      // it gives up, which still fails a test.
+      /^error: The AudioContext encountered an error from the audio device or the WebAudio renderer\.$/,
+    ] : [];
+  }
   return [
     // posthog-js probes which domain takes a cookie; Firefox reports the refusals (an IP address, workers.dev as a public suffix).
     /Cookie “dmn_chk_[^”]*” has been rejected for invalid domain/,
