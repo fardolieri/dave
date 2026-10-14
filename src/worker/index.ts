@@ -1,11 +1,13 @@
 export { Room } from './room';
 import { isRoomId } from '../core/rooms';
+import { forward, PREFIX } from './posthog';
 
 // Static assets are served by the platform before this code runs (see wrangler.jsonc),
-// so the Worker only ever sees the WebSocket upgrade and true 404s.
+// so the Worker only ever sees the WebSocket upgrade, what goes to PostHog (worker/posthog.ts) and true 404s.
 export default {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname.startsWith(`${PREFIX}/`)) return forward(request, env);
     // One Durable Object per room, named by the room id derived from the invite secret (ADR 0004).
     const roomId = url.pathname.startsWith('/ws/') ? url.pathname.slice(4) : null;
     if (roomId !== null && isRoomId(roomId)) {

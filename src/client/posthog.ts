@@ -4,8 +4,9 @@
  * before the yes are dropped, not kept for later.
  *
  * The project key is a public client token (safe in the repo, see .env); without it, in production, every capture is
- * a no-op. This is a private friends room: session replay masks all text and inputs, and no event ever carries message
- * text or names.
+ * a no-op. Everything goes through this app's own Worker (`/diag`, worker/posthog.ts), never straight to posthog.com,
+ * which tracker blockers drop even for a friend who said yes. This is a private friends room: session replay masks all
+ * text and inputs, and no event ever carries message text or names.
  */
 import type { PostHog } from 'posthog-js';
 import { createSignal } from 'solid-js';
@@ -65,6 +66,7 @@ function start(): void {
     if (!telemetryOn()) return; // changed their mind while it loaded
     ph.init(key, {
       api_host: host,
+      ui_host: 'https://eu.posthog.com', // links to the project from the SDK (the toolbar), which cannot be told from a relative host
       defaults: '2026-05-30',
       capture_exceptions: true,
       person_profiles: 'identified_only',

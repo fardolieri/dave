@@ -5,6 +5,7 @@ import { answerChallenge, exportPublicKey, fromBase64Url, generateIdentityKeyPai
 import { CLOSE_AUTH_FAILED, type ServerMessage } from '../src/core/protocol';
 import { CHALLENGE_TIMEOUT_MS } from '../src/core/room';
 import { authKeyOf, roomIdOf } from '../src/core/rooms';
+import { upstream } from '../src/worker/posthog';
 import { authFrame, openRoomSocket, wsPath, type Challenge } from './harness';
 
 /** A room some test has already entered, so its verifier is set. Tests that need a fresh room make their own secret. */
@@ -89,6 +90,16 @@ describe('worker routing', () => {
   });
   it('refuses a room path without an upgrade', async () => {
     expect((await exports.default.fetch(`https://dave.test${await wsPath(SECRET)}`)).status).toBe(426);
+  });
+  it('passes /diag/ on to PostHog: events to its ingest host, scripts and remote config to its assets host', () => {
+    const host = 'https://eu.i.posthog.com';
+    const to = (path: string) => upstream(new URL(`https://dave.test${path}`), host);
+    expect(to('/diag/i/v0/e/')).toBe('https://eu.i.posthog.com/i/v0/e/');
+    expect(to('/diag/s/?compression=gzip-js&ver=1.435.6')).toBe('https://eu.i.posthog.com/s/?compression=gzip-js&ver=1.435.6');
+    expect(to('/diag/static/1.435.6/recorder.js')).toBe('https://eu-assets.i.posthog.com/static/1.435.6/recorder.js');
+    expect(to('/diag/array/phc_key/config.js')).toBe('https://eu-assets.i.posthog.com/array/phc_key/config.js');
+    expect(to('/diagnose')).toBeNull();
+    expect(to('/nope')).toBeNull();
   });
 });
 
