@@ -181,8 +181,9 @@ export class Friend {
     // Contexts made by hand do not inherit the config's `use`, so the target URL is passed on explicitly.
     this.context = await browser.newContext({ baseURL, viewport: this.options.viewport ?? { width: 1200, height: 800 }, ...(this.options.deviceScaleFactor ? { deviceScaleFactor: this.options.deviceScaleFactor } : {}), ...(userAgent ? { userAgent } : {}), ...(this.options.video ? { recordVideo: { dir: this.options.video, size: this.options.viewport ?? { width: 1200, height: 800 } } } : {}) });
     // Nothing goes to PostHog from a test: answer its requests locally so the SDK stays quiet and nothing is recorded.
-    // What would have gone is kept, so a test can check that an event was sent.
-    await this.context.route(/posthog\.com/, (r) => { this.posthog.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }); });
+    // What would have gone is kept, so a test can check that an event was sent. The app sends through its own Worker
+    // (`/diag/`, worker/posthog.ts); a request straight to posthog.com is caught too, so a test can tell it happened.
+    await this.context.route(/posthog\.com|\/diag\//, (r) => { this.posthog.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }); });
     await this.context.routeWebSocket(/\/ws\//, (ws) => this.wire.attach(ws));
     // posthog-js also takes navigator.webdriver (set by Playwright) and a "HeadlessChrome" brand in userAgentData for a bot.
     if (this.options.plainUserAgent) {
