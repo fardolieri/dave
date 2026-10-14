@@ -1,6 +1,6 @@
 # 10 · Reliable delivery: one way for a message to survive a dropped socket
 
-Status: open
+Status: step 1 (declarations) shipped 2026-10-14 to prod (3a4474e, PR #55); steps 2+ open
 Type: task
 
 ## Why
