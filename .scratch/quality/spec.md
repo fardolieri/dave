@@ -1,6 +1,6 @@
 # Quality program
 
-Status: 01–07 shipped 2026-10-08/09; 08 later
+Status: 01–07 shipped 2026-10-08/09 (06 removed 10-14); 08 later; 09, 10 from 2026-10-14
 Asked for 2026-10-07/08: Daniel: "Imagine being a tech lead or QA manager who is responsible for the quality of the app. What
 would you do? […] Be ambitious! I'm open for WACKY ideas!" and then "Lets do it! The stage is yours."
 
@@ -34,3 +34,5 @@ problem reports with snapshots, the flake policy of ticket 35, fast-forward rele
 | 06 | Video receipts | every UI pull request gets recordings at phone and desktop size, filmed in CI |
 | 07 | Night shift | a scheduled agent turns new problem reports into failing tests overnight |
 | 08 | Canary gate | prod waits until nightly's error rate is no worse than prod's (later: needs nightly traffic) |
+| 09 | Week one health | the unattended parts report their failures; receipts removed; two-agent guard |
+| 10 | Reliable delivery | one outbox for every message across a dropped socket, instead of one fix per message |
