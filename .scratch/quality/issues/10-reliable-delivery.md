@@ -31,3 +31,43 @@ without a scheme still lose state across a reconnect (a rename during the handsh
 ## Done when
 The table is complete, every message goes through the outbox, the matrix is green in both engines on a preview and on
 nightly with no flakes, and `call.ts` is smaller than before.
+
+## Inventory
+
+Every `ClientMessage` as of step 1 (branch `quality/10-outbox-step1`): what happens when the socket drops while it is in
+flight, or when it is written before the welcome. "Before the welcome" means `send` in `client/room.ts` writes nothing (the
+Room would count any frame but the auth as a failed answer). "Before the join" means the socket is let in but the Room has
+this friend as a visitor: `core/room.ts` refuses `signal`, `ice`, `share` and `subscribe` with "not in the call" (a
+`share` or `subscribe` refusal shows in the chat as "Dropped: …"), and drops `mute` silently.
+
+| Message | Kind | Guarantee today | Where |
+|---|---|---|---|
+| `auth` | handshake | One per socket, in answer to its challenge; carries the latest name, picture and opt-in. A socket that does not get its welcome within 10 s is given up and the next one answers its own challenge. | `client/room.ts` (challenge, `HANDSHAKE_TIMEOUT_MS`); `core/room.ts` (3 strikes, then close) |
+| `telemetry` | declaration | Latest wins: the auth carries it; a change during the handshake goes out after the welcome. | outbox: `core/declarations.ts`, `client/room.ts` |
+| `name` | declaration | Latest wins: the auth carries it; a change during the handshake goes out after the welcome. **Was lost** when made after the auth went out and before the welcome (review on 10-10); fixed in step 1. | outbox |
+| `picture` | declaration | As `name`; the same gap, fixed in step 1. | outbox |
+| `mute` | declaration (in the call) | Latest wins: every join carries it, and a change goes out once the join is on the socket. Before, a change after the join went out and before its answer was not sent (call.ts sent it only once `joined`), a window the Mute button does not show in today; closed in step 1. | outbox; call.ts declares it at each change and once before the first join |
+| `share` | declaration (in the call) | Latest wins: every join carries it, and a change goes out once the join is on the socket (before, a change in the window between welcome and join was refused with a chat line). | outbox |
+| `subscribe` | declaration (in the call, one per sharer) | Latest per sharer wins: said again after the answer to every join, to friends listed as sharing in the call; forgotten when the sharer stops or leaves, and on my leave. call.ts also asks again when a connection comes up or appears (a rebuilt connection on the sharer's side drops the subscription). An ask that went out on a socket that dropped under it left the tile watching and black until the black-share watchdog asked again (`reportBlackShare`, 4 s after a watched tile stays black; seen in CI while trying to write a red test for it); since step 1 it is said again with the join's answer. | outbox; `call.ts` keeps the intent (`watchIntent`, the Rejoin marker) and the tile state |
+| `text` | event | At least once, deduplicated: random `TextId`, kept until the Room echoes it back or refuses it, sent again after every welcome, shown once per writer and id. Before the welcome the composer is disabled. Gaps: a reload loses a text not yet confirmed; a refusal is matched to the oldest waiting text by order. | `client/room.ts` (`sendText`, `unconfirmed`, `seenTexts`); untouched in step 1 |
+| `join` | event (request) | At least once, answered by id: `RequestId`, 8 s wait, sent again with the same id on a socket that came back (`joinAgain`); a friend already in the call joins again after every reconnect (`redeclareAfterReconnect`). The Room answers every join (a fresh join sequence) and drops an answer whose join was left meanwhile (`settleTurnUser`). | `call.ts` (`askServer`, `declareJoin`); `client/room.ts` builds the frame (`room.join`) from the declarations |
+| `leave` | event | At most once, no answer, never sent again. Lost with a socket it does no harm in presence (the next socket starts as a visitor), but peers get no `left`, so they keep the connection for the grace period instead of closing it at once, and the TURN users are not revoked (they wait for the next join or run out). | `client/room.ts` (`room.leave`), `call.ts` |
+| `signal` | event | Held until the join is on the socket (`room.inCall`). A description is numbered (`n`, `conn`, `forConn`); an offer still unanswered is sent again after my reconnect's join is answered and when the peer comes back (`resendOffer`), with the candidates gathered so far inside it. Loose candidates are not sent again. Refused (rate limit, peer not in the call): logged, not sent again. | `call.ts` (`sendSignal`, `resendOffer`, `onSignalNow`) |
+| `ice` | event (request) | At most once, answered by id: only on a socket in the call; `RequestId`, 5 s wait, then the restart goes on with the old credentials and the next restart asks again. | `call.ts` (`requestIce`) |
+| `ping` | best effort | Every 30 s on any open socket, answered at the edge without waking the Room. Nothing waits for the `pong`: a socket that goes silent without closing is noticed only when the browser closes it. | `client/room.ts`, `worker/room.ts` (auto-response) |
+
+**Still without a guarantee after step 1:** `leave` (at most once, no answer), loose ICE candidates and refused signals
+(never sent again), `ice` (at most once, a lost one waits 5 s), texts across a reload (lost) and refusals matched by
+order, and `ping` (no heartbeat timeout, so a silent socket is never noticed).
+
+## For later steps
+
+Input from the coordinator during step 1, not built there:
+- From the review behind PR #54 (ticket 53), gaps in today's text resend queue, found by reading the code and not yet
+  run: (a) a page reload loses a text not yet confirmed; (b) a friend who reloads can see a re-sent text twice; (c) a
+  socket that goes silent without closing is never noticed (no heartbeat timeout, although `ping` exists).
+- Decided by the lead: a text written while the socket is reconnecting is accepted and queued in the outbox, not left
+  disabled in the box. The composer stays usable, and the text goes out once the welcome arrives. Open draft PR #1
+  touches the same thing; the outbox replaces it.
+- The network-drop root cause (sockets that close with 1006 and come back about a second later, ticket 51) is still
+  unexplained. A heartbeat in the outbox would at least detect silent sockets.
