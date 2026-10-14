@@ -46,6 +46,46 @@ test('a new name reaches everyone', async ({ crowd }) => {
   await expect.poll(() => bob.online()).toContain('Alicia');
 });
 
+test('a new name and picture chosen during the handshake reach everyone', async ({ crowd }) => {
+  // Review on 10-10 (quality ticket 10): a rename made after the auth went out, before the welcome, was lost. The auth
+  // carried the old name, and the rename itself was written to no socket.
+  const alice = await crowd.open('Alice', { picture: '😀' });
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await bob.connectedTo('Alice');
+  // The new name typed, not saved yet. In CI a click on the call list or its controls waited out the whole handshake,
+  // which the app gives up after 10 s: only the last two clicks, inside the open card, happen during it.
+  await alice.selectedRoom.locator('li.prow', { hasText: '(you)' }).locator('button.avatar').click();
+  await alice.page.locator('.profile button.edit').click();
+  await alice.page.locator('.profile-edit input').fill('Alicia');
+  // Alice's next welcome is held back: her socket is open, the Room has her in with the auth she sent, she waits.
+  const held: { welcome?: () => void } = {};
+  alice.wire.down = (frame, pass) => {
+    if (!frame.includes('"t":"welcome"')) return frame;
+    alice.wire.down = null;
+    held.welcome = () => pass(frame);
+    return null;
+  };
+  await alice.wire.cut();
+  alice.wire.restore();
+  await expect.poll(() => held.welcome !== undefined, { message: 'Alice\'s socket is back and its welcome held' }).toBe(true);
+  const auths = alice.wire.frames('up', 'auth');
+  expect(auths.at(-1)).toMatchObject({ name: 'Alice', picture: '😀' });
+
+  await alice.page.locator('.profile-edit button.on').click();
+  await alice.page.locator('.profile').getByRole('button', { name: 'remove the picture' }).click();
+  held.welcome!();
+  await alice.connected();
+  // Not the app giving up on the handshake and trying again, with an auth that carries the new name.
+  expect(alice.wire.frames('up', 'auth'), 'the welcome held is the one let in').toHaveLength(auths.length);
+
+  // In the call list, where Bob sees her.
+  const row = bob.selectedRoom.locator('li.prow', { hasText: 'Alicia' });
+  await expect(row, 'Bob sees the new name').toHaveCount(1);
+  await expect(row.locator('button.avatar'), 'Bob sees the picture gone').toHaveText('A');
+});
+
 test('ticket 25: one tab at a time; the first keeps working, a second waits, takes over on request or when the first closes', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');

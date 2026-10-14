@@ -112,6 +112,26 @@ test('regression: a Watch click while the socket is down is asked for again afte
   await expect.poll(async () => (await sam.peers()).find((p) => p.name === 'Vic')).toMatchObject({ subscribedToMe: true });
 });
 
+test('a Stop watching lost with its socket is said again after the reconnect', async ({ crowd }) => {
+  // Quality ticket 10 (Grumpy Friend review): the stop went out, the socket dropped under it, and the sharer went on
+  // sending to a viewer whose tile said "Click to watch". Nothing asked again: the black-share watchdog only re-asks a
+  // watched tile.
+  const [sam, vic] = await callOf(crowd, ['Sam', 'Vic']);
+  await needHooks(sam);
+  await sam.startShare();
+  await vic.watchShare('Sam');
+  await expect.poll(async () => (await sam.peers()).find((p) => p.name === 'Vic')).toMatchObject({ subscribedToMe: true });
+  // Written, never delivered: the network drops the socket under it, the Room none the wiser.
+  vic.wire.up = (frame) => (frame.includes('"t":"subscribe"') && frame.includes('"on":false') ? null : frame);
+  await vic.tile('Sam').getByRole('button', { name: 'Stop watching' }).click();
+  await expect(vic.tile('Sam')).toContainText('Click to watch');
+  vic.wire.up = null;
+  await vic.wire.cut();
+  vic.wire.restore();
+  await vic.connected();
+  await expect.poll(async () => (await sam.peers()).find((p) => p.name === 'Vic'), { message: 'Sam stops sending to Vic' }).toMatchObject({ subscribedToMe: false });
+});
+
 test('leaving while sharing ends the share; rejoining does not bring it back', async ({ crowd }) => {
   const [alice, bob] = await callOf(crowd, ['Alice', 'Bob']);
   await alice.startShare();
