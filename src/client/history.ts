@@ -1,6 +1,6 @@
 import { idbDelete, idbGet, idbRead, idbSet, local, type ParsedIdbKey } from './storage';
 import { MAX_HISTORY, type StoredText } from '../core/chatlog';
-import { stillToSend, UNSENT_MAX, type UnsentText } from '../core/unsent';
+import { UNSENT_MAX, type UnsentText } from '../core/unsent';
 import type { Identity } from '../core/protocol';
 
 /**
@@ -48,7 +48,7 @@ export function forgetHistory(roomId: string): Promise<void> {
  * My own texts in a room that the Room has not brought back yet (core/unsent.ts), as a reload finds them. localStorage,
  * not IndexedDB: written as the text goes out, it must be there before a reload right after, with no write in flight.
  */
-export const loadUnsent = (roomId: string, now: number): UnsentText[] => stillToSend(local.read('unsent')[roomId] ?? [], now);
+export const loadUnsent = (roomId: string): UnsentText[] => (local.read('unsent')[roomId] ?? []).slice(-UNSENT_MAX);
 
 /** Keeps a room's texts not back from the Room yet; every room's entry is read afresh, so only this one changes. */
 export function keepUnsent(roomId: string, texts: UnsentText[]): void {

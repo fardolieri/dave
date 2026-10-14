@@ -7,9 +7,12 @@ export type UnsentText = { id: TextId; text: string; at: number };
 /** By room id. */
 export type Unsent = Record<string, UnsentText[]>;
 
-/** Per room, the newest kept: more than this many texts waiting is a room that has not been reachable for long. */
-export const UNSENT_MAX = 50;
-/** A text older than this is not sent after a reload: a line out of the blue a day later says nothing. */
+/**
+ * Per room, the newest kept over a reload. Below the Room's burst of 40 frames (core/ratelimit.ts), which the welcome
+ * also spends on what it declares again: more at once would come back refused.
+ */
+export const UNSENT_MAX = 30;
+/** A text waiting longer than this is not sent any more, reload or not: a line out of the blue a day later says nothing. */
 export const UNSENT_MAX_AGE_MS = 24 * 3600 * 1000;
 
 export function parseUnsent(raw: string | null): Unsent {
@@ -29,6 +32,5 @@ export function parseUnsent(raw: string | null): Unsent {
   return out;
 }
 
-/** What of a room's stored texts goes out again after a load: the newest, not too old. */
-export const stillToSend = (texts: UnsentText[], now: number): UnsentText[] =>
-  texts.filter((t) => now - t.at < UNSENT_MAX_AGE_MS).slice(-UNSENT_MAX);
+/** Whether a text has waited too long to be sent (UNSENT_MAX_AGE_MS). */
+export const tooOld = (t: UnsentText, now: number): boolean => now - t.at >= UNSENT_MAX_AGE_MS;

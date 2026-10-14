@@ -10,6 +10,7 @@ import {
   type Carried, type Declaration,
 } from '../core/declarations';
 import { beat, heard, heartbeat } from '../core/heartbeat';
+import { tooOld } from '../core/unsent';
 import type { LocalIdentity } from './identity';
 import { appendHistory, clearHistory, keepUnsent, loadHistory, loadUnsent, textKey, type StoredText } from './history';
 
@@ -72,9 +73,18 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
    * Own texts not back from the Room yet, oldest first. The network can drop a socket under a text (1006, the Room none the
    * wiser), and the text was gone for everyone: each is sent again on the next socket, until it comes back or is refused.
    */
-  const unconfirmed = loadUnsent(opts.roomId, Date.now());
+  const unconfirmed = loadUnsent(opts.roomId);
   /** `unconfirmed` as shown: after the lines, as waiting. */
   const [pending, setPending] = createSignal([...unconfirmed]);
+  /** Drops the texts that waited too long to be sent, with a line saying so. */
+  const dropTooOld = () => {
+    const now = Date.now();
+    const old = unconfirmed.filter((u) => tooOld(u, now));
+    if (!old.length) return;
+    unconfirmed.splice(0, unconfirmed.length, ...unconfirmed.filter((u) => !old.includes(u)));
+    unconfirmedChanged();
+    push({ kind: 'system', text: `Not sent: ${old.length === 1 ? 'a text' : `${old.length} texts`} written more than a day ago.`, at: now });
+  };
   /** `unconfirmed` changed: it shows, and is kept for a reload, whose welcome sends it again (client/history.ts). */
   const unconfirmedChanged = (keep = true) => {
     setPending([...unconfirmed]);
@@ -194,7 +204,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           setYou(m.you);
           // A rename, a picture or an opt-in changed while the handshake ran went to no socket; the auth had the old one.
           if (authCarried) for (const d of afterWelcome(latest, authCarried)) send(d);
-          // Texts the last socket took and never brought back, in their order; the Room answers them in that order too.
+          // Texts the last socket took and never brought back, or written while there was none, in their order; the Room
+          // answers them in that order too. One that waited a day is not sent: it would come out of the blue.
+          dropTooOld();
           for (const u of unconfirmed) send({ t: 'text', text: u.text, id: u.id });
           setStatus({ kind: 'connected' });
           if (everConnected) {
@@ -391,7 +403,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     takeOver: () => {
       if (status().kind !== 'elsewhere') return;
       // What the other tab still had out, as it left it.
-      unconfirmed.push(...loadUnsent(opts.roomId, Date.now()));
+      unconfirmed.push(...loadUnsent(opts.roomId));
       unconfirmedChanged(false);
       stopped = false; attempt = 0; downSince = null; setStatus({ kind: 'connecting' }); open();
     },

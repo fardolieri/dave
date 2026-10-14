@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseUnsent, stillToSend, UNSENT_MAX, UNSENT_MAX_AGE_MS } from '../src/core/unsent';
+import { parseUnsent, tooOld, UNSENT_MAX, UNSENT_MAX_AGE_MS } from '../src/core/unsent';
+import { BURST } from '../src/core/ratelimit';
 
 describe('texts kept over a reload (quality ticket 10)', () => {
   it('reads what was stored, room by room, and drops what is not a text', () => {
@@ -12,10 +13,13 @@ describe('texts kept over a reload (quality ticket 10)', () => {
     expect(parseUnsent(raw)).toEqual({ roomA: [{ id: 'abc', text: 'hi', at: 1 }], roomC: [{ id: 'ghi', text: 'yo', at: 4 }] });
   });
 
-  it('sends again only the newest, and nothing a day old', () => {
+  it('takes a text that waited a day for too old to send', () => {
     const now = 10 * UNSENT_MAX_AGE_MS;
-    const texts = Array.from({ length: UNSENT_MAX + 5 }, (_, i) => ({ id: `t${i}`, text: `${i}`, at: now - i * 1000 })).reverse();
-    expect(stillToSend(texts, now)).toEqual(texts.slice(-UNSENT_MAX));
-    expect(stillToSend([{ id: 'old', text: 'x', at: now - UNSENT_MAX_AGE_MS }, { id: 'new', text: 'y', at: now - 1 }], now).map((t) => t.id)).toEqual(['new']);
+    expect(tooOld({ id: 'a', text: 'x', at: now - UNSENT_MAX_AGE_MS }, now)).toBe(true);
+    expect(tooOld({ id: 'b', text: 'y', at: now - UNSENT_MAX_AGE_MS + 1 }, now)).toBe(false);
+  });
+
+  it('keeps fewer texts than the Room takes in one burst', () => {
+    expect(UNSENT_MAX).toBeLessThan(BURST - 5);
   });
 });

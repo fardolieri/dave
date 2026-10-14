@@ -330,8 +330,9 @@ function Workspace(props: WorkspaceProps) {
   const sharerOf = (key: string): Person => sharers().find((p) => p.publicKey === key) ?? sharers()[0]!;
   const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
   const connected = () => current()?.room.status().kind === 'connected';
-  // A text can be written while the socket is away and coming back: it waits, shown as such, and goes out once the Room
-  // lets this browser in again (quality ticket 10). Not while the room has never connected, or stepped back for another tab.
+  // A text can be written while the socket is away and coming back (a first attempt that failed included): it waits,
+  // shown as such, and goes out once the Room lets this browser in (quality ticket 10). Not during the first attempt, nor
+  // while the room was refused or stepped back for another tab.
   const writable = () => { const k = current()?.room.status().kind; return k === 'connected' || k === 'reconnecting' || k === 'unavailable'; };
   // The room is on screen; friends arriving now let the phone's splash fade first. The first connection gets a moment
   // before the pill says so: your own row, dimmed until the room is connected, already tells.
