@@ -76,3 +76,17 @@ Input from the coordinator during step 1, not built there:
   a share number in `Person`, repeated in `subscribe`, would.
 - The network-drop root cause (sockets that close with 1006 and come back about a second later, ticket 51) is still
   unexplained. A heartbeat in the outbox would at least detect silent sockets.
+
+Owner decision, 2026-10-14, on reader catch-up (ticket 54, "For ticket 10"): "No, not yet. I have some ideas for the
+future how deal with this and more." The Room keeps no texts: no server-side catch-up, and for now no "texts may be
+missing" notice either. Texts the Room sends into a dead socket stay lost for that reader.
+
+From the reviews of step 2a, not built there:
+- A phone that wakes on a socket the network cut meanwhile notices only by the heartbeat, 30 to 90 s later, while its
+  first text waits. A ping at once on `visibilitychange` or `online`, given up after a few seconds without an answer,
+  would shorten that, at the cost of a reconnect (and a rejoin) whenever a waking phone's network is slow.
+- Two tabs handing a room over (the tab lock's backstop path only) can still send a text twice or lose one written in
+  the milliseconds between the new tab reading `dave.unsent` and the old one being superseded.
+- A room refused (link rotated) keeps its waiting texts, shown and stored, until it is left or let in again.
+- Texts written offline go out together after the welcome; more than the Room's burst comes back "Not sent" (30 are
+  kept over a reload, a live tab keeps them all).
