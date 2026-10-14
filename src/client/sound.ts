@@ -1,4 +1,5 @@
 import { TIMBRES, noteGain, type Cue } from '../core/cue';
+import { restartOnFailure } from './audiofailure';
 
 // The one AudioContext for cues (spec §7.4). Browsers only let audio start after a gesture, so the context is created
 // lazily on first interaction. The unlock listens for `click`, not `pointerdown`, and unregisters once the context
@@ -7,12 +8,19 @@ import { TIMBRES, noteGain, type Cue } from '../core/cue';
 // followed, a share tile's play(), of the gesture it needs, and the tile stayed black (reproduced in headless Brave,
 // Sep 10).
 let ctx: AudioContext | null = null;
+let restart: { startAgain(): void } | null = null;
 
 const stopUnlocking = () => { window.removeEventListener('click', unlock); window.removeEventListener('keydown', unlock); };
+const startUnlocking = () => { window.addEventListener('click', unlock); window.addEventListener('keydown', unlock); };
 function unlock(): void {
-  ctx ??= new AudioContext();
+  if (!ctx) {
+    const c = (ctx = new AudioContext());
+    // Given up after the audio device failed again and again: the next gesture starts it, as it did the first time.
+    restart = restartOnFailure(c, 'cues', () => { if (ctx === c) startUnlocking(); });
+    c.addEventListener('statechange', () => { if (ctx === c && c.state === 'running') stopUnlocking(); });
+  }
   if (ctx.state === 'running') { stopUnlocking(); return; }
-  ctx.resume().then(() => { if (ctx?.state === 'running') stopUnlocking(); }, () => {});
+  restart?.startAgain();
 }
 
 /**
@@ -23,8 +31,7 @@ export function tryUnlockSound(): void { unlock(); }
 
 /** Starts listening for the gesture that unlocks audio; the returned function stops everything. */
 export function armSound(): () => void {
-  window.addEventListener('click', unlock);
-  window.addEventListener('keydown', unlock);
+  startUnlocking();
   return () => { stopUnlocking(); void ctx?.close(); ctx = null; };
 }
 

@@ -4,6 +4,7 @@ import workletUrl from './voice.worklet.ts?worker&url';
 import type { VoiceMessage, VoiceOptions } from './voice.worklet';
 import VoiceWorker from './voice.worker.ts?worker';
 import type { WorkerIn, WorkerOut } from './voice.worker';
+import { restartOnFailure } from './audiofailure';
 
 /**
  * Noise removal on the outgoing voice (ticket 26): microphone -> RNNoise and the voice gate -> a track to send instead
@@ -100,6 +101,8 @@ async function contextProcessor(stream: MediaStream, threshold: number, on: Call
     // Inside the join click, or on a Rejoin with the microphone already live, which lets a context start without a gesture.
     if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
     ctx.onstatechange = () => on.running();
+    // While it is stopped the microphone goes out as it is (on.running), and after giving up it stays that way.
+    restartOnFailure(ctx, 'voice', () => {});
     let source = ctx.createMediaStreamSource(stream);
     const [bytes] = await Promise.all([loadWasm(), ctx.audioWorklet.addModule(workletUrl)]);
     const options: VoiceOptions = { wasm: bytes, threshold };

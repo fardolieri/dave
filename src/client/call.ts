@@ -23,6 +23,7 @@ import {
 import { REJOIN_HEARTBEAT_MS, rejoinFor, type RejoinMarker } from '../core/rejoin';
 import type { createRoom } from './room';
 import { cueContext, tryUnlockSound } from './sound';
+import { restartOnFailure } from './audiofailure';
 import { local, type LocalValue } from './storage';
 import { canRemoveNoise, createVoiceProcessor, type VoiceLevel, type VoiceLoad, type VoiceProcessor } from './voice';
 import { createVoiceGuard, sendRatePct, type ClockSample, type GuardFault } from '../core/voiceclock';
@@ -262,6 +263,15 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   const hasTurn = () => iceServers.some((s) => [s.urls].flat().some((u) => String(u).startsWith('turn')));
   let myJoinSeq: number | null = null;
   let audioCtx: AudioContext | null = null;
+  /** The call's one AudioContext: friends' voices and shares, the speaking meters, the mic test. Started again when the audio device fails under it. */
+  let audioRestart: { startAgain(): void } | null = null;
+  function callContext(): AudioContext {
+    if (!audioCtx) {
+      audioCtx = new AudioContext();
+      audioRestart = restartOnFailure(audioCtx, 'call', () => { if (joined) setAudioBlocked(true); });
+    }
+    return audioCtx;
+  }
   let localAnalyser: AnalyserNode | null = null;
   /** The request of each kind waiting for its answer: one at a time per kind, a newer one takes the slot. */
   const pending = new Map<'call' | 'ice', { id: number; answered: (m: ServerMessage) => void; cancel: () => void }>();
@@ -373,9 +383,9 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     micOpenedWith = JSON.stringify(c);
     voiceTrack = localStream.getAudioTracks()[0] ?? null;
     if (voiceTrack) voiceTrack.enabled = !muted();
-    audioCtx ??= new AudioContext();
+    const ctx = callContext();
     // With the microphone live, Chromium and Firefox let the context run without a gesture (research: rejoin without a click).
-    if (audioCtx.state === 'suspended') void audioCtx.resume().catch(() => {});
+    if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
     localAnalyser = analyserFor('me', localStream);
     sendVoice();
     void startNoiseRemoval(); // not awaited: the microphone goes out as it is until RNNoise runs
@@ -912,8 +922,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
    */
   function wireRemoteAudio(peer: Peer, kind: 'voice' | 'share', stream: MediaStream): void {
     const out = kind === 'voice' ? peer.audio : peer.shareAudio;
-    audioCtx ??= new AudioContext();
-    const ctx = audioCtx;
+    const ctx = callContext();
     if (kind === 'voice') { peer.keepAlive.srcObject = stream; peer.keepAlive.play().catch(refused); }
     const source = ctx.createMediaStreamSource(stream);
     const gain = ctx.createGain();
@@ -939,7 +948,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   /** The click behind "Click to hear the call": replay every remote element and resume the context inside the gesture. */
   function unblockAudio(): void {
     setAudioBlocked(false);
-    void audioCtx?.resume().catch(() => {});
+    audioRestart?.startAgain();
     voice?.resume();
     for (const p of peers.values()) for (const el of [p.keepAlive, p.audio, p.shareAudio]) if (el.srcObject) el.play().catch(refused);
   }
@@ -1703,8 +1712,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         // No microphone, or none allowed: join anyway, to listen. The join click lets the call's sound play; a Rejoin may need one.
         setMicProblem(micProblemOf(e));
         posthog.capture('microphone_unavailable', { error: e instanceof Error ? e.name : 'unknown', rejoin: !!rejoin });
-        audioCtx ??= new AudioContext();
-        if (audioCtx.state === 'suspended') void audioCtx.resume().catch(() => {});
+        const ctx = callContext();
+        if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
       }
       if (joinAbandoned) { endJoinWithoutCall(); return; }
       if (rejoin) tryUnlockSound();
