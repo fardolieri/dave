@@ -3,8 +3,12 @@ import posthog, { onConsentChange, telemetryOn } from './posthog';
 import { buildAuthMessage } from '../core/identity';
 import {
   CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, PING_FRAME, PING_INTERVAL_MS,
-  type ClientMessage, type Identity, type Person, type ServerMessage,
+  type ClientMessage, type Identity, type Person, type RequestId, type ServerMessage,
 } from '../core/protocol';
+import {
+  afterJoin, afterWelcome, carried, declare, declared, forgetEnded, forgetWatch, inCallOnly, joinDeclares, leaveCall,
+  type Carried, type Declaration,
+} from '../core/declarations';
 import type { LocalIdentity } from './identity';
 import { appendHistory, clearHistory, loadHistory, textKey, type StoredText } from './history';
 
@@ -40,9 +44,11 @@ const HANDSHAKE_GIVEN_UP = 4008;
  * ephemeral text. The call (WebRTC) is layered on top by createCall.
  */
 export function createRoom(opts: { identity: LocalIdentity; roomId: string; authKey: string; name: string; picture: string | null; hold?: () => boolean }) {
-  // The self-declared name and picture: sent at every (re)connect, changeable live through `rename` and `setPicture`.
-  let name = opts.name;
-  let picture = opts.picture;
+  /**
+   * The latest of everything this friend declares (core/declarations.ts): the auth of every socket carries her name,
+   * picture and opt-in, the welcome is followed by what changed meanwhile, her join by what she declared in the call.
+   */
+  const latest = declared(opts.name, opts.picture, telemetryOn());
   const [status, setStatus] = createSignal<ServerStatus>({ kind: 'connecting' });
   const [you, setYou] = createSignal<Person | null>(null);
   const [people, setPeople] = createSignal<Person[]>([]);
@@ -71,8 +77,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   let attempt = 0;
   let downSince: number | null = null;
   let everConnected = false;
-  /** The PostHog opt-in the last auth carried (ticket 32). */
-  let authTelemetry = false;
+  /** What the last auth carried. */
+  let authCarried: Carried | null = null;
+  /** `welcomes` when the join went out: the Room has this friend in its call on that socket, until her leave. */
+  let callOn: number | null = null;
+  const inCall = (): boolean => welcomed !== null && callOn === welcomes;
   let stopped = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let pingTimer: ReturnType<typeof setInterval> | undefined;
@@ -87,6 +96,16 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     ws.send(JSON.stringify(m));
     return true;
   };
+
+  /**
+   * Declares something anew (core/declarations.ts): the latest value is kept, and goes out on every socket from now on.
+   * Returns whether it went out now; one that did not goes out once the Room lets this friend in again (or in its call
+   * again, for what only a friend in the call declares).
+   */
+  function declareLatest(d: Declaration): boolean {
+    declare(latest, d);
+    return (!inCallOnly(d) || inCall()) && send(d);
+  }
 
   function open() {
     if (stopped) return;
@@ -109,15 +128,16 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       const m = JSON.parse(e.data as string) as ServerMessage;
       switch (m.t) {
         case 'challenge': {
+          const { name, picture, telemetry } = carried(latest);
           const auth = await buildAuthMessage({
             authKey: opts.authKey, nonce: m.nonce, publicKeyRaw: opts.identity.publicKeyRaw, privateKey: opts.identity.keys.privateKey, name, ...(picture ? { picture } : {}),
           });
           // Nobody has entered this room yet: our answer also hands the server the verifier (ADR 0004). The PostHog
           // opt-in rides along, so the server reports this socket's refused frames only with consent (ticket 32).
-          authTelemetry = telemetryOn();
           // Closed while signing (the page reloading, another tab taking over): nothing to answer.
           if (socket.readyState !== WebSocket.OPEN) return;
-          socket.send(JSON.stringify({ ...auth, ...(m.fresh ? { authKey: opts.authKey } : {}), ...(authTelemetry ? { telemetry: true } : {}) }));
+          authCarried = { name, picture, telemetry };
+          socket.send(JSON.stringify({ ...auth, ...(m.fresh ? { authKey: opts.authKey } : {}), ...(telemetry ? { telemetry: true } : {}) }));
           return;
         }
         case 'welcome':
@@ -126,10 +146,10 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           welcomes++;
           attempt = 0;
           setYou(m.you);
+          // A rename, a picture or an opt-in changed while the handshake ran went to no socket; the auth had the old one.
+          if (authCarried) for (const d of afterWelcome(latest, authCarried)) send(d);
           // Texts the last socket took and never brought back, in their order; the Room answers them in that order too.
           for (const u of unconfirmed) send({ t: 'text', text: u.text, id: u.id });
-          // An answer changed while the handshake ran was not sent then (see onConsentChange below): say it now.
-          if (telemetryOn() !== authTelemetry) send({ t: 'telemetry', on: telemetryOn() });
           setStatus({ kind: 'connected' });
           if (everConnected) {
             // No line in the chat about it: the status pill already shows the outage live, and dated lines that stayed
@@ -142,6 +162,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           clearTimeout(unavailableTimer);
           return;
         case 'presence':
+          forgetEnded(latest, m.people);
           setPeople(m.people);
           return;
         case 'text': {
@@ -183,9 +204,16 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           return;
         case 'pong':
           return;
-        default:
-          for (const l of listeners) l(m);
+        case 'call':
+          // The Room has this friend in its call on this socket again: what she declared in it is said again, the asks
+          // to watch a share among it. The answer goes on to the call (client/call.ts).
+          if (socket === welcomed && inCall()) for (const d of afterJoin(latest, people())) send(d);
+          break;
+        case 'left':
+          forgetWatch(latest, m.publicKey);
+          break;
       }
+      for (const l of listeners) l(m);
     };
 
     socket.onclose = (e) => { clearTimeout(handshake); lost(socket, e.code); };
@@ -231,9 +259,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     let begun = false;
     createEffect(() => opts.hold!(), (held) => { if (!held && !begun) { begun = true; open(); } });
   }
-  // Only once let in: before the welcome, any frame but the auth counts as a failed attempt, and the reply would read as
-  // a refusal. A change during the handshake goes out with the welcome instead.
-  const offConsent = onConsentChange((on) => { if (you()) send({ t: 'telemetry', on }); });
+  // Only once let in (`send`): before the welcome, any frame but the auth counts as a failed attempt, and the reply would
+  // read as a refusal. A change during the handshake goes out with the welcome instead.
+  const offConsent = onConsentChange((on) => { declareLatest({ t: 'telemetry', on }); });
   onCleanup(() => {
     offConsent();
     stopped = true;
@@ -252,7 +280,26 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     unread,
     /** The room is on screen: nothing in it is unread. */
     markRead: () => setUnread(0),
+    /** Sends an event (a text, a signal, a request for ICE servers) on the socket let in, if there is one. */
     send,
+    declare: declareLatest,
+    /**
+     * Enters the call on this socket. The join is an event (client/call.ts waits for its answer); what it declares, muted
+     * and sharing, comes from the latest declarations. Returns whether it went out.
+     */
+    join: (id: RequestId): boolean => {
+      if (!send({ t: 'join', ...joinDeclares(latest), id })) return false;
+      callOn = welcomes;
+      return true;
+    },
+    /** Leaves the call, if the Room has this friend in it on this socket; what she declared in the call ends with it. */
+    leave: (): void => {
+      if (inCall()) send({ t: 'leave' });
+      callOn = null;
+      leaveCall(latest);
+    },
+    /** The Room has this friend in its call on the socket let in: her join went out on it, and no leave since. */
+    inCall,
     /** Counts the sockets the server has let in; read without waiting for any effect, so a frame can name its socket. */
     welcomes: () => welcomes,
     /** Sends a text; it shows when the Room brings it back. A socket lost meanwhile sends it again on the next one. */
@@ -267,9 +314,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     /** Dev aid for scripts/drive.mjs: drops the socket so the reconnect path runs. */
     dropSocket: () => ws?.close(),
     /** Change the name everyone sees; presence brings it back. A later reconnect authenticates with it too. */
-    rename: (next: string) => { name = next; send({ t: 'name', name: next }); },
+    rename: (next: string) => { declareLatest({ t: 'name', name: next }); },
     /** Choose the emoji everyone sees as your avatar, or null for the initial; presence brings it back. */
-    setPicture: (next: string | null) => { picture = next; send({ t: 'picture', picture: next }); },
+    setPicture: (next: string | null) => { declareLatest({ t: 'picture', picture: next }); },
     /** After stepping back for another tab: reconnect here, which supersedes that tab in turn. */
     takeOver: () => { if (status().kind !== 'elsewhere') return; stopped = false; attempt = 0; downSince = null; setStatus({ kind: 'connecting' }); open(); },
     /** Fires for texts from other people (for the message cue). */

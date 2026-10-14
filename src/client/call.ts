@@ -256,8 +256,6 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   let iceIssuedAt = 0;
   /** Counts RTCPeerConnections built in this tab; the dev hook shows it so a driver can tell a rebuild from a renegotiation. */
   let generation = 0;
-  /** The room socket my join went out on: the server has me in the call there, so signals may go (sendSignal). */
-  let callSocket: number | null = null;
   /** Asks the server for the join in flight once more; null while none is waiting for its answer. */
   let joinAgain: (() => void) | null = null;
   const hasTurn = () => iceServers.some((s) => [s.urls].flat().some((u) => String(u).startsWith('turn')));
@@ -547,7 +545,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (voice) { voice.track.enabled = true; voice.resume(); }
     void sendVoice();
     for (const p of peers.values()) applyGain(p);
-    if (!untrack(muted)) room.send({ t: 'mute', muted: true });
+    if (!untrack(muted)) room.declare({ t: 'mute', muted: true });
     if (audioCtx?.state === 'suspended') audioRestart?.startAgain();
   }
   function playTest(src: { stream: MediaStream } | { url: string }): void {
@@ -599,7 +597,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (voice) voice.track.enabled = !mutedAfter;
     void sendVoice();
     for (const p of peers.values()) applyGain(p);
-    if (joined && !mutedAfter) room.send({ t: 'mute', muted: false });
+    if (joined && !mutedAfter) room.declare({ t: 'mute', muted: false });
     posthog.capture('mic_test', {
       end, seconds: Math.round((Date.now() - testStarted) / 1000), live: testUsedLive, recordings: testRecordings, changes: testChanges, noise_removal: untrack(noiseRemoval),
     });
@@ -1103,7 +1101,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
    * finds me in the call. The same holds for a request for fresh TURN credentials (requestIce).
    */
   function sendSignal(to: string, data: SignalData): boolean {
-    return callSocket === room.welcomes() && room.send({ t: 'signal', to, data });
+    return room.inCall() && room.send({ t: 'signal', to, data });
   }
 
   function flushCandidates(peer: Peer): void {
@@ -1419,7 +1417,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   /** Only in the call on this socket, as signals (sendSignal); otherwise the old credentials do until the next restart. */
-  const requestIce = () => (callSocket === room.welcomes() ? awaitReply('ice', (id) => room.send({ t: 'ice', id }), 5000) : Promise.resolve(null));
+  const requestIce = () => (room.inCall() ? awaitReply('ice', (id) => room.send({ t: 'ice', id }), 5000) : Promise.resolve(null));
 
   async function refreshStats(peer: Peer): Promise<void> {
     if (peer.pc.connectionState === 'closed') return;
@@ -1538,14 +1536,13 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   // Re-declare after our own server reconnect (spec §8.1): peer connections stay, join sequence is fresh.
   createEffect(() => room.status().kind, (kind, prev) => {
-    if (kind !== 'connected') callSocket = null; // not let in on the next socket yet
     if (kind === 'connected' && prev !== undefined && prev !== 'connected' && joined) void redeclareAfterReconnect();
     if (kind === 'elsewhere' && joined) leave(); // another tab took over; this one is no longer in the call, and the marker goes
     if (kind === 'connected' && pendingRejoin) { const r = pendingRejoin; pendingRejoin = null; void join(r); }
     // A join (or Rejoin) still unanswered was lost with the socket it went out on, or never went out: ask on the one
     // now let in, unless it already went out there. A friend already in the call declares again above instead, and one who
     // left meanwhile is asking nothing (ticket 47).
-    if (kind === 'connected' && prev !== undefined && prev !== 'connected' && joining && callSocket !== room.welcomes()) joinAgain?.();
+    if (kind === 'connected' && prev !== undefined && prev !== 'connected' && joining && !room.inCall()) joinAgain?.();
   });
 
   /** Not a Rejoin: the page never reloaded, only the server socket came back. */
@@ -1560,13 +1557,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     }
     reconcile(room.people());
     for (const peer of peers.values()) resendOffer(peer, 'own_reconnect'); // an offer on my old socket may be lost with it
-    reassertSubscriptions(); // re-ask for any watched share the reconnect dropped (spec §6.5)
+    reassertSubscriptions(); // the room said every ask again with the join's answer; a tile still at "click to watch" shows it
   }
 
   async function declareJoin(): Promise<Extract<ServerMessage, { t: 'call' }> | null> {
-    const ask = askServer('call', (id) => {
-      if (room.send({ t: 'join', muted: muted() || !voiceTrack || testing !== null, sharing: shareVideo !== null, id })) callSocket = room.welcomes();
-    }, 8000);
+    const ask = askServer('call', (id) => room.join(id), 8000); // muted and sharing as declared last (client/room.ts)
     joinAgain = ask.again;
     const m = await ask.reply;
     if (joinAgain === ask.again) joinAgain = null;
@@ -1621,7 +1616,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     for (const peer of peers.values()) attachLocalTracks(peer);
     setSharing(stream);
     setOutgoing({ kbps: 0, formats: [], viewers: [...peers.values()].filter((p) => p.viewsMyShare).length });
-    room.send({ t: 'share', on: true });
+    room.declare({ t: 'share', on: true });
     posthog.capture('screen_share_started');
   }
 
@@ -1640,7 +1635,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     earlyViewers.clear();
     setSharing(null);
     setOutgoing(null);
-    if (announce) room.send({ t: 'share', on: false });
+    if (announce) room.declare({ t: 'share', on: false });
     posthog.capture('screen_share_stopped');
     for (const peer of peers.values()) {
       peer.viewsMyShare = false;
@@ -1651,7 +1646,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   /** Send one subscribe/unsubscribe frame; a small screen asks for a downscaled encoding (spec §6.4). Returns whether it reached the socket. */
   function sendSubscribe(key: string, on: boolean): boolean {
-    return room.send(smallScreen() ? { t: 'subscribe', to: key, on, scale: 2 } : { t: 'subscribe', to: key, on });
+    return room.declare(smallScreen() ? { t: 'subscribe', to: key, on, scale: 2 } : { t: 'subscribe', to: key, on });
   }
 
   /**
@@ -1718,6 +1713,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       }
       if (joinAbandoned) { endJoinWithoutCall(); return; }
       if (rejoin) tryUnlockSound();
+      room.declare({ t: 'mute', muted: muted() || !voiceTrack }); // the join says it, and every join again after a reconnect
       const reply = await declareJoin();
       if (joinAbandoned) { endJoinWithoutCall(); return; }
       if (!reply) {
@@ -1753,8 +1749,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   function endJoinWithoutCall(): void {
     joinAgain = null;
     pending.get('call')?.cancel();
-    if (callSocket !== null) room.send({ t: 'leave' });
-    callSocket = null;
+    room.leave();
     setMicProblem(null);
     closeMicrophone();
   }
@@ -1767,8 +1762,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (!joined) return;
     posthog.capture('call_left');
     stopShare(false); // the server clears the sharing flag on leave
-    room.send({ t: 'leave' });
-    callSocket = null;
+    room.leave();
     // A declaration after a reconnect may still wait for its answer: nobody wants it now, nor to have it asked again
     // while the next join opens the microphone, nor its late answer.
     joinAgain = null;
@@ -1828,7 +1822,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     local.set('muted', String(m));
     if (voiceTrack) voiceTrack.enabled = !m;
     if (voice) voice.track.enabled = !m;
-    if (joined) room.send({ t: 'mute', muted: m });
+    room.declare({ t: 'mute', muted: m }); // the room says it once I am in the call, or my join does
     posthog.capture('mute_toggled', { muted: m });
   }
 
