@@ -23,7 +23,7 @@ import {
 import { REJOIN_HEARTBEAT_MS, rejoinFor, type RejoinMarker } from '../core/rejoin';
 import type { createRoom } from './room';
 import { cueContext, tryUnlockSound } from './sound';
-import { restartOnFailure } from './audiofailure';
+import { restartOnFailure, type ContextStarter } from './audiofailure';
 import { local, type LocalValue } from './storage';
 import { canRemoveNoise, createVoiceProcessor, type VoiceLevel, type VoiceLoad, type VoiceProcessor } from './voice';
 import { createVoiceGuard, sendRatePct, type ClockSample, type GuardFault } from '../core/voiceclock';
@@ -263,8 +263,9 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   const hasTurn = () => iceServers.some((s) => [s.urls].flat().some((u) => String(u).startsWith('turn')));
   let myJoinSeq: number | null = null;
   let audioCtx: AudioContext | null = null;
+  /** How the call's context is started, here and on a click: after a failure a plain resume() may not (audiofailure.ts). */
+  let audioRestart: ContextStarter | null = null;
   /** The call's one AudioContext: friends' voices and shares, the speaking meters, the mic test. Started again when the audio device fails under it. */
-  let audioRestart: { startAgain(): void } | null = null;
   function callContext(): AudioContext {
     if (!audioCtx) {
       audioCtx = new AudioContext();
@@ -385,7 +386,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (voiceTrack) voiceTrack.enabled = !muted();
     const ctx = callContext();
     // With the microphone live, Chromium and Firefox let the context run without a gesture (research: rejoin without a click).
-    if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
+    if (ctx.state === 'suspended') audioRestart!.startAgain();
     localAnalyser = analyserFor('me', localStream);
     sendVoice();
     void startNoiseRemoval(); // not awaited: the microphone goes out as it is until RNNoise runs
@@ -547,7 +548,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     void sendVoice();
     for (const p of peers.values()) applyGain(p);
     if (!untrack(muted)) room.send({ t: 'mute', muted: true });
-    if (audioCtx?.state === 'suspended') void audioCtx.resume().catch(() => {});
+    if (audioCtx?.state === 'suspended') audioRestart?.startAgain();
   }
   function playTest(src: { stream: MediaStream } | { url: string }): void {
     if ('stream' in src) testOut.srcObject = src.stream; else testOut.src = src.url;
@@ -1713,7 +1714,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         setMicProblem(micProblemOf(e));
         posthog.capture('microphone_unavailable', { error: e instanceof Error ? e.name : 'unknown', rejoin: !!rejoin });
         const ctx = callContext();
-        if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
+        if (ctx.state === 'suspended') audioRestart!.startAgain();
       }
       if (joinAbandoned) { endJoinWithoutCall(); return; }
       if (rejoin) tryUnlockSound();

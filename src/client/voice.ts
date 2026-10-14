@@ -101,8 +101,8 @@ async function contextProcessor(stream: MediaStream, threshold: number, on: Call
     // Inside the join click, or on a Rejoin with the microphone already live, which lets a context start without a gesture.
     if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
     ctx.onstatechange = () => on.running();
-    // While it is stopped the microphone goes out as it is (on.running), and after giving up it stays that way.
-    restartOnFailure(ctx, 'voice', () => {});
+    // While it is stopped the microphone goes out as it is (on.running); after giving up, until a click (resume below).
+    const starter = restartOnFailure(ctx, 'voice', () => {});
     let source = ctx.createMediaStreamSource(stream);
     const [bytes] = await Promise.all([loadWasm(), ctx.audioWorklet.addModule(workletUrl)]);
     const options: VoiceOptions = { wasm: bytes, threshold };
@@ -125,7 +125,7 @@ async function contextProcessor(stream: MediaStream, threshold: number, on: Call
       track: dest.stream.getAudioTracks()[0]!,
       ready,
       running: () => ctx.state === 'running',
-      resume: () => { void ctx.resume().catch(() => {}); },
+      resume: () => starter.startAgain(),
       setInput(next) {
         source.disconnect();
         source = ctx.createMediaStreamSource(next);

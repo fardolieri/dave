@@ -287,13 +287,13 @@ test('the friend group from hell', async ({ browser, playwright }) => {
   const firefox = await playwright.firefox.launch(launchOptions('firefox'));
   const launched = [firefox];
   const browsers = {} as Browsers;
-  for (const { name, engine } of FRIENDS) {
-    if (engine === 'firefox') browsers[name] = firefox;
-    else if (!Object.values(browsers).includes(browser)) browsers[name] = browser;
-    else launched.push(browsers[name] = await playwright.chromium.launch(launchOptions('chromium')));
-  }
   mkdirSync(OUT, { recursive: true });
   try {
+    for (const { name, engine } of FRIENDS) {
+      if (engine === 'firefox') browsers[name] = firefox;
+      else if (!Object.values(browsers).includes(browser)) browsers[name] = browser;
+      else launched.push(browsers[name] = await playwright.chromium.launch(launchOptions('chromium')));
+    }
     const first = await play(browsers, list, { stopAt: playUntil, keep: join(OUT, 'run'), verbose: true });
     const ran = effective(list).slice(0, first.steps);
     log(`${first.steps} steps in ${((Date.now() - started) / MIN).toFixed(1)} min: ${first.failure ? 'FAILED' : 'all as expected'}`);

@@ -1,5 +1,5 @@
 import { TIMBRES, noteGain, type Cue } from '../core/cue';
-import { restartOnFailure } from './audiofailure';
+import { restartOnFailure, type ContextStarter } from './audiofailure';
 
 // The one AudioContext for cues (spec §7.4). Browsers only let audio start after a gesture, so the context is created
 // lazily on first interaction. The unlock listens for `click`, not `pointerdown`, and unregisters once the context
@@ -8,7 +8,7 @@ import { restartOnFailure } from './audiofailure';
 // followed, a share tile's play(), of the gesture it needs, and the tile stayed black (reproduced in headless Brave,
 // Sep 10).
 let ctx: AudioContext | null = null;
-let restart: { startAgain(): void } | null = null;
+let restart: ContextStarter | null = null;
 
 const stopUnlocking = () => { window.removeEventListener('click', unlock); window.removeEventListener('keydown', unlock); };
 const startUnlocking = () => { window.addEventListener('click', unlock); window.addEventListener('keydown', unlock); };
