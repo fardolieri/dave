@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { target } from './browsers';
 import { expect, test } from './fixtures';
 
 // PostHog is opt-in (ticket 32): a browser that has not said yes sends nothing there and keeps nothing of it.
@@ -104,4 +105,18 @@ test('a problem report still goes without the opt-in, alone and saying where it 
     properties: { build_commit: expect.stringMatching(/^[0-9a-f]{40}$/), build_target: expect.stringMatching(/^(live|nightly|preview|e2e|local)$/) },
   });
   expect(await posthogStorage(alice.page)).toEqual([]);
+});
+
+test('the Worker really passes /diag on to PostHog: scripts and remote config to its assets host, the rest to its ingest host', async ({ crowd }) => {
+  test.skip(!target, 'the local e2e build has no PostHog host: run against nightly or a preview');
+  const alice = await crowd.open('Alice', { telemetry: 'off' });
+  // The context's own request client is not routed, so this reaches the deployed Worker, which the friends' pages never do here.
+  const api = alice.context.request;
+  const headers = { 'sec-fetch-mode': 'cors' }; // as the SDK's requests have: not a page load, which gets the app
+  const key = 'phc_qN9fsscYFP3YPfBdoNu4gyK2VsqGaXzALoASMUfJqm7q'; // the public project token (.env)
+  const config = await api.get(`/diag/array/${key}/config.js`, { headers });
+  expect(config.status(), 'remote config').toBe(200);
+  expect(await config.text(), 'from PostHog, not the app').not.toMatch(/<!doctype html/i);
+  expect((await api.get('/diag/static/recorder.js', { headers })).status(), 'the session recorder').toBe(200);
+  expect((await api.post('/diag/flags/?v=2', { headers, data: { token: key, distinct_id: 'e2e-proxy-check' } })).status(), 'a POST, body and all').toBe(200);
 });
