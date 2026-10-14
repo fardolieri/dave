@@ -78,7 +78,8 @@ export class Wire {
       if (out !== null) route.send(out);
     });
     const ended = (side: 'page' | 'server', code?: number, reason?: string) => {
-      if (!pair.closing) this.closes.push({ side, code, reason, at: Date.now(), frames: this.log.length });
+      // Each end of a severed socket closes on its own, unheard by the other: both are recorded.
+      if (!pair.closing || pair.severed) this.closes.push({ side, code, reason, at: Date.now(), frames: this.log.length });
     };
     // A severed socket's close reaches neither end either: each side finds out on its own.
     route.onClose((code, reason) => { ended('page', code, reason); pair.closing = true; this.routes.delete(pair); if (!pair.severed) void server.close({ code, reason }); });
