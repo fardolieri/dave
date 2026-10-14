@@ -28,6 +28,10 @@ environment.** Push a branch and read the results of `ci.yml` and `e2e.yml`.
 - Watch CI with one waiting loop, not several background watchers. Under memory pressure `gh` times out on TLS; use
   `curl -H "Authorization: Bearer $(gh auth token)"` against the Actions API instead.
 - Leave nothing running at the end of a turn (vite, workerd, chrome, playwright). The stop hook checks this.
+- **At most two building subagents at a time**, plus read-only reviewers. On 2026-10-12 four ran at once and the VM froze for
+  two days. A hook (`scripts/claude/agent-guard.sh`) refuses a new agent when less than 120 MB of memory is free
+  (a read-only reviewer runs inside the session's process and costs little). Prefer one
+  branch worked on in sequence over many in parallel: CI's 20 runners are the shared bottleneck anyway.
 
 ## Definition of done: the verification ladder
 
@@ -82,6 +86,8 @@ Rules:
 - **Nightly:** the suite against nightly is the release gate; the chaos soak (`soak.yml`, 01:00 UTC) opens `soak` issues
   with a minimal sequence; the night shift (`scripts/night-shift/`, on this VM, 02:30 UTC) turns new problem reports into
   draft "Repro:" PRs.
+- **Every session's briefing** (`scripts/claude/session-start.sh`) says how the unattended parts did: the night shift's last
+  run, open soak issues, waiting reproductions, the gate on master. A warning there comes before new work.
 - **In the field:** `invariant_violation`, `$exception` and `bug_report` in PostHog (read recipe in the auto memory).
 
 ## Flakes
