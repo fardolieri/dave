@@ -201,6 +201,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     posthog.capture('server_socket_closed', { code, ever_connected: everConnected });
     if (code === CLOSE_SUPERSEDED) {
       stopped = true;
+      // The room is another tab's now: a text still out would be sent when this one takes it back, maybe hours later.
+      unconfirmed.length = 0;
       setStatus({ kind: 'elsewhere' });
       return;
     }

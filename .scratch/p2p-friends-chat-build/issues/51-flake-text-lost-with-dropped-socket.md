@@ -37,10 +37,18 @@ wire drops its way back down to Alice).
 Each text carries an id its writer picks at random, which the Room passes on. The writer keeps her texts until they come
 back; a text the last socket took and never brought back is sent again on the next socket, in order. A receiver shows a
 writer's text of an id it has shown already only once, so a text that had reached the Room the first time does not show
-twice. A text the Room refused ("Not sent") is not sent again. Old clients send no id and are relayed as before.
+twice. A text the Room refused ("Not sent") is not sent again, nor one still out when another tab takes the room (it
+would come out of context when this tab takes it back). Old clients send no id and are relayed as before.
+- Green with the fix (1b828cb): e2e run 38565613718 and preview run 38565621802, both engines, no test retried; the
+  red-green run 38565613602 ran the new tests against the app from before the branch and saw them fail there.
+- Review (independent subagent): nothing serious. Fixed: the tab taken over (above). Left: while old and new builds
+  overlap after a deploy, a text sent again to a Room from before ids can show twice for the others, and an own text
+  without an id from an old tab of the same identity clears the oldest one still out; both end with the deploy. A text
+  sent again after its echo was lost can be refused by the rate limit (40 at once) and say "Not sent" though the others
+  have it.
 
 ## Left as it is
 Texts others send while a friend's socket is down still miss her: the Room keeps none (spec §4), and here it did not even
 know her socket was gone. The "everyone sees the same order" test fails when a drop falls on its burst, about one run of
 it in several hundred; the wire log of a failed test now has its `closes`, so such a failure tells itself apart.
-The 8eccf87 retry also showed Bob's call to Alice not coming back after her socket was superseded; not looked into here.
+The 8eccf87 retry also showed Bob's call to Alice not coming back after her socket was superseded: ticket 52, open.
