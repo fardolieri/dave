@@ -11,7 +11,7 @@ import {
 } from '../core/declarations';
 import { beat, heard, heartbeat } from '../core/heartbeat';
 import type { LocalIdentity } from './identity';
-import { appendHistory, clearHistory, loadHistory, textKey, type StoredText } from './history';
+import { appendHistory, clearHistory, keepUnsent, loadHistory, loadUnsent, textKey, type StoredText } from './history';
 
 export type ServerStatus =
   | { kind: 'connecting' }
@@ -66,10 +66,14 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
    * Own texts not back from the Room yet, oldest first. The network can drop a socket under a text (1006, the Room none the
    * wiser), and the text was gone for everyone: each is sent again on the next socket, until it comes back or is refused.
    */
-  const unconfirmed: Array<{ id: string; text: string; at: number }> = [];
+  const unconfirmed = loadUnsent(opts.roomId, Date.now());
   /** `unconfirmed` as shown: after the lines, as waiting. */
-  const [pending, setPending] = createSignal<typeof unconfirmed>([]);
-  const unconfirmedChanged = () => setPending([...unconfirmed]);
+  const [pending, setPending] = createSignal([...unconfirmed]);
+  /** `unconfirmed` changed: it shows, and is kept for a reload, whose welcome sends it again (client/history.ts). */
+  const unconfirmedChanged = (keep = true) => {
+    setPending([...unconfirmed]);
+    if (keep) keepUnsent(opts.roomId, unconfirmed);
+  };
   /** `publicKey:id` of the texts shown, oldest first: one sent again may have reached us the first time. */
   const seenTexts = new Set<string>();
   // Recent history from this browser, loaded once; live lines append after it.
@@ -247,9 +251,10 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     posthog.capture('server_socket_closed', { code, ever_connected: everConnected });
     if (code === CLOSE_SUPERSEDED) {
       stopped = true;
-      // The room is another tab's now: a text still out would be sent when this one takes it back, maybe hours later.
+      // The room is another tab's now, and so are the texts still out: it took them from the browser's storage as it
+      // opened. Kept here, they would be sent when this one takes the room back, maybe hours later.
       unconfirmed.length = 0;
-      unconfirmedChanged();
+      unconfirmedChanged(false);
       setStatus({ kind: 'elsewhere' });
       return;
     }
@@ -348,7 +353,13 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     /** Choose the emoji everyone sees as your avatar, or null for the initial; presence brings it back. */
     setPicture: (next: string | null) => { declareLatest({ t: 'picture', picture: next }); },
     /** After stepping back for another tab: reconnect here, which supersedes that tab in turn. */
-    takeOver: () => { if (status().kind !== 'elsewhere') return; stopped = false; attempt = 0; downSince = null; setStatus({ kind: 'connecting' }); open(); },
+    takeOver: () => {
+      if (status().kind !== 'elsewhere') return;
+      // What the other tab still had out, as it left it.
+      unconfirmed.push(...loadUnsent(opts.roomId, Date.now()));
+      unconfirmedChanged(false);
+      stopped = false; attempt = 0; downSince = null; setStatus({ kind: 'connecting' }); open();
+    },
     /** Fires for texts from other people (for the message cue). */
     onText: (l: (m: Extract<ServerMessage, { t: 'text' }>) => void) => { textListeners.add(l); return () => textListeners.delete(l); },
     /** Messages the room store does not handle itself (call, left, signal, ice) go to subscribers. */

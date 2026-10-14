@@ -18,6 +18,7 @@ import { normalisePicture } from './protocol';
 import { parseRejoinMarker } from './rejoin';
 import { parseStoredRooms } from './rooms';
 import { parseHistory } from './chatlog';
+import { parseUnsent } from './unsent';
 import { parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes } from './settings';
 
 /** A stored key: what it holds, the parser every read goes through, and stored values from the wild. */
@@ -91,6 +92,12 @@ export const LOCAL = {
       '2026-09-22, master volume': '{"echoCancellation":true,"noiseSuppression":true,"autoGainControl":true,"microphoneId":"","speakerId":"spk1","masterVolume":1.5}',
       '2026-09-28, voice repair': '{"echoCancellation":true,"noiseSuppression":true,"autoGainControl":true,"microphoneId":"","speakerId":"","masterVolume":1,"noiseRemoval":false,"voiceThreshold":0.3,"lowBandwidthVoice":true,"voiceRepair":"red"}',
     },
+  },
+  unsent: {
+    about: 'My own texts the Room has not brought back yet, per room id, sent again after a reload (core/unsent.ts, client/history.ts).',
+    parse: parseUnsent,
+    map: true,
+    fixtures: { '2026-10-14, unsent texts': '{"roomA":[{"id":"0a1b2c3d4e5f60718293a4b5","text":"hi","at":1760450000000}]}' },
   },
   viewerSettings: { about: 'Low latency for shares I watch (core/settings.ts, client/call.ts).', parse: parseViewerSettings, fixtures: { '2026-09-06, low latency': '{"jitterBufferTargetMs":100}' } },
 } satisfies Record<string, StoredKey<string | null>>;

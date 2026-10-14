@@ -1,5 +1,6 @@
-import { idbDelete, idbGet, idbRead, idbSet, type ParsedIdbKey } from './storage';
+import { idbDelete, idbGet, idbRead, idbSet, local, type ParsedIdbKey } from './storage';
 import { MAX_HISTORY, type StoredText } from '../core/chatlog';
+import { stillToSend, UNSENT_MAX, type UnsentText } from '../core/unsent';
 import type { Identity } from '../core/protocol';
 
 /**
@@ -38,9 +39,27 @@ export function clearHistory(roomId: string): Promise<void> {
 
 /** Leaving a room: its history goes with it, as the leave dialog says. The link brings the room back, not the lines. */
 export function forgetHistory(roomId: string): Promise<void> {
+  forgetUnsent(roomId);
   chain = chain.then(() => idbDelete(keyFor(roomId))).catch((e) => console.warn('history delete failed', e));
   return chain;
 }
+
+/**
+ * My own texts in a room that the Room has not brought back yet (core/unsent.ts), as a reload finds them. localStorage,
+ * not IndexedDB: written as the text goes out, it must be there before a reload right after, with no write in flight.
+ */
+export const loadUnsent = (roomId: string, now: number): UnsentText[] => stillToSend(local.read('unsent')[roomId] ?? [], now);
+
+/** Keeps a room's texts not back from the Room yet; every room's entry is read afresh, so only this one changes. */
+export function keepUnsent(roomId: string, texts: UnsentText[]): void {
+  const all = local.read('unsent');
+  if (texts.length) all[roomId] = texts.slice(-UNSENT_MAX);
+  else delete all[roomId];
+  if (Object.keys(all).length) local.set('unsent', JSON.stringify(all));
+  else local.remove('unsent');
+}
+
+export const forgetUnsent = (roomId: string): void => keepUnsent(roomId, []);
 
 /** One-time: the history from before rooms belongs to the room the old single secret became. */
 export function adoptLegacyHistory(roomId: string): Promise<void> {

@@ -55,7 +55,7 @@ const isRequestId = (v: unknown): v is RequestId => Number.isSafeInteger(v) && (
  * an id they have shown already no more (ticket 51). Optional both ways, like RequestId: a client from before sends none.
  */
 export type TextId = string;
-const isTextId = (v: unknown): v is TextId => typeof v === 'string' && CONN_ID.test(v);
+export const isTextId = (v: unknown): v is TextId => typeof v === 'string' && CONN_ID.test(v);
 
 export type ClientMessage =
   /**
