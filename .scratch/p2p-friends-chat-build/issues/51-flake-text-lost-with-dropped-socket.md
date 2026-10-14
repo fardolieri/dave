@@ -1,6 +1,6 @@
 # 51 · Flake: a text written into a socket the network dropped was gone for everyone
 
-Status: fixed on branch fix/followups (PR #48), 2026-10-14; outcome 2 of ticket 35 (the app is wrong), with a limit left
+Status: shipped 2026-10-14 to nightly and prod (prod 41657fb, nightly e2e green first); fixed on branch fix/followups (PR #48), 2026-10-14; outcome 2 of ticket 35 (the app is wrong), with a limit left
 Seen 2026-10-12 on the preview of PR #48 (`dave-pr-48`), three runs, each passing or failing on a text that never came:
 - 38294593052 (44895d3): Chromium `text.spec.ts` "text is plain…" and Firefox `settings.spec.ts` "phone width…", Alice's
   own text never came back from the server; both passed on the retry.
@@ -40,7 +40,8 @@ writer's text of an id it has shown already only once, so a text that had reache
 twice. A text the Room refused ("Not sent") is not sent again, nor one still out when another tab takes the room (it
 would come out of context when this tab takes it back). Old clients send no id and are relayed as before.
 - Green with the fix (1b828cb): e2e run 38565613718 and preview run 38565621802, both engines, no test retried; the
-  red-green run 38565613602 ran the new tests against the app from before the branch and saw them fail there.
+  red-green run 38565613602 ran the new tests against the app from before the branch and saw them fail there. The final
+  head (41657fb): e2e run 38566438023, preview run 38566442310, no test retried; nightly e2e run 38567366899 passed.
 - Review (independent subagent): nothing serious. Fixed: the tab taken over (above). Left: while old and new builds
   overlap after a deploy, a text sent again to a Room from before ids can show twice for the others, and an own text
   without an id from an old tab of the same identity clears the oldest one still out; both end with the deploy. A text

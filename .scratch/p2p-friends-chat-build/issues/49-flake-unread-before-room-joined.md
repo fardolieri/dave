@@ -1,6 +1,6 @@
 # 49 · Flake: the unread test sent its text before the friend was in that room
 
-Status: fixed on branch fix/followups (PR #48), 2026-10-12; outcome 1 of ticket 35 (the test is wrong)
+Status: shipped 2026-10-14 to nightly and prod (prod 41657fb, nightly e2e green first); fixed on branch fix/followups (PR #48), 2026-10-12; outcome 1 of ticket 35 (the test is wrong)
 Seen 2026-10-12: the preview run of PR #44 (38220103571, against `dave-pr-44`), job 114714189805, Firefox shard 7:
 `text.spec.ts` "a text in a room not on screen counts as unread and chimes; own texts never chime" failed on its first
 try and passed on the retry. Alice's "Other" never showed an unread count in 20 s.

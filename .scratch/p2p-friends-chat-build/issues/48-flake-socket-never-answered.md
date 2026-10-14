@@ -1,6 +1,6 @@
 # 48 · Flake: a socket that heard nothing left the room on "Connecting…" for good
 
-Status: fixed on branch fix/followups (PR #48), 2026-10-12; outcome 2 of ticket 35 (the app is wrong)
+Status: shipped 2026-10-14 to nightly and prod (prod 41657fb, nightly e2e green first); fixed on branch fix/followups (PR #48), 2026-10-12; outcome 2 of ticket 35 (the app is wrong)
 Seen 2026-10-12: the nightly e2e run for df3a61a (38219476267), job 114711989697, Chromium shard 6: `share.spec.ts`
 "regression: a share stopped and started again goes live for its viewer, not stuck on Opening" failed on its first try
 and passed on the retry. The title misleads: it never got to a share. The first friend's open failed: Alice's composer

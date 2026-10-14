@@ -64,7 +64,7 @@ close the runtime reports later now broadcasts nothing for a closing socket, the
 
 ## Comments
 
-2026-10-12, the two leftovers above, fixed on branch fix/followups (PR #48), red then green:
+2026-10-12, the two leftovers above, fixed on branch fix/followups (PR #48), red then green, shipped 2026-10-14 to nightly and prod (prod 41657fb, nightly e2e green first):
 - **Ghost presence.** `webSocketError` broadcast a snapshot without the socket but left its attachment attached; the
   runtime can keep an errored socket in `getWebSockets()` until its close or the sweep, so the next snapshot (someone
   joining or muting) listed the friend again. An errored socket is now marked closing and closed (4005, which the client

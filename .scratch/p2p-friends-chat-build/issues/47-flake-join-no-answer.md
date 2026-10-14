@@ -64,7 +64,7 @@ in the protocol.
 
 ## Comments
 
-2026-10-12, the two left for Daniel, both real, fixed on branch fix/followups (PR #48):
+2026-10-12, the two left for Daniel, both real, fixed on branch fix/followups (PR #48), shipped 2026-10-14 to nightly and prod (prod 41657fb, nightly e2e green first):
 - **Two calls at once.** Alice clicks Join in Room, its answer is slow, and she joins Other meanwhile. `joinCall` left only
   `active`, a call already joined, and `leave()` did nothing for a join under way: Room's server already had her in its
   call, and its answer put her in it in this tab too, her microphone with it. `resilience.spec.ts` "joining another room's
@@ -109,7 +109,7 @@ Left as judgment calls: a tab taken over while a join is under way still waits o
 `elsewhere` branch of the status effect leaves only when joined; `leave()` now handles a join too). An old server
 answers without ids, so until a deploy reaches the Room a late answer can still be taken for a newer join, as before.
 
-2026-10-12, the TURN leak above, fixed on branch fix/followups (PR #48): a join's TURN user is minted after the join is
+2026-10-12, the TURN leak above, fixed on branch fix/followups (PR #48), shipped 2026-10-14 to nightly and prod (prod 41657fb, nightly e2e green first): a join's TURN user is minted after the join is
 stored, so a Leave (now sent by every join left under way), a close or a supersede during the mint found no user to
 revoke, and the mint's patch then wrote it onto a visitor or a dead socket, or dropped it. A mint now keeps its user only
 if the socket is still in the join it was minted for; otherwise it is revoked at once and its answer is not sent, so a
