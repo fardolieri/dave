@@ -487,7 +487,8 @@ function Workspace(props: WorkspaceProps) {
           )}</Show>
           <ChatLog lines={cur().room.lines()} openedAt={openedAt()} jumpToken={jumpToken()} label={labelOf} />
         </div>
-        <Show when={stage()}>{(s) => <ReactionLayer reactions={s().room.reactions()} nameOf={reactorName} />}</Show>
+        {/* The reactions of the room I read, and of my call in another room, whose shares are on screen with it */}
+        <For each={[...new Set([cur(), active() ?? cur()])]}>{(l) => <ReactionLayer reactions={l.room.reactions()} nameOf={reactorName} />}</For>
         <Composer connected={connected()} roomName={cur().saved.name} onSend={(text) => { cur().room.sendText(text); setJumpToken((n) => n + 1); }}>
           {/* Anchored to the composer's top edge, whatever its height on this device (ticket 32) */}
           <Show when={consent() === null || askingConsent()}><TelemetryNotice onAnswer={(c) => { setConsent(c); setAskingConsent(false); }} /></Show>

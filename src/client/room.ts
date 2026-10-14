@@ -32,9 +32,9 @@ export type Reaction = { id: number; from: string; emoji: string };
 export const REACTION_MS = 3200;
 /** More at once than this and the oldest go early: a room of friends hammering 🔥 must not pile up elements. */
 const MAX_REACTIONS = 40;
-/** Below the server's bucket (core/ratelimit.ts), with room for frames bunching up on the way, so it never refuses one. */
-const REACT_RATE = 6;
-const REACT_BURST = 12;
+/** Below the server's bucket (core/ratelimit.ts), with room for frames bunching up on the way, so it rarely refuses one. */
+const CLIENT_REACT_RATE = 6;
+const CLIENT_REACT_BURST = 12;
 
 const UNAVAILABLE_AFTER_MS = 30_000;
 /** Texts shown remembered by writer and id, to show a text sent again only once (ticket 51); the oldest are forgotten. */
@@ -72,7 +72,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const [reactions, setReactions] = createSignal<Reaction[]>([]);
   const reactListeners = new Set<(r: Reaction) => void>();
   const reactTimers = new Set<ReturnType<typeof setTimeout>>();
-  let reactBucket = newBucket(Date.now(), REACT_BURST);
+  let reactBucket = newBucket(Date.now(), CLIENT_REACT_BURST);
   let nextId = 1;
   /**
    * Own texts not back from the Room yet, oldest first. The network can drop a socket under a text (1006, the Room none the
@@ -359,7 +359,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
      * late would float up over a different moment.
      */
     react: (emoji: string): boolean => {
-      const taken = takeToken(reactBucket, Date.now(), REACT_RATE, REACT_BURST);
+      const taken = takeToken(reactBucket, Date.now(), CLIENT_REACT_RATE, CLIENT_REACT_BURST);
       if (!taken.ok) { reactBucket = taken.bucket; return false; }
       if (!inCall() || !send({ t: 'react', emoji })) return false;
       reactBucket = taken.bucket;

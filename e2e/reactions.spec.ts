@@ -19,11 +19,14 @@ test('ticket 55: a reaction floats up for everyone in the room, with its sound i
 
   await Promise.all([alice, bob, vera].map((f) => f.cuesPlayed())); // the joins' cues are not what this test listens for
   await alice.button('React 🔥').click();
-  await expect.poll(() => floating(bob), { message: 'Bob sees Alice\'s 🔥' }).toContain('🔥 Alice');
-  // Checked at once: the pop, like the float, is gone 3.2 s after it came
-  await expect(bob.selectedRoom.locator('li.prow', { hasText: 'Alice' }).locator('.avatar-react')).toHaveText('🔥');
-  await expect.poll(() => floating(alice), { message: 'Alice sees her own, as "you"' }).toContain('🔥 you');
-  await expect.poll(() => floating(vera), { message: 'Vera, reading the room, sees it too' }).toContain('🔥 Alice');
+  // All at once and polled closely: the float and the pop are gone 3.2 s after they came, and one check after another
+  // with the poll's backoff could come after that on a slow runner
+  await Promise.all([
+    expect.poll(() => floating(bob), { message: 'Bob sees Alice\'s 🔥', intervals: [50] }).toContain('🔥 Alice'),
+    expect(bob.selectedRoom.locator('li.prow', { hasText: 'Alice' }).locator('.avatar-react')).toHaveText('🔥'),
+    expect.poll(() => floating(alice), { message: 'Alice sees her own, as "you"', intervals: [50] }).toContain('🔥 you'),
+    expect.poll(() => floating(vera), { message: 'Vera, reading the room, sees it too', intervals: [50] }).toContain('🔥 Alice'),
+  ]);
 
   const context = await bob.page.evaluate(() => typeof AudioContext);
   if (context === 'function') {
