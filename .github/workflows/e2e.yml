@@ -128,6 +128,12 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           echo "e2e shards: $RESULT (against nightly: $NIGHTLY)"
+          # No verdict for a run that never tested this commit: its deploy failed or was replaced by a newer master push
+          # (skipped). Writing "failure" there read as a broken commit (2026-10-11, f360159); the commit simply stays
+          # unreleasable until a later commit passes. A cancelled run (a newer nightly run took over, or a shard hung past
+          # its timeout) writes no status either, but fails this job so a hang stays visible.
+          if [ "$NIGHTLY" = true ] && [ "$RESULT" = skipped ]; then echo "No verdict for $SHA: the suite did not run"; exit 0; fi
+          if [ "$NIGHTLY" = true ] && [ "$RESULT" = cancelled ]; then echo "::error::No verdict for $SHA: the suite was cancelled (superseded, or a shard timed out)"; exit 1; fi
           if [ "$NIGHTLY" = true ]; then
             state=$([ "$RESULT" = success ] && echo success || echo failure)
             gh api -X POST "repos/${{ github.repository }}/statuses/$SHA" -f state="$state" -f context="nightly e2e passed" \
