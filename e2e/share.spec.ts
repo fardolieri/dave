@@ -103,7 +103,7 @@ test('regression: a Watch click while the socket is down is asked for again afte
   await sam.startShare();
   await expect(vic.tile('Sam')).toContainText('Click to watch');
   await vic.wire.cut();
-  await expect(vic.composer).toBeDisabled();
+  await expect(vic.away).toBeVisible();
   await vic.tile('Sam').click();
   vic.wire.restore();
   await vic.connected();

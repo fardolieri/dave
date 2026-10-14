@@ -224,7 +224,7 @@ test('regression: the chat keeps its place when the share strip comes and goes',
   // Every line reaches Bob, unless the network dropped his socket meanwhile: what the Room sent into it is gone (ticket 51,
   // the Room keeps none), which is not this test's claim (ticket 53). Once he is back, Alice makes up for the lost lines,
   // each seen by Bob before the next, so none is still on its way when he starts reading.
-  await expect.poll(async () => (await bob.chatTexts()).length === 24 || (bob.wire.droppedSince(start) && await bob.composer.isEnabled())).toBe(true);
+  await expect.poll(async () => (await bob.chatTexts()).length === 24 || (bob.wire.droppedSince(start) && await bob.isConnected())).toBe(true);
   for (let i = 24; (await bob.chatTexts()).length < 24; i++) {
     await alice.say(`filler line ${i}`);
     await expect.poll(() => bob.chatTexts()).toContain(`filler line ${i}`);

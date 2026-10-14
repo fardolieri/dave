@@ -263,28 +263,45 @@ export class Friend {
     return this;
   }
 
-  async connected(): Promise<void> { await expect(this.composer).toBeEnabled(); }
+  /**
+   * Waits until the selected room is connected: the composer is enabled and no banner says the server is away. The composer
+   * alone no longer says it: it stays enabled while the app reconnects, and a text written then waits (ticket 10).
+   */
+  async connected(timeout?: number): Promise<void> {
+    await expect(this.composer).toBeEnabled({ timeout });
+    await expect(this.away).toHaveCount(0, { timeout });
+  }
+
+  /** Whether the selected room is connected right now (see `connected`). */
+  async isConnected(): Promise<boolean> { return await this.composer.isEnabled() && await this.away.count() === 0; }
 
   // --- the page, as a friend sees it ---
   get composer(): Locator { return this.page.locator('.chat-input > input'); }
   get banner(): Locator { return this.page.locator('.banner'); }
+  /** The banner while the room's socket is away or not let in yet. */
+  get away(): Locator { return this.banner.filter({ hasText: /Connecting|Reconnecting|Server unavailable/ }); }
   get selectedRoom(): Locator { return this.page.locator('section.room.selected'); }
   /** Names in the Online list, "(you)" stripped. */
   async online(): Promise<string[]> { return (await this.page.locator('aside.side > ul.plist .nm').allInnerTexts()).map(clean); }
   /** Names in the selected room's call list, "(you)" stripped. */
   async inCall(): Promise<string[]> { return (await this.selectedRoom.locator('li.prow .nm').allInnerTexts()).map(clean); }
-  /** Chat lines of the room on screen: sender and text, system lines left out. A follow-on line has no name of its own and takes the one above. */
+  /**
+   * Chat lines of the room on screen: sender and text, system lines left out, and my own texts the Room has not brought back
+   * yet (`pendingTexts`). A follow-on line has no name of its own and takes the one above.
+   */
   async chat(): Promise<Array<{ from: string; text: string }>> {
     return this.page.locator('.chat-log .msg:not(.msg-sys)').evaluateAll((els) => {
       let from = '';
-      return els.map((e) => {
+      return els.flatMap((e) => {
         const own = e.querySelector('.msg-from');
         if (own) from = (own.firstChild?.textContent ?? '').trim();
-        return { from, text: (e.querySelector('.msg-text') as HTMLElement | null)?.innerText.trim() ?? '' };
+        return e.classList.contains('msg-pending') ? [] : [{ from, text: (e.querySelector('.msg-text') as HTMLElement | null)?.innerText.trim() ?? '' }];
       });
     });
   }
   async chatTexts(): Promise<string[]> { return (await this.chat()).map((l) => l.text); }
+  /** My own texts in the chat that the Room has not brought back yet, shown as waiting. */
+  async pendingTexts(): Promise<string[]> { return (await this.page.locator('.chat-log .msg-pending .msg-text').allInnerTexts()).map((t) => t.trim()); }
   /**
    * The texts this browser has written to its chat history (IndexedDB, client/history.ts), every room's in turn. A line
    * shows before its write ends, and a reload in between loses it, a gap ticket 35 accepts: before a reload that a test
