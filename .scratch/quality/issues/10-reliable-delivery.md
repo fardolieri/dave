@@ -1,6 +1,7 @@
 # 10 · Reliable delivery: one way for a message to survive a dropped socket
 
-Status: step 1 (declarations) shipped 2026-10-14 to prod (3a4474e, PR #55); steps 2+ open
+Status: step 1 (declarations) shipped 2026-10-14 to prod (3a4474e, PR #55); step 2a (heartbeat, texts while reconnecting
+and over a reload, drop instrumentation) on branch `quality/10-step2a`; later steps open
 Type: task
 
 ## Why
@@ -49,16 +50,16 @@ this friend as a visitor: `core/room.ts` refuses `signal`, `ice`, `share` and `s
 | `mute` | declaration (in the call) | Latest wins: every join carries it, and a change goes out once the join is on the socket. Before, a change after the join went out and before its answer was not sent (call.ts sent it only once `joined`), a window the Mute button does not show in today; closed in step 1. | outbox; call.ts declares it at each change and once before the first join |
 | `share` | declaration (in the call) | Latest wins: every join carries it, and a change goes out once the join is on the socket (before, a change in the window between welcome and join was refused with a chat line). | outbox |
 | `subscribe` | declaration (in the call, one per sharer) | Latest per sharer wins: said again after the answer to every join, to friends listed as sharing in the call; forgotten when the sharer stops or leaves, and on my leave. call.ts also asks again when a connection comes up or appears (a rebuilt connection on the sharer's side drops the subscription). An ask that went out on a socket that dropped under it left the tile watching and black until the black-share watchdog asked again (`reportBlackShare`, 4 s after a watched tile stays black; seen in CI while trying to write a red test for it); since step 1 it is said again with the join's answer. A Stop watching lost the same way was never said again, and the sharer went on sending (Grumpy Friend review); fixed in step 1. | outbox; `call.ts` keeps the intent (`watchIntent`, the Rejoin marker) and the tile state |
-| `text` | event | At least once, deduplicated: random `TextId`, kept until the Room echoes it back or refuses it, sent again after every welcome, shown once per writer and id. Before the welcome the composer is disabled. Gaps: a reload loses a text not yet confirmed; a refusal is matched to the oldest waiting text by order. | `client/room.ts` (`sendText`, `unconfirmed`, `seenTexts`); untouched in step 1 |
+| `text` | event | At least once, deduplicated: random `TextId`, kept until the Room echoes it back or refuses it, sent again after every welcome, shown once per writer and id. Since step 2a a text written while the socket is away waits for the next welcome (the composer stays usable while reconnecting), shows as waiting until it comes back, and is kept in `localStorage` (`dave.unsent`), so a reload sends it again with its id. Gaps: a refusal is matched to the oldest waiting text by order; a friend who reloads between the two copies of a re-sent text shows it twice (her history has no ids). | `client/room.ts` (`sendText`, `unconfirmed`, `seenTexts`), `core/unsent.ts`, `client/history.ts` |
 | `join` | event (request) | At least once, answered by id: `RequestId`, 8 s wait, sent again with the same id on a socket that came back (`joinAgain`); a friend already in the call joins again after every reconnect (`redeclareAfterReconnect`). The Room answers every join (a fresh join sequence) and drops an answer whose join was left meanwhile (`settleTurnUser`). | `call.ts` (`askServer`, `declareJoin`); `client/room.ts` builds the frame (`room.join`) from the declarations |
 | `leave` | event | At most once, no answer, never sent again. Lost with a socket it does no harm in presence (the next socket starts as a visitor), but peers get no `left`, so they keep the connection for the grace period instead of closing it at once, and the TURN users are not revoked (they wait for the next join or run out). | `client/room.ts` (`room.leave`), `call.ts` |
 | `signal` | event | Held until the join is on the socket (`room.inCall`). A description is numbered (`n`, `conn`, `forConn`); an offer still unanswered is sent again after my reconnect's join is answered and when the peer comes back (`resendOffer`), with the candidates gathered so far inside it. Loose candidates are not sent again. Refused (rate limit, peer not in the call): logged, not sent again. | `call.ts` (`sendSignal`, `resendOffer`, `onSignalNow`) |
 | `ice` | event (request) | At most once, answered by id: only on a socket in the call; `RequestId`, 5 s wait, then the restart goes on with the old credentials and the next restart asks again. | `call.ts` (`requestIce`) |
-| `ping` | best effort | Every 30 s on any open socket, answered at the edge without waking the Room. Nothing waits for the `pong`: a socket that goes silent without closing is noticed only when the browser closes it. | `client/room.ts`, `worker/room.ts` (auto-response) |
+| `ping` | heartbeat | Every 30 s on any open socket, answered at the edge without waking the Room. Since step 2a, two pings in a row with no frame after them give the socket up (closed with 4009, reported as `pong_overdue`), at the tick after the second; a tick more than 75 s late never does. | `core/heartbeat.ts`, `client/room.ts`, `worker/room.ts` (auto-response) |
 
-**Still without a guarantee after step 1:** `leave` (at most once, no answer), loose ICE candidates and refused signals
-(never sent again), `ice` (at most once, a lost one waits 5 s), texts across a reload (lost) and refusals matched by
-order, and `ping` (no heartbeat timeout, so a silent socket is never noticed).
+**Still without a guarantee after step 2a:** `leave` (at most once, no answer), loose ICE candidates and refused signals
+(never sent again), `ice` (at most once, a lost one waits 5 s), text refusals matched by order, and texts the Room sent
+into a dead socket (the reader's side: the Room keeps none, an open owner decision, ticket 54).
 
 ## For later steps
 
