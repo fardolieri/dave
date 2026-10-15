@@ -172,22 +172,25 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
    */
   async function received(m: Extract<ServerMessage, { t: 'sealed' }>): Promise<void> {
     const opened = await openText({ key: opts.textKey, roomId: opts.roomId, id: m.id, from: m.from.publicKey, sealed: m.sealed });
+    // A room forgotten or cleared meanwhile, or a tab that stepped back: nothing to show, and nothing to write back.
+    if (stopped) return;
+    const own = m.from.publicKey === opts.identity.publicKey;
+    // My own text came back: the Room took it, whether or not it opens here, so sending it again cannot help.
+    const i = own ? unconfirmed.findIndex((u) => u.id === m.id) : -1;
+    if (i >= 0) { unconfirmed.splice(i, 1); unconfirmedChanged(); }
     if (!opened.ok) {
       // A server that reads or forges, or a friend's app that seals wrong: either is urgent, so the session briefing and the
       // night shift look for this event first (scripts/claude/session-start.sh). The writer by fingerprint only.
       console.warn(`text rejected: ${opened.reason}`);
-      posthog.capture('text_rejected', { reason: opened.reason, writer: m.from.fingerprint, own: m.from.publicKey === opts.identity.publicKey, sealed_length: m.sealed.length });
+      posthog.capture('text_rejected', { reason: opened.reason, writer: m.from.fingerprint, own, sealed_length: m.sealed.length });
+      if (i >= 0) push({ kind: 'system', text: 'Not sent: your text came back unreadable.', at: Date.now() });
       return;
-    }
-    if (m.from.publicKey === opts.identity.publicKey) {
-      const i = unconfirmed.findIndex((u) => u.id === m.id);
-      if (i >= 0) { unconfirmed.splice(i, 1); unconfirmedChanged(); }
     }
     if (seen(m.from.publicKey, m.id)) return;
     const text: Text = { from: m.from, text: opened.text, at: m.at, id: m.id };
     push({ kind: 'text', id: textKey(text), from: text.from, text: text.text, at: text.at });
     void appendHistory(opts.roomId, text);
-    if (m.from.publicKey !== opts.identity.publicKey) {
+    if (!own) {
       setUnread((n) => n + 1);
       for (const l of textListeners) l(text);
     }
@@ -283,8 +286,10 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
               // the Room brought back before it are opened. The chat said it was not sent, so it is not sent again.
               const at = Date.now();
               opening = opening.then(() => {
+                // Another tab took over, or the room was left: the waiting texts are no longer this socket's to drop.
+                if (stopped || welcomed !== socket) return;
                 push({ kind: 'system', text: `Not sent: ${m.reason}.`, at });
-                unconfirmed.shift(); unconfirmedChanged();
+                if (unconfirmed.shift()) unconfirmedChanged();
               });
             } else push({ kind: 'system', text: `Dropped: ${m.reason}.`, at: Date.now() });
           } else if (status().kind !== 'refused') {
