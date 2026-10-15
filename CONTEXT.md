@@ -16,6 +16,14 @@ _Avoid_: Room key, room token
 What the server keeps of a room: a second hash of the shared secret, handed over by the first friend to enter. The challenge is keyed with it. Never the secret itself.
 _Avoid_: Verifier (in UI copy; fine in code), password hash
 
+**Text key**:
+The key a room's texts are encrypted with, a third hash of the shared secret. Only friends have it; the server never does.
+_Avoid_: Room key, chat password
+
+**Sealed text**:
+A text as it travels: encrypted with the text key and signed by its writer, so the server passes it on without being able to read or forge it.
+_Avoid_: Encrypted message (in UI copy), ciphertext (fine in code)
+
 **Call**:
 The live voice and screen session in the room. Exists while at least one participant is in it.
 _Avoid_: Voice channel, session, meeting
@@ -53,7 +61,7 @@ A link between two participants whose media passes through a TURN relay because 
 _Avoid_: Proxied, tunnelled
 
 **Shared secret**:
-The random string in a room's invite link that gates entry to that room. Everyone who holds it is a friend. The room id and the auth key are derived from it.
+The random string in a room's invite link that gates entry to that room. Everyone who holds it is a friend. The room id, the auth key and the text key are derived from it.
 _Avoid_: Password, token, invite code
 
 **Fingerprint**:

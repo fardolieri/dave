@@ -1,13 +1,13 @@
-import { authKeyOf, DEFAULT_ROOM_NAME, roomIdOf, type InviteLink, type StoredRoom } from '../core/rooms';
+import { authKeyOf, DEFAULT_ROOM_NAME, roomIdOf, textKeyOf, type InviteLink, type StoredRoom } from '../core/rooms';
 import { adoptLegacyHistory, forgetHistory } from './history';
 import { local } from './storage';
 
 /**
  * The rooms this browser has entered, oldest first (ADR 0004). Only the secret and the name from the
- * invite link are stored; the id on the wire and the auth key are derived again at load. Which room is
+ * invite link are stored; the id on the wire, the auth key and the text key are derived again at load. Which room is
  * selected is remembered too, so a reload lands where you were.
  */
-export type SavedRoom = { id: string; authKey: string; secret: string; name: string; addedAt: number };
+export type SavedRoom = { id: string; authKey: string; textKey: CryptoKey; secret: string; name: string; addedAt: number };
 type Stored = StoredRoom;
 const KEY = 'rooms';
 const SELECTED = 'room';
@@ -21,7 +21,7 @@ function write(list: Stored[]): void {
 }
 
 async function withKeys(r: Stored): Promise<SavedRoom> {
-  return { ...r, id: await roomIdOf(r.secret), authKey: await authKeyOf(r.secret) };
+  return { ...r, id: await roomIdOf(r.secret), authKey: await authKeyOf(r.secret), textKey: await textKeyOf(r.secret) };
 }
 
 export async function loadRooms(): Promise<SavedRoom[]> {

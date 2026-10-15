@@ -280,8 +280,8 @@ describe('signaling rate limit', () => {
     // runner cannot refill the bucket while the room object works through the burst.
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
-      for (let i = 0; i < 45; i++) send(a, { t: 'text', text: `t${i}` });
-      expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'rate limited', ref: 'text' });
+      for (let i = 0; i < 45; i++) send(a, { t: 'sealed', sealed: 'c2VhbGVk', id: `t${i}` });
+      expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'rate limited', ref: 'sealed' });
     } finally {
       vi.useRealTimers();
     }

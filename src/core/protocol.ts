@@ -66,6 +66,11 @@ export type ClientMessage =
   /** The PostHog opt-in changed while connected (ticket 32). Only the server keeps it; nobody else learns of it. */
   | { t: 'telemetry'; on: boolean }
   | { t: 'ping' }
+  /**
+   * A text sealed for the room (ADR 0005, core/sealed.ts): the Room passes it on without reading it. `text` is what clients
+   * sent in plain before; the Room refuses it as from an app out of date.
+   */
+  | { t: 'sealed'; sealed: string; id: TextId }
   | { t: 'text'; text: string; id?: TextId }
   /** Enter the Call (or re-declare after a server reconnect). */
   /** `sharing` lets a re-join after a server reconnect keep an ongoing share visible to everyone. */
@@ -91,7 +96,8 @@ export type ServerMessage =
   | { t: 'challenge'; nonce: string; fresh?: true }
   | { t: 'welcome'; you: Person }
   | { t: 'presence'; people: Person[] }
-  | { t: 'text'; from: Identity; text: string; at: number; id?: TextId }
+  /** A sealed text, tagged with who sent it and when the Room got it. Neither is signed: the text inside is (ADR 0005). */
+  | { t: 'sealed'; from: Identity; sealed: string; at: number; id: TextId }
   /** Reply to join: your place in the Call and the ICE servers to build peer connections with. */
   | { t: 'call'; joinSeq: number; iceServers: IceServer[]; issuedAt: number; id?: RequestId }
   /** A participant left on purpose; peers close that connection at once. A vanished socket only drops out of presence. */
@@ -118,6 +124,14 @@ export const MAX_NAME_LENGTH = 32;
 export const MAX_TEXT_LENGTH = 2000;
 /** Longest RGI emoji is a four-person family: 7 code points, 11 UTF-16 units. A little slack for a variation selector. */
 export const MAX_PICTURE_LENGTH = 16;
+/**
+ * The longest sealed text a client writes, base64url (core/sealed.ts): iv, then signature, text, and padding to a multiple of
+ * 256 bytes, then the tag. A UTF-16 unit is at most three UTF-8 bytes (a pair is four for two units, a lone surrogate
+ * becomes U+FFFD). The Room refuses longer ones without reading them.
+ */
+export const MAX_SEALED_LENGTH = Math.ceil(((12 + Math.ceil((64 + 3 * MAX_TEXT_LENGTH + 1) / 256) * 256 + 16) * 4) / 3);
+/** What the Room answers a plain text with: only an app from before ADR 0005 sends one. */
+export const OUT_OF_DATE = 'this app is out of date, reload the page to send';
 
 /** Close codes the server uses. 4000 to 4999 are application-defined. */
 export const CLOSE_AUTH_FAILED = 4001;
@@ -149,7 +163,7 @@ export function normalisePicture(raw: string): string | null {
 export type Invalid = { t: 'invalid'; reason: string; ref?: ClientMessage['t'] };
 const invalid = (reason: string): Invalid => ({ t: 'invalid', reason });
 
-const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'text', 'join', 'leave', 'mute', 'name', 'picture', 'signal', 'ice', 'share', 'subscribe', 'telemetry']);
+const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'sealed', 'text', 'join', 'leave', 'mute', 'name', 'picture', 'signal', 'ice', 'share', 'subscribe', 'telemetry']);
 const isClientType = (v: unknown): v is ClientMessage['t'] => typeof v === 'string' && CLIENT_TYPES.has(v);
 
 /**
@@ -264,13 +278,12 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
       if (!('description' in data) && !('candidates' in data)) return invalid('unrecognised message');
       return { t: 'signal', to: m.to, data };
     }
-    case 'text': {
-      if (typeof m.text !== 'string' || (m.id !== undefined && !isTextId(m.id))) return invalid('unrecognised message');
-      const text = m.text.trim();
-      if (text.length === 0) return invalid('empty message');
-      if (text.length > MAX_TEXT_LENGTH) return invalid(`message longer than ${MAX_TEXT_LENGTH} characters`);
-      return isTextId(m.id) ? { t: 'text', text, id: m.id } : { t: 'text', text };
-    }
+    case 'sealed':
+      if (!isTextId(m.id) || typeof m.sealed !== 'string' || !B64URL.test(m.sealed)) return invalid('unrecognised message');
+      if (m.sealed.length > MAX_SEALED_LENGTH) return invalid(`message longer than ${MAX_TEXT_LENGTH} characters`);
+      return { t: 'sealed', sealed: m.sealed, id: m.id };
+    case 'text':
+      return invalid(OUT_OF_DATE);
     default:
       return invalid('unrecognised message');
   }

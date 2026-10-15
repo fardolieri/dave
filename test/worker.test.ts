@@ -170,7 +170,7 @@ describe('gate', () => {
     const ws = await openRoomSocket(SECRET);
     await nextMessage(ws); // challenge
     let reply = nextMessage(ws);
-    ws.send(JSON.stringify({ t: 'text', text: 'hi' }));
+    ws.send(JSON.stringify({ t: 'sealed', sealed: 'c2VhbGVk', id: 'hi' }));
     expect(await reply).toEqual({ t: 'error', reason: 'unauthenticated' });
     reply = nextMessage(ws);
     ws.send('garbage');

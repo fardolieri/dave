@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, type Person } from '../src/core/protocol';
+import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, OUT_OF_DATE, type Person } from '../src/core/protocol';
 import { onMessage, presenceSnapshot, type SocketState } from '../src/core/room';
 import { newBucket } from '../src/core/ratelimit';
 
@@ -17,18 +17,20 @@ describe('protocol', () => {
 
   it('parses known messages and rejects the rest', () => {
     expect(parseClientMessage(JSON.stringify({ t: 'ping' }))).toEqual({ t: 'ping' });
-    expect(parseClientMessage(JSON.stringify({ t: 'text', text: ' x ' }))).toEqual({ t: 'text', text: 'x' });
-    expect(parseClientMessage(JSON.stringify({ t: 'text', text: 'x', id: 'a1b2' }))).toEqual({ t: 'text', text: 'x', id: 'a1b2' });
-    for (const id of [7, '', 'no spaces', 'x'.repeat(33)]) {
-      expect(parseClientMessage(JSON.stringify({ t: 'text', text: 'x', id }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'text' });
+    expect(parseClientMessage(JSON.stringify({ t: 'sealed', sealed: 'c2Vh_-', id: 'a1b2' }))).toEqual({ t: 'sealed', sealed: 'c2Vh_-', id: 'a1b2' });
+    for (const id of [undefined, 7, '', 'no spaces', 'x'.repeat(33)]) {
+      expect(parseClientMessage(JSON.stringify({ t: 'sealed', sealed: 'c2Vh', id }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'sealed' });
+    }
+    for (const sealed of [undefined, '', 'not base64!', 7]) {
+      expect(parseClientMessage(JSON.stringify({ t: 'sealed', sealed, id: 'a1b2' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'sealed' });
     }
     const bad = { t: 'invalid', reason: 'unrecognised message' };
-    expect(parseClientMessage(JSON.stringify({ t: 'text' }))).toEqual({ ...bad, ref: 'text' });
+    // ADR 0005: only an app from before sealed texts sends a plain one.
+    expect(parseClientMessage(JSON.stringify({ t: 'text', text: 'x', id: 'a1b2' }))).toEqual({ t: 'invalid', reason: OUT_OF_DATE, ref: 'text' });
     expect(parseClientMessage(JSON.stringify({ t: 'nope' }))).toEqual(bad);
     expect(parseClientMessage('{')).toEqual(bad);
     expect(parseClientMessage(new ArrayBuffer(4))).toEqual(bad);
     expect(parseClientMessage('x'.repeat(MAX_MESSAGE_BYTES + 1))).toEqual({ t: 'invalid', reason: 'message too large' });
-    expect(parseClientMessage(JSON.stringify({ t: 'text', text: '  ' }))).toEqual({ t: 'invalid', reason: 'empty message', ref: 'text' });
   });
 
   it('takes a signal far beyond 16 KB and names the type of a frame too large even for that (ticket 30)', () => {

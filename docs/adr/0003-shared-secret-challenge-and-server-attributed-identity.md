@@ -17,7 +17,7 @@ Entry to the Room is gated by a single shared secret and names must be stable an
 
 ## Consequences
 
-- The server is trusted for attribution of text and presence. Recorded here so nobody later mistakes the tag for a cryptographic guarantee. Amended 2026-09-10: signaling descriptions are the exception, their DTLS fingerprints are signed by the identity key (ADR 0004), so the server cannot substitute itself into a call.
+- The server is trusted for attribution of text and presence. Recorded here so nobody later mistakes the tag for a cryptographic guarantee. Amended 2026-09-10: signaling descriptions are the exception, their DTLS fingerprints are signed by the identity key (ADR 0004), so the server cannot substitute itself into a call. Amended 2026-10-15: texts are sealed with a key the server never has and signed by their writer (ADR 0005), so the server can no longer read them or forge their attribution.
 - Losing site data means a new identity with no recovery. A key-linking flow is out of scope for this effort.
 - Display names are self-declared and may collide; the six-character fingerprint and a local seen-keys list with a "new" badge disambiguate.
 - The invite link carries the secret in the URL fragment, stored locally and stripped from the address bar on first load.

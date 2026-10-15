@@ -3,7 +3,7 @@
 // Everything here is plain data plus WebCrypto, so it survives hibernation.
 // No Cloudflare, Node, or DOM imports; scripts/check-core-isolation.mjs enforces that.
 import { fromBase64Url, fingerprint, randomNonce, toBase64Url, verifyAnswer } from './identity';
-import { CLOSE_AUTH_FAILED, parseClientMessage, type ClientMessage, type IceServer, type Person, type ServerMessage } from './protocol';
+import { CLOSE_AUTH_FAILED, OUT_OF_DATE, parseClientMessage, type ClientMessage, type IceServer, type Person, type ServerMessage } from './protocol';
 import { SIGNAL_BURST, SIGNAL_RATE_PER_SECOND, newBucket, takeToken, type Bucket } from './ratelimit';
 import { nextJoinSeq } from './mesh';
 
@@ -203,10 +203,12 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     case 'ping':
       // Normally answered by the hibernation auto-response before reaching here.
       return { state: next, replies: [{ t: 'pong' }] };
-    case 'text': {
+    case 'sealed': {
       const { publicKey, fingerprint: fp, name, picture } = state.person;
-      return { state: next, replies: [], broadcast: [{ t: 'text', from: { publicKey, fingerprint: fp, name, ...(picture ? { picture } : {}) }, text: msg.text, at: ctx.now, ...(msg.id !== undefined ? { id: msg.id } : {}) }] };
+      return { state: next, replies: [], broadcast: [{ t: 'sealed', from: { publicKey, fingerprint: fp, name, ...(picture ? { picture } : {}) }, sealed: msg.sealed, at: ctx.now, id: msg.id }] };
     }
+    case 'text':
+      return { state: next, replies: [error(OUT_OF_DATE, 'text')] }; // the parser refuses it already
     case 'join': {
       // Joining twice (after a server reconnect) is fine: a fresh join sequence, same identity.
       // The sequence is fixed and stored before the TURN fetch so concurrent joins cannot collide.

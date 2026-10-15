@@ -1,9 +1,10 @@
 import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 import posthog, { onConsentChange, telemetryOn } from './posthog';
 import { buildAuthMessage } from '../core/identity';
+import { openText, sealText } from '../core/sealed';
 import {
-  CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, PING_FRAME, PING_INTERVAL_MS,
-  type ClientMessage, type Identity, type Person, type RequestId, type ServerMessage,
+  CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, MAX_TEXT_LENGTH, PING_FRAME, PING_INTERVAL_MS,
+  type ClientMessage, type Identity, type Person, type RequestId, type ServerMessage, type TextId,
 } from '../core/protocol';
 import {
   afterJoin, afterWelcome, carried, declare, declared, forgetEnded, forgetWatch, inCallOnly, joinDeclares, leaveCall,
@@ -27,6 +28,9 @@ export type ChatLine =
   /** `pending`: my own text the Room has not brought back yet; it waits at the end of the log, `at` my own clock's. */
   | { kind: 'text'; id: string; from: Identity; text: string; at: number; pending?: true }
   | { kind: 'system'; id: string; text: string; at: number };
+
+/** A friend's text as opened: the Room relayed it sealed (ADR 0005). */
+export type Text = { from: Identity; text: string; at: number; id: TextId };
 
 const UNAVAILABLE_AFTER_MS = 30_000;
 /** Texts shown remembered by writer and id, to show a text sent again only once (ticket 51); the oldest are forgotten. */
@@ -54,7 +58,7 @@ type Life = { welcomedAt: number | null; frameAt: number | null };
  * reconnection with exponential backoff (spec §8.1), presence snapshots, and
  * ephemeral text. The call (WebRTC) is layered on top by createCall.
  */
-export function createRoom(opts: { identity: LocalIdentity; roomId: string; authKey: string; name: string; picture: string | null; hold?: () => boolean }) {
+export function createRoom(opts: { identity: LocalIdentity; roomId: string; authKey: string; textKey: CryptoKey; name: string; picture: string | null; hold?: () => boolean }) {
   /**
    * The latest of everything this friend declares (core/declarations.ts): the auth of every socket carries her name,
    * picture and opt-in, the welcome is followed by what changed meanwhile, her join by what she declared in the call.
@@ -67,7 +71,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   /** Texts from others that arrived live while this room was not the one on screen. */
   const [unread, setUnread] = createSignal(0);
   const listeners = new Set<(m: ServerMessage) => void>();
-  const textListeners = new Set<(m: Extract<ServerMessage, { t: 'text' }>) => void>();
+  const textListeners = new Set<(m: Text) => void>();
   let nextId = 1;
   /**
    * Own texts not back from the Room yet, oldest first. The network can drop a socket under a text (1006, the Room none the
@@ -129,6 +133,20 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   let unavailableTimer: ReturnType<typeof setTimeout> | undefined;
 
   /**
+   * Texts go out sealed (ADR 0005), in the order written: sealing takes a moment, and the Room answers texts in the order
+   * they came. One sealed while there is no socket let in is not sent, and waits for the next welcome like any other.
+   */
+  let sealing: Promise<void> = Promise.resolve();
+  const sendText = (u: { id: string; text: string }): void => {
+    sealing = sealing.then(async () => {
+      const sealed = await sealText({ key: opts.textKey, privateKey: opts.identity.keys.privateKey, roomId: opts.roomId, id: u.id, from: opts.identity.publicKey, text: u.text });
+      send({ t: 'sealed', sealed, id: u.id });
+    }).catch((e: unknown) => console.error('sealing a text failed', e));
+  };
+  /** Friends' texts are opened in the order the Room sent them, so they show in that order too. */
+  let opening: Promise<void> = Promise.resolve();
+
+  /**
    * Write a frame if the socket is open and let in; returns whether it went out, so a caller can re-assert what was dropped.
    * Before the welcome the server takes any frame but the auth for a stranger's, and its error for a wrong invite link.
    */
@@ -146,6 +164,31 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   function declareLatest(d: Declaration): boolean {
     declare(latest, d);
     return (!inCallOnly(d) || inCall()) && send(d);
+  }
+
+  /**
+   * A sealed text from the Room: shown and kept if it opens with the room's key and was signed by the friend the Room says
+   * sent it. One that does not is dropped with a warning: only a server that tampers, or a client that cheats, sends one.
+   */
+  async function received(m: Extract<ServerMessage, { t: 'sealed' }>): Promise<void> {
+    const opened = await openText({ key: opts.textKey, roomId: opts.roomId, id: m.id, from: m.from.publicKey, sealed: m.sealed });
+    if (!opened.ok) {
+      console.warn(`text rejected: ${opened.reason}`);
+      posthog.capture('text_rejected', { reason: opened.reason });
+      return;
+    }
+    if (m.from.publicKey === opts.identity.publicKey) {
+      const i = unconfirmed.findIndex((u) => u.id === m.id);
+      if (i >= 0) { unconfirmed.splice(i, 1); unconfirmedChanged(); }
+    }
+    if (seen(m.from.publicKey, m.id)) return;
+    const text: Text = { from: m.from, text: opened.text, at: m.at, id: m.id };
+    push({ kind: 'text', id: textKey(text), from: text.from, text: text.text, at: text.at });
+    void appendHistory(opts.roomId, text);
+    if (m.from.publicKey !== opts.identity.publicKey) {
+      setUnread((n) => n + 1);
+      for (const l of textListeners) l(text);
+    }
   }
 
   function open() {
@@ -207,7 +250,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           // Texts the last socket took and never brought back, or written while there was none, in their order; the Room
           // answers them in that order too. One that waited a day is not sent: it would come out of the blue.
           dropTooOld();
-          for (const u of unconfirmed) send({ t: 'text', text: u.text, id: u.id });
+          for (const u of unconfirmed) sendText(u);
           setStatus({ kind: 'connected' });
           if (everConnected) {
             // No line in the chat about it: the status pill already shows the outage live, and dated lines that stayed
@@ -223,22 +266,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           forgetEnded(latest, m.people);
           setPeople(m.people);
           return;
-        case 'text': {
-          if (m.id !== undefined) {
-            if (m.from.publicKey === opts.identity.publicKey) {
-              const i = unconfirmed.findIndex((u) => u.id === m.id);
-              if (i >= 0) { unconfirmed.splice(i, 1); unconfirmedChanged(); }
-            }
-            if (seen(m.from.publicKey, m.id)) return;
-          } else if (m.from.publicKey === opts.identity.publicKey) { unconfirmed.shift(); unconfirmedChanged(); } // a Room from before ids: in order
-          push({ kind: 'text', id: textKey(m), from: m.from, text: m.text, at: m.at });
-          void appendHistory(opts.roomId, { from: m.from, text: m.text, at: m.at, ...(m.id !== undefined ? { id: m.id } : {}) });
-          if (m.from.publicKey !== opts.identity.publicKey) {
-            setUnread((n) => n + 1);
-            for (const l of textListeners) l(m);
-          }
+        case 'sealed':
+          opening = opening.then(() => received(m)).catch((e: unknown) => console.error('opening a text failed', e));
           return;
-        }
         case 'error':
           if (you()) {
             // After the welcome an error means a frame of ours was dropped. Chat-related ones are said in the chat;
@@ -246,10 +276,15 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             // chat: an oversized signal once showed as "Not sent" (ticket 30).
             posthog.capture('frame_dropped', { ref: m.ref ?? 'unknown', reason: m.reason });
             if (!m.ref || m.ref === 'signal' || m.ref === 'ice') console.warn('dropped', m.ref ?? 'unknown', m.reason);
-            else push({ kind: 'system', text: `${m.ref === 'text' ? 'Not sent' : 'Dropped'}: ${m.reason}.`, at: Date.now() });
-            // The Room answers texts in the order they came: a refusal is for the oldest one still waiting. The chat said
-            // it was not sent, so it is not sent again.
-            if (m.ref === 'text') { unconfirmed.shift(); unconfirmedChanged(); }
+            else if (m.ref === 'sealed' || m.ref === 'text') {
+              // The Room answers texts in the order they came: a refusal is for the oldest one still waiting, once the texts
+              // the Room brought back before it are opened. The chat said it was not sent, so it is not sent again.
+              const at = Date.now();
+              opening = opening.then(() => {
+                push({ kind: 'system', text: `Not sent: ${m.reason}.`, at });
+                unconfirmed.shift(); unconfirmedChanged();
+              });
+            } else push({ kind: 'system', text: `Dropped: ${m.reason}.`, at: Date.now() });
           } else if (status().kind !== 'refused') {
             // A wrong answer during the handshake: our stored secret is wrong. Retrying cannot help.
             setStatus({ kind: 'refused', reason: m.reason });
@@ -385,10 +420,12 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
      * a socket lost meanwhile sends it again on the next one.
      */
     sendText: (text: string) => {
+      // The Room cannot read a sealed text to refuse it, and friends would drop it unseen (core/sealed.ts): said here instead.
+      if (text.length > MAX_TEXT_LENGTH) { push({ kind: 'system', text: `Not sent: message longer than ${MAX_TEXT_LENGTH} characters.`, at: Date.now() }); return; }
       const id = Array.from(crypto.getRandomValues(new Uint8Array(12)), (x) => x.toString(16).padStart(2, '0')).join(''); // not randomUUID: http on a LAN too
       unconfirmed.push({ id, text, at: Date.now() });
       unconfirmedChanged();
-      send({ t: 'text', text, id });
+      sendText({ id, text });
       posthog.capture('message_sent');
     },
     /** Empties the local history; the server never had it. */
@@ -408,7 +445,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       stopped = false; attempt = 0; downSince = null; setStatus({ kind: 'connecting' }); open();
     },
     /** Fires for texts from other people (for the message cue). */
-    onText: (l: (m: Extract<ServerMessage, { t: 'text' }>) => void) => { textListeners.add(l); return () => textListeners.delete(l); },
+    onText: (l: (m: Text) => void) => { textListeners.add(l); return () => textListeners.delete(l); },
     /** Messages the room store does not handle itself (call, left, signal, ice) go to subscribers. */
     subscribe: (l: (m: ServerMessage) => void) => { listeners.add(l); return () => listeners.delete(l); },
   };

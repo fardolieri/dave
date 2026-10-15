@@ -175,7 +175,7 @@ test('regression: a text written while the server is unreachable waits, shown as
   await alice.composer.press('Enter');
   await expect(alice.composer).toHaveValue('');
   await expect.poll(() => alice.pendingTexts()).toEqual(['written while away']);
-  expect(alice.wire.frames('up', 'text')).toEqual([]);
+  expect(alice.wire.frames('up', 'sealed')).toEqual([]);
   alice.wire.restore();
   await alice.connected();
   await expect.poll(() => bob.chatTexts()).toEqual(['written while away']);
@@ -191,15 +191,15 @@ test('regression: a text not yet back from the Room survives a reload, shows onc
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   // The socket is dying: Alice's text leaves her browser and never reaches the Room, and she reloads.
-  alice.wire.up = (frame) => (frame.includes('"t":"text"') ? null : frame);
+  alice.wire.up = (frame) => (frame.includes('"t":"sealed"') ? null : frame);
   await alice.composer.fill('kept over the reload');
   await alice.composer.press('Enter');
-  await expect.poll(() => alice.wire.frames('up', 'text').length).toBe(1);
-  const id = alice.wire.frames<{ id?: string }>('up', 'text')[0]?.id;
+  await expect.poll(() => alice.wire.frames('up', 'sealed').length).toBe(1);
+  const id = alice.wire.frames<{ id?: string }>('up', 'sealed')[0]?.id;
   expect(id).toBeTruthy();
   await alice.page.reload();
   await alice.connected();
-  await expect.poll(() => alice.wire.frames<{ id?: string }>('up', 'text').map((m) => m.id), 'sent again after the welcome, with its id').toEqual([id, id]);
+  await expect.poll(() => alice.wire.frames<{ id?: string }>('up', 'sealed').map((m) => m.id), 'sent again after the welcome, with its id').toEqual([id, id]);
   await expect.poll(() => alice.pendingTexts()).toEqual(['kept over the reload']);
   expect(await alice.chatTexts()).toEqual([]);
   // The next socket gets it through.
@@ -215,7 +215,7 @@ test('regression: a text not yet back from the Room survives a reload, shows onc
   await alice.connected();
   await alice.say('after');
   await expect.poll(() => bob.chatTexts()).toEqual(['kept over the reload', 'after']);
-  expect(alice.wire.frames<{ id?: string }>('up', 'text').filter((m) => m.id === id)).toHaveLength(3);
+  expect(alice.wire.frames<{ id?: string }>('up', 'sealed').filter((m) => m.id === id)).toHaveLength(3);
   expect(await alice.pendingTexts()).toEqual([]);
 });
 
@@ -226,7 +226,7 @@ test('regression: a text sent again after my reload shows once for a friend who 
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   // The Room brings the text to Bob; the copy back to Alice is lost.
-  alice.wire.down = (frame) => (frame.includes('"t":"text"') ? null : frame);
+  alice.wire.down = (frame) => (frame.includes('"t":"sealed"') ? null : frame);
   await alice.composer.fill('on my way');
   await alice.composer.press('Enter');
   await expect.poll(() => bob.chatTexts()).toEqual(['on my way']);
@@ -249,10 +249,10 @@ test('regression: a text lost with its socket is sent again on the next one', as
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   // The socket is dying: Alice's text leaves her browser and never reaches the Room.
-  alice.wire.up = (frame) => (frame.includes('"t":"text"') ? null : frame);
+  alice.wire.up = (frame) => (frame.includes('"t":"sealed"') ? null : frame);
   await alice.composer.fill('lost on the way');
   await alice.composer.press('Enter');
-  await expect.poll(() => alice.wire.frames('up', 'text').length).toBe(1);
+  await expect.poll(() => alice.wire.frames('up', 'sealed').length).toBe(1);
   alice.wire.up = null;
   await alice.wire.cut();
   alice.wire.restore();
@@ -265,7 +265,7 @@ test('regression: a text that reached the Room before its socket was lost shows 
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   // The Room relays Alice's text, and the socket dies before it comes back to her.
-  alice.wire.down = (frame) => (frame.includes('"t":"text"') ? null : frame);
+  alice.wire.down = (frame) => (frame.includes('"t":"sealed"') ? null : frame);
   await alice.composer.fill('half way');
   await alice.composer.press('Enter');
   await expect.poll(() => bob.chatTexts()).toEqual(['half way']);

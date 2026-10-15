@@ -16,15 +16,23 @@ export function newRoomSecret(): string {
   return toBase64Url(crypto.getRandomValues(new Uint8Array(SECRET_BYTES)));
 }
 
-async function derive(label: string, secret: string): Promise<string> {
+async function deriveBytes(label: string, secret: string): Promise<Uint8Array> {
   const bytes = new TextEncoder().encode(`dave/${label}\n${secret}`);
-  return toBase64Url(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)));
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
 }
+const derive = async (label: string, secret: string): Promise<string> => toBase64Url(await deriveBytes(label, secret));
 
 /** The room's public name on the wire (the socket path). Knowing it gets nobody in. */
 export const roomIdOf = (secret: string): Promise<string> => derive('room-id', secret);
 /** What the client proves it holds and what the server keeps from the first visit on. Never the secret itself. */
 export const authKeyOf = (secret: string): Promise<string> => derive('auth-key', secret);
+/**
+ * The AES-GCM key texts are sealed with (ADR 0005, core/sealed.ts). Only friends holding the secret have it; the server
+ * never does. Not extractable: nothing in the page can read it back out.
+ */
+export async function textKeyOf(secret: string): Promise<CryptoKey> {
+  return crypto.subtle.importKey('raw', (await deriveBytes('text-key', secret)) as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
 export const isRoomId = (text: string): boolean => ROOM_ID_RE.test(text);
 
 /** Room names follow the same rule as display names: 1 to 32 characters, whitespace collapsed. */

@@ -55,9 +55,9 @@ const roomOf = async (secret: string) => env.ROOM.get(env.ROOM.idFromName(await 
  */
 let roundTrips = 0;
 const settled = async (c: Client) => {
-  const text = `round trip ${++roundTrips}`;
-  send(c, { t: 'text', text });
-  await c.next((m) => m.t === 'text' && m.text === text);
+  const id = `round-trip-${++roundTrips}`;
+  send(c, { t: 'sealed', sealed: 'c2VhbGVk', id });
+  await c.next((m) => m.t === 'sealed' && m.id === id);
 };
 
 /** Every TURN user the mock handed out, in order: plain data, which the Room's code and the test's may share. */

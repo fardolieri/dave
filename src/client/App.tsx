@@ -257,7 +257,7 @@ function Workspace(props: WorkspaceProps) {
   const links = mapArray(() => props.rooms.map((r) => r.secret), (secret): Link => {
     let last = untrack(() => props.rooms.find((r) => r.secret === secret)!);
     // A deliberate one-time snapshot of name and picture: the socket is created once; changes go through `rename` and `setPicture`.
-    const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, name: untrack(() => props.name), picture: getPicture(), hold: holding });
+    const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, textKey: last.textKey, name: untrack(() => props.name), picture: getPicture(), hold: holding });
     const call = createCall(room, identity, { mayRejoin: untrack(() => props.mayRejoin) });
     posthog.capture('room_entered');
     // The latest saved entry; the last one seen while the room is being forgotten and its link disposed.

@@ -33,7 +33,7 @@ test('a frame on its way to the server as it goes away is lost with the socket, 
   for (let i = 0; i < 5; i++) {
     let cutting: Promise<void> | null = null;
     alice.wire.up = (frame) => {
-      if (!cutting && frame.includes('"t":"text"')) cutting = alice.wire.cut();
+      if (!cutting && frame.includes('"t":"sealed"')) cutting = alice.wire.cut();
       return frame;
     };
     await alice.composer.fill(`on its way ${i}`);

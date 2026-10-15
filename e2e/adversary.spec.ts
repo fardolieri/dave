@@ -58,3 +58,57 @@ test('the shared secret never crosses the wire', async ({ crowd }) => {
     expect(f.wire.log.filter((l) => l.frame.includes(crowd.room.secret))).toEqual([]);
   }
 });
+
+// ADR 0005: texts travel sealed with a key the server never has, and signed by their writer inside.
+
+test('ADR 0005: the server never sees a text in plain, on its way in or out', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.say('meet at the old oak');
+  await expect.poll(() => bob.chatTexts()).toEqual(['meet at the old oak']);
+  for (const f of [alice, bob]) expect(f.wire.log.filter((l) => l.frame.includes('old oak'))).toEqual([]);
+  expect(alice.wire.frames('up', 'sealed')).toHaveLength(1);
+});
+
+test('ADR 0005: a text the server passes off as from another friend, or tampers with, is not shown', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  const carol = await crowd.open('Carol');
+  const carolIs = carol.wire.frames<{ you: { publicKey: string; fingerprint: string; name: string } }>('down', 'welcome')[0]!.you;
+  bob.expectWarning(/text rejected: (bad signature|unreadable)/);
+  let tamper: (m: { from: { publicKey: string; fingerprint: string; name: string }; sealed: string }) => void = (m) => {
+    m.from = { publicKey: carolIs.publicKey, fingerprint: carolIs.fingerprint, name: carolIs.name };
+  };
+  bob.wire.down = (frame) => {
+    if (!frame.includes('"t":"sealed"')) return frame;
+    const m = JSON.parse(frame) as Parameters<typeof tamper>[0];
+    tamper(m);
+    return JSON.stringify(m);
+  };
+  await alice.say('from Alice, says the server: Carol');
+  await expect.poll(() => bob.problems.some((p) => p.includes('text rejected: bad signature'))).toBe(true);
+  tamper = (m) => { m.sealed = (m.sealed[0] === 'A' ? 'B' : 'A') + m.sealed.slice(1); };
+  await alice.say('from Alice, changed on the way');
+  await expect.poll(() => bob.problems.some((p) => p.includes('text rejected: unreadable'))).toBe(true);
+  bob.wire.down = null;
+  await alice.say('untouched');
+  await expect.poll(() => bob.chatTexts()).toEqual(['untouched']);
+  expect(await carol.chatTexts()).toEqual(['from Alice, says the server: Carol', 'from Alice, changed on the way', 'untouched']);
+});
+
+test('ADR 0005: a plain text, as an app from before sends one, is refused as out of date and reaches nobody', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  alice.wire.up = (frame) => {
+    if (!frame.includes('"t":"sealed"')) return frame;
+    const { id } = JSON.parse(frame) as { id: string };
+    return JSON.stringify({ t: 'text', text: 'in plain', id });
+  };
+  await alice.composer.fill('in plain');
+  await alice.composer.press('Enter');
+  await expect(alice.page.locator('.chat-log .msg-sys').last()).toContainText('Not sent: this app is out of date, reload the page to send.');
+  expect(await alice.pendingTexts()).toEqual([]);
+  alice.wire.up = null;
+  await alice.say('sealed');
+  await expect.poll(() => bob.chatTexts()).toEqual(['sealed']);
+});

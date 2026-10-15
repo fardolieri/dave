@@ -3,7 +3,7 @@ import { runInDurableObject } from 'cloudflare:test';
 import { Room } from '../src/worker/room';
 import { describe, expect, it, vi } from 'vitest';
 import { generateIdentityKeyPair } from '../src/core/identity';
-import { CLOSE_SUPERSEDED, MAX_TEXT_LENGTH, PING_FRAME, PONG_FRAME, type Person, type ServerMessage } from '../src/core/protocol';
+import { CLOSE_SUPERSEDED, MAX_SEALED_LENGTH, OUT_OF_DATE, PING_FRAME, PONG_FRAME, type Person, type ServerMessage } from '../src/core/protocol';
 import { BURST } from '../src/core/ratelimit';
 import { roomIdOf } from '../src/core/rooms';
 import { authFrame, openRoomSocket, type Challenge } from './harness';
@@ -36,6 +36,9 @@ async function attach(name: string, picture?: string, keys?: Keys, secret = SECR
   const welcome = (await next((m) => m.t === 'welcome')) as { you: Person };
   return { ws, you: welcome.you, keys, inbox, next };
 }
+
+/** A sealed text as the Room sees one: base64url it cannot read (core/sealed.ts). */
+const sealed = (id: string, sealed = 'c2VhbGVk') => JSON.stringify({ t: 'sealed', sealed, id });
 
 const names = (m: ServerMessage) => (m as { people: Person[] }).people.map((p) => p.name).sort();
 
@@ -81,8 +84,8 @@ describe('presence', () => {
     b.ws.send(JSON.stringify({ t: 'name', name: '  Robert  ' }));
     const seen = await a.next((m) => m.t === 'presence' && names(m).includes('Robert'));
     expect(names(seen)).toEqual(['Alice', 'Robert']);
-    b.ws.send(JSON.stringify({ t: 'text', text: 'hi' }));
-    expect(((await a.next((m) => m.t === 'text')) as unknown as { from: Person }).from.name).toBe('Robert');
+    b.ws.send(sealed('hi'));
+    expect(((await a.next((m) => m.t === 'sealed')) as unknown as { from: Person }).from.name).toBe('Robert');
     b.ws.send(JSON.stringify({ t: 'name', name: '   ' }));
     expect(await b.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'invalid name', ref: 'name' });
     a.ws.close(1000, 'bye');
@@ -98,8 +101,8 @@ describe('presence', () => {
     b.ws.send(JSON.stringify({ t: 'picture', picture: '🦖' }));
     const seen = await a.next((m) => m.t === 'presence' && pictureOf(m, 'Bob') === '🦖');
     expect(pictureOf(seen, 'Alice')).toBe('🐱');
-    b.ws.send(JSON.stringify({ t: 'text', text: 'rawr' }));
-    expect(((await a.next((m) => m.t === 'text')) as unknown as { from: Person }).from.picture).toBe('🦖');
+    b.ws.send(sealed('rawr'));
+    expect(((await a.next((m) => m.t === 'sealed')) as unknown as { from: Person }).from.picture).toBe('🦖');
     b.ws.send(JSON.stringify({ t: 'picture', picture: null }));
     // Bob present and without the key, not merely absent (earlier snapshots from before he attached are still queued).
     const bobs = (m: ServerMessage) => (m.t === 'presence' ? m.people.filter((p) => p.name === 'Bob') : []);
@@ -116,11 +119,11 @@ describe('presence', () => {
     const b = await attach('Bob', undefined, undefined, 'another-room');
     expect(names(await a.next((m) => m.t === 'presence'))).toEqual(['Alice']);
     expect(names(await b.next((m) => m.t === 'presence'))).toEqual(['Bob']);
-    b.ws.send(JSON.stringify({ t: 'text', text: 'only for my room' }));
-    await b.next((m) => m.t === 'text');
+    b.ws.send(sealed('only-for-my-room'));
+    await b.next((m) => m.t === 'sealed');
     const c = await attach('Carol');
     expect(names(await a.next((m) => m.t === 'presence'))).toEqual(['Alice', 'Carol']);
-    expect(a.inbox.filter((m) => m.t === 'text')).toEqual([]);
+    expect(a.inbox.filter((m) => m.t === 'sealed')).toEqual([]);
     a.ws.close(1000, 'bye'); b.ws.close(1000, 'bye'); c.ws.close(1000, 'bye');
   });
 
@@ -164,13 +167,13 @@ describe('presence', () => {
 });
 
 describe('text', () => {
-  it('relays text to everyone, tagged by the server with the sender identity', async () => {
+  it('relays a sealed text untouched to everyone, with its id, tagged by the server with the sender identity', async () => {
     const a = await attach('Alice');
     const b = await attach('Bob');
-    b.ws.send(JSON.stringify({ t: 'text', text: '  hello all  ' }));
-    const seenByA = (await a.next((m) => m.t === 'text')) as unknown as { from: Person; text: string; at: number };
-    const seenByB = (await b.next((m) => m.t === 'text')) as unknown as { from: Person; text: string };
-    expect(seenByA.text).toBe('hello all');
+    b.ws.send(sealed('c0ffee', 'b3BhcXVl'));
+    const seenByA = (await a.next((m) => m.t === 'sealed')) as unknown as { from: Person; sealed: string; id: string; at: number };
+    const seenByB = (await b.next((m) => m.t === 'sealed')) as unknown as { from: Person };
+    expect(seenByA).toMatchObject({ sealed: 'b3BhcXVl', id: 'c0ffee' });
     expect(seenByA.from).toEqual({ publicKey: b.you.publicKey, fingerprint: b.you.fingerprint, name: 'Bob' });
     expect(typeof seenByA.at).toBe('number');
     expect(seenByB.from.name).toBe('Bob');
@@ -178,23 +181,24 @@ describe('text', () => {
     b.ws.close(1000, 'bye');
   });
 
-  it("passes the writer's id of a text on, and adds none to a text without one (ticket 51)", async () => {
+  it('refuses a plain text as from an app out of date, and relays it to nobody (ADR 0005)', async () => {
     const a = await attach('Alice');
     const b = await attach('Bob');
-    b.ws.send(JSON.stringify({ t: 'text', text: 'with id', id: 'c0ffee' }));
-    expect(await a.next((m) => m.t === 'text')).toMatchObject({ text: 'with id', id: 'c0ffee' });
-    b.ws.send(JSON.stringify({ t: 'text', text: 'without' }));
-    expect(await a.next((m) => m.t === 'text' && m.text === 'without')).not.toHaveProperty('id');
+    b.ws.send(JSON.stringify({ t: 'text', text: 'hello', id: 'c0ffee' }));
+    expect(await b.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: OUT_OF_DATE, ref: 'text' });
+    b.ws.send(sealed('after'));
+    await a.next((m) => m.t === 'sealed');
+    expect(a.inbox.some((m) => (m.t as string) === 'text')).toBe(false);
     a.ws.close(1000, 'bye');
     b.ws.close(1000, 'bye');
   });
 
-  it('rejects empty and over-long text', async () => {
+  it('refuses a sealed text without an id, and one longer than any text a client seals', async () => {
     const a = await attach('Alice');
-    a.ws.send(JSON.stringify({ t: 'text', text: '   ' }));
-    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'empty message', ref: 'text' });
-    a.ws.send(JSON.stringify({ t: 'text', text: 'x'.repeat(MAX_TEXT_LENGTH + 1) }));
-    expect((await a.next((m) => m.t === 'error')) as { reason: string }).toMatchObject({ reason: expect.stringContaining('longer than') });
+    a.ws.send(JSON.stringify({ t: 'sealed', sealed: 'c2VhbGVk' }));
+    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'unrecognised message', ref: 'sealed' });
+    a.ws.send(sealed('long', 'x'.repeat(MAX_SEALED_LENGTH + 1)));
+    expect((await a.next((m) => m.t === 'error')) as { reason: string }).toMatchObject({ reason: expect.stringContaining('longer than'), ref: 'sealed' });
     a.ws.close(1000, 'bye');
   });
 
@@ -204,13 +208,13 @@ describe('text', () => {
     vi.useFakeTimers({ toFake: ['Date'] }); // frozen clock: no refill while the burst is processed, even on a slow runner
     let err: ServerMessage;
     try {
-      for (let i = 0; i < BURST + extra; i++) a.ws.send(JSON.stringify({ t: 'text', text: `m${i}` }));
+      for (let i = 0; i < BURST + extra; i++) a.ws.send(sealed(`m${i}`));
       err = await a.next((m) => m.t === 'error');
     } finally {
       vi.useRealTimers();
     }
-    expect(err).toEqual({ t: 'error', reason: 'rate limited', ref: 'text' });
-    const relayed = () => a.inbox.filter((m) => m.t === 'text').length;
+    expect(err).toEqual({ t: 'error', reason: 'rate limited', ref: 'sealed' });
+    const relayed = () => a.inbox.filter((m) => m.t === 'sealed').length;
     const errors = () => a.inbox.filter((m) => m.t === 'error').length + 1;
     // Every frame gets an answer, but the last ones may still be on their way on a busy machine: wait for them, not a fixed pause.
     await vi.waitFor(() => expect(relayed() + errors()).toBe(BURST + extra), { timeout: 2000 }); // nothing vanished silently
@@ -218,12 +222,6 @@ describe('text', () => {
     a.ws.close(1000, 'bye');
   });
 
-  it('names the reason for an over-long message', async () => {
-    const a = await attach('Alice');
-    a.ws.send(JSON.stringify({ t: 'text', text: 'x'.repeat(MAX_TEXT_LENGTH + 1) }));
-    expect((await a.next((m) => m.t === 'error')) as { reason: string }).toMatchObject({ reason: `message longer than ${MAX_TEXT_LENGTH} characters` });
-    a.ws.close(1000, 'bye');
-  });
 });
 
 describe('ping', () => {
