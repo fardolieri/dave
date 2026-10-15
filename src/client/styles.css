@@ -99,7 +99,7 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .msg-pending { animation: msg-pending 0s 1s forwards; }
 @keyframes msg-pending { to { opacity: 0.5; } }
 .chat-input { grid-column: 2; grid-row: 3; display: flex; gap: 6px; padding: 8px 14px 14px; }
-.chat-input > input { flex: 1; } /* the child selector keeps the rule off the picker's search field inside the form */
+.chat-input > input { flex: 1; min-width: 0; } /* the child selector keeps the rule off the picker's search field inside the form; min-width lets it shrink on a narrow phone instead of pushing the page wider */
 
 /* call */
 .plist li { flex-wrap: nowrap; }
