@@ -99,6 +99,7 @@ export const LOCAL = {
     map: true,
     fixtures: { '2026-10-14, unsent texts': '{"roomA":[{"id":"0a1b2c3d4e5f60718293a4b5","text":"hi","at":1760450000000}]}' },
   },
+  theme: { about: 'The look picked at the bottom of the sidebar, a file name in client/themes/; none is the default look (client/theme.ts).', parse: text, fixtures: { '2026-10-15': 'fd-walkie' } },
   viewerSettings: { about: 'Low latency for shares I watch (core/settings.ts, client/call.ts).', parse: parseViewerSettings, fixtures: { '2026-09-06, low latency': '{"jitterBufferTargetMs":100}' } },
 } satisfies Record<string, StoredKey<string | null>>;
 export type LocalKey = keyof typeof LOCAL;
