@@ -1,0 +1,59 @@
+/* Campfire Circle: generated with theme-factory (custom theme) (anthropics/skills, skills/theme-factory).
+   Friends around a fire at night: charcoal dark, ember-orange light, smoke-grey quiet text, old-style serif for names.
+   Palette: Charcoal Night #1c1714, Ember #ff8a3d, Smoke #b3a594, Firelight #f3e6d3. Fonts: Palatino/Iowan old-style serif headers, system sans body.
+   Every rule is scoped to this theme; the app's own look and the other themes are untouched. */
+:root[data-theme="tf-campfire"] {
+  --bg: #1c1714; --panel: #241d19; --panel2: #322823; --fg: #f3e6d3; --dim: #b3a594; --line: #4a3c33;
+  --ok: #9bd56f; --warn: #f5d04a; --bad: #ff6b7f; --acc: #ff8a3d; --tf-link: #ffa463;
+  --tf-on-acc: #1c1714; --tf-on-ok: #142007; --tf-on-bad: #26070c;
+  --tf-warn-bg: #43381a; --tf-warn-fg: #f5d04a; --tf-bad-bg: #4a1e24; --tf-bad-fg: #ff8292;
+  --tf-new-bg: #f5d04a; --tf-on-new: #1c1714;
+  --tf-shadow: 0 4px 16px rgba(0,0,0,.5); --tf-shadow-lg: 0 12px 34px rgba(0,0,0,.55);
+  --tf-head: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  font-family: system-ui, sans-serif; color-scheme: dark;
+}
+
+/* type: the theme's header face on headings, room names and the names on the profile card */
+:root[data-theme="tf-campfire"] :is(h1, h2, h3, .room-title, .profile-name strong, .consent .hello) { font-family: var(--tf-head); font-weight: 700; }
+:where(:root[data-theme="tf-campfire"]) :is(button, select, textarea) { font-family: inherit; }
+:root[data-theme="tf-campfire"] a { color: var(--tf-link); }
+:root[data-theme="tf-campfire"] .msg-from { color: #ffb27a; }
+:root[data-theme="tf-campfire"] :is(button.room-name, button.avatar):focus-visible { outline-color: var(--tf-link); }
+
+/* shape: corners of the plain controls and boxes (:where keeps button.join, .link, .avatar and the rest their own look) */
+:where(:root[data-theme="tf-campfire"]) :is(button, input, select.picker, textarea) { border-radius: 14px; }
+:root[data-theme="tf-campfire"] :is(.panel, .share, .warn, dialog.report, dialog.about, .profile[popover], .emoji-picker[popover]) { border-radius: 14px; }
+:root[data-theme="tf-campfire"] .share.share-fs { border-radius: 0; }
+
+/* the colours styles.css writes for its dark page, each taken from this palette */
+:root[data-theme="tf-campfire"] .update { color: var(--tf-on-acc); }
+:root[data-theme="tf-campfire"] .update button, :root[data-theme="tf-campfire"] .update button:hover { background: var(--tf-on-acc); color: var(--acc); }
+:root[data-theme="tf-campfire"] .unread, :root[data-theme="tf-campfire"] button.on:not(.link), :root[data-theme="tf-campfire"] select.picker option:checked { color: var(--tf-on-acc); }
+:root[data-theme="tf-campfire"] button.join { color: var(--tf-on-ok); }
+:root[data-theme="tf-campfire"] button.leave { color: var(--tf-on-bad); }
+:root[data-theme="tf-campfire"] button.unblock { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+:root[data-theme="tf-campfire"] .new { background: var(--tf-new-bg); color: var(--tf-on-new); }
+:root[data-theme="tf-campfire"] .warn, :root[data-theme="tf-campfire"] .banner-warn { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+:root[data-theme="tf-campfire"] .banner-bad { background: var(--tf-bad-bg); color: var(--tf-bad-fg); }
+:root[data-theme="tf-campfire"] .banner { box-shadow: var(--tf-shadow); }
+:root[data-theme="tf-campfire"] .chat-new { background: color-mix(in srgb, var(--panel2) 92%, transparent); }
+:root[data-theme="tf-campfire"] .avatar { background: #3d312a; color: #ffc9a0; }
+:root[data-theme="tf-campfire"] .share-head { background: rgba(0,0,0,.28); }
+:root[data-theme="tf-campfire"] .share-bar { background: rgba(0,0,0,.38); }
+:root[data-theme="tf-campfire"] :is(.profile[popover], .emoji-picker[popover]) { box-shadow: var(--tf-shadow-lg); }
+:root[data-theme="tf-campfire"] :is(dialog.report, dialog.about)::backdrop { background: rgba(10,6,4,.65); }
+:root[data-theme="tf-campfire"] .consent { --bubble: #3d312a; --bubble-fg: #f3e6d3; --bubble-dim: #cdbfae; --bubble-link: #ffb27a; }
+:root[data-theme="tf-campfire"] .consent .bubble { box-shadow: var(--tf-shadow-lg); }
+
+/* fullscreen share: always the black stage, so header and bar take light text whatever the page is */
+:root[data-theme="tf-campfire"] .share.share-fs { --fg: #f2f2f2; --dim: #c8c8c8; --panel2: #2b2b2b; --line: #4a4a4a; --ok: #3ddc84; --warn: #f5b642; --bad: #ff6b6b;
+  border: 0; background: #000; color: var(--fg); box-shadow: none; }
+:root[data-theme="tf-campfire"] .share.share-fs :is(.share-head, .share-bar) { background: rgba(0,0,0,.55); }
+
+/* the fire is below the chat: a warm glow rising from the composer */
+:root[data-theme="tf-campfire"] body { background: radial-gradient(ellipse 80% 50% at 60% 115%, rgba(255,138,61,.16), transparent 70%), var(--bg); }
+:root[data-theme="tf-campfire"] :is(.msg-from, .profile-name strong) { font-family: var(--tf-head); font-size: 1.07em; }
+:root[data-theme="tf-campfire"] .room.selected .room-title { color: var(--tf-link); }
+:root[data-theme="tf-campfire"] .avatar.speaking { box-shadow: 0 0 0 2px var(--ok), 0 0 14px rgba(255,138,61,.45); }
+:root[data-theme="tf-campfire"] .share-live { border-color: var(--acc); box-shadow: 0 0 20px rgba(255,138,61,.25); }
+:root[data-theme="tf-campfire"] .chat-input > input { border-radius: 999px; padding-left: 14px; }

@@ -1,0 +1,58 @@
+/* Botanical Garden: theme-factory preset (anthropics/skills, skills/theme-factory).
+   Fresh and organic on cream paper: fern green for what is on, marigold for news, terracotta names, serif headings.
+   Palette: Fern Green #4a7c59, Marigold #f9a620, Terracotta #b7472a, Cream #f5f3ed. Fonts: DejaVu Serif Bold headers, DejaVu Sans body (Georgia / Verdana where DejaVu is missing).
+   Every rule is scoped to this theme; the app's own look and the other themes are untouched. */
+:root[data-theme="tf-botanical-garden"] {
+  --bg: #f5f3ed; --panel: #e9ece0; --panel2: #fffdf8; --fg: #22301f; --dim: #566152; --line: #cfd3c1;
+  --ok: #2a7036; --warn: #8a5600; --bad: #b03f22; --acc: #4a7c59; --tf-link: #3d6a4b;
+  --tf-on-acc: #ffffff; --tf-on-ok: #ffffff; --tf-on-bad: #ffffff;
+  --tf-warn-bg: #fbe3b0; --tf-warn-fg: #6b4300; --tf-bad-bg: #f6d6cb; --tf-bad-fg: #8f3119;
+  --tf-new-bg: #f9a620; --tf-on-new: #2a1c00;
+  --tf-shadow: 0 4px 14px rgba(34,48,31,.16); --tf-shadow-lg: 0 12px 32px rgba(34,48,31,.20);
+  --tf-head: "DejaVu Serif", Georgia, "Noto Serif", serif;
+  font-family: "DejaVu Sans", Verdana, "Bitstream Vera Sans", sans-serif; color-scheme: light;
+}
+
+/* type: the theme's header face on headings, room names and the names on the profile card */
+:root[data-theme="tf-botanical-garden"] :is(h1, h2, h3, .room-title, .profile-name strong, .consent .hello) { font-family: var(--tf-head); font-weight: 700; }
+:where(:root[data-theme="tf-botanical-garden"]) :is(button, select, textarea) { font-family: inherit; }
+:root[data-theme="tf-botanical-garden"] a { color: var(--tf-link); }
+:root[data-theme="tf-botanical-garden"] .msg-from { color: #a23f25; }
+:root[data-theme="tf-botanical-garden"] :is(button.room-name, button.avatar):focus-visible { outline-color: var(--tf-link); }
+
+/* shape: corners of the plain controls and boxes (:where keeps button.join, .link, .avatar and the rest their own look) */
+:where(:root[data-theme="tf-botanical-garden"]) :is(button, input, select.picker, textarea) { border-radius: 10px; }
+:root[data-theme="tf-botanical-garden"] :is(.panel, .share, .warn, dialog.report, dialog.about, .profile[popover], .emoji-picker[popover]) { border-radius: 10px; }
+:root[data-theme="tf-botanical-garden"] .share.share-fs { border-radius: 0; }
+
+/* the colours styles.css writes for its dark page, each taken from this palette */
+:root[data-theme="tf-botanical-garden"] .update { color: var(--tf-on-acc); }
+:root[data-theme="tf-botanical-garden"] .update button, :root[data-theme="tf-botanical-garden"] .update button:hover { background: var(--tf-on-acc); color: var(--acc); }
+:root[data-theme="tf-botanical-garden"] .unread, :root[data-theme="tf-botanical-garden"] button.on:not(.link), :root[data-theme="tf-botanical-garden"] select.picker option:checked { color: var(--tf-on-acc); }
+:root[data-theme="tf-botanical-garden"] button.join { color: var(--tf-on-ok); }
+:root[data-theme="tf-botanical-garden"] button.leave { color: var(--tf-on-bad); }
+:root[data-theme="tf-botanical-garden"] button.unblock { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+:root[data-theme="tf-botanical-garden"] .new { background: var(--tf-new-bg); color: var(--tf-on-new); }
+:root[data-theme="tf-botanical-garden"] .warn, :root[data-theme="tf-botanical-garden"] .banner-warn { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+:root[data-theme="tf-botanical-garden"] .banner-bad { background: var(--tf-bad-bg); color: var(--tf-bad-fg); }
+:root[data-theme="tf-botanical-garden"] .banner { box-shadow: var(--tf-shadow); }
+:root[data-theme="tf-botanical-garden"] .chat-new { background: color-mix(in srgb, var(--panel2) 92%, transparent); }
+:root[data-theme="tf-botanical-garden"] .avatar { background: #d5e3cf; color: #22301f; }
+:root[data-theme="tf-botanical-garden"] .share-head { background: rgba(74,124,89,.10); }
+:root[data-theme="tf-botanical-garden"] .share-bar { background: rgba(74,124,89,.08); }
+:root[data-theme="tf-botanical-garden"] :is(.profile[popover], .emoji-picker[popover]) { box-shadow: var(--tf-shadow-lg); }
+:root[data-theme="tf-botanical-garden"] :is(dialog.report, dialog.about)::backdrop { background: rgba(34,48,31,.35); }
+:root[data-theme="tf-botanical-garden"] .consent { --bubble: #ffffff; --bubble-fg: #22301f; --bubble-dim: #566152; --bubble-link: #3d6a4b; }
+:root[data-theme="tf-botanical-garden"] .consent .bubble { box-shadow: var(--tf-shadow-lg); }
+
+/* fullscreen share: always the black stage, so header and bar take light text whatever the page is */
+:root[data-theme="tf-botanical-garden"] .share.share-fs { --fg: #f2f2f2; --dim: #c8c8c8; --panel2: #2b2b2b; --line: #4a4a4a; --ok: #3ddc84; --warn: #f5b642; --bad: #ff6b6b;
+  border: 0; background: #000; color: var(--fg); box-shadow: none; }
+:root[data-theme="tf-botanical-garden"] .share.share-fs :is(.share-head, .share-bar) { background: rgba(0,0,0,.55); }
+
+/* the selected room is underlined in marigold, like a label stuck in a seed tray */
+:root[data-theme="tf-botanical-garden"] .room.selected .room-title { color: var(--fg); text-decoration: underline 3px #f9a620; text-underline-offset: 4px; }
+:root[data-theme="tf-botanical-garden"] .unread { background: #b7472a; color: #fff; }
+:root[data-theme="tf-botanical-garden"] .chat-input > input { border-radius: 999px; padding-left: 14px; background: #fffdf8; }
+:root[data-theme="tf-botanical-garden"] .share-live { border-color: #f9a620; box-shadow: 0 0 0 1px #f9a620; }
+:root[data-theme="tf-botanical-garden"] .side { box-shadow: inset -1px 0 0 var(--line); }
