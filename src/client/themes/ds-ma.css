@@ -72,7 +72,7 @@
 :where(:root[data-theme="ds-ma"]) .banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
 :where(:root[data-theme="ds-ma"]) .chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
 :where(:root[data-theme="ds-ma"]) .chat-new:hover { color: var(--fg); }
-:where(:root[data-theme="ds-ma"]) button.on { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
+:where(:root[data-theme="ds-ma"]) button.on:where(:not(.link)) { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
 :where(:root[data-theme="ds-ma"]) button.join { background: var(--ok); color: var(--color-text-on-success); }
 :where(:root[data-theme="ds-ma"]) button.leave { background: var(--bad); color: var(--color-text-on-error); }
 :where(:root[data-theme="ds-ma"]) button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
@@ -90,7 +90,8 @@
 /* Fullscreen keeps its black stage in both palettes: the overlays get the dark palette, so status dots and text stay
    legible on black even while the rest of the page is light. */
 :where(:root[data-theme="ds-ma"]) .share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
-  --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc); color: var(--fg); }
+  --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc);
+  --bg: var(--fs-stage); --panel: var(--fs-button); color: var(--fg); }
 /* Phones (styles.css's 700px breakpoint): 16px text in fields so iOS does not zoom on focus, 16px messages, 44px call buttons. */
 @media (max-width: 700px) {
   :where(:root[data-theme="ds-ma"]) .chat-log { font-size: 16px; }
@@ -142,6 +143,8 @@
 :where(:root[data-theme="ds-ma"]) .chat-new { border-radius: var(--border-radius-md); }
 :where(:root[data-theme="ds-ma"]) .consent .bubble { border-radius: 4px; border: 1px solid var(--line); }
 /* the phone keeps the app's own tighter edges and its bottom inset; the space goes into line height instead */
+/* the gear button is narrow; the theme's wider padding would push the cog off centre */
+:where(:root[data-theme="ds-ma"]) .actions .gear { padding-inline: 0; }
 @media (max-width: 700px) {
   :where(:root[data-theme="ds-ma"]) .side { padding: 0 16px 16px; }
   :where(:root[data-theme="ds-ma"]) .chat { padding: 16px 16px 8px; }
@@ -151,6 +154,8 @@
 /* slow fades, opacity and colour only, never position */
 @media (prefers-reduced-motion: no-preference) {
   :where(:root[data-theme="ds-ma"]) button, :where(:root[data-theme="ds-ma"]) input { transition: border-color var(--duration-slow) var(--easing-default), background-color var(--duration-slow) var(--easing-default), color var(--duration-slow) var(--easing-default); }
-  :where(:root[data-theme="ds-ma"]) .msg:not(.msg-pending) { animation: ds-ma-ink .6s var(--easing-default) both; }
+  :where(:root[data-theme="ds-ma"]) .msg { animation: ds-ma-ink .6s var(--easing-default) both; }
+  /* both animations at once, so the fade-in does not restart when the line stops being pending */
+  :where(:root[data-theme="ds-ma"]) .msg-pending { animation: ds-ma-ink .6s var(--easing-default) both, msg-pending 0s 1s forwards; }
 }
 @keyframes ds-ma-ink { from { opacity: 0; } }

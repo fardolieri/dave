@@ -75,7 +75,7 @@
 :where(:root[data-theme="ds-memphis"]) .banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
 :where(:root[data-theme="ds-memphis"]) .chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
 :where(:root[data-theme="ds-memphis"]) .chat-new:hover { color: var(--fg); }
-:where(:root[data-theme="ds-memphis"]) button.on { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
+:where(:root[data-theme="ds-memphis"]) button.on:where(:not(.link)) { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
 :where(:root[data-theme="ds-memphis"]) button.join { background: var(--ok); color: var(--color-text-on-success); }
 :where(:root[data-theme="ds-memphis"]) button.leave { background: var(--bad); color: var(--color-text-on-error); }
 :where(:root[data-theme="ds-memphis"]) button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
@@ -93,7 +93,8 @@
 /* Fullscreen keeps its black stage in both palettes: the overlays get the dark palette, so status dots and text stay
    legible on black even while the rest of the page is light. */
 :where(:root[data-theme="ds-memphis"]) .share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
-  --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc); color: var(--fg); }
+  --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc);
+  --bg: var(--fs-stage); --panel: var(--fs-button); color: var(--fg); }
 /* Phones (styles.css's 700px breakpoint): 16px text in fields so iOS does not zoom on focus, 16px messages, 44px call buttons. */
 @media (max-width: 700px) {
   :where(:root[data-theme="ds-memphis"]) .chat-log { font-size: 16px; }
@@ -114,7 +115,7 @@
 /* buttons: ink outline, hard shadow, press down when clicked */
 :where(:root[data-theme="ds-memphis"]) button { border: 2px solid var(--line); border-radius: var(--border-radius-sm); font-weight: 600; box-shadow: var(--shadow-sm); }
 :where(:root[data-theme="ds-memphis"]) button:where(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open), :where(:root[data-theme="ds-memphis"]) :is(.emoji-tabs, .emoji-grid) button { box-shadow: none; }
-:where(:root[data-theme="ds-memphis"]) button.on, :where(:root[data-theme="ds-memphis"]) button.join, :where(:root[data-theme="ds-memphis"]) button.leave, :where(:root[data-theme="ds-memphis"]) button.unblock { border-color: var(--line); font-weight: 700; }
+:where(:root[data-theme="ds-memphis"]) button.on:where(:not(.link)), :where(:root[data-theme="ds-memphis"]) button.join, :where(:root[data-theme="ds-memphis"]) button.leave, :where(:root[data-theme="ds-memphis"]) button.unblock { border-color: var(--line); font-weight: 700; }
 :where(:root[data-theme="ds-memphis"]) input, :where(:root[data-theme="ds-memphis"]) select.picker, :where(:root[data-theme="ds-memphis"]) dialog.report textarea, :where(:root[data-theme="ds-memphis"]) dialog.report .field select { border: 2px solid var(--line); border-radius: var(--border-radius-sm); }
 :where(:root[data-theme="ds-memphis"]) select.picker::picker(select) { border: 2px solid var(--line); border-radius: var(--border-radius-md); box-shadow: var(--shadow-md); }
 /* faces in candy colours, ink initials; the speaking ring is fat */
@@ -149,6 +150,8 @@
 :where(:root[data-theme="ds-memphis"]) .chat-input > input { border-radius: var(--border-radius-full); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
 :where(:root[data-theme="ds-memphis"]) .chat-input > button:not(.emoji-open) { border-radius: var(--border-radius-full); padding: 8px 18px; background: var(--acc); color: var(--color-text-on-accent); font-family: var(--font-family-display); font-weight: 800; }
 :where(:root[data-theme="ds-memphis"]) .consent .bubble { border: 3px solid var(--line); }
+/* the gear button is narrow; the theme's wider padding would push the cog off centre */
+:where(:root[data-theme="ds-memphis"]) .actions .gear { padding-inline: 0; }
 @media (max-width: 700px) {
   :where(:root[data-theme="ds-memphis"]) .side { border-right: 0; border-bottom: 3px solid var(--line); }
 }
@@ -156,6 +159,6 @@
 @media (prefers-reduced-motion: no-preference) {
   :where(:root[data-theme="ds-memphis"]) button { transition: transform var(--duration-fast) var(--easing-bounce), box-shadow var(--duration-fast) var(--easing-bounce); }
   :where(:root[data-theme="ds-memphis"]) button:where(:not(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open, :disabled)):hover { transform: translate(-1px, -2px); box-shadow: 3px 4px 0 var(--line); }
-  :where(:root[data-theme="ds-memphis"]) button:where(:not(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open, :disabled)):active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--line); }
-  :where(:root[data-theme="ds-memphis"]) :is(.emoji-tabs, .emoji-grid) button:hover { transform: scale(1.18) rotate(-6deg); box-shadow: none; }
+  :where(:root[data-theme="ds-memphis"]) button:where(:not(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open, :disabled)):active { transform: translate(0, 2px); box-shadow: 0 0 0 var(--line); }
+  :where(:root[data-theme="ds-memphis"]) :is(.emoji-tabs, .emoji-grid) button:hover { transform: scale(1.08) rotate(-6deg); box-shadow: none; }
 }

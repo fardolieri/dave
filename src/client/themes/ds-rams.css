@@ -66,7 +66,7 @@
 :where(:root[data-theme="ds-rams"]) .banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
 :where(:root[data-theme="ds-rams"]) .chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
 :where(:root[data-theme="ds-rams"]) .chat-new:hover { color: var(--fg); }
-:where(:root[data-theme="ds-rams"]) button.on { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
+:where(:root[data-theme="ds-rams"]) button.on:where(:not(.link)) { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
 :where(:root[data-theme="ds-rams"]) button.join { background: var(--ok); color: var(--color-text-on-success); }
 :where(:root[data-theme="ds-rams"]) button.leave { background: var(--bad); color: var(--color-text-on-error); }
 :where(:root[data-theme="ds-rams"]) button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
@@ -84,7 +84,8 @@
 /* Fullscreen keeps its black stage in both palettes: the overlays get the dark palette, so status dots and text stay
    legible on black even while the rest of the page is light. */
 :where(:root[data-theme="ds-rams"]) .share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
-  --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc); color: var(--fg); }
+  --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc);
+  --bg: var(--fs-stage); --panel: var(--fs-button); color: var(--fg); }
 /* Phones (styles.css's 700px breakpoint): 16px text in fields so iOS does not zoom on focus, 16px messages, 44px call buttons. */
 @media (max-width: 700px) {
   :where(:root[data-theme="ds-rams"]) .chat-log { font-size: 16px; }
