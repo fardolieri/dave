@@ -64,7 +64,7 @@
 :where(:root[data-theme="ds-brutalist"]) .banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
 :where(:root[data-theme="ds-brutalist"]) .chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
 :where(:root[data-theme="ds-brutalist"]) .chat-new:hover { color: var(--fg); }
-:where(:root[data-theme="ds-brutalist"]) button.on { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
+:where(:root[data-theme="ds-brutalist"]) button.on:where(:not(.link)) { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
 :where(:root[data-theme="ds-brutalist"]) button.join { background: var(--ok); color: var(--color-text-on-success); }
 :where(:root[data-theme="ds-brutalist"]) button.leave { background: var(--bad); color: var(--color-text-on-error); }
 :where(:root[data-theme="ds-brutalist"]) button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
@@ -82,7 +82,8 @@
 /* Fullscreen keeps its black stage in both palettes: the overlays get the dark palette, so status dots and text stay
    legible on black even while the rest of the page is light. */
 :where(:root[data-theme="ds-brutalist"]) .share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
-  --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc); color: var(--fg); }
+  --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc);
+  --bg: var(--fs-stage); --panel: var(--fs-button); color: var(--fg); }
 /* Phones (styles.css's 700px breakpoint): 16px text in fields so iOS does not zoom on focus, 16px messages, 44px call buttons. */
 @media (max-width: 700px) {
   :where(:root[data-theme="ds-brutalist"]) .chat-log { font-size: 16px; }
@@ -97,9 +98,9 @@
 :where(:root[data-theme="ds-brutalist"]) .room.selected .room-head { border-left: 6px solid var(--fg); padding-left: 8px; }
 /* every box shows its edge; nothing is rounded, not even a face */
 :where(:root[data-theme="ds-brutalist"]) button { border: var(--border-width) solid var(--line); border-radius: 0; background: var(--panel2); font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
-:where(:root[data-theme="ds-brutalist"]) button:where(:hover:not(:disabled, .on, .join, .leave, .unblock, .link, .avatar, .room-name, .edit, .chat-older, .emoji-open)) { background: var(--fg); color: var(--bg); }
+:where(:root[data-theme="ds-brutalist"]) button:where(:hover:not(:disabled, .on, .join, .leave, .unblock, .link, .avatar, .room-name, .edit, .chat-older, .emoji-open, .recording)) { background: var(--fg); color: var(--bg); }
 :where(:root[data-theme="ds-brutalist"]) :is(.emoji-tabs, .emoji-grid) button:hover { background: var(--color-hazard); color: var(--color-text-on-hazard); }
-:where(:root[data-theme="ds-brutalist"]) button.on { border-color: var(--line); }
+:where(:root[data-theme="ds-brutalist"]) button.on:where(:not(.link)) { border-color: var(--line); }
 :where(:root[data-theme="ds-brutalist"]) button.join, :where(:root[data-theme="ds-brutalist"]) button.leave, :where(:root[data-theme="ds-brutalist"]) button.unblock { border-color: var(--line); }
 :where(:root[data-theme="ds-brutalist"]) button.link { text-transform: none; font-weight: 400; }
 :where(:root[data-theme="ds-brutalist"]) input, :where(:root[data-theme="ds-brutalist"]) select.picker, :where(:root[data-theme="ds-brutalist"]) dialog.report textarea, :where(:root[data-theme="ds-brutalist"]) dialog.report .field select { border: var(--border-width) solid var(--line); border-radius: 0; }
@@ -137,6 +138,8 @@
 :where(:root[data-theme="ds-brutalist"]) .consent .bubble { border-radius: 0; border: 3px solid var(--line); }
 :where(:root[data-theme="ds-brutalist"]) .theme-pick { border-radius: 0; }
 /* the phone moves the sidebar's rule to its bottom edge, as the app's own layout does */
+/* the gear button is narrow; the theme's wider padding would push the cog off centre */
+:where(:root[data-theme="ds-brutalist"]) .actions .gear { padding-inline: 0; }
 @media (max-width: 700px) {
   :where(:root[data-theme="ds-brutalist"]) .side { border-right: 0; border-bottom: var(--border-width) solid var(--line); }
 }
