@@ -6,7 +6,7 @@
    Boldness spent on: the misregistered pink layer. Text is always blue ink, never pink. */
 
 @font-face { font-family: 'Bricolage Grotesque'; font-style: normal; font-weight: 400 800; font-display: swap;
-  src: url(https://fonts.gstatic.com/s/bricolagegrotesque/v9/3y9K6as8bTXq_nANBjzKo3IeZx8z6up5BeSl9D4dj_x9PpZBMlGIInE.woff2) format('woff2'); }
+  src: url(./fonts/bricolagegrotesque-3y9K6as8bTXq_nANBjzKo3IeZx8z6up5BeSl9D4dj_x9PpZBMlGIInE.woff2) format('woff2'); }
 
 :root[data-theme="fd-riso"] {
   --paper: #E6E8EA; --blue: #0F4C8A; --ink: #0F2A55; --pink: #FF48B0; --pink-soft: #FFB8DD;

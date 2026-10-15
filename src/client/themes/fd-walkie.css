@@ -6,9 +6,9 @@
    Boldness spent on: the yellow body with its grille. Everything on the LCD stays plain. */
 
 @font-face { font-family: 'Barlow Semi Condensed'; font-style: normal; font-weight: 500; font-display: swap;
-  src: url(https://fonts.gstatic.com/s/barlowsemicondensed/v16/wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfi6m_B2sl.woff2) format('woff2'); }
+  src: url(./fonts/barlowsemicondensed-wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfi6m_B2sl.woff2) format('woff2'); }
 @font-face { font-family: 'Barlow Semi Condensed'; font-style: normal; font-weight: 700; font-display: swap;
-  src: url(https://fonts.gstatic.com/s/barlowsemicondensed/v16/wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfw6-_B2sl.woff2) format('woff2'); }
+  src: url(./fonts/barlowsemicondensed-wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfw6-_B2sl.woff2) format('woff2'); }
 
 :root[data-theme="fd-walkie"] {
   --chassis: #F2C230; --chassis-dk: #D9A916; --rubber: #2B2D2A; --rubber-fg: #F4F1E4; --lcd: #C9D3B4; --lcd-ink: #1C261A;

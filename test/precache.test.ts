@@ -9,6 +9,9 @@ describe('precacheUrls', () => {
   it('leaves out source maps, the service worker itself, and dotfiles', () => {
     expect(precacheUrls(['index.html', 'assets/index-B_MR.js.map', 'sw.js', 'sw.js.map', '.assetsignore', '.vite/manifest.json'])).toEqual(['/']);
   });
+  it('leaves out web fonts, which only a picked theme loads', () => {
+    expect(precacheUrls(['index.html', 'assets/barlow-7cHpv4kjgo-Bx2a.woff2'])).toEqual(['/']);
+  });
   it('is sorted and without repeats, so one build always gives one list', () => {
     expect(precacheUrls(['b.png', 'a.png', 'b.png'])).toEqual(['/a.png', '/b.png']);
   });

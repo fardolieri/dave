@@ -7,9 +7,9 @@
    Boldness spent on: the destination signs. The rest is plain, compact and square-cornered. */
 
 @font-face { font-family: 'Doto'; font-style: normal; font-weight: 800; font-display: swap;
-  src: url(https://fonts.gstatic.com/s/doto/v3/t5tJIRMbNJ6TQG7Il_EKPqP9zTnvqqGNcuvLMt1JIphFuOWuyE-T.woff2) format('woff2'); }
+  src: url(./fonts/doto-t5tJIRMbNJ6TQG7Il_EKPqP9zTnvqqGNcuvLMt1JIphFuOWuyE-T.woff2) format('woff2'); }
 @font-face { font-family: 'Overpass'; font-style: normal; font-weight: 400 800; font-display: swap;
-  src: url(https://fonts.gstatic.com/s/overpass/v19/qFdH35WCmI96Ajtm81GlU9s.woff2) format('woff2'); }
+  src: url(./fonts/overpass-qFdH35WCmI96Ajtm81GlU9s.woff2) format('woff2'); }
 
 :root[data-theme="fd-nightbus"] {
   --led: #FF9E1B; --led-off: #B9884A; --sign: #050B16;

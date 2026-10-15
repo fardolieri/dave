@@ -6,9 +6,9 @@
    Boldness spent on: the glow around whoever speaks. Everything else stays quiet. */
 
 @font-face { font-family: 'Young Serif'; font-style: normal; font-weight: 400; font-display: swap;
-  src: url(https://fonts.gstatic.com/s/youngserif/v2/3qTpojO2nS2VtkB3KtkQZ1t93kY.woff2) format('woff2'); }
+  src: url(./fonts/youngserif-3qTpojO2nS2VtkB3KtkQZ1t93kY.woff2) format('woff2'); }
 @font-face { font-family: 'Figtree'; font-style: normal; font-weight: 400 700; font-display: swap;
-  src: url(https://fonts.gstatic.com/s/figtree/v9/_Xms-HUzqDCFdgfMm4S9DQ.woff2) format('woff2'); }
+  src: url(./fonts/figtree-_Xms-HUzqDCFdgfMm4S9DQ.woff2) format('woff2'); }
 
 :root[data-theme="fd-lounge"] {
   --lamp: #FFD08A; --serif: 'Young Serif', Georgia, serif;
