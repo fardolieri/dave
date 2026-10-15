@@ -1,0 +1,161 @@
+/* ds-memphis: Neo-Memphis, playful chaos (designer-skills by Julian Oczkowski, frontend-design philosophy "Neo-Memphis").
+   A party flyer for a room of friends: cream paper with a dot grid, ink outlines, flat pink, sun yellow, teal and cobalt,
+   hard offset shadows instead of soft ones, buttons that press down, faces in candy colours, headings slightly askew.
+   Light and dark palettes following the system setting; the dark one is a midnight-ink dance floor. */
+@font-face { font-family: "ds-Bricolage Grotesque"; font-style: normal; font-weight: 400 800; font-display: swap;
+  src: url(https://fonts.gstatic.com/s/bricolagegrotesque/v9/3y9K6as8bTXq_nANBjzKo3IeZx8z6up5BeSl9D4dj_x9PpZBMlGIInE.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "ds-Rubik"; font-style: normal; font-weight: 400 700; font-display: swap;
+  src: url(https://fonts.gstatic.com/s/rubik/v31/iJWKBXyIfDnIV7nBrXw.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+:root[data-theme="ds-memphis"] { color-scheme: light;
+  --color-bg-primary: #fff4dc; --color-bg-secondary: #ffe3ee; --color-bg-tertiary: #ffffff;
+  --color-text-primary: #1b1340; --color-text-secondary: #4f4570; --color-text-link: #2a3bd6;
+  --color-border-primary: #1b1340; --color-border-focus: #2a3bd6;
+  --color-accent-primary: #2a3bd6; --color-text-on-accent: #ffffff; --color-bg-on: #ffd23f; --color-text-on-on: #1b1340;
+  --color-status-success: #0b7a43; --color-text-on-success: #ffffff; --color-ring: #0b7a43;
+  --color-status-warning: #9a4d00; --color-text-on-warning: #ffffff;
+  --color-status-error: #c8102e; --color-text-on-error: #ffffff;
+  --color-warning-bg: #ffd23f; --color-warning-fg: #1b1340; --color-error-bg: #ff6b8b; --color-error-fg: #1b1340;
+  --color-bubble: #ffffff; --color-bubble-fg: #1b1340; --color-bubble-dim: #4f4570; --color-bubble-link: #2a3bd6;
+  --color-ink: #1b1340; --color-pop-pink: #ff8fc0; --color-pop-yellow: #ffd23f; --color-pop-teal: #4fdcc4; --color-pop-lilac: #b9a8ff;
+  --color-highlight: #ffd23f; --color-shadow-pop: #ff5fa2; --color-shadow-pop2: #4fdcc4;
+  --color-surface-overlay: rgba(27, 19, 64, .45);
+  --fs-stage: #000000; --fs-fg: #fff4dc; --fs-dim: #cfc5f0; --fs-ok: #4dffa6; --fs-warn: #ffb347; --fs-bad: #ff7a96;
+  --fs-button: #2f2468; --fs-line: #fff4dc; --fs-acc: #ffd23f;
+  --font-family-display: "ds-Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
+  --font-family-body: "ds-Rubik", "Trebuchet MS", system-ui, sans-serif;
+  --border-radius-sm: 10px; --border-radius-md: 16px; --border-radius-lg: 20px; --border-radius-full: 999px;
+  --shadow-sm: 2px 2px 0 var(--color-ink); --shadow-md: 4px 4px 0 var(--color-ink); --shadow-lg: 8px 8px 0 var(--color-shadow-pop);
+  --dot-grid: radial-gradient(color-mix(in srgb, var(--color-ink) 13%, transparent) 1.2px, transparent 1.7px) 0 0 / 18px 18px;
+  --duration-fast: 150ms; --easing-bounce: cubic-bezier(.34, 1.56, .64, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="ds-memphis"] { color-scheme: dark;
+    --color-bg-primary: #1b1340; --color-bg-secondary: #241a55; --color-bg-tertiary: #2f2468;
+    --color-text-primary: #fff4dc; --color-text-secondary: #cfc5f0; --color-text-link: #ffd23f;
+    --color-border-primary: #fff4dc; --color-border-focus: #ffd23f;
+    --color-accent-primary: #ffd23f; --color-text-on-accent: #1b1340; --color-bg-on: #ff8fc0; --color-text-on-on: #1b1340;
+    --color-status-success: #4dffa6; --color-text-on-success: #1b1340; --color-ring: #4dffa6;
+    --color-status-warning: #ffb347; --color-text-on-warning: #1b1340;
+    --color-status-error: #ff7a96; --color-text-on-error: #1b1340;
+    --color-warning-bg: #ffd23f; --color-warning-fg: #1b1340; --color-error-bg: #ff7a96; --color-error-fg: #1b1340;
+    --color-bubble: #2f2468; --color-bubble-fg: #fff4dc; --color-bubble-dim: #d8d0f5; --color-bubble-link: #ffd23f;
+    --color-highlight: #6b2f7a; --color-shadow-pop: #ff8fc0; --color-shadow-pop2: #4fdcc4;
+    --color-surface-overlay: rgba(10, 6, 30, .65);
+    --shadow-sm: 2px 2px 0 var(--color-shadow-pop2); --shadow-md: 4px 4px 0 var(--color-shadow-pop2); --shadow-lg: 8px 8px 0 var(--color-shadow-pop);
+    --dot-grid: radial-gradient(rgba(255, 244, 220, .09) 1.2px, transparent 1.7px) 0 0 / 18px 18px;
+  }
+}
+
+/* ── Map the semantic tokens onto the app's own variables (styles.css :root) ─────────────────────────────── */
+:root[data-theme="ds-memphis"] {
+  --bg: var(--color-bg-primary); --panel: var(--color-bg-secondary); --panel2: var(--color-bg-tertiary);
+  --fg: var(--color-text-primary); --dim: var(--color-text-secondary); --line: var(--color-border-primary);
+  --ok: var(--color-status-success); --warn: var(--color-status-warning); --bad: var(--color-status-error);
+  --acc: var(--color-accent-primary);
+  font-family: var(--font-family-body);
+}
+
+/* ── Repairs: colours styles.css hard-codes for its dark page, read from the tokens instead. Every rule below has
+   exactly the specificity of the rule it replaces (the theme prefix sits in :where), so the app's own variants
+   (button.join over button, .share.share-fs over .share) still win where they did. ─────────────────────────── */
+:where(:root[data-theme="ds-memphis"]) a { color: var(--color-text-link); }
+:where(:root[data-theme="ds-memphis"]) :is(button, select, textarea) { font-family: inherit; }
+:where(:root[data-theme="ds-memphis"]) :focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+:where(:root[data-theme="ds-memphis"]) .update { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+:where(:root[data-theme="ds-memphis"]) .update button { background: var(--color-text-on-accent); color: var(--color-accent-primary); }
+:where(:root[data-theme="ds-memphis"]) .update button:hover { background: color-mix(in srgb, var(--color-text-on-accent) 88%, var(--color-accent-primary)); }
+:where(:root[data-theme="ds-memphis"]) .unread { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+:where(:root[data-theme="ds-memphis"]) .new { background: var(--color-status-warning); color: var(--color-text-on-warning); }
+:where(:root[data-theme="ds-memphis"]) .warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+:where(:root[data-theme="ds-memphis"]) .banner { box-shadow: var(--shadow-md); }
+:where(:root[data-theme="ds-memphis"]) .banner-warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+:where(:root[data-theme="ds-memphis"]) .banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
+:where(:root[data-theme="ds-memphis"]) .chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
+:where(:root[data-theme="ds-memphis"]) .chat-new:hover { color: var(--fg); }
+:where(:root[data-theme="ds-memphis"]) button.on { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
+:where(:root[data-theme="ds-memphis"]) button.join { background: var(--ok); color: var(--color-text-on-success); }
+:where(:root[data-theme="ds-memphis"]) button.leave { background: var(--bad); color: var(--color-text-on-error); }
+:where(:root[data-theme="ds-memphis"]) button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+:where(:root[data-theme="ds-memphis"]) select.picker option:checked { background: var(--color-bg-on); color: var(--color-text-on-on); }
+:where(:root[data-theme="ds-memphis"]) .avatar.speaking { box-shadow: 0 0 0 2px var(--color-ring); }
+:where(:root[data-theme="ds-memphis"]) .share-head { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+:where(:root[data-theme="ds-memphis"]) .share-bar { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+:where(:root[data-theme="ds-memphis"]) .panel .mictest button.recording { background: var(--panel2) linear-gradient(color-mix(in srgb, var(--acc) 35%, var(--panel2)), color-mix(in srgb, var(--acc) 35%, var(--panel2))) left / 0% 100% no-repeat; }
+:where(:root[data-theme="ds-memphis"]) .profile[popover], :where(:root[data-theme="ds-memphis"]) .emoji-picker[popover] { box-shadow: var(--shadow-lg); }
+:where(:root[data-theme="ds-memphis"]) dialog.report::backdrop, :where(:root[data-theme="ds-memphis"]) dialog.about::backdrop { background: var(--color-surface-overlay); }
+:where(:root[data-theme="ds-memphis"]) .consent { --bubble: var(--color-bubble); --bubble-fg: var(--color-bubble-fg); --bubble-dim: var(--color-bubble-dim); --bubble-link: var(--color-bubble-link); }
+:where(:root[data-theme="ds-memphis"]) .consent .bubble { box-shadow: var(--shadow-lg); }
+/* a comfortable measure for reading on a wide screen; nothing is cut, long lines wrap */
+:where(:root[data-theme="ds-memphis"]) .msg { max-width: 75ch; }
+/* Fullscreen keeps its black stage in both palettes: the overlays get the dark palette, so status dots and text stay
+   legible on black even while the rest of the page is light. */
+:where(:root[data-theme="ds-memphis"]) .share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
+  --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc); color: var(--fg); }
+/* Phones (styles.css's 700px breakpoint): 16px text in fields so iOS does not zoom on focus, 16px messages, 44px call buttons. */
+@media (max-width: 700px) {
+  :where(:root[data-theme="ds-memphis"]) .chat-log { font-size: 16px; }
+  :where(:root[data-theme="ds-memphis"]) :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
+  :where(:root[data-theme="ds-memphis"]) .actions button, :where(:root[data-theme="ds-memphis"]) .chat-input > button { min-height: 44px; }
+}
+
+/* ── Character: party flyer ────────────────────────────────────────────────────────────────────────────── */
+:where(:root[data-theme="ds-memphis"]) body { background: var(--dot-grid), var(--bg); }
+:where(:root[data-theme="ds-memphis"]) h1, :where(:root[data-theme="ds-memphis"]) dialog.report h3, :where(:root[data-theme="ds-memphis"]) dialog.about h3 { font-family: var(--font-family-display); font-weight: 800; letter-spacing: -.02em; }
+:where(:root[data-theme="ds-memphis"]) h1 { font-size: 26px; }
+:where(:root[data-theme="ds-memphis"]) h2 { font-family: var(--font-family-display); font-size: 13px; font-weight: 800; color: var(--fg); transform: rotate(-2deg); transform-origin: left center; }
+/* room names big and bold, the one on screen marked with a highlighter */
+:where(:root[data-theme="ds-memphis"]) .room-title { font-family: var(--font-family-display); font-size: 17px; font-weight: 800; text-transform: none; letter-spacing: -.01em; }
+:where(:root[data-theme="ds-memphis"]) .room.selected .room-title { background: linear-gradient(transparent 52%, var(--color-highlight) 52%, var(--color-highlight) 92%, transparent 92%); }
+:where(:root[data-theme="ds-memphis"]) .unread { background: var(--color-pop-pink); color: var(--color-ink); border: 2px solid var(--color-ink); line-height: 14px; transform: rotate(-6deg); }
+:where(:root[data-theme="ds-memphis"]) .new { background: var(--color-pop-yellow); color: var(--color-ink); border: 1px solid var(--color-ink); border-radius: var(--border-radius-full); transform: rotate(4deg); }
+/* buttons: ink outline, hard shadow, press down when clicked */
+:where(:root[data-theme="ds-memphis"]) button { border: 2px solid var(--line); border-radius: var(--border-radius-sm); font-weight: 600; box-shadow: var(--shadow-sm); }
+:where(:root[data-theme="ds-memphis"]) button:where(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open), :where(:root[data-theme="ds-memphis"]) :is(.emoji-tabs, .emoji-grid) button { box-shadow: none; }
+:where(:root[data-theme="ds-memphis"]) button.on, :where(:root[data-theme="ds-memphis"]) button.join, :where(:root[data-theme="ds-memphis"]) button.leave, :where(:root[data-theme="ds-memphis"]) button.unblock { border-color: var(--line); font-weight: 700; }
+:where(:root[data-theme="ds-memphis"]) input, :where(:root[data-theme="ds-memphis"]) select.picker, :where(:root[data-theme="ds-memphis"]) dialog.report textarea, :where(:root[data-theme="ds-memphis"]) dialog.report .field select { border: 2px solid var(--line); border-radius: var(--border-radius-sm); }
+:where(:root[data-theme="ds-memphis"]) select.picker::picker(select) { border: 2px solid var(--line); border-radius: var(--border-radius-md); box-shadow: var(--shadow-md); }
+/* faces in candy colours, ink initials; the speaking ring is fat */
+:where(:root[data-theme="ds-memphis"]) .avatar, :where(:root[data-theme="ds-memphis"]) button.avatar { background: var(--color-pop-lilac); color: var(--color-ink); border: 2px solid var(--color-ink); font-family: var(--font-family-display); font-weight: 800; }
+:where(:root[data-theme="ds-memphis"]) .plist li:nth-child(4n+1) .avatar { background: var(--color-pop-pink); }
+:where(:root[data-theme="ds-memphis"]) .plist li:nth-child(4n+2) .avatar { background: var(--color-pop-yellow); }
+:where(:root[data-theme="ds-memphis"]) .plist li:nth-child(4n+3) .avatar { background: var(--color-pop-teal); }
+:where(:root[data-theme="ds-memphis"]) .avatar.pic { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", system-ui, sans-serif; font-weight: 400; }
+:where(:root[data-theme="ds-memphis"]) .avatar.speaking { box-shadow: 0 0 0 3px var(--color-ring); }
+:where(:root[data-theme="ds-memphis"]) button.avatar.own::after { border: 2px solid var(--color-ink); background: var(--color-pop-yellow); color: var(--color-ink); }
+:where(:root[data-theme="ds-memphis"]) .plist em { border: 2px solid var(--line); border-radius: var(--border-radius-full); color: var(--fg); padding: 0 6px; }
+/* the sidebar is a pink sheet with a thick ink edge */
+:where(:root[data-theme="ds-memphis"]) .side { border-right: 3px solid var(--line); }
+:where(:root[data-theme="ds-memphis"]) .share { border: 3px solid var(--line); border-radius: var(--border-radius-md); box-shadow: 6px 6px 0 var(--color-shadow-pop2); }
+:where(:root[data-theme="ds-memphis"]) .share-live { border-color: var(--acc); }
+:where(:root[data-theme="ds-memphis"]) .share-head { font-family: var(--font-family-display); font-weight: 700; border-bottom: 2px solid var(--line); }
+:where(:root[data-theme="ds-memphis"]) .share.share-fs { box-shadow: none; }
+:where(:root[data-theme="ds-memphis"]) .share.share-fs .share-head { border: 0; }
+:where(:root[data-theme="ds-memphis"]) .panel { border: 2px solid var(--line); border-radius: var(--border-radius-md); box-shadow: 4px 4px 0 var(--color-shadow-pop); }
+:where(:root[data-theme="ds-memphis"]) .profile[popover], :where(:root[data-theme="ds-memphis"]) .emoji-picker[popover],
+:where(:root[data-theme="ds-memphis"]) dialog.report, :where(:root[data-theme="ds-memphis"]) dialog.about { border: 3px solid var(--line); border-radius: var(--border-radius-lg); }
+:where(:root[data-theme="ds-memphis"]) .profile-name strong { font-family: var(--font-family-display); font-size: 19px; font-weight: 800; }
+:where(:root[data-theme="ds-memphis"]) .emoji-scroll h4 { font-family: var(--font-family-display); font-weight: 800; color: var(--fg); }
+:where(:root[data-theme="ds-memphis"]) .banner { border: 3px solid var(--line); border-top: 0; border-radius: 0 0 var(--border-radius-md) var(--border-radius-md); font-weight: 600; }
+:where(:root[data-theme="ds-memphis"]) .warn { border: 2px solid var(--line); border-radius: var(--border-radius-sm); }
+:where(:root[data-theme="ds-memphis"]) .update { font-family: var(--font-family-display); border-bottom: 3px solid var(--line); }
+:where(:root[data-theme="ds-memphis"]) .update button { border: 2px solid var(--color-ink); border-radius: var(--border-radius-full); }
+/* chat: sender names in the display face, the composer a fat pill */
+:where(:root[data-theme="ds-memphis"]) .msg-from { font-family: var(--font-family-display); font-weight: 800; }
+:where(:root[data-theme="ds-memphis"]) .msg-text { line-height: 1.45; }
+:where(:root[data-theme="ds-memphis"]) .chat-new { border: 2px solid var(--line); color: var(--fg); font-weight: 600; }
+:where(:root[data-theme="ds-memphis"]) .chat-input > input { border-radius: var(--border-radius-full); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
+:where(:root[data-theme="ds-memphis"]) .chat-input > button:not(.emoji-open) { border-radius: var(--border-radius-full); padding: 8px 18px; background: var(--acc); color: var(--color-text-on-accent); font-family: var(--font-family-display); font-weight: 800; }
+:where(:root[data-theme="ds-memphis"]) .consent .bubble { border: 3px solid var(--line); }
+@media (max-width: 700px) {
+  :where(:root[data-theme="ds-memphis"]) .side { border-right: 0; border-bottom: 3px solid var(--line); }
+}
+/* bouncy, for those who want motion: buttons lift on hover and press flat on click */
+@media (prefers-reduced-motion: no-preference) {
+  :where(:root[data-theme="ds-memphis"]) button { transition: transform var(--duration-fast) var(--easing-bounce), box-shadow var(--duration-fast) var(--easing-bounce); }
+  :where(:root[data-theme="ds-memphis"]) button:where(:not(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open, :disabled)):hover { transform: translate(-1px, -2px); box-shadow: 3px 4px 0 var(--line); }
+  :where(:root[data-theme="ds-memphis"]) button:where(:not(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open, :disabled)):active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--line); }
+  :where(:root[data-theme="ds-memphis"]) :is(.emoji-tabs, .emoji-grid) button:hover { transform: scale(1.18) rotate(-6deg); box-shadow: none; }
+}
