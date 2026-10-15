@@ -5,6 +5,7 @@ import { answerChallenge, exportPublicKey, fromBase64Url, generateIdentityKeyPai
 import { CLOSE_AUTH_FAILED, type ServerMessage } from '../src/core/protocol';
 import { CHALLENGE_TIMEOUT_MS } from '../src/core/room';
 import { authKeyOf, roomIdOf } from '../src/core/rooms';
+import worker from '../src/worker/index';
 import { upstream } from '../src/worker/posthog';
 import { authFrame, openRoomSocket, wsPath, type Challenge } from './harness';
 
@@ -90,6 +91,30 @@ describe('worker routing', () => {
   });
   it('refuses a room path without an upgrade', async () => {
     expect((await exports.default.fetch(`https://dave.test${await wsPath(SECRET)}`)).status).toBe(426);
+  });
+  it('an upgrade that throws is answered 500 and reported, with the error and whether Cloudflare calls it retryable (ticket 55)', async () => {
+    const thrown = Object.assign(new Error('Durable Object reset because its code was updated.'), { retryable: true });
+    const room = { idFromName: env.ROOM.idFromName.bind(env.ROOM), get: () => ({ fetch: () => Promise.reject(thrown) }) };
+    const sent: Array<Promise<unknown>> = [];
+    const posted = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const testEnv = { ...env, ROOM: room, UPGRADE_LIMIT: undefined, POSTHOG_KEY: 'phc_test', POSTHOG_HOST: 'https://eu.i.posthog.com', BUILD_TARGET: 'nightly' } as unknown as Env;
+      const ctx = { waitUntil: (p: Promise<unknown>) => sent.push(p), passThroughOnException: () => {} } as unknown as ExecutionContext;
+      const res = await worker.fetch!(new Request(`https://dave.test${await wsPath(SECRET)}`, { headers: { Upgrade: 'websocket' } }) as Parameters<NonNullable<typeof worker.fetch>>[0], testEnv, ctx);
+      expect(res.status).toBe(500);
+      await Promise.all(sent);
+      expect(posted).toHaveBeenCalledTimes(1);
+      const [url, init] = posted.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://eu.i.posthog.com/i/v0/e/');
+      const body = JSON.parse(init.body as string);
+      expect(body.event).toBe('server_upgrade_failed');
+      expect(body.properties).toMatchObject({ name: 'Error', message: thrown.message, retryable: true, overloaded: false, build_target: 'nightly' });
+      expect(errors).toHaveBeenCalledWith('upgrade failed', expect.stringContaining('retryable":true'));
+    } finally {
+      posted.mockRestore();
+      errors.mockRestore();
+    }
   });
   it('passes /diag/ on to PostHog: events to its ingest host, scripts and remote config to its assets host', () => {
     const host = 'https://eu.i.posthog.com';
