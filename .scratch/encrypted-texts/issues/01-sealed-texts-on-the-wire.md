@@ -1,6 +1,6 @@
 # 01 · Texts travel sealed: encrypted with a key from the secret, signed by their writer
 
-Status: in progress 2026-10-15 (branch `crypto/encrypted-text`)
+Status: shipped 2026-10-15 to prod (2bda03e)
 Blocked by: none
 Decision: [ADR 0005](../../../docs/adr/0005-texts-sealed-with-a-key-from-the-invite-secret.md)
 
