@@ -4,8 +4,8 @@ export const SW_FILE = 'sw.js';
 /**
  * What the service worker caches at install, from the files of a build: all of them but source maps (only devtools asks
  * for those), the service worker itself, dotfiles (build metadata, never served) and web fonts. The fonts belong to the
- * themes (client/themes/), over a megabyte together, and a browser needs only those of the theme it picked: they come
- * from the network when used, and a page offline shows the theme's fallback font. index.html is cached as `/`, the URL
+ * themes (client/themes/), over a megabyte together, and a browser needs only those of the theme it picked: the service
+ * worker keeps each one the first time it is used (client/sw.ts). index.html is cached as `/`, the URL
  * every page load is answered with. Sorted, so the same build gives the same list.
  */
 export function precacheUrls(files: string[]): string[] {

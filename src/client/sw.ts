@@ -30,6 +30,12 @@ const cached = new Set(urls);
 const builtAt = (name: string): number => { const m = /^dave-([0-9a-z]+)-/.exec(name); return m ? parseInt(m[1]!, 36) : 0; };
 /** This version's cache, opened once: every page load and file goes through it. */
 const cache = caches.open(CACHE);
+/**
+ * The themes' fonts, kept from first use (core/precache.ts leaves them out of the install: a browser needs only those of
+ * its theme). A cache of its own that every version shares, so a picked theme keeps its letters offline and across
+ * deploys. Not named `dave-…`, which activation deletes; a font's file name carries its hash, so an entry never goes stale.
+ */
+const FONTS = 'fonts';
 /** Sent by the page (client/update.ts) when the update bar's Reload is clicked. */
 const SKIP_WAITING = 'skip-waiting';
 /** Sent to the open pages while installing: `{ type: PROGRESS, done, total }` in bytes. The same string is in update.ts. */
@@ -97,6 +103,17 @@ sw.addEventListener('fetch', (e) => {
   if (url.origin !== sw.location.origin) return; // PostHog and the like go past untouched
   // Every page load is the single-page app, whatever the path (wrangler.jsonc: not_found_handling).
   const key = req.mode === 'navigate' ? '/' : url.pathname;
+  if (url.pathname.endsWith('.woff2')) {
+    e.respondWith((async () => {
+      const fonts = await caches.open(FONTS);
+      const hit = await fonts.match(url.pathname);
+      if (hit) return hit;
+      const res = await fetch(req);
+      if (res.ok) await fonts.put(url.pathname, res.clone()).catch(() => undefined); // a full disk costs the copy, not the font
+      return res;
+    })());
+    return;
+  }
   if (!cached.has(key)) return;
   e.respondWith((async () => (await (await cache).match(key)) ?? fetch(req))());
 });

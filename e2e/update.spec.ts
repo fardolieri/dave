@@ -10,8 +10,8 @@ import { expect, test, type Friend } from './fixtures';
 const needPreview = () => test.skip(!!target, 'needs the preview server (vite.config.ts): a deploy is staged there, not in a deployed copy');
 const cookie = (friend: Friend, name: string, value: string) => friend.context.addCookies([{ name, value, url: new URL(friend.page.url()).origin }]);
 const controlled = (page: Page) => expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null), { message: 'a service worker serves the page' }).toBe(true);
-/** The versions this browser has cached, oldest first: `before` the deploy, and the `next` one it staged. */
-const versions = async (page: Page) => (await page.evaluate(() => caches.keys())).map((k) => (k.endsWith('-next') ? 'next' : 'before'));
+/** The versions this browser has cached, oldest first: `before` the deploy, and the `next` one it staged. Not the themes' `fonts` (sw.ts). */
+const versions = async (page: Page) => (await page.evaluate(() => caches.keys())).filter((k) => k.startsWith('dave-')).map((k) => (k.endsWith('-next') ? 'next' : 'before'));
 /** A deploy, as the browser sees it: /sw.js is now a later build, and the check the app makes every few minutes is asked for now. */
 const deploy = async (friend: Friend, tag: string) => {
   await cookie(friend, 'e2e-deploy', tag);
