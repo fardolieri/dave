@@ -96,17 +96,18 @@ jobs:
             e2e-report
             e2e-results
           retention-days: 14
-      # The screenshots of every theme (e2e/themes.spec.ts), so each look can be seen from a phone without running anything:
-      # `gh run download <run id> -n theme-screenshots-chromium`. Chromium only; the shard that ran that test has them, the
-      # others upload nothing. Kept whatever the result, a failing theme most of all; a --repeat-each run may have them on
-      # several shards, so the last one wins.
+      # The screenshots of every theme (e2e/themes.spec.ts), so each look can be seen from a phone without running anything.
+      # Chromium only, named `theme-screenshots-chromium-<shard>` after the shard that ran the test; the others upload
+      # nothing. `gh run download <run id> -p 'theme-screenshots-*'` fetches it whichever shard that was. The shard is in
+      # the name because a --repeat-each run has the test on several shards at once, and two uploads of one name at the
+      # same time fail one of them (409). Kept whatever the result, a failing theme most of all.
       - uses: actions/upload-artifact@v4
         if: always() && matrix.project == 'chromium'
         with:
-          name: theme-screenshots-${{ matrix.project }}
+          name: theme-screenshots-${{ matrix.project }}-${{ matrix.shard }}
           path: e2e-themes
           if-no-files-found: ignore
-          overwrite: true
+          overwrite: true # a re-run of the job uploads it again
           retention-days: 14
       # A test that failed once and passed on its retry fails no job, but its failed try kept its trace and wire logs
       # (retain-on-failure): kept too, or a flake that shows once cannot be read (tickets 41, 44 and 50 had nothing).

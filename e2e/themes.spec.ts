@@ -1,12 +1,14 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
+import { target } from './browsers';
 import { expect, newSecret, test } from './fixtures';
 
 // Every look of the theme picker (client/theme.ts), on one app in a lived-in state: a room with a friend in the call and
 // sharing a screen, a few chat lines, an unread count on another room. Each theme is picked the way a friend picks it and
-// photographed at desktop and phone width, so the owner can look through all of them from the CI artifact
-// `theme-screenshots-chromium` (e2e.yml) without running anything, and a theme whose font is missing fails here.
+// photographed at desktop and phone width, the phone in light and dark mode, so the owner can look through all of them
+// from the CI artifact `theme-screenshots-chromium-<shard>` (e2e.yml) without running anything; a theme whose font is
+// missing, or that pushes the phone layout wider than the screen, fails here.
 // The options are read from the page: a theme added to themes/ is covered without touching this file.
 
 /** Where the screenshots go: their own folder, not e2e-results, which e2e.yml keeps only for failures and flakes. */
@@ -20,6 +22,12 @@ const PHONE = { width: 390, height: 780 };
  * Two frames first, so the style of a theme just picked has been applied and its fonts asked for before `fonts.ready`.
  */
 async function fontTrouble(page: Page): Promise<{ failed: string[]; notLoaded: string[] }> {
+  const { failed, notLoaded } = await fontState(page);
+  return { failed, notLoaded };
+}
+
+/** `fontTrouble`, and the declared families the page has on screen (`used`). */
+async function fontState(page: Page): Promise<{ used: string[]; failed: string[]; notLoaded: string[] }> {
   return page.evaluate(async () => {
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     await document.fonts.ready;
@@ -34,9 +42,26 @@ async function fontTrouble(page: Page): Promise<{ failed: string[]; notLoaded: s
       if (declared.has(first)) used.add(first);
     }
     return {
+      used: [...used].sort(),
       failed: faces.filter((f) => f.status === 'error').map((f) => `${unquote(f.family)} ${f.weight} ${f.style}`),
       notLoaded: [...used].filter((fam) => !faces.some((f) => unquote(f.family) === fam && f.status === 'loaded')),
     };
+  });
+}
+
+/**
+ * What scrolls sideways at phone width, as "what: scroll width > width": the page itself, the column that scrolls (`.scroll`),
+ * the sidebar in it and the composer. A pixel of rounding is let through on the parts, whose widths are fractions.
+ */
+function sideways(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const out: string[] = [];
+    const root = document.documentElement;
+    if (root.scrollWidth > root.clientWidth) out.push(`page: ${root.scrollWidth} > ${root.clientWidth}`);
+    for (const sel of ['.scroll', '.side', '.chat-input']) {
+      for (const el of document.querySelectorAll(sel)) if (el.scrollWidth > el.clientWidth + 1) out.push(`${sel}: ${el.scrollWidth} > ${el.clientWidth}`);
+    }
+    return out;
   });
 }
 
@@ -98,6 +123,15 @@ test('every theme applies, loads its fonts and keeps the console quiet, at deskt
     await shoot(`${name}-phone`);
     await page.locator('.scroll').evaluate((el) => { el.scrollTop = el.scrollHeight; });
     await shoot(`${name}-phone-chat`);
+    await expect.poll(() => sideways(page), { message: `${name}: nothing scrolls sideways at phone width` }).toEqual([]);
+
+    // Dark mode: the themes that follow the system's (prefers-color-scheme) have a palette nobody sees otherwise.
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect.poll(() => fontTrouble(page), { message: `${name}: every font on screen loaded in dark mode` }).toEqual({ failed: [], notLoaded: [] });
+    await toTop();
+    await shoot(`${name}-phone-dark`);
+    await expect.poll(() => sideways(page), { message: `${name}: nothing scrolls sideways at phone width in dark mode` }).toEqual([]);
+    await page.emulateMedia({ colorScheme: 'light' }); // the context's own
     expect(badFonts, `${name}: no font request failed`).toEqual([]);
   }
 
@@ -111,4 +145,59 @@ test('every theme applies, loads its fonts and keeps the console quiet, at deskt
   await alice.connected();
   await expect(page.locator('html')).toHaveAttribute('data-theme', kept);
   await expect(pick).toHaveValue(kept);
+});
+
+test('a stored theme whose file a later deploy dropped reads as the default look, and a theme picked then is kept', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { connect: false });
+  // Before the app reads it, and once: the reload below keeps what the app stores.
+  await alice.context.addInitScript(() => {
+    if (localStorage.getItem('dave.e2e-theme-seeded')) return;
+    localStorage.setItem('dave.e2e-theme-seeded', '1');
+    localStorage.setItem('dave.theme', 'fd-gone-in-a-later-deploy');
+  });
+  await alice.open();
+  const page = alice.page;
+  const pick = page.getByRole('combobox', { name: 'Theme', exact: true });
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+  await expect(pick).toHaveValue('');
+
+  const themes = await pick.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value).filter(Boolean));
+  const kept = themes[0]!;
+  await pick.selectOption(kept);
+  await expect(page.locator('html')).toHaveAttribute('data-theme', kept);
+  await page.reload();
+  await alice.connected();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', kept);
+  await expect(pick).toHaveValue(kept);
+});
+
+test('a theme\'s own fonts load with the server gone, from the service worker', async ({ crowd }) => {
+  // The outage is staged at the preview server (vite.config.ts), as in update.spec.ts.
+  test.skip(!!target, 'needs the preview server (vite.config.ts): an outage is staged there, not in a deployed copy');
+  const alice = await crowd.open('Alice');
+  const page = alice.page;
+  // Picked once the worker serves the page, so the font files are fetched through it, which keeps a copy (sw.ts, `fonts`).
+  await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null), { message: 'a service worker serves the page' }).toBe(true);
+  // A theme with two families of its own, in our Worker's fonts/ (themes/fd-lounge.css).
+  const theme = 'fd-lounge';
+  const families = ['Figtree', 'Young Serif'];
+  await page.getByRole('combobox', { name: 'Theme', exact: true }).selectOption(theme);
+  /** Every font on screen loaded, the theme's two among them. */
+  const fonts = async () => { const f = await fontState(page); return { ...f, used: families.filter((fam) => f.used.includes(fam)) }; };
+  const loaded = { failed: [], notLoaded: [], used: families };
+  await expect.poll(fonts, { message: `${theme}: its fonts loaded` }).toEqual(loaded);
+
+  // The server cuts every connection before answering, the socket too: the page comes from the service worker, and so
+  // must the fonts, or the theme falls back to the system's.
+  await alice.context.addCookies([{ name: 'e2e-outage', value: '1', url: new URL(page.url()).origin }]);
+  await alice.wire.cut();
+  await page.reload();
+  await expect(page.locator('aside.side')).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+  await expect.poll(fonts, { message: `${theme}: its fonts loaded while the server is gone`, timeout: 20_000 }).toEqual(loaded);
+
+  await alice.context.clearCookies({ name: 'e2e-outage' });
+  alice.wire.restore();
+  await alice.connected();
+  await expect.poll(fonts, { message: `${theme}: its fonts still loaded once the server is back` }).toEqual(loaded);
 });
