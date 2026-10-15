@@ -93,7 +93,8 @@ test('ADR 0005: a text the server passes off as from another friend, or tampers 
   bob.wire.down = null;
   await alice.say('untouched');
   await expect.poll(() => bob.chatTexts()).toEqual(['untouched']);
-  expect(await carol.chatTexts()).toEqual(['from Alice, says the server: Carol', 'from Alice, changed on the way', 'untouched']);
+  // Carol's copy comes on its own socket, and is opened on its own time: Bob having it says nothing about hers.
+  await expect.poll(() => carol.chatTexts()).toEqual(['from Alice, says the server: Carol', 'from Alice, changed on the way', 'untouched']);
 });
 
 test('ADR 0005: a plain text, as an app from before sends one, is refused as out of date and reaches nobody', async ({ crowd }) => {
