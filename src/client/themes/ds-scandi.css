@@ -1,0 +1,133 @@
+/* ds-scandi: Scandinavian, warmth plus restraint (designer-skills by Julian Oczkowski, frontend-design philosophy
+   "Scandinavian"). A room in a wooden cabin: oat and linen surfaces, fjord blue for what is switched on, moss for
+   joining, clay for leaving, no pure black. Rounded, soft-shadowed cards that settle gently into place. Light and dark
+   palettes following the system setting; the dark one is warm charcoal, not blue-black. */
+@font-face { font-family: "ds-Nunito"; font-style: normal; font-weight: 400 800; font-display: swap;
+  src: url(https://fonts.gstatic.com/s/nunito/v32/XRXV3I6Li01BKofINeaB.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+:root[data-theme="ds-scandi"] { color-scheme: light;
+  --color-bg-primary: #f6f2ec; --color-bg-secondary: #ede6dc; --color-bg-tertiary: #fffdf9;
+  --color-text-primary: #2f2a25; --color-text-secondary: #655c53; --color-text-link: #2c5d7d;
+  --color-border-primary: #ddd3c6; --color-border-focus: #3d7299;
+  --color-accent-primary: #3d6b8a; --color-text-on-accent: #ffffff; --color-bg-on: #3d6b8a; --color-text-on-on: #ffffff;
+  --color-status-success: #33694a; --color-text-on-success: #ffffff; --color-ring: #4a8c63;
+  --color-status-warning: #85560c; --color-text-on-warning: #ffffff;
+  --color-status-error: #a8402f; --color-text-on-error: #ffffff;
+  --color-warning-bg: #f6e6c8; --color-warning-fg: #664207; --color-error-bg: #f6dcd6; --color-error-fg: #87301f;
+  --color-bubble: #fffdf9; --color-bubble-fg: #2f2a25; --color-bubble-dim: #655c53; --color-bubble-link: #2c5d7d;
+  --color-surface-overlay: rgba(47, 42, 37, .3);
+  --fs-stage: #000000; --fs-fg: #f0e9df; --fs-dim: #c4b9ab; --fs-ok: #8fcb9e; --fs-warn: #e8b96a; --fs-bad: #f0907f;
+  --fs-button: #35312d; --fs-line: #57504a; --fs-acc: #8fb9d8;
+  --font-family-body: "ds-Nunito", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --border-radius-sm: 8px; --border-radius-md: 12px; --border-radius-lg: 18px; --border-radius-full: 999px;
+  --shadow-sm: 0 1px 2px rgba(80, 55, 30, .07); --shadow-md: 0 2px 4px rgba(80, 55, 30, .05), 0 6px 18px rgba(80, 55, 30, .08);
+  --shadow-lg: 0 4px 8px rgba(80, 55, 30, .06), 0 16px 40px rgba(80, 55, 30, .14);
+  --duration-normal: 250ms; --easing-out: cubic-bezier(0, 0, .2, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="ds-scandi"] { color-scheme: dark;
+    --color-bg-primary: #23201d; --color-bg-secondary: #2b2825; --color-bg-tertiary: #35312d;
+    --color-text-primary: #f0e9df; --color-text-secondary: #b8ad9f; --color-text-link: #9cc3e0;
+    --color-border-primary: #48423b; --color-border-focus: #9cc3e0;
+    --color-accent-primary: #8fb9d8; --color-text-on-accent: #1c2731; --color-bg-on: #8fb9d8; --color-text-on-on: #1c2731;
+    --color-status-success: #8fcb9e; --color-text-on-success: #142519; --color-ring: #8fcb9e;
+    --color-status-warning: #e8b96a; --color-text-on-warning: #2a1d05;
+    --color-status-error: #f0907f; --color-text-on-error: #2e110c;
+    --color-warning-bg: #3d3220; --color-warning-fg: #f0c77f; --color-error-bg: #42241f; --color-error-fg: #f5a495;
+    --color-bubble: #3d3833; --color-bubble-fg: #f0e9df; --color-bubble-dim: #c4b9ab; --color-bubble-link: #9cc3e0;
+    --color-surface-overlay: rgba(10, 8, 6, .55);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .25); --shadow-md: 0 2px 4px rgba(0, 0, 0, .2), 0 6px 18px rgba(0, 0, 0, .3);
+    --shadow-lg: 0 4px 8px rgba(0, 0, 0, .25), 0 16px 40px rgba(0, 0, 0, .45);
+  }
+}
+
+/* ── Map the semantic tokens onto the app's own variables (styles.css :root) ─────────────────────────────── */
+:root[data-theme="ds-scandi"] {
+  --bg: var(--color-bg-primary); --panel: var(--color-bg-secondary); --panel2: var(--color-bg-tertiary);
+  --fg: var(--color-text-primary); --dim: var(--color-text-secondary); --line: var(--color-border-primary);
+  --ok: var(--color-status-success); --warn: var(--color-status-warning); --bad: var(--color-status-error);
+  --acc: var(--color-accent-primary);
+  font-family: var(--font-family-body);
+}
+
+/* ── Repairs: colours styles.css hard-codes for its dark page, read from the tokens instead. Every rule below has
+   exactly the specificity of the rule it replaces (the theme prefix sits in :where), so the app's own variants
+   (button.join over button, .share.share-fs over .share) still win where they did. ─────────────────────────── */
+:where(:root[data-theme="ds-scandi"]) a { color: var(--color-text-link); }
+:where(:root[data-theme="ds-scandi"]) :is(button, select, textarea) { font-family: inherit; }
+:where(:root[data-theme="ds-scandi"]) :focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+:where(:root[data-theme="ds-scandi"]) .update { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+:where(:root[data-theme="ds-scandi"]) .update button { background: var(--color-text-on-accent); color: var(--color-accent-primary); }
+:where(:root[data-theme="ds-scandi"]) .update button:hover { background: color-mix(in srgb, var(--color-text-on-accent) 88%, var(--color-accent-primary)); }
+:where(:root[data-theme="ds-scandi"]) .unread { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+:where(:root[data-theme="ds-scandi"]) .new { background: var(--color-status-warning); color: var(--color-text-on-warning); }
+:where(:root[data-theme="ds-scandi"]) .warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+:where(:root[data-theme="ds-scandi"]) .banner { box-shadow: var(--shadow-md); }
+:where(:root[data-theme="ds-scandi"]) .banner-warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+:where(:root[data-theme="ds-scandi"]) .banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
+:where(:root[data-theme="ds-scandi"]) .chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
+:where(:root[data-theme="ds-scandi"]) .chat-new:hover { color: var(--fg); }
+:where(:root[data-theme="ds-scandi"]) button.on { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
+:where(:root[data-theme="ds-scandi"]) button.join { background: var(--ok); color: var(--color-text-on-success); }
+:where(:root[data-theme="ds-scandi"]) button.leave { background: var(--bad); color: var(--color-text-on-error); }
+:where(:root[data-theme="ds-scandi"]) button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+:where(:root[data-theme="ds-scandi"]) select.picker option:checked { background: var(--color-bg-on); color: var(--color-text-on-on); }
+:where(:root[data-theme="ds-scandi"]) .avatar.speaking { box-shadow: 0 0 0 2px var(--color-ring); }
+:where(:root[data-theme="ds-scandi"]) .share-head { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+:where(:root[data-theme="ds-scandi"]) .share-bar { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+:where(:root[data-theme="ds-scandi"]) .panel .mictest button.recording { background: var(--panel2) linear-gradient(color-mix(in srgb, var(--acc) 35%, var(--panel2)), color-mix(in srgb, var(--acc) 35%, var(--panel2))) left / 0% 100% no-repeat; }
+:where(:root[data-theme="ds-scandi"]) .profile[popover], :where(:root[data-theme="ds-scandi"]) .emoji-picker[popover] { box-shadow: var(--shadow-lg); }
+:where(:root[data-theme="ds-scandi"]) dialog.report::backdrop, :where(:root[data-theme="ds-scandi"]) dialog.about::backdrop { background: var(--color-surface-overlay); }
+:where(:root[data-theme="ds-scandi"]) .consent { --bubble: var(--color-bubble); --bubble-fg: var(--color-bubble-fg); --bubble-dim: var(--color-bubble-dim); --bubble-link: var(--color-bubble-link); }
+:where(:root[data-theme="ds-scandi"]) .consent .bubble { box-shadow: var(--shadow-lg); }
+/* a comfortable measure for reading on a wide screen; nothing is cut, long lines wrap */
+:where(:root[data-theme="ds-scandi"]) .msg { max-width: 75ch; }
+/* Fullscreen keeps its black stage in both palettes: the overlays get the dark palette, so status dots and text stay
+   legible on black even while the rest of the page is light. */
+:where(:root[data-theme="ds-scandi"]) .share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
+  --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc); color: var(--fg); }
+/* Phones (styles.css's 700px breakpoint): 16px text in fields so iOS does not zoom on focus, 16px messages, 44px call buttons. */
+@media (max-width: 700px) {
+  :where(:root[data-theme="ds-scandi"]) .chat-log { font-size: 16px; }
+  :where(:root[data-theme="ds-scandi"]) :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
+  :where(:root[data-theme="ds-scandi"]) .actions button, :where(:root[data-theme="ds-scandi"]) .chat-input > button { min-height: 44px; }
+}
+
+/* ── Character: cabin ──────────────────────────────────────────────────────────────────────────────────── */
+:where(:root[data-theme="ds-scandi"]) body { font-size: 15px; }
+:where(:root[data-theme="ds-scandi"]) h1 { font-weight: 800; }
+/* friendly sentence-case room names instead of tracked capitals */
+:where(:root[data-theme="ds-scandi"]) .room-title { font-size: 14px; font-weight: 800; text-transform: none; letter-spacing: 0; }
+:where(:root[data-theme="ds-scandi"]) h2 { font-weight: 800; letter-spacing: .06em; }
+:where(:root[data-theme="ds-scandi"]) button { border-radius: var(--border-radius-sm); font-weight: 700; box-shadow: var(--shadow-sm); }
+:where(:root[data-theme="ds-scandi"]) button:where(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open), :where(:root[data-theme="ds-scandi"]) :is(.emoji-tabs, .emoji-grid) button { box-shadow: none; }
+:where(:root[data-theme="ds-scandi"]) .avatar.speaking { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--color-ring); }
+:where(:root[data-theme="ds-scandi"]) input, :where(:root[data-theme="ds-scandi"]) select.picker, :where(:root[data-theme="ds-scandi"]) dialog.report textarea { border-radius: var(--border-radius-sm); }
+:where(:root[data-theme="ds-scandi"]) input:focus, :where(:root[data-theme="ds-scandi"]) textarea:focus { border-color: var(--color-border-focus); }
+:where(:root[data-theme="ds-scandi"]) .unread { line-height: 18px; padding: 0 7px; }
+:where(:root[data-theme="ds-scandi"]) .new { border-radius: var(--border-radius-full); padding: 0 6px; }
+:where(:root[data-theme="ds-scandi"]) .plist em { border-radius: var(--border-radius-full); padding: 0 6px; background: var(--bg); }
+:where(:root[data-theme="ds-scandi"]) .avatar { background: var(--bg); }
+/* cards: shares, settings panels and popovers float on soft shadows */
+:where(:root[data-theme="ds-scandi"]) .share { border-radius: var(--border-radius-md); box-shadow: var(--shadow-md); }
+:where(:root[data-theme="ds-scandi"]) .panel { border-radius: var(--border-radius-md); box-shadow: var(--shadow-sm); }
+:where(:root[data-theme="ds-scandi"]) .profile[popover], :where(:root[data-theme="ds-scandi"]) .emoji-picker[popover],
+:where(:root[data-theme="ds-scandi"]) dialog.report, :where(:root[data-theme="ds-scandi"]) dialog.about { border-radius: var(--border-radius-lg); border-color: transparent; box-shadow: var(--shadow-lg); }
+:where(:root[data-theme="ds-scandi"]) .banner { border-radius: 0 0 var(--border-radius-md) var(--border-radius-md); }
+:where(:root[data-theme="ds-scandi"]) .warn { border-radius: var(--border-radius-sm); }
+/* chat: names in the heavy weight, the composer a soft pill */
+:where(:root[data-theme="ds-scandi"]) .chat-log { gap: 12px; }
+:where(:root[data-theme="ds-scandi"]) .msg-from { font-weight: 800; }
+:where(:root[data-theme="ds-scandi"]) .msg-text { line-height: 1.5; }
+:where(:root[data-theme="ds-scandi"]) .chat-input > input { border-radius: var(--border-radius-full); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
+:where(:root[data-theme="ds-scandi"]) .chat-input > button:not(.emoji-open) { border-radius: var(--border-radius-full); padding: 8px 18px; background: var(--acc); border-color: var(--acc); color: var(--color-text-on-accent); }
+:where(:root[data-theme="ds-scandi"]) .chat-new { border-radius: var(--border-radius-full); }
+:where(:root[data-theme="ds-scandi"]) .consent .bubble { border: 1px solid var(--line); }
+/* gentle lifts, only for those who want motion */
+@media (prefers-reduced-motion: no-preference) {
+  :where(:root[data-theme="ds-scandi"]) button { transition: transform var(--duration-normal) var(--easing-out), box-shadow var(--duration-normal) var(--easing-out), background-color var(--duration-normal) var(--easing-out); }
+  :where(:root[data-theme="ds-scandi"]) button:where(:not(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open, :disabled)):hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+  :where(:root[data-theme="ds-scandi"]) .share { transition: box-shadow var(--duration-normal) var(--easing-out); }
+  :where(:root[data-theme="ds-scandi"]) .share:hover { box-shadow: var(--shadow-lg); }
+}

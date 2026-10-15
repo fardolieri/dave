@@ -1,0 +1,142 @@
+/* ds-brutalist: Brutalist / raw (designer-skills by Julian Oczkowski, frontend-design philosophy "Brutalist / Raw").
+   The box model on show: monospace everything, 2px black rules around every box, square corners and square faces, no
+   shadows, no easing. Colour is raw and functional: hyperlink blue, construction yellow for what is on, signal red and
+   green. Light and dark palettes following the system setting; the dark one is a terminal. */
+@font-face { font-family: "ds-JetBrains Mono"; font-style: normal; font-weight: 400 800; font-display: swap;
+  src: url(https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+:root[data-theme="ds-brutalist"] { color-scheme: light;
+  --color-bg-primary: #ffffff; --color-bg-secondary: #f0f0f0; --color-bg-tertiary: #ffffff;
+  --color-text-primary: #000000; --color-text-secondary: #4a4a4a; --color-text-link: #0000ee;
+  --color-border-primary: #000000; --color-border-focus: #0000ee;
+  --color-accent-primary: #0000ee; --color-text-on-accent: #ffffff; --color-bg-on: #ffe600; --color-text-on-on: #000000;
+  --color-status-success: #00701c; --color-text-on-success: #ffffff; --color-ring: #008a23;
+  --color-status-warning: #8a5300; --color-text-on-warning: #ffffff;
+  --color-status-error: #d00000; --color-text-on-error: #ffffff;
+  --color-warning-bg: #ffe600; --color-warning-fg: #000000; --color-error-bg: #d00000; --color-error-fg: #ffffff;
+  --color-bubble: #ffffff; --color-bubble-fg: #000000; --color-bubble-dim: #4a4a4a; --color-bubble-link: #0000ee;
+  --color-hazard: #ffe600; --color-text-on-hazard: #000000;
+  --color-surface-overlay: rgba(255, 255, 255, .7);
+  --fs-stage: #000000; --fs-fg: #f2f2f2; --fs-dim: #b0b0b0; --fs-ok: #33ff66; --fs-warn: #ffb000; --fs-bad: #ff4d4d;
+  --fs-button: #000000; --fs-line: #f2f2f2; --fs-acc: #33ddff;
+  --font-family-body: "ds-JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --border-width: 2px; --shadow-sm: none; --shadow-md: none; --shadow-lg: none;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="ds-brutalist"] { color-scheme: dark;
+    --color-bg-primary: #000000; --color-bg-secondary: #0d0d0d; --color-bg-tertiary: #000000;
+    --color-text-primary: #f2f2f2; --color-text-secondary: #a8a8a8; --color-text-link: #33ddff;
+    --color-border-primary: #f2f2f2; --color-border-focus: #ffe600;
+    --color-accent-primary: #33ddff; --color-text-on-accent: #000000; --color-bg-on: #ffe600; --color-text-on-on: #000000;
+    --color-status-success: #33ff66; --color-text-on-success: #000000; --color-ring: #33ff66;
+    --color-status-warning: #ffb000; --color-text-on-warning: #000000;
+    --color-status-error: #ff4d4d; --color-text-on-error: #000000;
+    --color-warning-bg: #ffe600; --color-warning-fg: #000000; --color-error-bg: #ff4d4d; --color-error-fg: #000000;
+    --color-bubble: #000000; --color-bubble-fg: #f2f2f2; --color-bubble-dim: #a8a8a8; --color-bubble-link: #33ddff;
+    --color-surface-overlay: rgba(0, 0, 0, .75);
+  }
+}
+
+/* ── Map the semantic tokens onto the app's own variables (styles.css :root) ─────────────────────────────── */
+:root[data-theme="ds-brutalist"] {
+  --bg: var(--color-bg-primary); --panel: var(--color-bg-secondary); --panel2: var(--color-bg-tertiary);
+  --fg: var(--color-text-primary); --dim: var(--color-text-secondary); --line: var(--color-border-primary);
+  --ok: var(--color-status-success); --warn: var(--color-status-warning); --bad: var(--color-status-error);
+  --acc: var(--color-accent-primary);
+  font-family: var(--font-family-body);
+}
+
+/* ── Repairs: colours styles.css hard-codes for its dark page, read from the tokens instead. Every rule below has
+   exactly the specificity of the rule it replaces (the theme prefix sits in :where), so the app's own variants
+   (button.join over button, .share.share-fs over .share) still win where they did. ─────────────────────────── */
+:where(:root[data-theme="ds-brutalist"]) a { color: var(--color-text-link); }
+:where(:root[data-theme="ds-brutalist"]) :is(button, select, textarea) { font-family: inherit; }
+:where(:root[data-theme="ds-brutalist"]) :focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+:where(:root[data-theme="ds-brutalist"]) .update { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+:where(:root[data-theme="ds-brutalist"]) .update button { background: var(--color-text-on-accent); color: var(--color-accent-primary); }
+:where(:root[data-theme="ds-brutalist"]) .update button:hover { background: color-mix(in srgb, var(--color-text-on-accent) 88%, var(--color-accent-primary)); }
+:where(:root[data-theme="ds-brutalist"]) .unread { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+:where(:root[data-theme="ds-brutalist"]) .new { background: var(--color-status-warning); color: var(--color-text-on-warning); }
+:where(:root[data-theme="ds-brutalist"]) .warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+:where(:root[data-theme="ds-brutalist"]) .banner { box-shadow: var(--shadow-md); }
+:where(:root[data-theme="ds-brutalist"]) .banner-warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+:where(:root[data-theme="ds-brutalist"]) .banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
+:where(:root[data-theme="ds-brutalist"]) .chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
+:where(:root[data-theme="ds-brutalist"]) .chat-new:hover { color: var(--fg); }
+:where(:root[data-theme="ds-brutalist"]) button.on { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
+:where(:root[data-theme="ds-brutalist"]) button.join { background: var(--ok); color: var(--color-text-on-success); }
+:where(:root[data-theme="ds-brutalist"]) button.leave { background: var(--bad); color: var(--color-text-on-error); }
+:where(:root[data-theme="ds-brutalist"]) button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+:where(:root[data-theme="ds-brutalist"]) select.picker option:checked { background: var(--color-bg-on); color: var(--color-text-on-on); }
+:where(:root[data-theme="ds-brutalist"]) .avatar.speaking { box-shadow: 0 0 0 2px var(--color-ring); }
+:where(:root[data-theme="ds-brutalist"]) .share-head { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+:where(:root[data-theme="ds-brutalist"]) .share-bar { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+:where(:root[data-theme="ds-brutalist"]) .panel .mictest button.recording { background: var(--panel2) linear-gradient(color-mix(in srgb, var(--acc) 35%, var(--panel2)), color-mix(in srgb, var(--acc) 35%, var(--panel2))) left / 0% 100% no-repeat; }
+:where(:root[data-theme="ds-brutalist"]) .profile[popover], :where(:root[data-theme="ds-brutalist"]) .emoji-picker[popover] { box-shadow: var(--shadow-lg); }
+:where(:root[data-theme="ds-brutalist"]) dialog.report::backdrop, :where(:root[data-theme="ds-brutalist"]) dialog.about::backdrop { background: var(--color-surface-overlay); }
+:where(:root[data-theme="ds-brutalist"]) .consent { --bubble: var(--color-bubble); --bubble-fg: var(--color-bubble-fg); --bubble-dim: var(--color-bubble-dim); --bubble-link: var(--color-bubble-link); }
+:where(:root[data-theme="ds-brutalist"]) .consent .bubble { box-shadow: var(--shadow-lg); }
+/* a comfortable measure for reading on a wide screen; nothing is cut, long lines wrap */
+:where(:root[data-theme="ds-brutalist"]) .msg { max-width: 75ch; }
+/* Fullscreen keeps its black stage in both palettes: the overlays get the dark palette, so status dots and text stay
+   legible on black even while the rest of the page is light. */
+:where(:root[data-theme="ds-brutalist"]) .share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
+  --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc); color: var(--fg); }
+/* Phones (styles.css's 700px breakpoint): 16px text in fields so iOS does not zoom on focus, 16px messages, 44px call buttons. */
+@media (max-width: 700px) {
+  :where(:root[data-theme="ds-brutalist"]) .chat-log { font-size: 16px; }
+  :where(:root[data-theme="ds-brutalist"]) :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
+  :where(:root[data-theme="ds-brutalist"]) .actions button, :where(:root[data-theme="ds-brutalist"]) .chat-input > button { min-height: 44px; }
+}
+
+/* ── Character: the box model, exposed ─────────────────────────────────────────────────────────────────── */
+:where(:root[data-theme="ds-brutalist"]) body { font-size: 13px; }
+:where(:root[data-theme="ds-brutalist"]) h1 { font-size: 22px; font-weight: 800; text-transform: uppercase; }
+:where(:root[data-theme="ds-brutalist"]) h2, :where(:root[data-theme="ds-brutalist"]) .room-title { font-weight: 800; letter-spacing: .04em; }
+:where(:root[data-theme="ds-brutalist"]) .room.selected .room-head { border-left: 6px solid var(--fg); padding-left: 8px; }
+/* every box shows its edge; nothing is rounded, not even a face */
+:where(:root[data-theme="ds-brutalist"]) button { border: var(--border-width) solid var(--line); border-radius: 0; background: var(--panel2); font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+:where(:root[data-theme="ds-brutalist"]) button:where(:hover:not(:disabled, .on, .join, .leave, .unblock, .link, .avatar, .room-name, .edit, .chat-older, .emoji-open)) { background: var(--fg); color: var(--bg); }
+:where(:root[data-theme="ds-brutalist"]) :is(.emoji-tabs, .emoji-grid) button:hover { background: var(--color-hazard); color: var(--color-text-on-hazard); }
+:where(:root[data-theme="ds-brutalist"]) button.on { border-color: var(--line); }
+:where(:root[data-theme="ds-brutalist"]) button.join, :where(:root[data-theme="ds-brutalist"]) button.leave, :where(:root[data-theme="ds-brutalist"]) button.unblock { border-color: var(--line); }
+:where(:root[data-theme="ds-brutalist"]) button.link { text-transform: none; font-weight: 400; }
+:where(:root[data-theme="ds-brutalist"]) input, :where(:root[data-theme="ds-brutalist"]) select.picker, :where(:root[data-theme="ds-brutalist"]) dialog.report textarea, :where(:root[data-theme="ds-brutalist"]) dialog.report .field select { border: var(--border-width) solid var(--line); border-radius: 0; }
+:where(:root[data-theme="ds-brutalist"]) select.picker::picker(select) { border: var(--border-width) solid var(--line); border-radius: 0; }
+:where(:root[data-theme="ds-brutalist"]) select.picker option { border-radius: 0; }
+:where(:root[data-theme="ds-brutalist"]) .avatar { border-radius: 0; background: var(--panel2); box-shadow: inset 0 0 0 var(--border-width) var(--line); }
+:where(:root[data-theme="ds-brutalist"]) .avatar.speaking { box-shadow: inset 0 0 0 var(--border-width) var(--line), 0 0 0 3px var(--color-ring); }
+:where(:root[data-theme="ds-brutalist"]) button.avatar.own::after { border-radius: 0; border: var(--border-width) solid var(--line); }
+:where(:root[data-theme="ds-brutalist"]) .conn i { border-radius: 0; }
+:where(:root[data-theme="ds-brutalist"]) .plist em { border-radius: 0; border-color: var(--fg); color: var(--fg); }
+:where(:root[data-theme="ds-brutalist"]) .unread { border-radius: 0; }
+:where(:root[data-theme="ds-brutalist"]) .new { border-radius: 0; background: var(--color-hazard); color: var(--color-text-on-hazard); outline: 1px solid #000; }
+:where(:root[data-theme="ds-brutalist"]) .warn, :where(:root[data-theme="ds-brutalist"]) button.unblock { border-radius: 0; font-weight: 700; }
+:where(:root[data-theme="ds-brutalist"]) .warn { border: var(--border-width) solid var(--line); }
+/* the grid lines themselves: sidebar and composer edges are thick rules */
+:where(:root[data-theme="ds-brutalist"]) .side { border-right: var(--border-width) solid var(--line); }
+:where(:root[data-theme="ds-brutalist"]) .chat-input { border-top: var(--border-width) solid var(--line); padding-top: 10px; }
+:where(:root[data-theme="ds-brutalist"]) .share { border: var(--border-width) solid var(--line); border-radius: 0; }
+:where(:root[data-theme="ds-brutalist"]) .share-live { border-color: var(--acc); border-width: 4px; }
+:where(:root[data-theme="ds-brutalist"]) .share-head { border-bottom: var(--border-width) solid var(--line); background: var(--panel); font-weight: 700; }
+:where(:root[data-theme="ds-brutalist"]) .share-bar { border-top: var(--border-width) solid var(--line); background: var(--panel); }
+:where(:root[data-theme="ds-brutalist"]) .share.share-fs .share-head, :where(:root[data-theme="ds-brutalist"]) .share.share-fs .share-bar { border: 0; }
+:where(:root[data-theme="ds-brutalist"]) .panel { border-radius: 0; }
+:where(:root[data-theme="ds-brutalist"]) .panel { border: var(--border-width) solid var(--line); }
+:where(:root[data-theme="ds-brutalist"]) .profile[popover], :where(:root[data-theme="ds-brutalist"]) .emoji-picker[popover],
+:where(:root[data-theme="ds-brutalist"]) dialog.report, :where(:root[data-theme="ds-brutalist"]) dialog.about { border: 3px solid var(--line); border-radius: 0; }
+:where(:root[data-theme="ds-brutalist"]) .emoji-tabs button, :where(:root[data-theme="ds-brutalist"]) .emoji-grid button { border: 0; border-radius: 0; background: none; }
+:where(:root[data-theme="ds-brutalist"]) .banner { border-radius: 0; border: var(--border-width) solid var(--line); border-top: 0; font-weight: 700; }
+:where(:root[data-theme="ds-brutalist"]) .chat-new { border: var(--border-width) solid var(--line); border-radius: 0; color: var(--fg); }
+:where(:root[data-theme="ds-brutalist"]) .chat-log { gap: 8px; }
+:where(:root[data-theme="ds-brutalist"]) .msg-from { font-weight: 800; text-transform: uppercase; }
+:where(:root[data-theme="ds-brutalist"]) .msg-cont { margin-top: -6px; }
+:where(:root[data-theme="ds-brutalist"]) .update { border-bottom: var(--border-width) solid var(--line); text-transform: uppercase; }
+:where(:root[data-theme="ds-brutalist"]) .update button { border-radius: 0; }
+:where(:root[data-theme="ds-brutalist"]) .consent .bubble { border-radius: 0; border: 3px solid var(--line); }
+:where(:root[data-theme="ds-brutalist"]) .theme-pick { border-radius: 0; }
+/* the phone moves the sidebar's rule to its bottom edge, as the app's own layout does */
+@media (max-width: 700px) {
+  :where(:root[data-theme="ds-brutalist"]) .side { border-right: 0; border-bottom: var(--border-width) solid var(--line); }
+}

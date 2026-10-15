@@ -1,0 +1,121 @@
+/* ds-rams: Dieter Rams, "less but better" (designer-skills by Julian Oczkowski, frontend-design philosophy
+   "Dieter Rams (Functionalist)"). A Braun appliance: warm grey housing, white keys, one orange that only ever means
+   "this is on". Colour is information; hairlines instead of shadows; round dials for faces. Light and dark palettes,
+   following the system setting (the dark one is the charcoal of the ET66 calculator). */
+@font-face { font-family: "ds-Hanken Grotesk"; font-style: normal; font-weight: 400 700; font-display: swap;
+  src: url(https://fonts.gstatic.com/s/hankengrotesk/v12/ieVn2YZDLWuGJpnzaiwFXS9tYtpd59A.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+:root[data-theme="ds-rams"] { color-scheme: light;
+  --color-bg-primary: #efeeea; --color-bg-secondary: #e4e2dc; --color-bg-tertiary: #f9f8f5;
+  --color-text-primary: #1c1c1a; --color-text-secondary: #575550; --color-text-link: #a33b08;
+  --color-border-primary: #c6c3ba; --color-border-focus: #c4470a;
+  --color-accent-primary: #c4470a; --color-text-on-accent: #ffffff; --color-bg-on: #c4470a; --color-text-on-on: #ffffff;
+  --color-status-success: #256b2a; --color-text-on-success: #ffffff; --color-ring: #256b2a;
+  --color-status-warning: #8a5800; --color-text-on-warning: #ffffff;
+  --color-status-error: #b3261e; --color-text-on-error: #ffffff;
+  --color-warning-bg: #f4e4bf; --color-warning-fg: #5f3d00; --color-error-bg: #f5d8d3; --color-error-fg: #8c1d16;
+  --color-bubble: #fbfaf7; --color-bubble-fg: #1c1c1a; --color-bubble-dim: #575550; --color-bubble-link: #a33b08;
+  --color-surface-overlay: rgba(28, 28, 26, .35);
+  --fs-stage: #000000; --fs-fg: #ecebe7; --fs-dim: #b4b1aa; --fs-ok: #74c278; --fs-warn: #eab53e; --fs-bad: #ff7466;
+  --fs-button: #2d2d2b; --fs-line: #4a4945; --fs-acc: #f26b1d;
+  --font-family-body: "ds-Hanken Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --border-radius-sm: 3px; --border-radius-md: 4px; --border-radius-lg: 6px;
+  --shadow-sm: 0 1px 0 rgba(0, 0, 0, .06); --shadow-md: 0 2px 6px rgba(0, 0, 0, .10); --shadow-lg: 0 6px 18px rgba(0, 0, 0, .14);
+  --duration-fast: 150ms; --easing-default: cubic-bezier(.4, 0, .2, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="ds-rams"] { color-scheme: dark;
+    --color-bg-primary: #1b1b1a; --color-bg-secondary: #232322; --color-bg-tertiary: #2d2d2b;
+    --color-text-primary: #e9e7e2; --color-text-secondary: #a6a39c; --color-text-link: #ff8a47;
+    --color-border-primary: #3f3e3a; --color-border-focus: #ff8a47;
+    --color-accent-primary: #f26b1d; --color-text-on-accent: #1b1b1a; --color-bg-on: #f26b1d; --color-text-on-on: #1b1b1a;
+    --color-status-success: #74c278; --color-text-on-success: #10240f; --color-ring: #74c278;
+    --color-status-warning: #eab53e; --color-text-on-warning: #1b1b1a;
+    --color-status-error: #ff7466; --color-text-on-error: #1b1b1a;
+    --color-warning-bg: #3a2e12; --color-warning-fg: #f0c35c; --color-error-bg: #3d1b18; --color-error-fg: #ff8a7e;
+    --color-bubble: #33332f; --color-bubble-fg: #e9e7e2; --color-bubble-dim: #b3b0a8; --color-bubble-link: #ff8a47;
+    --color-surface-overlay: rgba(0, 0, 0, .6);
+    --shadow-sm: 0 1px 0 rgba(0, 0, 0, .3); --shadow-md: 0 2px 8px rgba(0, 0, 0, .45); --shadow-lg: 0 8px 24px rgba(0, 0, 0, .55);
+  }
+}
+
+/* ── Map the semantic tokens onto the app's own variables (styles.css :root) ─────────────────────────────── */
+:root[data-theme="ds-rams"] {
+  --bg: var(--color-bg-primary); --panel: var(--color-bg-secondary); --panel2: var(--color-bg-tertiary);
+  --fg: var(--color-text-primary); --dim: var(--color-text-secondary); --line: var(--color-border-primary);
+  --ok: var(--color-status-success); --warn: var(--color-status-warning); --bad: var(--color-status-error);
+  --acc: var(--color-accent-primary);
+  font-family: var(--font-family-body);
+}
+
+/* ── Repairs: colours styles.css hard-codes for its dark page, read from the tokens instead. Every rule below has
+   exactly the specificity of the rule it replaces (the theme prefix sits in :where), so the app's own variants
+   (button.join over button, .share.share-fs over .share) still win where they did. ─────────────────────────── */
+:where(:root[data-theme="ds-rams"]) a { color: var(--color-text-link); }
+:where(:root[data-theme="ds-rams"]) :is(button, select, textarea) { font-family: inherit; }
+:where(:root[data-theme="ds-rams"]) :focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+:where(:root[data-theme="ds-rams"]) .update { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+:where(:root[data-theme="ds-rams"]) .update button { background: var(--color-text-on-accent); color: var(--color-accent-primary); }
+:where(:root[data-theme="ds-rams"]) .update button:hover { background: color-mix(in srgb, var(--color-text-on-accent) 88%, var(--color-accent-primary)); }
+:where(:root[data-theme="ds-rams"]) .unread { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+:where(:root[data-theme="ds-rams"]) .new { background: var(--color-status-warning); color: var(--color-text-on-warning); }
+:where(:root[data-theme="ds-rams"]) .warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+:where(:root[data-theme="ds-rams"]) .banner { box-shadow: var(--shadow-md); }
+:where(:root[data-theme="ds-rams"]) .banner-warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+:where(:root[data-theme="ds-rams"]) .banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
+:where(:root[data-theme="ds-rams"]) .chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
+:where(:root[data-theme="ds-rams"]) .chat-new:hover { color: var(--fg); }
+:where(:root[data-theme="ds-rams"]) button.on { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
+:where(:root[data-theme="ds-rams"]) button.join { background: var(--ok); color: var(--color-text-on-success); }
+:where(:root[data-theme="ds-rams"]) button.leave { background: var(--bad); color: var(--color-text-on-error); }
+:where(:root[data-theme="ds-rams"]) button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+:where(:root[data-theme="ds-rams"]) select.picker option:checked { background: var(--color-bg-on); color: var(--color-text-on-on); }
+:where(:root[data-theme="ds-rams"]) .avatar.speaking { box-shadow: 0 0 0 2px var(--color-ring); }
+:where(:root[data-theme="ds-rams"]) .share-head { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+:where(:root[data-theme="ds-rams"]) .share-bar { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+:where(:root[data-theme="ds-rams"]) .panel .mictest button.recording { background: var(--panel2) linear-gradient(color-mix(in srgb, var(--acc) 35%, var(--panel2)), color-mix(in srgb, var(--acc) 35%, var(--panel2))) left / 0% 100% no-repeat; }
+:where(:root[data-theme="ds-rams"]) .profile[popover], :where(:root[data-theme="ds-rams"]) .emoji-picker[popover] { box-shadow: var(--shadow-lg); }
+:where(:root[data-theme="ds-rams"]) dialog.report::backdrop, :where(:root[data-theme="ds-rams"]) dialog.about::backdrop { background: var(--color-surface-overlay); }
+:where(:root[data-theme="ds-rams"]) .consent { --bubble: var(--color-bubble); --bubble-fg: var(--color-bubble-fg); --bubble-dim: var(--color-bubble-dim); --bubble-link: var(--color-bubble-link); }
+:where(:root[data-theme="ds-rams"]) .consent .bubble { box-shadow: var(--shadow-lg); }
+/* a comfortable measure for reading on a wide screen; nothing is cut, long lines wrap */
+:where(:root[data-theme="ds-rams"]) .msg { max-width: 75ch; }
+/* Fullscreen keeps its black stage in both palettes: the overlays get the dark palette, so status dots and text stay
+   legible on black even while the rest of the page is light. */
+:where(:root[data-theme="ds-rams"]) .share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
+  --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc); color: var(--fg); }
+/* Phones (styles.css's 700px breakpoint): 16px text in fields so iOS does not zoom on focus, 16px messages, 44px call buttons. */
+@media (max-width: 700px) {
+  :where(:root[data-theme="ds-rams"]) .chat-log { font-size: 16px; }
+  :where(:root[data-theme="ds-rams"]) :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
+  :where(:root[data-theme="ds-rams"]) .actions button, :where(:root[data-theme="ds-rams"]) .chat-input > button { min-height: 44px; }
+}
+
+/* ── Character: Braun ──────────────────────────────────────────────────────────────────────────────────── */
+:where(:root[data-theme="ds-rams"]) body { letter-spacing: -.005em; }
+:where(:root[data-theme="ds-rams"]) h1 { font-weight: 600; letter-spacing: -.02em; }
+:where(:root[data-theme="ds-rams"]) h2, :where(:root[data-theme="ds-rams"]) .room-title { font-size: 11px; font-weight: 600; letter-spacing: .14em; }
+/* keys: white, square-ish, a hairline; the label weight carries the hierarchy */
+:where(:root[data-theme="ds-rams"]) button { border-radius: var(--border-radius-sm); font-weight: 500; transition: border-color var(--duration-fast) var(--easing-default), background-color var(--duration-fast) var(--easing-default); }
+:where(:root[data-theme="ds-rams"]) button:where(:hover:not(:disabled, .on, .join, .leave, .unblock)) { border-color: var(--dim); }
+:where(:root[data-theme="ds-rams"]) input, :where(:root[data-theme="ds-rams"]) select.picker, :where(:root[data-theme="ds-rams"]) dialog.report textarea { border-radius: var(--border-radius-sm); }
+:where(:root[data-theme="ds-rams"]) input:focus, :where(:root[data-theme="ds-rams"]) textarea:focus { border-color: var(--color-border-focus); }
+/* the room on screen gets the one orange dot, like a Braun power indicator */
+:where(:root[data-theme="ds-rams"]) .room-head { padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+:where(:root[data-theme="ds-rams"]) .room.selected .room-title::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 8px 1px 0; border-radius: 50%; background: var(--acc); vertical-align: middle; }
+/* round dials for faces; speaking adds a green ring set off by a gap of housing */
+:where(:root[data-theme="ds-rams"]) .avatar { background: var(--panel2); box-shadow: inset 0 0 0 1px var(--line); }
+:where(:root[data-theme="ds-rams"]) .avatar.speaking { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--color-ring); }
+:where(:root[data-theme="ds-rams"]) .share, :where(:root[data-theme="ds-rams"]) .panel { border-radius: var(--border-radius-md); }
+:where(:root[data-theme="ds-rams"]) .share-bar { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+:where(:root[data-theme="ds-rams"]) .profile[popover], :where(:root[data-theme="ds-rams"]) .emoji-picker[popover],
+:where(:root[data-theme="ds-rams"]) dialog.report, :where(:root[data-theme="ds-rams"]) dialog.about { border-radius: var(--border-radius-lg); }
+:where(:root[data-theme="ds-rams"]) .msg-from { font-weight: 600; }
+:where(:root[data-theme="ds-rams"]) .msg-at { font-variant-numeric: tabular-nums; }
+:where(:root[data-theme="ds-rams"]) .chat-input { gap: 8px; }
+:where(:root[data-theme="ds-rams"]) .banner { border-radius: 0 0 var(--border-radius-lg) var(--border-radius-lg); }
+:where(:root[data-theme="ds-rams"]) .consent .bubble { border-radius: var(--border-radius-lg); border: 1px solid var(--line); }
+@media (prefers-reduced-motion: reduce) {
+  :where(:root[data-theme="ds-rams"]) button { transition: none; }
+}
