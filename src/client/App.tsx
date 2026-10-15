@@ -25,6 +25,7 @@ import { EmojiPicker } from './EmojiPicker';
 import { place } from './place';
 import { createTabLock } from './tablock';
 import { build, commitUrl, REPO_URL, shortCommit } from './version';
+import { THEMES, setTheme, theme } from './theme';
 import { applyUpdate, downloadProgress, holding, noteOffered, tabSettled, updateReady } from './update';
 
 export default function App() {
@@ -456,6 +457,12 @@ function Workspace(props: WorkspaceProps) {
               <ReportDialog collect={() => collectReport({ status: () => cur().room.status().kind, people: everyone, me: () => me, call: (active() ?? cur()).call.diagnostics })} />
               <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { if (confirm(`Clear this browser's chat history of ${cur().saved.name}? Nothing is stored on the server, so this cannot be undone.`)) void cur().room.clearHistory(); }}>Clear chat history</button>
               <VersionDialog />
+              <Show when={THEMES.length > 0}>
+                <select class="theme-pick" aria-label="Theme" title="Try a design; the pick stays in the address, not in this browser" value={theme()} onChange={(e) => setTheme(e.currentTarget.value)}>
+                  <option value="">Default look</option>
+                  <For each={THEMES}>{(name) => <option value={name}>{name}</option>}</For>
+                </select>
+              </Show>
             </div>
           </aside>
           <ProfileCard open={profile()} people={withMe()} me={me} label={labelOf} onClose={() => setProfile(null)} onRenameSelf={renameSelf} onPictureSelf={pictureSelf} />

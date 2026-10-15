@@ -359,3 +359,6 @@ dialog.about details.change p { margin: 6px 0 0; padding-left: 10px; border-left
 dialog.about dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 13px; }
 dialog.about dt { color: var(--dim); }
 dialog.about dd { margin: 0; }
+
+/* The design-trial picker (theme.ts): as quiet as the links around it. */
+.theme-pick { background: none; color: var(--dim); border: 1px solid var(--line); border-radius: 6px; font-size: 11px; padding: 2px 4px; }
