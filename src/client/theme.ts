@@ -9,7 +9,7 @@ export const THEMES: readonly string[] = Object.keys(files).map((path) => path.r
 
 // The prefix of a file name says which design skill made the theme (the bake-off of PR #63); the menu groups by it.
 const SKILLS: Record<string, string> = { fd: 'frontend-design', imp: 'Impeccable', tf: 'theme-factory', ds: 'designer-skills' };
-/** The themes in the menu, grouped by the skill that made them: `fd-midnight-galaxy` shows as "Midnight galaxy". */
+/** The themes in the menu, grouped by the skill that made them: `tf-midnight-galaxy` shows as "Midnight galaxy". */
 export const THEME_GROUPS: readonly { label: string; themes: { name: string; label: string }[] }[] = [...new Set(THEMES.map((t) => t.split('-')[0]!))]
   .map((prefix) => ({
     label: SKILLS[prefix] ?? prefix,

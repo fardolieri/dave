@@ -22,11 +22,13 @@
 :where(:root[data-theme="fd-nightbus"]) button { border-radius: 3px; font: inherit; font-weight: 600; }
 :where(:root[data-theme="fd-nightbus"]) input { border-radius: 3px; background: #0A1529; }
 
-:root[data-theme="fd-nightbus"] button.on { background: var(--acc); border-color: var(--acc); color: #04213A; }
+:root[data-theme="fd-nightbus"] button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #04213A; }
 :root[data-theme="fd-nightbus"] button.join { background: var(--ok); color: #03270F; font-weight: 800; }
 :root[data-theme="fd-nightbus"] button.leave { background: var(--bad); color: #2E0505; font-weight: 800; }
 :root[data-theme="fd-nightbus"] button.unblock { background: #3A3210; color: var(--warn); }
 :root[data-theme="fd-nightbus"] button.link { font-weight: 400; }
+/* the mic test fills its button while recording: a deep stop-request cyan under the cabin-light label, so "Recording…" stays readable */
+:root[data-theme="fd-nightbus"] .panel .mictest button.recording { background-image: linear-gradient(#0B5A87, #0B5A87); }
 
 /* the destination sign: a black slot with the room's name in LEDs; the room on screen glows */
 :root[data-theme="fd-nightbus"] .room-head { margin-top: 16px; }

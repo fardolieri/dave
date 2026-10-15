@@ -30,6 +30,10 @@
 :root[data-theme="fd-walkie"] button.leave { background: var(--bad); color: #fff; box-shadow: inset 0 -3px 0 rgba(0,0,0,.3); }
 :root[data-theme="fd-walkie"] button.unblock { background: #FBE3A6; color: #5E3500; border-color: var(--warn); }
 :root[data-theme="fd-walkie"] button.link { background: none; box-shadow: none; color: var(--dim); font-size: 13px; font-weight: 500; }
+/* an open link (the invite, the consent bubble) reads darker and heavier than a closed one, as the app's own look has it */
+:root[data-theme="fd-walkie"] button.link.on { color: var(--rubber); font-weight: 700; }
+/* the mic test fills its button while recording: the chassis yellow under the LCD ink, so "Recording…" stays readable */
+:root[data-theme="fd-walkie"] .panel .mictest button.recording { background-image: linear-gradient(var(--chassis-dk), var(--chassis-dk)); }
 :root[data-theme="fd-walkie"] button.room-name, :root[data-theme="fd-walkie"] button.avatar,
 :root[data-theme="fd-walkie"] .emoji-tabs button, :root[data-theme="fd-walkie"] .emoji-grid button,
 :root[data-theme="fd-walkie"] .chat-input .emoji-open, :root[data-theme="fd-walkie"] .profile button.edit,

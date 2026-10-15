@@ -20,8 +20,8 @@
 :root[data-theme="tf-botanical-garden"] .msg-from { color: #a23f25; }
 :root[data-theme="tf-botanical-garden"] :is(button.room-name, button.avatar):focus-visible { outline-color: var(--tf-link); }
 
-/* shape: corners of the plain controls and boxes (:where keeps button.join, .link, .avatar and the rest their own look) */
-:where(:root[data-theme="tf-botanical-garden"]) :is(button, input, select.picker, textarea) { border-radius: 10px; }
+/* shape: corners of the plain controls and boxes (:where keeps button.join, .link and the rest their own look; faces stay round) */
+:where(:root[data-theme="tf-botanical-garden"]) :is(button:not(.avatar), input, select.picker, textarea) { border-radius: 10px; }
 :root[data-theme="tf-botanical-garden"] :is(.panel, .share, .warn, dialog.report, dialog.about, .profile[popover], .emoji-picker[popover]) { border-radius: 10px; }
 :root[data-theme="tf-botanical-garden"] .share.share-fs { border-radius: 0; }
 
@@ -32,6 +32,8 @@
 :root[data-theme="tf-botanical-garden"] button.join { color: var(--tf-on-ok); }
 :root[data-theme="tf-botanical-garden"] button.leave { color: var(--tf-on-bad); }
 :root[data-theme="tf-botanical-garden"] button.unblock { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+/* the mic test fills its button while recording: a pale fern, so "Recording…" stays readable */
+:root[data-theme="tf-botanical-garden"] .panel .mictest button.recording { background-image: linear-gradient(#b9d3b0, #b9d3b0); }
 :root[data-theme="tf-botanical-garden"] .new { background: var(--tf-new-bg); color: var(--tf-on-new); }
 :root[data-theme="tf-botanical-garden"] .warn, :root[data-theme="tf-botanical-garden"] .banner-warn { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
 :root[data-theme="tf-botanical-garden"] .banner-bad { background: var(--tf-bad-bg); color: var(--tf-bad-fg); }

@@ -29,6 +29,8 @@
 :root[data-theme="fd-riso"] button.unblock { background: #FFE2C9; color: #6E3200; border-color: var(--warn); }
 :root[data-theme="fd-riso"] button.link { color: var(--dim); box-shadow: none; font-weight: 500; font-size: 12px; }
 :root[data-theme="fd-riso"] button.link.on { background: var(--pink-soft); color: var(--ink); }
+/* the mic test fills its button while recording: the pink layer under the blue ink, so "Recording…" stays readable */
+:root[data-theme="fd-riso"] .panel .mictest button.recording { background-image: linear-gradient(var(--pink-soft), var(--pink-soft)); }
 :root[data-theme="fd-riso"] button.room-name, :root[data-theme="fd-riso"] button.avatar, :root[data-theme="fd-riso"] .emoji-tabs button,
 :root[data-theme="fd-riso"] .emoji-grid button, :root[data-theme="fd-riso"] .chat-input .emoji-open, :root[data-theme="fd-riso"] .profile button.edit,
 :root[data-theme="fd-riso"] .chat-older { box-shadow: none; }
