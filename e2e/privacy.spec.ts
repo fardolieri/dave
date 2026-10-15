@@ -73,6 +73,23 @@ test('a yes starts PostHog and tells the server; stopping forgets it again', asy
   expect(alice.posthog.length, 'nothing more after stopping').toBe(before);
 });
 
+test('with the yes, every event says which theme is on screen, from the load and after each pick', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { plainUserAgent: true });
+  // A super property, kept by the SDK with its state like the build (the event bodies are compressed).
+  const theme = () => alice.page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('ph_'))
+    .map((k) => { try { return JSON.parse(localStorage.getItem(k)!) as Record<string, unknown>; } catch { return null; } })
+    .find((v) => v && 'build_target' in v)?.['theme'] ?? null);
+  await expect.poll(theme, { message: 'the default look, before any pick' }).toBe('default');
+  const pick = alice.page.getByRole('combobox', { name: 'Theme', exact: true });
+  const picked = (await pick.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value).filter(Boolean)))[0]!;
+  await pick.selectOption(picked);
+  await expect.poll(theme, { message: 'the picked theme from the pick on' }).toBe(picked);
+  await alice.page.evaluate(() => document.fonts.ready); // a reload must not cut off a font download (themes.spec.ts)
+  await alice.page.reload();
+  await alice.connected();
+  await expect.poll(theme, { message: 'and after a reload, from the stored pick' }).toBe(picked);
+});
+
 test('a yes during the handshake neither refuses the room nor gets lost', async ({ crowd }) => {
   const alice = await crowd.open('Alice', { telemetry: null, plainUserAgent: true, connect: false });
   // Hold the challenge back: the socket is open but not yet let in, which is when the answer is given here.

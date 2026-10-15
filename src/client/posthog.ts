@@ -46,9 +46,12 @@ const MAX_QUEUE = 100;
 let person: { id: string; props: Props } | null = null;
 const listeners = new Set<(on: boolean) => void>();
 
+/** What the app adds to every event besides the build, as it changes (`posthog.register`): the theme on screen. */
+const appProps: Props = {};
+
 /** The super properties: on every event the SDK sends from here on. */
 function register(ph: PostHog): void {
-  ph.register(isTestAccount ? { ...buildProps, is_test_account: true } : buildProps);
+  ph.register({ ...buildProps, ...appProps, ...(isTestAccount ? { is_test_account: true } : {}) });
 }
 
 function start(): void {
@@ -172,12 +175,17 @@ export function captureOnce(event: string, props: Props): void {
     .catch((e: unknown) => console.warn('problem report not sent', e));
 }
 
-/** The calls the app makes. Both do nothing without the opt-in. */
+/** The calls the app makes. They send nothing without the opt-in. */
 const posthog = {
   capture(event: string, props?: Props): void {
     if (!telemetryOn() || !key || !host) return;
     if (sdk) sdk.capture(event, props);
     else if (queue.length < MAX_QUEUE) queue.push([event, props]);
+  },
+  /** Super properties of the app's own: on every event from now on, also after a later yes in this visit. */
+  register(props: Props): void {
+    Object.assign(appProps, props);
+    if (telemetryOn() && sdk) sdk.register(props);
   },
   /** Remembered, so a later yes in this visit still ties events to the person. */
   identify(id: string, props: Props): void {
