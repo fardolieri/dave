@@ -1,0 +1,111 @@
+/* Freibad: the open-air pool. The sidebar is the water, the chat is the white tiled deck, the rooms are lanes divided by
+   lane ropes, and what wants attention wears the pool's yellow signage. Lettering is DIN-like Barlow; avatars are tiles.
+   Rules are wrapped in :where() so each keeps the specificity of the app's own selector it restyles. */
+@font-face { font-family: "imp-Barlow"; font-style: normal; font-weight: 400; font-display: swap; src: url(https://fonts.gstatic.com/s/barlow/v13/7cHpv4kjgoGqM7E_Ass52Hs.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "imp-Barlow"; font-style: normal; font-weight: 400; font-display: swap; src: url(https://fonts.gstatic.com/s/barlow/v13/7cHpv4kjgoGqM7E_DMs5.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "imp-Barlow"; font-style: normal; font-weight: 500; font-display: swap; src: url(https://fonts.gstatic.com/s/barlow/v13/7cHqv4kjgoGqM7E3_-gs6VospT4.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "imp-Barlow"; font-style: normal; font-weight: 500; font-display: swap; src: url(https://fonts.gstatic.com/s/barlow/v13/7cHqv4kjgoGqM7E3_-gs51os.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "imp-Barlow"; font-style: normal; font-weight: 600; font-display: swap; src: url(https://fonts.gstatic.com/s/barlow/v13/7cHqv4kjgoGqM7E30-8s6VospT4.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "imp-Barlow"; font-style: normal; font-weight: 600; font-display: swap; src: url(https://fonts.gstatic.com/s/barlow/v13/7cHqv4kjgoGqM7E30-8s51os.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "imp-BarlowSC"; font-style: normal; font-weight: 600; font-display: swap; src: url(https://fonts.gstatic.com/s/barlowsemicondensed/v16/wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfp66_CWslu50.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "imp-BarlowSC"; font-style: normal; font-weight: 600; font-display: swap; src: url(https://fonts.gstatic.com/s/barlowsemicondensed/v16/wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfp66_B2sl.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "imp-BarlowSC"; font-style: normal; font-weight: 700; font-display: swap; src: url(https://fonts.gstatic.com/s/barlowsemicondensed/v16/wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfw6-_CWslu50.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "imp-BarlowSC"; font-style: normal; font-weight: 700; font-display: swap; src: url(https://fonts.gstatic.com/s/barlowsemicondensed/v16/wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfw6-_B2sl.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+:root[data-theme="imp-freibad"] {
+  --bg: #f2f8f9; --panel: #ffffff; --panel2: #e3f0f2; --fg: #0d2b33; --dim: #45656d; --line: #c3dade;
+  --ok: #157a40; --warn: #8a5a00; --bad: #b3202f; --acc: #006d86;
+  --edge: #5f8d97; --sign: #ffd23f; --rope: #e63946;
+  font-family: "imp-Barlow", "Segoe UI", system-ui, sans-serif; color-scheme: light;
+  accent-color: var(--acc); scrollbar-color: #9cc3cb transparent;
+}
+:where(:root[data-theme="imp-freibad"]) body { font-size: 15px; line-height: 1.4; }
+:where(:root[data-theme="imp-freibad"]) ::selection { background: #aee6f0; color: #0d2b33; }
+:where(:root[data-theme="imp-freibad"]) :is(input, textarea) { caret-color: var(--acc); }
+:where(:root[data-theme="imp-freibad"]) :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+:where(:root[data-theme="imp-freibad"]) :is(h1, h2, .room-title, dialog h3) { font-family: "imp-BarlowSC", "imp-Barlow", system-ui, sans-serif; font-weight: 700; }
+:where(:root[data-theme="imp-freibad"]) h1 { font-size: 30px; text-transform: uppercase; letter-spacing: .04em; }
+:where(:root[data-theme="imp-freibad"]) h2,
+:where(:root[data-theme="imp-freibad"]) .room-title { font-size: 14px; letter-spacing: .07em; }
+
+/* the water: the sidebar is pool blue and everything on it reads in white; the signs stay yellow */
+:where(:root[data-theme="imp-freibad"]) .side { --panel: #0a6578; --panel2: #08525f; --fg: #ffffff; --dim: #c4e9f0; --line: #2f8396; --edge: #8fd0dd;
+  --acc: #ffffff; --ok: #9df5bf; --warn: #ffd3a1; --bad: #ffd0d0; color: var(--fg); border-right: 0;
+  color-scheme: dark; accent-color: var(--acc); }
+
+/* Lane ropes: each room is a lane, the rope runs across its top. */
+:where(:root[data-theme="imp-freibad"]) .room { padding-top: 6px; background: repeating-linear-gradient(90deg, var(--rope) 0 12px, #ffffff 12px 24px) top / 100% 5px no-repeat; }
+:where(:root[data-theme="imp-freibad"]) .room-head { margin-top: 10px; }
+
+/* controls: tiles with small radii */
+:where(:root[data-theme="imp-freibad"]) button { font: inherit; font-weight: 500; border-radius: 4px; border-color: var(--edge); transition: background-color .15s ease-out; }
+:where(:root[data-theme="imp-freibad"]) button:where(:hover:not(:disabled)) { background-color: #d3e9ed; }
+:where(:root[data-theme="imp-freibad"] .side) button:where(:hover:not(:disabled)) { background-color: #0e7389; }
+:where(:root[data-theme="imp-freibad"]) input,
+:where(:root[data-theme="imp-freibad"]) textarea,
+:where(:root[data-theme="imp-freibad"]) select.picker { border-color: var(--edge); border-radius: 4px; }
+:where(:root[data-theme="imp-freibad"]) .chat-input > input { background: #fff; }
+:where(:root[data-theme="imp-freibad"]) button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #fff; }
+:where(:root[data-theme="imp-freibad"]) .side button.on:not(.link) { background: var(--sign); border-color: var(--sign); color: #111; }
+:where(:root[data-theme="imp-freibad"]) button.join { background: #5fe39a; color: #062b17; font-weight: 600; }
+:where(:root[data-theme="imp-freibad"]) button.leave { background: #c8202f; color: #fff; font-weight: 600; }
+:where(:root[data-theme="imp-freibad"]) button.unblock { background: var(--sign); color: #111; }
+:where(:root[data-theme="imp-freibad"]) button.link { text-underline-offset: 3px; }
+:where(:root[data-theme="imp-freibad"]) button.link:hover { color: var(--fg); }
+:where(:root[data-theme="imp-freibad"]) select.picker option:checked { background: #006d86; color: #fff; }
+
+/* signage */
+:where(:root[data-theme="imp-freibad"]) .unread { background: var(--sign); color: #111; border-radius: 3px; }
+:where(:root[data-theme="imp-freibad"]) .new { background: var(--sign); color: #111; border-radius: 3px; }
+:where(:root[data-theme="imp-freibad"]) .warn { background: #fff4cc; color: #6b4500; border-radius: 4px; }
+:where(:root[data-theme="imp-freibad"]) .banner { border-radius: 0 0 6px 6px; box-shadow: 0 4px 12px rgba(13,43,51,.18); }
+:where(:root[data-theme="imp-freibad"]) .banner-warn { background: #fff4cc; color: #6b4500; }
+:where(:root[data-theme="imp-freibad"]) .banner-bad { background: #fde8ea; color: #a3162b; }
+:where(:root[data-theme="imp-freibad"]) .update { background: #08525f; color: #fff; }
+:where(:root[data-theme="imp-freibad"]) .update button { background: var(--sign); color: #111; }
+:where(:root[data-theme="imp-freibad"]) .chat-new { background: #fff; border-color: var(--edge); color: var(--fg); }
+
+/* people are tiles */
+:where(:root[data-theme="imp-freibad"]) .avatar { border-radius: 8px; background: #e3f0f2; color: #0d2b33; }
+:where(:root[data-theme="imp-freibad"]) .avatar.big { border-radius: 14px; }
+:where(:root[data-theme="imp-freibad"]) .side .avatar.speaking { box-shadow: 0 0 0 3px var(--ok); }
+:where(:root[data-theme="imp-freibad"]) .plist em { border-color: var(--line); color: var(--dim); }
+:where(:root[data-theme="imp-freibad"]) .panel { background: #085a6a; border-color: var(--line); border-radius: 4px; }
+:where(:root[data-theme="imp-freibad"]) .panel .vgate .vmeter { background: #2f8396; }
+:where(:root[data-theme="imp-freibad"]) .msg-from { font-weight: 600; }
+:where(:root[data-theme="imp-freibad"]) .msg-at { font-variant-numeric: tabular-nums; }
+
+/* shares lie on the deck */
+:where(:root[data-theme="imp-freibad"]) .share { background: #fff; border-color: var(--line); border-radius: 6px; }
+:where(:root[data-theme="imp-freibad"]) .share-live { border-color: var(--acc); }
+:where(:root[data-theme="imp-freibad"]) .share-head { background: #e3f0f2; }
+:where(:root[data-theme="imp-freibad"]) .share-bar { background: #e3f0f2; color: var(--dim); font-family: inherit; font-variant-numeric: tabular-nums; }
+
+/* popovers and dialogs */
+:where(:root[data-theme="imp-freibad"]) .profile[popover],
+:where(:root[data-theme="imp-freibad"]) .emoji-picker[popover] { border-color: var(--line); border-radius: 8px; box-shadow: 0 10px 28px rgba(13,43,51,.22); }
+:where(:root[data-theme="imp-freibad"]) dialog.report,
+:where(:root[data-theme="imp-freibad"]) dialog.about { border-color: var(--line); border-radius: 8px; }
+:where(:root[data-theme="imp-freibad"]) dialog.report::backdrop,
+:where(:root[data-theme="imp-freibad"]) dialog.about::backdrop { background: rgba(8,82,95,.45); }
+:where(:root[data-theme="imp-freibad"]) dialog.report .field select { border-color: var(--edge); }
+:where(:root[data-theme="imp-freibad"]) dialog.about details.change p { border-left: 1px solid var(--edge); }
+:where(:root[data-theme="imp-freibad"]) .consent { --bubble: #08525f; --bubble-fg: #fff; --bubble-dim: #c4e9f0; --bubble-link: #ffd23f; }
+:where(:root[data-theme="imp-freibad"]) .consent .bubble { box-shadow: 0 8px 22px rgba(13,43,51,.28); }
+
+@media (max-width: 700px) {
+  :where(:root[data-theme="imp-freibad"]) .side { border-bottom: 0; }
+  :where(:root[data-theme="imp-freibad"]) .chat-input { background: var(--bg); border-top: 3px solid var(--edge); }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(:root[data-theme="imp-freibad"]) button { transition: none; }
+}
+
+/* the mic test fills its button while recording: a fill the label stays readable on */
+:where(:root[data-theme="imp-freibad"]) .panel .mictest button.recording { background-image: linear-gradient(#c8202f, #c8202f); border-color: var(--sign); }
+
+:where(:root[data-theme="imp-freibad"]) .side select.picker option:checked { background: var(--sign); color: #111; }
+:where(:root[data-theme="imp-freibad"]) .update button:hover { background: #ffe27a; }
+/* a share in fullscreen sits on black whatever the page: its overlays read in white */
+:where(:root[data-theme="imp-freibad"]) .share.share-fs { --panel2: #2a2f3a; --line: #4a5160; --edge: #8a93a6; --acc: #ffffff; --fg: #ffffff; --dim: #c4e9f0; --ok: #9df5bf; --warn: #ffd3a1; --bad: #ffd0d0; color: var(--fg); }
+:where(:root[data-theme="imp-freibad"] .share.share-fs) button:where(:hover:not(:disabled)) { background-color: #3a404c; }

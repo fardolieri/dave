@@ -1,0 +1,107 @@
+/* Olympia: Otl Aicher's 1972 colour programme as a working shell. Every colour has one job: the sidebar is a light blue
+   field, white is where you read and write, green marks the room whose call you are in, orange is what you leave by.
+   Square corners, flat fields, a grotesk set tight. Rules are wrapped in :where() so each keeps the specificity of the
+   app's own selector it restyles. */
+@font-face { font-family: "imp-Archivo"; font-style: normal; font-weight: 400 800; font-stretch: 62% 125%; font-display: swap; src: url(https://fonts.gstatic.com/s/archivo/v25/k3kQo8UDI-1M0wlSfdfoLnnA.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "imp-Archivo"; font-style: normal; font-weight: 400 800; font-stretch: 62% 125%; font-display: swap; src: url(https://fonts.gstatic.com/s/archivo/v25/k3kQo8UDI-1M0wlSfdnoLg.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+:root[data-theme="imp-olympia"] {
+  --bg: #ffffff; --panel: #8ccbef; --panel2: #ffffff; --fg: #0b2338; --dim: #3d5f78; --line: #c9dfee;
+  --ok: #00794a; --warn: #9a4f00; --bad: #b5122d; --acc: #0057a8;
+  --field: #4f8fbf; --green: #4cc47a; --orange: #ff8a1f;
+  font-family: "imp-Archivo", "Helvetica Neue", Arial, sans-serif; font-stretch: 96%; color-scheme: light;
+  accent-color: var(--acc); scrollbar-color: #9fb9cc transparent;
+}
+:where(:root[data-theme="imp-olympia"]) body { line-height: 1.4; }
+:where(:root[data-theme="imp-olympia"]) ::selection { background: #8ccbef; color: #0b2338; }
+:where(:root[data-theme="imp-olympia"]) :is(input, textarea) { caret-color: var(--acc); }
+:where(:root[data-theme="imp-olympia"]) :focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+:where(:root[data-theme="imp-olympia"]) h1 { font-size: 30px; font-weight: 800; font-stretch: 110%; letter-spacing: -.01em; }
+:where(:root[data-theme="imp-olympia"]) h2,
+:where(:root[data-theme="imp-olympia"]) .room-title { text-transform: none; letter-spacing: 0; font-size: 14px; font-weight: 700; }
+
+/* the sidebar is the blue field; inside it the quiet text is a darker blue, not grey */
+:where(:root[data-theme="imp-olympia"]) .side { --dim: #1f4766; --acc: #0b3f7a; --ok: #004d2f; --warn: #5c2f00; --bad: #7d0b1e; --line: #6fb2dc; --field: #1f5f8f; border-right: 0; }
+:where(:root[data-theme="imp-olympia"]) .room-title { color: var(--dim); }
+
+/* controls: flat fields with square corners */
+:where(:root[data-theme="imp-olympia"]) button { border-radius: 2px; border-color: var(--field); font: inherit; font-weight: 600; transition: background-color .15s ease-out; }
+:where(:root[data-theme="imp-olympia"]) button:where(:hover:not(:disabled)) { background-color: #e6f3fb; }
+:where(:root[data-theme="imp-olympia"]) input,
+:where(:root[data-theme="imp-olympia"]) textarea,
+:where(:root[data-theme="imp-olympia"]) select.picker { border-color: var(--field); border-radius: 2px; background-color: #fff; }
+:where(:root[data-theme="imp-olympia"]) .chat-input > input { border-width: 2px; padding: 9px 12px; }
+:where(:root[data-theme="imp-olympia"]) button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #fff; }
+:where(:root[data-theme="imp-olympia"]) .side button.on:not(.link) { background: #0b3f7a; border-color: #0b3f7a; }
+:where(:root[data-theme="imp-olympia"]) button.join { background: var(--green); color: #062b17; border-color: transparent; font-weight: 700; }
+:where(:root[data-theme="imp-olympia"]) button.leave { background: var(--orange); color: #2b1300; border-color: transparent; font-weight: 700; }
+:where(:root[data-theme="imp-olympia"]) button.unblock { background: #fff1df; color: #8a4700; border-color: #c97a1e; }
+:where(:root[data-theme="imp-olympia"]) button.link { color: var(--dim); font-weight: 500; text-underline-offset: 3px; }
+:where(:root[data-theme="imp-olympia"]) button.link:hover { color: var(--fg); }
+:where(:root[data-theme="imp-olympia"]) select.picker option:checked { background: var(--acc); color: #fff; }
+:where(:root[data-theme="imp-olympia"]) .theme-pick { border-color: var(--field); }
+
+/* badges and notices */
+:where(:root[data-theme="imp-olympia"]) .unread { background: #0b3f7a; color: #fff; border-radius: 2px; }
+:where(:root[data-theme="imp-olympia"]) .new { background: var(--orange); color: #2b1300; border-radius: 2px; }
+:where(:root[data-theme="imp-olympia"]) .warn { background: #fff1df; color: #8a4700; border-radius: 2px; }
+:where(:root[data-theme="imp-olympia"]) .banner { border-radius: 0; box-shadow: 0 3px 10px rgba(11,35,56,.18); }
+:where(:root[data-theme="imp-olympia"]) .banner-warn { background: #fff1df; color: #8a4700; }
+:where(:root[data-theme="imp-olympia"]) .banner-bad { background: #fde6ea; color: #a30f28; }
+:where(:root[data-theme="imp-olympia"]) .update { background: #0057a8; color: #fff; }
+:where(:root[data-theme="imp-olympia"]) .update button { background: #fff; color: #0b2338; border-radius: 2px; }
+:where(:root[data-theme="imp-olympia"]) .chat-new { background: #0b2338; border-color: #0b2338; color: #fff; border-radius: 2px; }
+:where(:root[data-theme="imp-olympia"]) .chat-new:hover { color: #fff; background: #0057a8; }
+
+/* the people: white discs on the blue field, the speaking ring in green */
+:where(:root[data-theme="imp-olympia"]) .avatar { background: #fff; color: var(--fg); }
+:where(:root[data-theme="imp-olympia"]) .side .avatar.speaking { box-shadow: 0 0 0 3px var(--ok); }
+:where(:root[data-theme="imp-olympia"]) .plist em { border-color: var(--field); border-radius: 2px; color: var(--dim); }
+:where(:root[data-theme="imp-olympia"]) .panel { border-radius: 2px; border: 0; background: #d7ecf9; }
+:where(:root[data-theme="imp-olympia"]) .panel .vgate .vmeter { background: #fff; }
+:where(:root[data-theme="imp-olympia"]) .msg-from { font-weight: 700; }
+:where(:root[data-theme="imp-olympia"]) .msg-at { font-variant-numeric: tabular-nums; }
+
+/* The colour code: the room whose call you are in is a green field, edge to edge of the sidebar. */
+:where(:root[data-theme="imp-olympia"]) .room { margin: 0 -14px; padding: 0 14px 12px; transition: background-color .2s ease-out; }
+:where(:root[data-theme="imp-olympia"]) .room:has(button.leave) { background: #a6e3bd; }
+:where(:root[data-theme="imp-olympia"]) .room:has(button.leave) .room-head { padding-top: 10px; margin-top: 0; }
+
+/* shares and their bars */
+:where(:root[data-theme="imp-olympia"]) .share { --fg: #ffffff; --dim: #c1d6e8; --acc: #9fd3ff; --ok: #6fe3a3; --warn: #ffc069; --bad: #ff8f9f; color: var(--fg); background: #0b2338; border-color: #0b2338; border-radius: 2px; }
+:where(:root[data-theme="imp-olympia"]) .share-live { border-color: #0057a8; border-width: 2px; }
+:where(:root[data-theme="imp-olympia"]) .share-head { background: #0b2338; color: #fff; }
+:where(:root[data-theme="imp-olympia"]) .share-head .stop { background: #fff; color: #0b2338; border-color: #fff; }
+:where(:root[data-theme="imp-olympia"]) .share-note { color: var(--dim); }
+:where(:root[data-theme="imp-olympia"]) .share-bar { background: #0b2338; color: #c1d6e8; font-family: inherit; font-variant-numeric: tabular-nums; }
+:where(:root[data-theme="imp-olympia"]) .share-bar .fs { background: #fff; color: #0b2338; }
+
+/* popovers and dialogs: white sheets */
+:where(:root[data-theme="imp-olympia"]) .profile[popover],
+:where(:root[data-theme="imp-olympia"]) .emoji-picker[popover] { background: #fff; border: 1px solid var(--field); border-radius: 2px; box-shadow: 0 8px 24px rgba(11,35,56,.22); }
+:where(:root[data-theme="imp-olympia"]) .emoji-scroll h4 { background: #fff; }
+:where(:root[data-theme="imp-olympia"]) .emoji-tabs button:hover,
+:where(:root[data-theme="imp-olympia"]) .emoji-grid button:hover,
+:where(:root[data-theme="imp-olympia"]) .emoji-grid button:focus-visible { background: #d7ecf9; }
+:where(:root[data-theme="imp-olympia"]) button.avatar.own::after { background: #fff; border-color: var(--field); }
+:where(:root[data-theme="imp-olympia"]) dialog.report,
+:where(:root[data-theme="imp-olympia"]) dialog.about { background: #fff; border: 1px solid var(--field); border-radius: 2px; }
+:where(:root[data-theme="imp-olympia"]) dialog.report::backdrop,
+:where(:root[data-theme="imp-olympia"]) dialog.about::backdrop { background: rgba(11,35,56,.45); }
+:where(:root[data-theme="imp-olympia"]) dialog.report .field select { background: #fff; border-color: var(--field); border-radius: 2px; }
+:where(:root[data-theme="imp-olympia"]) dialog.about details.change p { border-left: 1px solid var(--field); }
+:where(:root[data-theme="imp-olympia"]) .consent { --bubble: #0b2338; --bubble-fg: #fff; --bubble-dim: #c1d6e8; --bubble-link: #9fd3ff; }
+:where(:root[data-theme="imp-olympia"]) .consent .bubble { box-shadow: 0 8px 22px rgba(11,35,56,.3); }
+
+@media (max-width: 700px) {
+  :where(:root[data-theme="imp-olympia"]) .side { border-bottom: 0; }
+  :where(:root[data-theme="imp-olympia"]) .chat-input { background: #fff; border-top: 2px solid var(--panel); }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(:root[data-theme="imp-olympia"]) :is(button, .room) { transition: none; }
+}
+
+/* the mic test fills its button while recording: a fill the label stays readable on */
+:where(:root[data-theme="imp-olympia"]) .panel .mictest button.recording { background-image: linear-gradient(#8ccbef, #8ccbef); border-color: var(--acc); }
+
+:where(:root[data-theme="imp-olympia"]) .update button:hover { background: #e6f3fb; }
