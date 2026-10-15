@@ -23,8 +23,13 @@ environment.** Push a branch and read the results of `ci.yml` and `e2e.yml`.
 - OK here: reading code, editing, `git`, `gh`, `pnpm typecheck` (TypeScript 7 is native and fast), one vitest file
   (`pnpm exec vitest run test/x.test.ts`), one e2e test against nightly with `-g` (env vars in the auto memory).
 - Not here: the full `pnpm test`, the full e2e suite, `pnpm dev` next to a browser, several heavy commands at once.
-- To reproduce a bug: write the failing test, push it alone on a branch, watch it go red in CI, then push the fix and watch
-  it go green (the "red, then green" receipt). Same-ref pushes cancel each other, so wait for the red run to finish first.
+- To reproduce a bug: write the failing test, commit it ("Regression test: …"), commit the fix ("Problem report: …"), and
+  push both together. `red-green.yml` runs the test against the app from before the fix and must see it fail (the "red,
+  then green" receipt); the rest of CI must be green. Do not push the test alone just to watch it go red: every red run
+  emails the owner, and these were 38 of the last 100 failed runs.
+- Push the test alone first only when `red-green.yml` cannot show the bug: it runs browser tests in Chromium only, against
+  a local build, once. A bug that needs Firefox, or real Cloudflare (open a PR so its preview runs the suite), goes red
+  alone first; say why in the report. Same-ref pushes cancel each other, so wait for the red run to finish first.
 - Watch CI with one waiting loop, not several background watchers. Under memory pressure `gh` times out on TLS; use
   `curl -H "Authorization: Bearer $(gh auth token)"` against the Actions API instead.
 - Leave nothing running at the end of a turn (vite, workerd, chrome, playwright). The stop hook checks this.
