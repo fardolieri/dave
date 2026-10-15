@@ -1,0 +1,105 @@
+/* fd-walkie: the room as a walkie-talkie. Friends hop between rooms the way a handset hops channels, and a call is
+   being on air; so the sidebar is the handset's moulded safety-yellow body with its speaker grille, the chat is the
+   reflective grey-green LCD, and buttons are rubber keys.
+   Tokens: chassis #F2C230, rubber #2B2D2A, LCD #C9D3B4, LCD ink #1C261A, signal green #1F6E35, alarm red #A8231B.
+   Type: Barlow Semi Condensed throughout, the narrow engineered face printed on equipment; one family, two weights.
+   Boldness spent on: the yellow body with its grille. Everything on the LCD stays plain. */
+
+@font-face { font-family: 'Barlow Semi Condensed'; font-style: normal; font-weight: 500; font-display: swap;
+  src: url(https://fonts.gstatic.com/s/barlowsemicondensed/v16/wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfi6m_B2sl.woff2) format('woff2'); }
+@font-face { font-family: 'Barlow Semi Condensed'; font-style: normal; font-weight: 700; font-display: swap;
+  src: url(https://fonts.gstatic.com/s/barlowsemicondensed/v16/wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfw6-_B2sl.woff2) format('woff2'); }
+
+:root[data-theme="fd-walkie"] {
+  --chassis: #F2C230; --chassis-dk: #D9A916; --rubber: #2B2D2A; --rubber-fg: #F4F1E4; --lcd: #C9D3B4; --lcd-ink: #1C261A;
+  --bg: var(--lcd); --panel: var(--chassis); --panel2: #E4DDB8; --fg: var(--lcd-ink); --dim: #46503A; --line: #8C8A62;
+  --ok: #1F6E35; --warn: #8A4E00; --bad: #A8231B; --acc: var(--rubber);
+  font-family: 'Barlow Semi Condensed', 'Arial Narrow', system-ui, sans-serif; color-scheme: light;
+}
+:root[data-theme="fd-walkie"] body { font-size: 15px; font-weight: 500; }
+:where(:root[data-theme="fd-walkie"]) h2 { text-transform: none; letter-spacing: 0; font-size: 15px; font-weight: 700; color: var(--fg); }
+:where(:root[data-theme="fd-walkie"]) a { color: #13325E; }
+
+/* rubber keys: a darker lower lip, sunk in when pressed */
+:where(:root[data-theme="fd-walkie"]) button { background: #E9E4C9; color: var(--fg); border: 1px solid #7C7752; border-radius: 9px; font: inherit; font-weight: 700;
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); }
+:where(:root[data-theme="fd-walkie"]) button:active:not(:disabled) { box-shadow: inset 0 2px 0 rgba(0,0,0,.2); }
+:where(:root[data-theme="fd-walkie"]) input { background: #EEF2E2; color: var(--fg); border: 1px solid #7C7752; border-radius: 6px; box-shadow: inset 0 2px 3px rgba(0,0,0,.12); }
+:root[data-theme="fd-walkie"] button.on { background: var(--rubber); border-color: var(--rubber); color: var(--rubber-fg); box-shadow: inset 0 2px 0 rgba(0,0,0,.5); }
+:root[data-theme="fd-walkie"] button.join { background: var(--ok); color: #fff; box-shadow: inset 0 -3px 0 rgba(0,0,0,.3); }
+:root[data-theme="fd-walkie"] button.leave { background: var(--bad); color: #fff; box-shadow: inset 0 -3px 0 rgba(0,0,0,.3); }
+:root[data-theme="fd-walkie"] button.unblock { background: #FBE3A6; color: #5E3500; border-color: var(--warn); }
+:root[data-theme="fd-walkie"] button.link { background: none; box-shadow: none; color: var(--dim); font-size: 13px; font-weight: 500; }
+:root[data-theme="fd-walkie"] button.room-name, :root[data-theme="fd-walkie"] button.avatar,
+:root[data-theme="fd-walkie"] .emoji-tabs button, :root[data-theme="fd-walkie"] .emoji-grid button,
+:root[data-theme="fd-walkie"] .chat-input .emoji-open, :root[data-theme="fd-walkie"] .profile button.edit,
+:root[data-theme="fd-walkie"] .chat-older { box-shadow: none; }
+:root[data-theme="fd-walkie"] button.avatar:hover:not(.speaking) { box-shadow: 0 0 0 2px var(--rubber); }
+:root[data-theme="fd-walkie"] .chat-input .emoji-open:hover:not(:disabled) { border-color: #7C7752; }
+
+/* the body: yellow plastic, four rows of grille holes across the top */
+:root[data-theme="fd-walkie"] .side { padding-top: 30px; border-right: 4px solid var(--chassis-dk);
+  background:
+    radial-gradient(circle, rgba(43,45,42,.55) 1.6px, transparent 2.2px) 4px 6px / 9px 9px repeat-x,
+    radial-gradient(circle, rgba(43,45,42,.55) 1.6px, transparent 2.2px) 8.5px 13px / 9px 9px repeat-x,
+    radial-gradient(circle, rgba(43,45,42,.55) 1.6px, transparent 2.2px) 4px 20px / 9px 9px repeat-x,
+    linear-gradient(90deg, #F5CB45, var(--chassis) 40%, #EDB925);
+  --dim: #4A3E10; }
+:root[data-theme="fd-walkie"] .room-title { text-transform: none; letter-spacing: 0; font-size: 16px; color: #5A4A12; }
+:root[data-theme="fd-walkie"] .room.selected .room-title, :root[data-theme="fd-walkie"] button.room-name:hover .room-title { color: var(--rubber); }
+:root[data-theme="fd-walkie"] .side .panel { background: #F8E7A6; border-color: #9C7F1E; }
+:root[data-theme="fd-walkie"] .avatar { background: var(--rubber); color: var(--rubber-fg); }
+:root[data-theme="fd-walkie"] .avatar.speaking { box-shadow: 0 0 0 3px var(--chassis), 0 0 0 5px var(--ok); }
+:root[data-theme="fd-walkie"] .plist em { border-color: #7C6A26; color: #3E3410; }
+:root[data-theme="fd-walkie"] .unread { background: var(--rubber); color: var(--chassis); }
+:root[data-theme="fd-walkie"] .new { background: var(--rubber); color: var(--chassis); }
+:root[data-theme="fd-walkie"] .warn { background: #FBE3A6; color: #5E3500; border: 1px solid #C78A1E; }
+:root[data-theme="fd-walkie"] .side .conn-direct, :root[data-theme="fd-walkie"] .side .lag-ok { color: #1A5C2C; }
+:root[data-theme="fd-walkie"] .side .conn-relayed, :root[data-theme="fd-walkie"] .side .conn-reconnecting, :root[data-theme="fd-walkie"] .side .lag-warn { color: #6B3A00; }
+:root[data-theme="fd-walkie"] .side .conn-unreachable, :root[data-theme="fd-walkie"] .side .lag-bad { color: #8C1A14; }
+:root[data-theme="fd-walkie"] .theme-pick { background: none; color: #4A3E10; border-color: #9C7F1E; }
+
+/* the LCD: a recessed window with a soft inner shadow */
+:root[data-theme="fd-walkie"] .chat { box-shadow: inset 0 6px 10px -6px rgba(0,0,0,.25); }
+:root[data-theme="fd-walkie"] .msg-from { font-weight: 700; }
+:root[data-theme="fd-walkie"] .msg-at { color: var(--dim); }
+:root[data-theme="fd-walkie"] .chat-new { background: var(--rubber); color: var(--rubber-fg); border-color: var(--rubber); }
+:root[data-theme="fd-walkie"] .chat-new:hover { color: #fff; }
+:root[data-theme="fd-walkie"] .chat-input { background: var(--rubber); }
+:root[data-theme="fd-walkie"] .chat-input > input { background: var(--lcd); border-color: #000; }
+:root[data-theme="fd-walkie"] .chat-input > button:not(.emoji-open) { background: var(--chassis); border-color: var(--chassis-dk); color: var(--rubber); }
+:root[data-theme="fd-walkie"] .chat-input .emoji-open { color: var(--rubber-fg); }
+
+/* shares sit in black rubber frames */
+:root[data-theme="fd-walkie"] .share { background: var(--rubber); border: 3px solid var(--rubber); border-radius: 12px; color: var(--rubber-fg); }
+:root[data-theme="fd-walkie"] .share-live { border-color: var(--chassis); }
+:root[data-theme="fd-walkie"] .share-note { color: #C9C6B4; }
+:root[data-theme="fd-walkie"] .share-head { background: #1E1F1D; }
+:root[data-theme="fd-walkie"] .share-bar { background: #1E1F1D; color: #C9C6B4; font-family: inherit; font-size: 12px; }
+:root[data-theme="fd-walkie"] .share .conn-direct { color: #6BD48A; }
+:root[data-theme="fd-walkie"] .share .conn-relayed, :root[data-theme="fd-walkie"] .share .conn-reconnecting { color: #F2C230; }
+:root[data-theme="fd-walkie"] .share .conn-unreachable { color: #FF8A80; }
+:root[data-theme="fd-walkie"] .share .conn-connecting { color: #C9C6B4; }
+:root[data-theme="fd-walkie"] .share-head .stop { background: #3B3E3A; color: var(--rubber-fg); border-color: #555; }
+:root[data-theme="fd-walkie"] .share-bar .fs { background: #3B3E3A; color: var(--rubber-fg); border-color: #555; }
+:root[data-theme="fd-walkie"] .share-vol input[type=range] { accent-color: var(--chassis); }
+:root[data-theme="fd-walkie"] .share.share-fs { border: 0; border-radius: 0; background: #000; }
+:root[data-theme="fd-walkie"] .share.share-fs .share-head, :root[data-theme="fd-walkie"] .share.share-fs .share-bar { background: rgba(30,31,29,.8); }
+
+/* banners, pop-overs, dialogs */
+:root[data-theme="fd-walkie"] .banner { box-shadow: 0 3px 0 rgba(0,0,0,.25); font-weight: 700; }
+:root[data-theme="fd-walkie"] .banner-warn { background: var(--chassis); color: var(--rubber); }
+:root[data-theme="fd-walkie"] .banner-bad { background: var(--bad); color: #fff; }
+:root[data-theme="fd-walkie"] .update { background: var(--rubber); color: var(--chassis); }
+:root[data-theme="fd-walkie"] .update button { background: var(--chassis); color: var(--rubber); }
+:root[data-theme="fd-walkie"] .profile[popover], :root[data-theme="fd-walkie"] .emoji-picker[popover],
+:root[data-theme="fd-walkie"] dialog.report, :root[data-theme="fd-walkie"] dialog.about { background: #F6F1DA; border: 2px solid var(--rubber); box-shadow: 0 6px 0 rgba(0,0,0,.2); }
+:root[data-theme="fd-walkie"] .emoji-scroll h4 { background: #F6F1DA; text-transform: none; letter-spacing: 0; font-size: 13px; }
+:root[data-theme="fd-walkie"] .emoji-tabs button:hover, :root[data-theme="fd-walkie"] .emoji-grid button:hover { background: #E4DDB8; }
+:root[data-theme="fd-walkie"] select.picker, :root[data-theme="fd-walkie"] select.picker::picker(select) { background: #F6F1DA; border-color: #7C7752; }
+:root[data-theme="fd-walkie"] select.picker option:checked { background: var(--rubber); color: var(--rubber-fg); }
+:root[data-theme="fd-walkie"] .consent { --bubble: var(--rubber); --bubble-fg: var(--rubber-fg); --bubble-dim: #C9C6B4; --bubble-link: var(--chassis); }
+
+@media (max-width: 700px) {
+  :root[data-theme="fd-walkie"] .side { border-right: 0; border-bottom: 4px solid var(--chassis-dk); }
+}

@@ -1,0 +1,90 @@
+/* fd-riso: the friends' own zine, run off on a risograph in two inks, blue and fluorescent pink, on grey newsprint.
+   Every block is printed twice and the drums never quite line up: a pink copy of each card, key and tile peeks out from
+   under the blue one. Faces of friends are halftone dots.
+   Tokens: newsprint #E6E8EA, riso blue #0F4C8A, deep blue ink #0F2A55, fluorescent pink #FF48B0, riso green #00704A.
+   Type: Bricolage Grotesque, heavy and wide-set at heading sizes (its optical size axis), plain at body size.
+   Boldness spent on: the misregistered pink layer. Text is always blue ink, never pink. */
+
+@font-face { font-family: 'Bricolage Grotesque'; font-style: normal; font-weight: 400 800; font-display: swap;
+  src: url(https://fonts.gstatic.com/s/bricolagegrotesque/v9/3y9K6as8bTXq_nANBjzKo3IeZx8z6up5BeSl9D4dj_x9PpZBMlGIInE.woff2) format('woff2'); }
+
+:root[data-theme="fd-riso"] {
+  --paper: #E6E8EA; --blue: #0F4C8A; --ink: #0F2A55; --pink: #FF48B0; --pink-soft: #FFB8DD;
+  --bg: var(--paper); --panel: #DCE0E4; --panel2: #F3F4F5; --fg: var(--ink); --dim: #3E5272; --line: var(--blue);
+  --ok: #00704A; --warn: #A34A00; --bad: #C8102E; --acc: var(--blue);
+  --slip: 3px 3px 0 var(--pink);
+  font-family: 'Bricolage Grotesque', system-ui, sans-serif; color-scheme: light;
+}
+:root[data-theme="fd-riso"] body { font-size: 15px; }
+:where(:root[data-theme="fd-riso"]) h1 { font-weight: 800; font-size: 30px; letter-spacing: -.01em; }
+:where(:root[data-theme="fd-riso"]) h2 { text-transform: none; letter-spacing: 0; font-size: 17px; font-weight: 800; color: var(--ink); }
+:where(:root[data-theme="fd-riso"]) button { background: var(--panel2); color: var(--ink); border: 2px solid var(--blue); border-radius: 4px; font: inherit; font-weight: 700; box-shadow: var(--slip); }
+:where(:root[data-theme="fd-riso"]) button:active:not(:disabled) { box-shadow: 1px 1px 0 var(--pink); }
+:where(:root[data-theme="fd-riso"]) input { background: #FAFAFB; color: var(--ink); border: 2px solid var(--blue); border-radius: 4px; }
+:where(:root[data-theme="fd-riso"]) a { color: var(--blue); }
+
+:root[data-theme="fd-riso"] button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+:root[data-theme="fd-riso"] button.join { background: var(--ok); border-color: var(--ok); color: #fff; font-weight: 800; }
+:root[data-theme="fd-riso"] button.leave { background: var(--bad); border-color: var(--bad); color: #fff; box-shadow: 3px 3px 0 var(--ink); }
+:root[data-theme="fd-riso"] button.unblock { background: #FFE2C9; color: #6E3200; border-color: var(--warn); }
+:root[data-theme="fd-riso"] button.link { color: var(--dim); box-shadow: none; font-weight: 500; font-size: 12px; }
+:root[data-theme="fd-riso"] button.link.on { background: var(--pink-soft); color: var(--ink); }
+:root[data-theme="fd-riso"] button.room-name, :root[data-theme="fd-riso"] button.avatar, :root[data-theme="fd-riso"] .emoji-tabs button,
+:root[data-theme="fd-riso"] .emoji-grid button, :root[data-theme="fd-riso"] .chat-input .emoji-open, :root[data-theme="fd-riso"] .profile button.edit,
+:root[data-theme="fd-riso"] .chat-older { box-shadow: none; }
+
+:root[data-theme="fd-riso"] .side { border-right: 2px solid var(--blue); box-shadow: 4px 0 0 var(--pink); }
+:root[data-theme="fd-riso"] .room-title { text-transform: none; letter-spacing: -.01em; font-size: 19px; font-weight: 800; color: var(--dim); }
+:root[data-theme="fd-riso"] .room.selected .room-title, :root[data-theme="fd-riso"] button.room-name:hover .room-title { color: var(--ink); }
+:root[data-theme="fd-riso"] .unread { background: var(--pink); color: var(--ink); font-size: 11px; }
+
+/* faces in halftone: pink dots on paper, the initial printed over them in blue */
+:root[data-theme="fd-riso"] .avatar { color: var(--ink); font-weight: 800;
+  background: radial-gradient(circle, var(--pink-soft) 1.4px, transparent 1.9px) 0 0 / 5px 5px, #F3F4F5; border: 2px solid var(--blue); }
+:root[data-theme="fd-riso"] .avatar.speaking { box-shadow: 0 0 0 3px var(--ok); border-color: var(--ok); }
+:root[data-theme="fd-riso"] .plist em { border: 1.5px solid var(--blue); color: var(--ink); border-radius: 3px; }
+:root[data-theme="fd-riso"] .new { background: var(--pink); color: var(--ink); }
+:root[data-theme="fd-riso"] .warn { background: #FFE2C9; color: #6E3200; border: 2px solid var(--warn); border-radius: 4px; }
+:root[data-theme="fd-riso"] .panel { background: var(--panel2); border: 2px solid var(--blue); border-radius: 4px; box-shadow: var(--slip); }
+:root[data-theme="fd-riso"] .theme-pick { background: var(--panel2); color: var(--ink); border-color: var(--blue); }
+
+:root[data-theme="fd-riso"] .msg-from { font-weight: 800; }
+:root[data-theme="fd-riso"] .msg-at, :root[data-theme="fd-riso"] .msg-sys { color: var(--dim); }
+:root[data-theme="fd-riso"] .chat-new { background: var(--pink); color: var(--ink); border-color: var(--ink); font-weight: 700; }
+:root[data-theme="fd-riso"] .chat-new:hover { color: var(--ink); }
+:root[data-theme="fd-riso"] .chat-input { background: var(--panel); border-top: 2px solid var(--blue); }
+
+:root[data-theme="fd-riso"] .share { background: var(--ink); border: 2px solid var(--blue); border-radius: 4px; box-shadow: 5px 5px 0 var(--pink); color: #fff; }
+:root[data-theme="fd-riso"] .share-live { border-color: var(--pink); box-shadow: 5px 5px 0 var(--blue); }
+:root[data-theme="fd-riso"] .share-note { color: #C7D3E8; }
+:root[data-theme="fd-riso"] .share-head { background: var(--blue); }
+:root[data-theme="fd-riso"] .share-bar { background: var(--blue); color: #DCE6F5; font-family: inherit; }
+:root[data-theme="fd-riso"] .share-head .stop, :root[data-theme="fd-riso"] .share-bar .fs { background: #fff; color: var(--ink); border-color: #fff; box-shadow: 2px 2px 0 var(--pink); }
+:root[data-theme="fd-riso"] .share .conn-direct { color: #7CF0BE; }
+:root[data-theme="fd-riso"] .share .conn-relayed, :root[data-theme="fd-riso"] .share .conn-reconnecting { color: #FFD27A; }
+:root[data-theme="fd-riso"] .share .conn-unreachable { color: #FFB3BF; }
+:root[data-theme="fd-riso"] .share .conn-connecting { color: #C7D3E8; }
+:root[data-theme="fd-riso"] .share-vol input[type=range] { accent-color: var(--pink); }
+:root[data-theme="fd-riso"] .share.share-fs { border: 0; border-radius: 0; box-shadow: none; background: #000; }
+:root[data-theme="fd-riso"] .share.share-fs .share-head, :root[data-theme="fd-riso"] .share.share-fs .share-bar { background: rgba(15,76,138,.85); }
+
+:root[data-theme="fd-riso"] .banner { border: 2px solid var(--ink); border-top: 0; border-radius: 0 0 6px 6px; box-shadow: 4px 4px 0 var(--pink); font-weight: 700; }
+:root[data-theme="fd-riso"] .banner-warn { background: #FFE2C9; color: #6E3200; }
+:root[data-theme="fd-riso"] .banner-bad { background: var(--bad); color: #fff; }
+:root[data-theme="fd-riso"] .update { background: var(--pink); color: var(--ink); }
+:root[data-theme="fd-riso"] .update button { background: var(--ink); color: #fff; box-shadow: none; }
+:root[data-theme="fd-riso"] .update button:hover { background: var(--blue); }
+:root[data-theme="fd-riso"] .profile[popover], :root[data-theme="fd-riso"] .emoji-picker[popover],
+:root[data-theme="fd-riso"] dialog.report, :root[data-theme="fd-riso"] dialog.about { background: var(--panel2); border: 2px solid var(--blue); border-radius: 6px; box-shadow: 6px 6px 0 var(--pink); }
+:root[data-theme="fd-riso"] .profile-name strong, :root[data-theme="fd-riso"] dialog.report h3, :root[data-theme="fd-riso"] dialog.about h3 { font-weight: 800; font-size: 19px; }
+:root[data-theme="fd-riso"] .emoji-scroll h4 { background: var(--panel2); text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 800; color: var(--ink); }
+:root[data-theme="fd-riso"] .emoji-tabs button:hover, :root[data-theme="fd-riso"] .emoji-grid button:hover { background: var(--pink-soft); }
+:root[data-theme="fd-riso"] select.picker, :root[data-theme="fd-riso"] select.picker::picker(select) { background: var(--panel2); border: 2px solid var(--blue); border-radius: 4px; }
+:root[data-theme="fd-riso"] select.picker option:checked { background: var(--blue); color: #fff; }
+:root[data-theme="fd-riso"] dialog.report textarea, :root[data-theme="fd-riso"] dialog.report .field select { background: #FAFAFB; border: 2px solid var(--blue); }
+:root[data-theme="fd-riso"] .consent { --bubble: var(--pink-soft); --bubble-fg: var(--ink); --bubble-dim: #2E3F5E; --bubble-link: var(--ink); }
+:root[data-theme="fd-riso"] .consent .bubble { box-shadow: 4px 4px 0 var(--blue); }
+
+@media (max-width: 700px) {
+  :root[data-theme="fd-riso"] .side { border-right: 0; border-bottom: 2px solid var(--blue); box-shadow: 0 4px 0 var(--pink); }
+}

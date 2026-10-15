@@ -1,0 +1,82 @@
+/* fd-nightbus: the last bus home after a night out with friends. Each room's name is lit like a route's destination
+   sign, in orange dot-matrix LEDs; the one on screen is lit, the others are the unlit board. The rest is the bus at
+   night: deep navy, cool interior light, and signage type.
+   Tokens: night #0C1A33, seat #10213F, window #183056, LED #FF9E1B, stop-request cyan #5CC8FF, cabin light #E8EEF8.
+   Type: Doto (a dot-matrix face) for the sign only; Overpass, the open-source descendant of the US highway signage
+   face, for everything else.
+   Boldness spent on: the destination signs. The rest is plain, compact and square-cornered. */
+
+@font-face { font-family: 'Doto'; font-style: normal; font-weight: 800; font-display: swap;
+  src: url(https://fonts.gstatic.com/s/doto/v3/t5tJIRMbNJ6TQG7Il_EKPqP9zTnvqqGNcuvLMt1JIphFuOWuyE-T.woff2) format('woff2'); }
+@font-face { font-family: 'Overpass'; font-style: normal; font-weight: 400 800; font-display: swap;
+  src: url(https://fonts.gstatic.com/s/overpass/v19/qFdH35WCmI96Ajtm81GlU9s.woff2) format('woff2'); }
+
+:root[data-theme="fd-nightbus"] {
+  --led: #FF9E1B; --led-off: #B9884A; --sign: #050B16;
+  --bg: #0C1A33; --panel: #10213F; --panel2: #183056; --fg: #E8EEF8; --dim: #9AAAC6; --line: #2A4672;
+  --ok: #4CD982; --warn: #F2D04B; --bad: #FF6B6B; --acc: #5CC8FF;
+  font-family: 'Overpass', system-ui, sans-serif; color-scheme: dark;
+}
+:root[data-theme="fd-nightbus"] body { font-size: 14px; }
+:where(:root[data-theme="fd-nightbus"]) h2 { text-transform: none; letter-spacing: .01em; font-size: 13px; font-weight: 700; color: var(--dim); }
+:where(:root[data-theme="fd-nightbus"]) button { border-radius: 3px; font: inherit; font-weight: 600; }
+:where(:root[data-theme="fd-nightbus"]) input { border-radius: 3px; background: #0A1529; }
+
+:root[data-theme="fd-nightbus"] button.on { background: var(--acc); border-color: var(--acc); color: #04213A; }
+:root[data-theme="fd-nightbus"] button.join { background: var(--ok); color: #03270F; font-weight: 800; }
+:root[data-theme="fd-nightbus"] button.leave { background: var(--bad); color: #2E0505; font-weight: 800; }
+:root[data-theme="fd-nightbus"] button.unblock { background: #3A3210; color: var(--warn); }
+:root[data-theme="fd-nightbus"] button.link { font-weight: 400; }
+
+/* the destination sign: a black slot with the room's name in LEDs; the room on screen glows */
+:root[data-theme="fd-nightbus"] .room-head { margin-top: 16px; }
+:root[data-theme="fd-nightbus"] button.room-name { background: var(--sign); border: 1px solid #22365A; border-radius: 3px; padding: 5px 8px 3px; }
+:root[data-theme="fd-nightbus"] .room-title { font-family: 'Doto', 'Overpass', monospace; font-weight: 800; font-size: 19px; line-height: 1.1;
+  text-transform: none; letter-spacing: .02em; color: var(--led-off); }
+:root[data-theme="fd-nightbus"] .room.selected .room-title, :root[data-theme="fd-nightbus"] button.room-name:hover .room-title { color: var(--led);
+  text-shadow: 0 0 6px rgba(255,158,27,.55); }
+:root[data-theme="fd-nightbus"] .room.selected button.room-name { border-color: #5A3A10; }
+:root[data-theme="fd-nightbus"] .unread { background: var(--acc); color: #04213A; font-family: 'Overpass', sans-serif; font-size: 11px; }
+
+:root[data-theme="fd-nightbus"] .side { border-right: 1px solid var(--line); }
+:root[data-theme="fd-nightbus"] .avatar { border-radius: 4px; background: #1F3B66; }
+:root[data-theme="fd-nightbus"] .avatar.speaking { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ok); }
+:root[data-theme="fd-nightbus"] .plist em { border-radius: 2px; border-color: var(--line); color: var(--dim); }
+:root[data-theme="fd-nightbus"] .new { background: var(--warn); color: #2A2200; border-radius: 2px; }
+:root[data-theme="fd-nightbus"] .warn { background: #2E2A12; color: var(--warn); border-radius: 3px; border-left: 3px solid var(--warn); }
+:root[data-theme="fd-nightbus"] .panel { border-radius: 3px; background: #142848; }
+:root[data-theme="fd-nightbus"] .theme-pick { border-radius: 2px; }
+
+:root[data-theme="fd-nightbus"] .msg-from { font-weight: 700; }
+:root[data-theme="fd-nightbus"] .chat-new { background: rgba(24,48,86,.92); border-radius: 3px; }
+:root[data-theme="fd-nightbus"] .chat-input { background: var(--panel); border-top: 1px solid var(--line); }
+
+:root[data-theme="fd-nightbus"] .share { border-radius: 3px; background: var(--sign); }
+:root[data-theme="fd-nightbus"] .share-live { border-color: var(--acc); }
+:root[data-theme="fd-nightbus"] .share-head { background: var(--panel); }
+:root[data-theme="fd-nightbus"] .share-bar { font-family: 'Overpass', sans-serif; background: var(--panel); }
+:root[data-theme="fd-nightbus"] .share.share-fs { border-radius: 0; background: #000; }
+:root[data-theme="fd-nightbus"] .share.share-fs .share-head, :root[data-theme="fd-nightbus"] .share.share-fs .share-bar { background: rgba(5,11,22,.75); }
+
+:root[data-theme="fd-nightbus"] .banner { border-radius: 0 0 3px 3px; font-weight: 600; }
+:root[data-theme="fd-nightbus"] .banner-warn { background: #2E2A12; color: var(--warn); }
+:root[data-theme="fd-nightbus"] .banner-bad { background: #3D1418; color: #FF8A8A; }
+:root[data-theme="fd-nightbus"] .update { background: var(--acc); color: #04213A; }
+:root[data-theme="fd-nightbus"] .update button { background: #04213A; color: var(--fg); }
+:root[data-theme="fd-nightbus"] .update button:hover { background: #0B3357; }
+:root[data-theme="fd-nightbus"] .profile[popover], :root[data-theme="fd-nightbus"] .emoji-picker[popover],
+:root[data-theme="fd-nightbus"] dialog.report, :root[data-theme="fd-nightbus"] dialog.about { border-radius: 4px; }
+:root[data-theme="fd-nightbus"] .emoji-scroll h4 { text-transform: none; letter-spacing: 0; font-size: 12px; }
+:root[data-theme="fd-nightbus"] select.picker, :root[data-theme="fd-nightbus"] select.picker::picker(select) { border-radius: 3px; }
+:root[data-theme="fd-nightbus"] select.picker option:checked { background: var(--acc); color: #04213A; }
+:root[data-theme="fd-nightbus"] .consent { --bubble: #1F3B66; --bubble-dim: #B3C1DA; --bubble-link: var(--acc); }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* the sign switching on as a room comes on screen: the one moment of motion */
+  :root[data-theme="fd-nightbus"] .room.selected .room-title { animation: fd-nightbus-sign .5s steps(4, end); }
+}
+@keyframes fd-nightbus-sign { from { color: var(--led-off); text-shadow: none; opacity: .4; } }
+
+@media (max-width: 700px) {
+  :root[data-theme="fd-nightbus"] .side { border-right: 0; border-bottom: 1px solid var(--line); }
+}
