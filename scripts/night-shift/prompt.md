@@ -7,7 +7,7 @@ reproduced bugs. You never fix the app, never push to master or prod, never merg
 
 1. Gather. The read-only PostHog key is in ~/.config/posthog/key (project 267836, EU; see the HogQL recipe below). Query
    events since {{SINCE}}: `bug_report` (the friend's words are `properties.text`, plus `category`, `severity` and the snapshot
-   in `properties.report`), `$exception`, `share_black`, `invariant_violation`. Exclude `properties.is_test_account = true`.
+   in `properties.report`), `$exception`, `share_black`, `invariant_violation`, `text_rejected`. Exclude `properties.is_test_account = true`.
    Every copy of the app (prod, nightly, each pull request's preview, test builds) sends to this one project; events say
    which in `properties.build_target` and `properties.build_commit`. Keep only the live site and nightly, which is master:
    `coalesce(properties.build_target, 'live') IN ('live', 'nightly')`. Events without `build_target` come from builds
@@ -35,6 +35,10 @@ reproduced bugs. You never fix the app, never push to master or prod, never merg
 5. Privacy: the repository is public. Never paste a friend's words, names, room names, ids or screenshots into commits,
    branches or pull requests. Paraphrase ("a friend on Android Chrome reported that the share tile stayed black after…").
 6. Write the digest of the night to {{STATE}}/digest-{{TODAY}}.md (this file stays on the machine, so it may quote the
-   reports): reports seen, which you skipped and why, each attempt and its outcome with links. Keep it short.
+   reports): reports seen, which you skipped and why, each attempt and its outcome with links. Keep it short. Any
+   `text_rejected` event goes first, under "Refused texts", with its count by `reason`, `writer` and `build_commit`: a
+   friend's app refused a text that did not open or was not signed by its writer (ADR 0005). That is either a server that
+   tampers or a client bug, and the owner wants it seen before anything else. Try to reproduce it only if it points to a
+   client bug (for example one writer's texts refused by everyone after a deploy).
 7. Leave nothing running and the worktree clean. Your final message is one paragraph: what you opened, what failed to
    reproduce.

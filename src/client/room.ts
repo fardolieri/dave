@@ -173,8 +173,10 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   async function received(m: Extract<ServerMessage, { t: 'sealed' }>): Promise<void> {
     const opened = await openText({ key: opts.textKey, roomId: opts.roomId, id: m.id, from: m.from.publicKey, sealed: m.sealed });
     if (!opened.ok) {
+      // A server that reads or forges, or a friend's app that seals wrong: either is urgent, so the session briefing and the
+      // night shift look for this event first (scripts/claude/session-start.sh). The writer by fingerprint only.
       console.warn(`text rejected: ${opened.reason}`);
-      posthog.capture('text_rejected', { reason: opened.reason });
+      posthog.capture('text_rejected', { reason: opened.reason, writer: m.from.fingerprint, own: m.from.publicKey === opts.identity.publicKey, sealed_length: m.sealed.length });
       return;
     }
     if (m.from.publicKey === opts.identity.publicKey) {

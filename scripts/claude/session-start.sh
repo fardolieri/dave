@@ -49,4 +49,17 @@ if [ -n "$token" ]; then
   rm -rf "$tmp"
   echo "- Release gate on master's head ${head:0:7}: ${gate:-unknown}."
 fi
+# Texts a friend's app refused (ADR 0005): a server that tampers, or an app that seals wrong. Urgent either way, so it is
+# asked of PostHog here and not left to a dashboard nobody opens. Live and nightly, the last 7 days, test browsers left out.
+key=$(cat "$HOME/.config/posthog/key" 2>/dev/null)
+if [ -n "$key" ]; then
+  q="SELECT toString(properties.reason), count() FROM events WHERE event = 'text_rejected' AND timestamp > now() - INTERVAL 7 DAY AND (properties.is_test_account IS NULL OR properties.is_test_account != true) AND coalesce(properties.build_target, 'live') IN ('live', 'nightly') GROUP BY toString(properties.reason)"
+  rejected=$(curl -s -m 8 --connect-timeout 3 -H "Authorization: Bearer $key" -H 'Content-Type: application/json' \
+    -d "$(jq -n --arg q "$q" '{query: {kind: "HogQLQuery", query: $q}}')" https://eu.posthog.com/api/projects/267836/query/ \
+    | jq -r 'if (.results | type) == "array" then [.results[] | "\(.[1]) \(.[0])"] | join(", ") else "?" end' 2>/dev/null)
+  if [ -z "$rejected" ]; then :
+  elif [ "$rejected" = "?" ]; then echo "- Could not ask PostHog for refused texts (text_rejected)."
+  else echo "- WARNING: friends' apps refused texts in the last 7 days ($rejected): a server that tampers, or a client that seals wrong (ADR 0005). Look at the text_rejected events in PostHog before new work."
+  fi
+fi
 exit 0
