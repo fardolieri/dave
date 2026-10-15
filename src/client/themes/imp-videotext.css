@@ -1,0 +1,109 @@
+/* Videotext: a teletext page. Black ground, the broadcast colours each with one job, headings as full-width blue rows
+   with yellow and cyan lettering, square everything. Headings and figures in a monospace (the character grid is the
+   medium), reading text in Atkinson Hyperlegible. Rules are wrapped in :where() so each keeps the specificity of the
+   app's own selector it restyles. */
+@font-face { font-family: "imp-Atkinson"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(https://fonts.gstatic.com/s/atkinsonhyperlegiblenext/v7/NaPNcYPdHfdVxJw0IfIP0lvYFqijb-UxCtm5_wdGseiHn3qmpQ.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "imp-Atkinson"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(https://fonts.gstatic.com/s/atkinsonhyperlegiblenext/v7/NaPNcYPdHfdVxJw0IfIP0lvYFqijb-UxCtm5_wdGseiJn3o.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "imp-AtkinsonMono"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(https://fonts.gstatic.com/s/atkinsonhyperlegiblemono/v8/tss4AoFBci4C4gvhPXrt3wjT1MqSzhA4t7IIcncBiwKjhFyRHQ.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "imp-AtkinsonMono"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(https://fonts.gstatic.com/s/atkinsonhyperlegiblemono/v8/tss4AoFBci4C4gvhPXrt3wjT1MqSzhA4t7IIcncBiwKthFw.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+:root[data-theme="imp-videotext"] {
+  --bg: #000000; --panel: #000000; --panel2: #141414; --fg: #ffffff; --dim: #c0c0c0; --line: #2b2b2b;
+  --ok: #33ff66; --warn: #ffff00; --bad: #ff4d4d; --acc: #00ffff;
+  --bar: #0000c8; --field: #1c2fc4; --edge: #3a50ff; --magenta: #ff00ff;
+  --mono: "imp-AtkinsonMono", ui-monospace, monospace;
+  font-family: "imp-Atkinson", system-ui, sans-serif; color-scheme: dark;
+  accent-color: var(--acc); scrollbar-color: var(--edge) #000;
+}
+:where(:root[data-theme="imp-videotext"]) body { line-height: 1.35; }
+:where(:root[data-theme="imp-videotext"]) ::selection { background: var(--acc); color: #000; }
+:where(:root[data-theme="imp-videotext"]) :is(input, textarea) { caret-color: var(--warn); }
+:where(:root[data-theme="imp-videotext"]) :focus-visible { outline: 2px solid var(--warn); outline-offset: 1px; }
+:where(:root[data-theme="imp-videotext"]) :is(h1, h2, .room-title, .msg-at, .unread, .conn, .lag, .share-bar) { font-family: var(--mono); }
+:where(:root[data-theme="imp-videotext"]) h1 { font-size: 30px; font-weight: 700; color: var(--warn); background: var(--bar); padding: 2px 10px; width: fit-content; }
+:where(:root[data-theme="imp-videotext"]) h2 { color: var(--acc); letter-spacing: .04em; }
+
+/* Header rows: Online and every room name are full-width blue rows, like the top lines of a teletext page. */
+:where(:root[data-theme="imp-videotext"]) .side { border-right: 2px solid var(--bar); }
+:where(:root[data-theme="imp-videotext"]) .side > h2 { margin: 0 -14px 8px; padding: 5px 14px; background: var(--bar); color: var(--warn); font-size: 13px; }
+:where(:root[data-theme="imp-videotext"]) .room-head { margin: 14px -14px 6px; padding: 3px 14px; background: var(--bar); }
+:where(:root[data-theme="imp-videotext"]) .room-title { color: var(--acc); font-size: 13px; letter-spacing: .04em; }
+:where(:root[data-theme="imp-videotext"]) .room.selected .room-title,
+:where(:root[data-theme="imp-videotext"]) button.room-name:hover .room-title { color: var(--warn); }
+:where(:root[data-theme="imp-videotext"]) .room-head button.link { color: #fff; }
+:where(:root[data-theme="imp-videotext"]) .room-head button.link.on { color: var(--warn); }
+:where(:root[data-theme="imp-videotext"]) button.room-name:focus-visible { outline-color: var(--warn); }
+
+/* controls: blue fields, square, no borders; the active state flips to cyan */
+:where(:root[data-theme="imp-videotext"]) button { font: inherit; background: var(--field); color: #fff; border: 0; border-radius: 0; padding: 7px 12px; }
+:where(:root[data-theme="imp-videotext"]) button:where(:hover:not(:disabled)) { background-color: #2c40e0; }
+:where(:root[data-theme="imp-videotext"]) input,
+:where(:root[data-theme="imp-videotext"]) textarea,
+:where(:root[data-theme="imp-videotext"]) select.picker { background-color: #000; border-color: var(--edge); border-radius: 0; }
+:where(:root[data-theme="imp-videotext"]) select.picker::picker(select) { border-radius: 0; background: #000; border-color: var(--edge); }
+:where(:root[data-theme="imp-videotext"]) select.picker option { border-radius: 0; }
+:where(:root[data-theme="imp-videotext"]) button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #000; }
+:where(:root[data-theme="imp-videotext"]) button.join { background: var(--ok); color: #000; font-weight: 700; }
+:where(:root[data-theme="imp-videotext"]) button.leave { background: var(--bad); color: #000; font-weight: 700; }
+:where(:root[data-theme="imp-videotext"]) button.unblock { background: var(--warn); color: #000; }
+:where(:root[data-theme="imp-videotext"]) button.link { color: var(--acc); text-underline-offset: 3px; }
+:where(:root[data-theme="imp-videotext"]) button.link:hover { color: var(--warn); }
+:where(:root[data-theme="imp-videotext"]) select.picker option:checked { background: var(--acc); color: #000; }
+:where(:root[data-theme="imp-videotext"]) .chat-input .emoji-open { background: none; }
+:where(:root[data-theme="imp-videotext"]) .emoji-tabs button,
+:where(:root[data-theme="imp-videotext"]) .emoji-grid button { border-radius: 0; }
+
+/* badges and notices */
+:where(:root[data-theme="imp-videotext"]) .unread { background: var(--magenta); color: #000; border-radius: 0; }
+:where(:root[data-theme="imp-videotext"]) .new { background: var(--warn); color: #000; border-radius: 0; }
+:where(:root[data-theme="imp-videotext"]) .warn { background: #262600; color: var(--warn); border-radius: 0; }
+:where(:root[data-theme="imp-videotext"]) .banner { border-radius: 0; box-shadow: none; }
+:where(:root[data-theme="imp-videotext"]) .banner-warn { background: var(--warn); color: #000; }
+:where(:root[data-theme="imp-videotext"]) .banner-bad { background: var(--bad); color: #000; }
+:where(:root[data-theme="imp-videotext"]) .update { background: var(--bar); color: var(--warn); }
+:where(:root[data-theme="imp-videotext"]) .update button { background: var(--warn); color: #000; border-radius: 0; }
+:where(:root[data-theme="imp-videotext"]) .chat-new { background: var(--bar); border-color: var(--bar); color: #fff; border-radius: 0; }
+
+/* people */
+:where(:root[data-theme="imp-videotext"]) .avatar { border-radius: 0; background: var(--field); color: #fff; }
+:where(:root[data-theme="imp-videotext"]) .avatar.pic { background: #141414; }
+:where(:root[data-theme="imp-videotext"]) .avatar.speaking { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--ok); }
+:where(:root[data-theme="imp-videotext"]) button.avatar.own::after { border-radius: 0; background: #000; border-color: var(--edge); }
+:where(:root[data-theme="imp-videotext"]) .plist em { border-color: var(--dim); border-radius: 0; }
+:where(:root[data-theme="imp-videotext"]) .panel { background: #000; border: 2px solid var(--bar); border-radius: 0; }
+:where(:root[data-theme="imp-videotext"]) .panel .vgate .vmeter { border-radius: 0; background: #262626; }
+:where(:root[data-theme="imp-videotext"]) .msg-from { color: var(--warn); font-weight: 700; }
+:where(:root[data-theme="imp-videotext"]) .msg-at { color: var(--acc); font-variant-numeric: tabular-nums; }
+:where(:root[data-theme="imp-videotext"]) .msg-sys { color: var(--dim); }
+
+/* shares: black stage in a blue frame, the header a blue row */
+:where(:root[data-theme="imp-videotext"]) .share { background: #000; border: 2px solid var(--bar); border-radius: 0; }
+:where(:root[data-theme="imp-videotext"]) .share-live { border-color: var(--acc); }
+:where(:root[data-theme="imp-videotext"]) .share-head { background: var(--bar); }
+:where(:root[data-theme="imp-videotext"]) .share-head .stop { background: #000; }
+:where(:root[data-theme="imp-videotext"]) .share-bar { background: #000; color: var(--acc); }
+
+/* popovers and dialogs: black pages in a blue frame */
+:where(:root[data-theme="imp-videotext"]) .profile[popover],
+:where(:root[data-theme="imp-videotext"]) .emoji-picker[popover] { border: 2px solid var(--bar); border-radius: 0; box-shadow: 0 8px 24px rgba(0,0,0,.7); }
+:where(:root[data-theme="imp-videotext"]) .emoji-scroll h4 { color: var(--acc); }
+:where(:root[data-theme="imp-videotext"]) dialog.report,
+:where(:root[data-theme="imp-videotext"]) dialog.about { border: 2px solid var(--bar); border-radius: 0; }
+:where(:root[data-theme="imp-videotext"]) dialog.report::backdrop,
+:where(:root[data-theme="imp-videotext"]) dialog.about::backdrop { background: rgba(0,0,0,.75); }
+:where(:root[data-theme="imp-videotext"]) dialog.report .field select,
+:where(:root[data-theme="imp-videotext"]) dialog.report textarea { background: #000; border-color: var(--edge); border-radius: 0; }
+:where(:root[data-theme="imp-videotext"]) dialog.about details.change p { border-left: 1px solid var(--edge); }
+:where(:root[data-theme="imp-videotext"]) .consent { --bubble: #0000c8; --bubble-fg: #fff; --bubble-dim: #d6d6ff; --bubble-link: #ffff00; }
+:where(:root[data-theme="imp-videotext"]) .consent .bubble { border-radius: 0; box-shadow: 0 8px 24px rgba(0,0,0,.7); }
+
+@media (max-width: 700px) {
+  :where(:root[data-theme="imp-videotext"]) .side { border-right: 0; border-bottom: 2px solid var(--bar); }
+  :where(:root[data-theme="imp-videotext"]) .chat-input { border-top: 2px solid var(--bar); }
+}
+
+/* the mic test fills its button while recording: a fill the label stays readable on */
+:where(:root[data-theme="imp-videotext"]) .panel .mictest button.recording { background-color: var(--field); background-image: linear-gradient(#c00000, #c00000); outline: 2px solid var(--acc); outline-offset: -2px; }
+
+:where(:root[data-theme="imp-videotext"]) .banner button.link:hover { color: inherit; text-decoration-thickness: 2px; }
+:where(:root[data-theme="imp-videotext"]) .update button:hover { background: #ffff80; }
