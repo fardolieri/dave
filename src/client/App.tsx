@@ -25,7 +25,7 @@ import { EmojiPicker } from './EmojiPicker';
 import { place } from './place';
 import { createTabLock } from './tablock';
 import { build, commitUrl, REPO_URL, shortCommit } from './version';
-import { THEMES, setTheme, theme } from './theme';
+import { THEMES, THEME_GROUPS, setTheme, theme } from './theme';
 import { applyUpdate, downloadProgress, holding, noteOffered, tabSettled, updateReady } from './update';
 
 export default function App() {
@@ -460,7 +460,7 @@ function Workspace(props: WorkspaceProps) {
               <Show when={THEMES.length > 0}>
                 <select class="theme-pick" aria-label="Theme" title="The look of dave in this browser" value={theme()} onChange={(e) => setTheme(e.currentTarget.value)}>
                   <option value="">Default look</option>
-                  <For each={THEMES}>{(name) => <option value={name}>{name}</option>}</For>
+                  <For each={THEME_GROUPS}>{(g) => <optgroup label={g.label}><For each={g.themes}>{(t) => <option value={t.name}>{t.label}</option>}</For></optgroup>}</For>
                 </select>
               </Show>
             </div>

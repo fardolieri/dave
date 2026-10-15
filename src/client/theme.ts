@@ -7,6 +7,18 @@ import { local } from './storage';
 const files = import.meta.glob('./themes/*.css', { eager: true });
 export const THEMES: readonly string[] = Object.keys(files).map((path) => path.replace(/^.*\/(.*)\.css$/, '$1')).sort();
 
+// The prefix of a file name says which design skill made the theme (the bake-off of PR #63); the menu groups by it.
+const SKILLS: Record<string, string> = { fd: 'frontend-design', imp: 'Impeccable', tf: 'theme-factory', ds: 'designer-skills' };
+/** The themes in the menu, grouped by the skill that made them: `fd-midnight-galaxy` shows as "Midnight galaxy". */
+export const THEME_GROUPS: readonly { label: string; themes: { name: string; label: string }[] }[] = [...new Set(THEMES.map((t) => t.split('-')[0]!))]
+  .map((prefix) => ({
+    label: SKILLS[prefix] ?? prefix,
+    themes: THEMES.filter((t) => t.split('-')[0] === prefix).map((name) => {
+      const words = name.split('-').slice(1).join(' ');
+      return { name, label: words.charAt(0).toUpperCase() + words.slice(1) };
+    }),
+  }));
+
 const stored = local.read('theme');
 const [theme, setThemeSignal] = createSignal(stored !== null && THEMES.includes(stored) ? stored : '');
 export { theme };
