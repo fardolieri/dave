@@ -1,0 +1,60 @@
+/* Midnight Galaxy: theme-factory preset (anthropics/skills, skills/theme-factory).
+   Dramatic and cosmic: deep purple space, a cosmic-blue glow behind the chat, lavender light, silver text.
+   Palette: Deep Purple #2b1e3e, Cosmic Blue #4a4e8f, Lavender #a490c2, Silver #e6e6fa. Fonts: FreeSans Bold headers, FreeSans body (Helvetica-alike stack where FreeSans is missing).
+   Every rule is scoped to this theme; the app's own look and the other themes are untouched. */
+:root[data-theme="tf-midnight-galaxy"] {
+  --bg: #2b1e3e; --panel: #22172f; --panel2: #3a2b52; --fg: #e6e6fa; --dim: #ada3c6; --line: #4f4170;
+  --ok: #5fd6a4; --warn: #f2c66d; --bad: #ff8095; --acc: #a490c2; --tf-link: #c4b4e4;
+  --tf-on-acc: #1c1229; --tf-on-ok: #0b2a1d; --tf-on-bad: #2b0a12;
+  --tf-warn-bg: #4a3a24; --tf-warn-fg: #f2c66d; --tf-bad-bg: #4f1f33; --tf-bad-fg: #ff8095;
+  --tf-new-bg: #f2c66d; --tf-on-new: #2b1e3e;
+  --tf-shadow: 0 4px 18px rgba(8,4,16,.55); --tf-shadow-lg: 0 12px 40px rgba(8,4,16,.6);
+  --tf-head: "FreeSans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: "FreeSans", "Helvetica Neue", Helvetica, Arial, sans-serif; color-scheme: dark;
+}
+
+/* type: the theme's header face on headings, room names and the names on the profile card */
+:root[data-theme="tf-midnight-galaxy"] :is(h1, h2, h3, .room-title, .profile-name strong, .consent .hello) { font-family: var(--tf-head); font-weight: 700; }
+:where(:root[data-theme="tf-midnight-galaxy"]) :is(button, select, textarea) { font-family: inherit; }
+:root[data-theme="tf-midnight-galaxy"] a { color: var(--tf-link); }
+:root[data-theme="tf-midnight-galaxy"] .msg-from { color: #c4b4e4; }
+:root[data-theme="tf-midnight-galaxy"] :is(button.room-name, button.avatar):focus-visible { outline-color: var(--tf-link); }
+
+/* shape: corners of the plain controls and boxes (:where keeps button.join, .link, .avatar and the rest their own look) */
+:where(:root[data-theme="tf-midnight-galaxy"]) :is(button, input, select.picker, textarea) { border-radius: 12px; }
+:root[data-theme="tf-midnight-galaxy"] :is(.panel, .share, .warn, dialog.report, dialog.about, .profile[popover], .emoji-picker[popover]) { border-radius: 12px; }
+:root[data-theme="tf-midnight-galaxy"] .share.share-fs { border-radius: 0; }
+
+/* the colours styles.css writes for its dark page, each taken from this palette */
+:root[data-theme="tf-midnight-galaxy"] .update { color: var(--tf-on-acc); }
+:root[data-theme="tf-midnight-galaxy"] .update button, :root[data-theme="tf-midnight-galaxy"] .update button:hover { background: var(--tf-on-acc); color: var(--acc); }
+:root[data-theme="tf-midnight-galaxy"] .unread, :root[data-theme="tf-midnight-galaxy"] button.on:not(.link), :root[data-theme="tf-midnight-galaxy"] select.picker option:checked { color: var(--tf-on-acc); }
+:root[data-theme="tf-midnight-galaxy"] button.join { color: var(--tf-on-ok); }
+:root[data-theme="tf-midnight-galaxy"] button.leave { color: var(--tf-on-bad); }
+:root[data-theme="tf-midnight-galaxy"] button.unblock { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+:root[data-theme="tf-midnight-galaxy"] .new { background: var(--tf-new-bg); color: var(--tf-on-new); }
+:root[data-theme="tf-midnight-galaxy"] .warn, :root[data-theme="tf-midnight-galaxy"] .banner-warn { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+:root[data-theme="tf-midnight-galaxy"] .banner-bad { background: var(--tf-bad-bg); color: var(--tf-bad-fg); }
+:root[data-theme="tf-midnight-galaxy"] .banner { box-shadow: var(--tf-shadow); }
+:root[data-theme="tf-midnight-galaxy"] .chat-new { background: color-mix(in srgb, var(--panel2) 92%, transparent); }
+:root[data-theme="tf-midnight-galaxy"] .avatar { background: #4a4e8f; color: #e6e6fa; }
+:root[data-theme="tf-midnight-galaxy"] .share-head { background: rgba(14,8,24,.35); }
+:root[data-theme="tf-midnight-galaxy"] .share-bar { background: rgba(14,8,24,.45); }
+:root[data-theme="tf-midnight-galaxy"] :is(.profile[popover], .emoji-picker[popover]) { box-shadow: var(--tf-shadow-lg); }
+:root[data-theme="tf-midnight-galaxy"] :is(dialog.report, dialog.about)::backdrop { background: rgba(12,6,22,.65); }
+:root[data-theme="tf-midnight-galaxy"] .consent { --bubble: #4a4e8f; --bubble-fg: #e6e6fa; --bubble-dim: #cfcde8; --bubble-link: #e2d6ff; }
+:root[data-theme="tf-midnight-galaxy"] .consent .bubble { box-shadow: var(--tf-shadow-lg); }
+
+/* fullscreen share: always the black stage, so header and bar take light text whatever the page is */
+:root[data-theme="tf-midnight-galaxy"] .share.share-fs { --fg: #f2f2f2; --dim: #c8c8c8; --panel2: #2b2b2b; --line: #4a4a4a; --ok: #3ddc84; --warn: #f5b642; --bad: #ff6b6b;
+  border: 0; background: #000; color: var(--fg); box-shadow: none; }
+:root[data-theme="tf-midnight-galaxy"] .share.share-fs :is(.share-head, .share-bar) { background: rgba(0,0,0,.55); }
+
+/* the cosmic-blue glow: a nebula in the far corner of the chat, a faint one under the composer */
+:root[data-theme="tf-midnight-galaxy"] body { background: radial-gradient(ellipse 70% 55% at 85% 0%, rgba(74,78,143,.45), transparent 70%), radial-gradient(ellipse 60% 40% at 30% 110%, rgba(164,144,194,.14), transparent 70%), var(--bg); }
+:root[data-theme="tf-midnight-galaxy"] .side { background: linear-gradient(180deg, #22172f, #1d1428); }
+:root[data-theme="tf-midnight-galaxy"] .room.selected .room-title { color: var(--tf-link); }
+:root[data-theme="tf-midnight-galaxy"] .share-live { border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc), 0 0 22px rgba(164,144,194,.35); }
+:root[data-theme="tf-midnight-galaxy"] .avatar.speaking { box-shadow: 0 0 0 2px var(--ok), 0 0 12px rgba(95,214,164,.55); }
+:root[data-theme="tf-midnight-galaxy"] button.on:not(.link) { background: linear-gradient(135deg, #b8a6d6, #a490c2); }
+:root[data-theme="tf-midnight-galaxy"] .unread { background: var(--tf-link); }
