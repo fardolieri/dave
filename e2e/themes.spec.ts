@@ -141,6 +141,7 @@ test('every theme applies, loads its fonts and keeps the console quiet, at deskt
   await page.setViewportSize(DESKTOP);
   await alice.leave();
   await pick.selectOption(kept);
+  await page.evaluate(() => document.fonts.ready); // as below: a reload must not cut off a font download
   await page.reload();
   await alice.connected();
   await expect(page.locator('html')).toHaveAttribute('data-theme', kept);
@@ -165,6 +166,8 @@ test('a stored theme whose file a later deploy dropped reads as the default look
   const kept = themes[0]!;
   await pick.selectOption(kept);
   await expect(page.locator('html')).toHaveAttribute('data-theme', kept);
+  // Its fonts first: a reload cuts off a font still downloading, and Firefox logs that as an error (NS_BINDING_ABORTED).
+  await page.evaluate(() => document.fonts.ready);
   await page.reload();
   await alice.connected();
   await expect(page.locator('html')).toHaveAttribute('data-theme', kept);

@@ -147,7 +147,7 @@
 :where(:root[data-theme="ds-memphis"]) .msg-from { font-family: var(--font-family-display); font-weight: 800; }
 :where(:root[data-theme="ds-memphis"]) .msg-text { line-height: 1.45; }
 :where(:root[data-theme="ds-memphis"]) .chat-new { border: 2px solid var(--line); color: var(--fg); font-weight: 600; }
-:where(:root[data-theme="ds-memphis"]) .chat-input > input { border-radius: var(--border-radius-full); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
+:where(:root[data-theme="ds-memphis"]) .chat-input > input { min-width: 0; border-radius: var(--border-radius-full); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
 :where(:root[data-theme="ds-memphis"]) .chat-input > button:not(.emoji-open) { border-radius: var(--border-radius-full); padding: 8px 18px; background: var(--acc); color: var(--color-text-on-accent); font-family: var(--font-family-display); font-weight: 800; }
 :where(:root[data-theme="ds-memphis"]) .consent .bubble { border: 3px solid var(--line); }
 /* the gear button is narrow; the theme's wider padding would push the cog off centre */
