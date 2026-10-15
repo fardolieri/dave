@@ -250,7 +250,8 @@ function Workspace(props: WorkspaceProps) {
   /** The mascot asks again, from the sidebar, so the answer is changed with what is sent in view. */
   const [askingConsent, setAskingConsent] = createSignal(false);
   const me = identity.publicKey;
-  posthog.identify(me, { fingerprint: identity.fingerprint, ...(isTestAccount ? { $internal_or_test_user: true } : {}) });
+  // The theme too, so the person says which one a friend has also when it was picked before PostHog was told of picks.
+  posthog.identify(me, { fingerprint: identity.fingerprint, theme: theme() || 'default', ...(isTestAccount ? { $internal_or_test_user: true } : {}) });
   // Keyed by secret, not by the saved object: an invite link that renames a room already here (in this tab, or in a
   // waiting one, ticket 25) replaces the object, and must not rebuild the room and drop its call. The name is read live.
   const links = mapArray(() => props.rooms.map((r) => r.secret), (secret): Link => {

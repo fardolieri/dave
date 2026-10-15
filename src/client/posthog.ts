@@ -84,8 +84,10 @@ function start(): void {
         maskTextSelector: '*', // chat, names, fingerprints: never in a recording
       },
     });
-    if (!ph.has_opted_in_capturing()) ph.opt_in_capturing({ captureEventName: false });
+    // Registered before the opt-in, which captures the first $pageview there and then: it carries the build and the
+    // theme like every later event (and `is_test_account`, so the test filter drops it).
     register(ph);
+    if (!ph.has_opted_in_capturing()) ph.opt_in_capturing({ captureEventName: false });
     if (person) ph.identify(person.id, person.props);
     sdk = ph;
     for (const [event, props] of queue) ph.capture(event, props);
@@ -180,7 +182,7 @@ const posthog = {
   capture(event: string, props?: Props): void {
     if (!telemetryOn() || !key || !host) return;
     if (sdk) sdk.capture(event, props);
-    else if (queue.length < MAX_QUEUE) queue.push([event, props]);
+    else if (queue.length < MAX_QUEUE) queue.push([event, { ...appProps, ...props }]); // as they were when it happened, not when the SDK is up
   },
   /** Super properties of the app's own: on every event from now on, also after a later yes in this visit. */
   register(props: Props): void {

@@ -84,10 +84,17 @@ test('with the yes, every event says which theme is on screen, from the load and
   const picked = (await pick.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value).filter(Boolean)))[0]!;
   await pick.selectOption(picked);
   await expect.poll(theme, { message: 'the picked theme from the pick on' }).toBe(picked);
-  await alice.page.evaluate(() => document.fonts.ready); // a reload must not cut off a font download (themes.spec.ts)
+  // Another theme in this browser's store before a reload (the SDK's own state still says the first): the page registers
+  // the stored one as it loads.
+  const other = (await pick.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value).filter(Boolean)))[1]!;
+  await alice.page.evaluate(async (t) => {
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); // the theme's fonts requested, then in:
+    await document.fonts.ready; // a reload must not cut off a font download (themes.spec.ts)
+    localStorage.setItem('dave.theme', t);
+  }, other);
   await alice.page.reload();
   await alice.connected();
-  await expect.poll(theme, { message: 'and after a reload, from the stored pick' }).toBe(picked);
+  await expect.poll(theme, { message: 'after a reload, the stored pick' }).toBe(other);
 });
 
 test('a yes during the handshake neither refuses the room nor gets lost', async ({ crowd }) => {
