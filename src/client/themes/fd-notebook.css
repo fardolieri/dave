@@ -1,0 +1,98 @@
+/* fd-notebook: notes passed between friends. The chat is a page of squared paper with the red margin line, written in
+   ballpoint blue; the sidebar is the tear-off pad beside it, punched along its edge; the room on screen is marked with
+   a highlighter. Hand lettering only where a friend would write by hand: room names, people's names, headings.
+   Tokens: paper #FBFCFE, grid #DCE6F2, ink #22307A, pencil #586078, highlighter #FFE45C, red pen #C62828.
+   Type: Kalam 700 for the hand-written words, Atkinson Hyperlegible for everything read at length.
+   Boldness spent on: the squared page and its margin line. */
+
+@font-face { font-family: 'Kalam'; font-style: normal; font-weight: 700; font-display: swap;
+  src: url(https://fonts.gstatic.com/s/kalam/v18/YA9Qr0Wd4kDdMtDqHTLMkiQ.woff2) format('woff2'); }
+@font-face { font-family: 'Atkinson Hyperlegible'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url(https://fonts.gstatic.com/s/atkinsonhyperlegible/v12/9Bt23C1KxNDXMspQ1lPyU89-1h6ONRlW45G04pIo.woff2) format('woff2'); }
+@font-face { font-family: 'Atkinson Hyperlegible'; font-style: normal; font-weight: 700; font-display: swap;
+  src: url(https://fonts.gstatic.com/s/atkinsonhyperlegible/v12/9Bt73C1KxNDXMspQ1lPyU89-1h6ONRlW45G8Wbc9dCWP.woff2) format('woff2'); }
+
+:root[data-theme="fd-notebook"] {
+  --paper: #FBFCFE; --grid: #DCE6F2; --ink: #22307A; --pencil: #586078; --hl: #FFE45C; --redpen: #C62828;
+  --hand: 'Kalam', 'Segoe Print', 'Bradley Hand', cursive;
+  --bg: var(--paper); --panel: #F1F4FA; --panel2: #FFFFFF; --fg: var(--ink); --dim: var(--pencil); --line: #B7C3D9;
+  --ok: #1D7A3A; --warn: #8F4A00; --bad: var(--redpen); --acc: #2347C2;
+  --wobble: 14px 4px 12px 5px / 5px 12px 4px 14px;
+  font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; color-scheme: light;
+}
+:root[data-theme="fd-notebook"] body { font-size: 15px; line-height: 1.45; }
+:where(:root[data-theme="fd-notebook"]) h1 { font-family: var(--hand); font-size: 28px; }
+:where(:root[data-theme="fd-notebook"]) h2 { font-family: var(--hand); text-transform: none; letter-spacing: 0; font-size: 19px; color: var(--ink); }
+:where(:root[data-theme="fd-notebook"]) button { background: var(--panel2); color: var(--ink); border: 1.5px solid var(--ink); border-radius: var(--wobble); font: inherit; }
+:where(:root[data-theme="fd-notebook"]) input { background: #FFFFFF; color: var(--ink); border: 0; border-bottom: 1.5px solid var(--ink); border-radius: 0; }
+:where(:root[data-theme="fd-notebook"]) input:focus-visible { outline: 0; background: #FFFBE0; }
+
+:root[data-theme="fd-notebook"] button.on { background: var(--acc); border-color: var(--acc); color: #fff; }
+:root[data-theme="fd-notebook"] button.join { background: var(--ok); color: #fff; border-color: var(--ok); font-weight: 700; }
+:root[data-theme="fd-notebook"] button.leave { background: var(--paper); color: var(--redpen); border-color: var(--redpen); font-weight: 700; }
+:root[data-theme="fd-notebook"] button.unblock { background: #FFE3BF; color: #6A3600; border-color: #D0811E; }
+:root[data-theme="fd-notebook"] button.link { color: var(--pencil); font-size: 12px; }
+:root[data-theme="fd-notebook"] button.link.on, :root[data-theme="fd-notebook"] .room-head button.link.on { background: var(--hl); color: var(--ink); }
+
+/* the pad: a bluish sheet with punch holes down its right edge */
+:root[data-theme="fd-notebook"] .side { border-right: 1px solid var(--line);
+  background: radial-gradient(circle, var(--paper) 4px, #9FAFCB 4.5px, transparent 5.5px) right 2px top 10px / 14px 28px repeat-y, var(--panel); padding-right: 24px; }
+:root[data-theme="fd-notebook"] .room-title { font-family: var(--hand); text-transform: none; letter-spacing: 0; font-size: 18px; font-weight: 700; color: var(--pencil); }
+:root[data-theme="fd-notebook"] .room.selected .room-title { color: var(--ink); background: linear-gradient(transparent 35%, var(--hl) 35%, var(--hl) 88%, transparent 88%); padding: 0 3px; }
+:root[data-theme="fd-notebook"] button.room-name:hover .room-title { color: var(--ink); }
+:root[data-theme="fd-notebook"] .unread { background: var(--ink); color: #fff; font-size: 11px; }
+:root[data-theme="fd-notebook"] .avatar { background: #FFFFFF; color: var(--ink); border: 1.5px solid var(--ink); font-family: var(--hand); font-size: 15px; }
+:root[data-theme="fd-notebook"] .avatar.pic { border-color: var(--line); }
+:root[data-theme="fd-notebook"] .avatar.speaking { box-shadow: 0 0 0 3px var(--ok); border-color: var(--ok); }
+:root[data-theme="fd-notebook"] .plist em { border: 0; background: #E6EBF5; color: var(--pencil); border-radius: 3px; }
+:root[data-theme="fd-notebook"] .new { background: var(--hl); color: var(--ink); }
+:root[data-theme="fd-notebook"] .warn { background: #FFF1DC; color: #6A3600; border-left: 3px solid #D0811E; border-radius: 2px; }
+:root[data-theme="fd-notebook"] .panel { background: #FFFFFF; border: 1px solid var(--line); border-radius: 2px; box-shadow: 2px 2px 0 #E2E8F3; }
+:root[data-theme="fd-notebook"] .theme-pick { background: #fff; color: var(--pencil); border-color: var(--line); }
+
+/* the page: 6 mm squares and the red margin line the lines are written after */
+:root[data-theme="fd-notebook"] .chat-log { padding-left: 34px;
+  background:
+    linear-gradient(90deg, transparent 23px, rgba(198,40,40,.55) 23px, rgba(198,40,40,.55) 25px, transparent 25px) 0 0 / 100% 100% no-repeat local,
+    linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 22px 22px local,
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 22px 22px local, var(--paper); }
+:root[data-theme="fd-notebook"] .msg-from { font-family: var(--hand); font-weight: 700; font-size: 17px; }
+:root[data-theme="fd-notebook"] .msg-at { color: var(--pencil); }
+:root[data-theme="fd-notebook"] .msg-sys { color: var(--pencil); }
+:root[data-theme="fd-notebook"] .chat-new { background: var(--hl); color: var(--ink); border-color: #D9B800; }
+:root[data-theme="fd-notebook"] .chat-new:hover { color: var(--ink); }
+:root[data-theme="fd-notebook"] .chat-input { background: var(--paper); border-top: 1px solid var(--line); }
+:root[data-theme="fd-notebook"] .chat-input .emoji-open { filter: none; opacity: 1; }
+
+/* shares are prints laid on the page, a white border round each */
+:root[data-theme="fd-notebook"] .share { background: #FFFFFF; border: 1px solid var(--line); border-radius: 2px; padding: 6px 6px 0; box-shadow: 0 2px 6px rgba(34,48,122,.15); }
+:root[data-theme="fd-notebook"] .share-live { border-color: var(--acc); box-shadow: 0 0 0 2px var(--acc), 0 2px 6px rgba(34,48,122,.15); }
+:root[data-theme="fd-notebook"] .share-head { background: none; font-family: var(--hand); font-size: 15px; }
+:root[data-theme="fd-notebook"] .share-bar { background: none; color: var(--pencil); font-family: inherit; }
+:root[data-theme="fd-notebook"] .share-head .stop { font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; }
+:root[data-theme="fd-notebook"] .share.share-fs { padding: 0; border: 0; border-radius: 0; background: #000; box-shadow: none; }
+:root[data-theme="fd-notebook"] .share.share-fs .share-head, :root[data-theme="fd-notebook"] .share.share-fs .share-bar { background: rgba(251,252,254,.9); }
+
+/* banners, pop-overs, dialogs: sticky notes */
+:root[data-theme="fd-notebook"] .banner { border-radius: 0 0 4px 4px; box-shadow: 0 3px 8px rgba(34,48,122,.2); font-weight: 700; }
+:root[data-theme="fd-notebook"] .banner-warn { background: var(--hl); color: #4D3300; }
+:root[data-theme="fd-notebook"] .banner-bad { background: var(--redpen); color: #fff; }
+:root[data-theme="fd-notebook"] .update { background: var(--hl); color: var(--ink); }
+:root[data-theme="fd-notebook"] .update button { background: var(--ink); color: #fff; }
+:root[data-theme="fd-notebook"] .update button:hover { background: var(--acc); }
+:root[data-theme="fd-notebook"] .profile[popover], :root[data-theme="fd-notebook"] .emoji-picker[popover],
+:root[data-theme="fd-notebook"] dialog.report, :root[data-theme="fd-notebook"] dialog.about { background: #FFFFFF; border: 1px solid var(--line); border-radius: 2px; box-shadow: 3px 4px 0 #D5DDEB; }
+:root[data-theme="fd-notebook"] .profile-name strong, :root[data-theme="fd-notebook"] dialog.report h3, :root[data-theme="fd-notebook"] dialog.about h3 { font-family: var(--hand); font-size: 20px; }
+:root[data-theme="fd-notebook"] .emoji-scroll h4 { background: #FFFFFF; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--pencil); }
+:root[data-theme="fd-notebook"] .emoji-tabs button:hover, :root[data-theme="fd-notebook"] .emoji-grid button:hover { background: #FFF6BF; }
+:root[data-theme="fd-notebook"] .emoji-tabs button, :root[data-theme="fd-notebook"] .emoji-grid button { border-radius: 4px; }
+:root[data-theme="fd-notebook"] select.picker, :root[data-theme="fd-notebook"] select.picker::picker(select) { background: #FFFFFF; border-color: var(--line); }
+:root[data-theme="fd-notebook"] select.picker option:checked { background: var(--hl); color: var(--ink); }
+:root[data-theme="fd-notebook"] dialog.report textarea, :root[data-theme="fd-notebook"] dialog.report .field select { background: #FFFFFF; }
+:root[data-theme="fd-notebook"] .consent { --bubble: #FFF3A8; --bubble-fg: var(--ink); --bubble-dim: #4A5068; --bubble-link: var(--acc); }
+:root[data-theme="fd-notebook"] .consent .bubble { box-shadow: 2px 4px 10px rgba(34,48,122,.25); }
+
+@media (max-width: 700px) {
+  :root[data-theme="fd-notebook"] .side { border-right: 0; border-bottom: 1px solid var(--line); padding-right: 14px; padding-bottom: 26px;
+    background: radial-gradient(circle, var(--paper) 4px, #9FAFCB 4.5px, transparent 5.5px) left 10px bottom 2px / 28px 14px repeat-x, var(--panel); }
+}
