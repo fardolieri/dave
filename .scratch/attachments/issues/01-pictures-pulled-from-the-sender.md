@@ -1,6 +1,6 @@
 # 01 · Pictures, GIFs and videos are sent into the chat and pulled from the sender
 
-Status: in review, PR #65 (rung 2: CI and the preview suite green on c371371)
+Status: shipped 2026-10-16 to prod (243728d), nightly e2e green first
 Blocked by: none
 Decision: [ADR 0006](../../../docs/adr/0006-files-announced-through-the-room-and-pulled-peer-to-peer.md)
 

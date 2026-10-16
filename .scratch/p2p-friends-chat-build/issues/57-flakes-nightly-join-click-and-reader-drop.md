@@ -1,6 +1,6 @@
 # 57 · Flakes: a Join click beside the button, and a reader's socket dropped under a text sent again
 
-Status: fixed on branch flakes/nightly-resilience, 2026-10-16; outcome 1 of ticket 35 (the tests are wrong) for both
+Status: shipped 2026-10-16 to prod (243728d), the tests; outcome 1 of ticket 35 (the tests are wrong) for both
 Seen 2026-10-16: the nightly e2e run 38862111516 of e02aaa7 (attachments), both passed on the retry, which closed the gate:
 - job 116846518050 (Firefox, shard 4): `resilience.spec.ts:246` "a friend whose socket drops without a goodbye…", Alice's
   `join()` never saw the Leave button.
@@ -24,7 +24,7 @@ Neither had failed before in the 54 e2e runs scanned (every e2e.yml run back to 
   or, after a drop his wire saw (`droppedSince`), once or not at all, as ticket 53 did for two text tests.
 
 ## The drop itself (diagnostic, 2026-10-16)
-Branch diag/socket-drops (kept until the owner decides, not for master): `e2e/diag-drop.spec.ts` puts three observer
+Branch diag/socket-drops (kept for reference, not for master): `e2e/diag-drop.spec.ts` puts three observer
 sockets in one room, Alice through Playwright's proxy, Dora in a page without it, and one from Node with no browser, while
 Bob comes in again every few seconds; a CI job tails the Worker meanwhile. Drops of an observer, per round of Bob's:
 | Target and variant | Rounds | Drops of observers |
@@ -48,5 +48,6 @@ Bob comes in again every few seconds; a CI job tails the Worker meanwhile. Drops
 ## Left as it is
 - The same jump of the Join button can meet a real friend's thumb when someone comes online. A layout question for the
   owner, not changed here.
-- Making the drop harmless (the Room replaying what a friend missed while her socket was cut, or texts stored on the Room)
-  is the owner's call: ticket 10 of quality declined server-side catch-up before this was known.
+- Making the drop harmless (the Room replaying what a friend missed while her socket was cut, or texts stored on the Room):
+  kept as it is for now (owner, 2026-10-16, with this finding in hand). A friend whose socket is cut misses what the Room
+  sends in the second before she is back.
