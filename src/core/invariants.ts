@@ -20,7 +20,9 @@ export type InvariantKind =
    */
   | 'file_pulling_stuck'
   /** An attachment says it waits for someone to come online while a friend who has it is online. */
-  | 'file_waiting_online';
+  | 'file_waiting_online'
+  /** An attachment says it will be tried again, its time is long past, and no pull of it runs (ticket 05). */
+  | 'file_retry_stuck';
 
 export const INVARIANT_EVERY_MS = 2_000;
 /**
@@ -37,6 +39,8 @@ export const INVARIANT_GRACE_MS: Record<InvariantKind, number> = {
   file_pulling_stuck: 10_000,
   // A friend coming online starts the pull in the same presence update.
   file_waiting_online: 10_000,
+  // Past RETRY_LATE_MS already: the timer that tries it again fires at its time.
+  file_retry_stuck: 10_000,
 };
 
 /** What a share tile shows (App.tsx ShareTile reads it from here too, so the watch sees what the tile shows). */
@@ -146,6 +150,8 @@ export type FileFacts = {
   movedAt: number | null;
   /** A friend who has it, other than me, is online. */
   holderOnline: boolean;
+  /** When a failed one is to be tried again by itself; null if it is not. */
+  retryAt: number | null;
 };
 /** Read at `at`: every attachment of the room that has a status. */
 export type RoomFacts = { at: number; files: FileFacts[] };
@@ -156,6 +162,8 @@ export type RoomFacts = { at: number; files: FileFacts[] };
  * frame as a sign of life (client/room.ts, `moved`). Quiet for longer, the pull should have ended.
  */
 export const PULL_QUIET_MS = 30_000;
+/** A try again this late after its time did not happen: its timer fires at the time, in a tab that runs. */
+export const RETRY_LATE_MS = 15_000;
 
 /** Every contradiction among a room's attachments. */
 export function fileBreaches(now: RoomFacts): Breach[] {
@@ -163,6 +171,7 @@ export function fileBreaches(now: RoomFacts): Breach[] {
   for (const f of now.files) {
     if (f.status === 'pulling' && (!f.running || (f.active && f.movedAt !== null && now.at - f.movedAt > PULL_QUIET_MS))) out.push({ kind: 'file_pulling_stuck', key: f.key });
     if (f.status === 'waiting' && f.holderOnline) out.push({ kind: 'file_waiting_online', key: f.key });
+    if (f.status === 'failed' && f.retryAt !== null && !f.running && now.at - f.retryAt > RETRY_LATE_MS) out.push({ kind: 'file_retry_stuck', key: f.key });
   }
   return out;
 }

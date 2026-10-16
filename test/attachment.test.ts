@@ -83,6 +83,9 @@ describe('files and file links on the wire (ADR 0006)', () => {
     for (const d of [{ description: {} }, { link: 'no spaces', description: {} }, { link: 'abc' }, { link: 'abc', candidates: 'x' }]) {
       expect(parseClientMessage(JSON.stringify({ t: 'link', to: 'k-bob', data: d })), JSON.stringify(d)).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'link' });
     }
+    // A holder at her limit answers busy, with nothing else (ticket 05).
+    expect(parseClientMessage(JSON.stringify({ t: 'link', to: 'k-bob', data: { link: 'abc', busy: true } }))).toEqual({ t: 'link', to: 'k-bob', data: { link: 'abc', busy: true } });
+    expect(parseClientMessage(JSON.stringify({ t: 'link', to: 'k-bob', data: { link: 'abc', busy: 'yes' } }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'link' });
     expect(parseClientMessage(JSON.stringify({ t: 'linkice', id: 3 }))).toEqual({ t: 'linkice', id: 3 });
     expect(parseClientMessage(JSON.stringify({ t: 'linkice' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'linkice' });
   });

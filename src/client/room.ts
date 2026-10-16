@@ -47,7 +47,15 @@ export type Attachment =
   | { status: 'idle' | 'waiting' }
   | { status: 'pulling'; received: number }
   | { status: 'ready'; url: string }
-  | { status: 'failed'; reason: PullError };
+  /** `retryAt`: tried again by itself then, while a friend who has it stays online (attachments ticket 05). */
+  | { status: 'failed'; reason: PullError; retryAt?: number };
+/**
+ * A pull that could not reach its friend, or lost her, is tried again by itself after these, while she stays online: a
+ * tab frozen in a pocket, a link that dropped. Then it waits for a click. A friend busy with others is asked again every
+ * BUSY_RETRY_MS for as long as she says so: she is there, only full (ticket 05).
+ */
+const RETRY_MS = [5_000, 15_000, 45_000];
+const BUSY_RETRY_MS = 15_000;
 /** Attachments in the history from this recent are pulled by themselves, like new ones, when this browser lacks them. */
 const PULL_HISTORY_MS = 7 * 24 * 3600 * 1000;
 
@@ -281,7 +289,28 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const saving = new Set<string>();
 
   /** Shows a file from bytes I hold: a blob URL of its own type if it shows inline, else one that only downloads. */
+  /** Tries again so far, and the timer of the next, per file. */
+  const retries = new Map<string, { tries: number; timer?: ReturnType<typeof setTimeout> }>();
+  const stopRetry = (hash: string): void => { clearTimeout(retries.get(hash)?.timer); retries.delete(hash); };
+  /** A pull failed while a friend who has it is online: tried again later, by itself, if the schedule has a try left. */
+  function failed(hash: string, reason: PullError): void {
+    const was = retries.get(hash) ?? { tries: 0 };
+    clearTimeout(was.timer);
+    const delay = reason === 'busy' ? BUSY_RETRY_MS : reason === 'unreachable' || reason === 'lost' ? RETRY_MS[was.tries] : undefined;
+    if (delay === undefined) { retries.delete(hash); setAttachment(hash, { status: 'failed', reason }); return; }
+    const retryAt = Date.now() + delay;
+    const timer = setTimeout(() => {
+      const now = attachmentNow.get(hash);
+      if (stopped || now?.status !== 'failed' || now.retryAt !== retryAt) return;
+      setAttachment(hash, { status: 'idle' });
+      want(hash);
+    }, delay);
+    retries.set(hash, { tries: reason === 'busy' ? was.tries : was.tries + 1, timer });
+    setAttachment(hash, { status: 'failed', reason, retryAt });
+  }
+
   function show(file: FileMeta, blob: Blob): void {
+    stopRetry(file.hash);
     const url = URL.createObjectURL(new Blob([blob], { type: inlineKind(file.type) ? file.type : 'application/octet-stream' }));
     urls.push(url);
     setAttachment(file.hash, { status: 'ready', url });
@@ -349,7 +378,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           if (disposed || !current()) return;
           // The friend left under it: it waits for them, and goes on by itself when they are back.
           if (!reachable(hash).length) setAttachment(hash, { status: 'waiting' });
-          else setAttachment(hash, { status: 'failed', reason });
+          else failed(hash, reason);
         })
         .finally(() => {
           if (current()) { aborts.delete(hash); movedAt.delete(hash); saving.delete(hash); }
@@ -365,7 +394,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     at: Date.now(),
     files: stopped ? [] : [...attachmentNow].map(([hash, a], i) => ({
       key: String(i), status: a.status, running: aborts.has(hash) || queue.includes(hash), active: aborts.has(hash) && !saving.has(hash),
-      movedAt: movedAt.get(hash) ?? null, holderOnline: reachable(hash).length > 0,
+      movedAt: movedAt.get(hash) ?? null, holderOnline: reachable(hash).length > 0, retryAt: a.status === 'failed' ? (a.retryAt ?? null) : null,
     })),
   }));
   if (exposeHooks) {
@@ -598,6 +627,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     offConsent();
     stopped = true;
     disposed = true;
+    for (const r of retries.values()) clearTimeout(r.timer);
     watchdog.stop();
     delete (window as unknown as { __daveFiles?: Record<string, unknown> }).__daveFiles?.[opts.roomId];
     links.close();
@@ -634,10 +664,12 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       const queued = queue.indexOf(hash);
       if (queued >= 0) queue.splice(queued, 1);
       aborts.get(hash)?.abort();
-      if (attachmentNow.get(hash)?.status === 'pulling') setAttachment(hash, { status: 'idle' });
+      stopRetry(hash);
+      const now = attachmentNow.get(hash);
+      if (now?.status === 'pulling' || (now?.status === 'failed' && now.retryAt)) setAttachment(hash, { status: 'idle' });
     },
     /** Pulls a file that waits for a click, or one that failed. */
-    pull: (hash: string): void => { const a = attachmentNow.get(hash); if (a?.status === 'idle' || a?.status === 'failed') { setAttachment(hash, { status: 'idle' }); want(hash); } },
+    pull: (hash: string): void => { const a = attachmentNow.get(hash); if (a?.status === 'idle' || a?.status === 'failed') { stopRetry(hash); setAttachment(hash, { status: 'idle' }); want(hash); } },
     unread,
     /** The room is on screen: nothing in it is unread. */
     markRead: () => setUnread(0),

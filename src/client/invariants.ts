@@ -74,10 +74,14 @@ export function createFileWatchdog(read: () => RoomFacts) {
     const read_ = read();
     if (lastTick === null || read_.at - lastTick > 3 * INVARIANT_EVERY_MS) resumedAt = read_.at;
     lastTick = read_.at;
-    const now: RoomFacts = { ...read_, files: read_.files.map((f) => (f.movedAt === null ? f : { ...f, movedAt: Math.max(f.movedAt, resumedAt) })) };
+    const since = (t: number | null) => (t === null ? null : Math.max(t, resumedAt));
+    const now: RoomFacts = { ...read_, files: read_.files.map((f) => ({ ...f, movedAt: since(f.movedAt), retryAt: since(f.retryAt) })) };
     for (const v of watch.feed(now.at, fileBreaches(now))) {
       const f = now.files.find((x) => x.key === v.key);
-      const file = f && { status: f.status, running: f.running, active: f.active, quietMs: f.movedAt === null ? null : now.at - f.movedAt, holderOnline: f.holderOnline };
+      const file = f && {
+        status: f.status, running: f.running, active: f.active, quietMs: f.movedAt === null ? null : now.at - f.movedAt, holderOnline: f.holderOnline,
+        retryLateMs: f.retryAt === null ? null : now.at - f.retryAt,
+      };
       const snapshot = { files: now.files.length, file };
       fired.push({ kind: v.kind, heldMs: v.heldMs, snapshot });
       console.warn(`[invariant] ${v.kind} held for ${Math.round(v.heldMs / 1000)} s`, JSON.stringify(snapshot));

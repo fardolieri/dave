@@ -27,7 +27,7 @@ const CHUNK_BYTES = 64 * 1024;
 const HIGH_WATER = 1024 * 1024;
 
 /** Why a pull failed, as the chat says it. */
-export type PullError = 'unreachable' | 'lost' | 'not there' | 'damaged';
+export type PullError = 'unreachable' | 'lost' | 'not there' | 'damaged' | 'busy';
 export class PullFailed extends Error {
   constructor(readonly reason: PullError) { super(`pull failed: ${reason}`); }
 }
@@ -54,6 +54,8 @@ type Link = {
   createdAt: number;
   /** When it last moved: made, asked, or a chunk handed to the channel. A dead link stops once its buffer is full. */
   lastActive: number;
+  /** Puller side: the holder answered that she is at her limit. */
+  atLimit?: true;
   busy: boolean;
   idle?: ReturnType<typeof setTimeout>;
 };
@@ -123,7 +125,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
   }
 
   /** Why a link was closed, for `file_link_failed`. */
-  type CloseReason = 'failed' | 'closed' | 'refused' | 'evicted' | 'timeout' | 'idle' | 'cancelled' | 'pulled' | 'disposed' | 'error';
+  type CloseReason = 'failed' | 'closed' | 'refused' | 'evicted' | 'timeout' | 'idle' | 'cancelled' | 'pulled' | 'disposed' | 'error' | 'busy';
   function close(link: Link, reason: CloseReason): void {
     if (links.get(keyOf(link.peer, link.id)) !== link) return;
     links.delete(keyOf(link.peer, link.id));
@@ -162,6 +164,10 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
   /** One `link` frame from a friend, in the order they came. */
   async function onLink(from: string, data: LinkData): Promise<void> {
     let link = links.get(keyOf(from, data.link));
+    if (data.busy) {
+      if (link && !link.serving) { link.atLimit = true; close(link, 'busy'); }
+      return;
+    }
     if (data.description !== undefined) {
       const description = data.description as RTCSessionDescriptionInit;
       const verdict = await verifyDescription({ from, to: me, sdp: description.sdp ?? '', signature: data.sig });
@@ -183,7 +189,11 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
         while (mine().length >= MAX_SERVING_PER_FRIEND) close(mine()[0]!, 'evicted');
         // Counted with the offers still waiting for ICE servers: offers from different friends run on chains of their own.
         const serving = [...[...links.values()].filter((l) => l.serving).map((l) => l.peer), ...starting];
-        if (serving.length >= MAX_SERVING || serving.filter((p) => p === from).length >= MAX_SERVING_PER_FRIEND) return;
+        // At her limit she says so: silence would leave the friend at "Couldn't reach" for good (ticket 05).
+        if (serving.length >= MAX_SERVING || serving.filter((p) => p === from).length >= MAX_SERVING_PER_FRIEND) {
+          opts.send({ t: 'link', to: from, data: { link: data.link, busy: true } });
+          return;
+        }
         starting.push(from);
         let servers: IceServer[];
         try { servers = await iceServers(); } finally { starting.splice(starting.indexOf(from), 1); }
@@ -266,7 +276,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
     const link = open(from, randomId(), servers);
     signal.addEventListener('abort', () => close(link, 'cancelled'), { once: true });
     // The link closed under the pull (the friend left, the connection failed, the room went): no event says so.
-    const gone = (reason: PullError) => link.latch.closed.then((): never => { throw new PullFailed(reason); });
+    const gone = (reason: PullError) => link.latch.closed.then((): never => { throw new PullFailed(link.atLimit ? 'busy' : reason); });
     try {
       await link.pc.setLocalDescription();
       await describe(link, link.pc.localDescription);

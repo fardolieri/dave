@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DECODING_RECENT_MS, INVARIANT_GRACE_MS, PULL_QUIET_MS, breaches, createInvariantWatch, fileBreaches, gainFor, shareTileState,
+  DECODING_RECENT_MS, INVARIANT_GRACE_MS, PULL_QUIET_MS, RETRY_LATE_MS, breaches, createInvariantWatch, fileBreaches, gainFor, shareTileState,
   type CallFacts, type FileFacts, type PeerFacts, type Violation,
 } from '../src/core/invariants';
 
@@ -110,7 +110,7 @@ describe('invariant watch', () => {
 
 describe('attachment invariant rules (attachments ticket 04)', () => {
   const at = 1_000_000;
-  const file = (o: Partial<FileFacts> = {}): FileFacts => ({ key: '0', status: 'ready', running: false, active: false, movedAt: null, holderOnline: true, ...o });
+  const file = (o: Partial<FileFacts> = {}): FileFacts => ({ key: '0', status: 'ready', running: false, active: false, movedAt: null, holderOnline: true, retryAt: null, ...o });
   const kinds = (f: FileFacts) => fileBreaches({ at, files: [f] }).map((b) => b.kind);
 
   it('is quiet for what the chat shows in a healthy room', () => {
@@ -129,6 +129,13 @@ describe('attachment invariant rules (attachments ticket 04)', () => {
 
   it('waiting for someone to come online while one who has it is online contradicts', () => {
     expect(kinds(file({ status: 'waiting', holderOnline: true }))).toEqual(['file_waiting_online']);
+  });
+
+  it('a try again shown long after its time, with no pull running, is stuck (ticket 05)', () => {
+    expect(kinds(file({ status: 'failed', retryAt: at + 5_000 }))).toEqual([]);
+    expect(kinds(file({ status: 'failed', retryAt: at - RETRY_LATE_MS }))).toEqual([]);
+    expect(kinds(file({ status: 'failed' }))).toEqual([]); // waits for a click: nothing promised
+    expect(kinds(file({ status: 'failed', retryAt: at - RETRY_LATE_MS - 1 }))).toEqual(['file_retry_stuck']);
   });
 
   it('the watch reports them after their grace, once each', () => {

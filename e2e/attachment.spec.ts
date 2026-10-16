@@ -289,3 +289,42 @@ test('regression: a picture cancelled and asked again while its first pull waite
   await expect(media.locator('button.att-get')).toBeVisible();
   await expect(media.locator('img:not(.att-preview)')).toHaveCount(0);
 });
+
+// Attachments ticket 05 (Grumpy Friend, review of PR #68): Alice switches apps for half a minute after posting. The Room
+// keeps her online (silence sweep 90 s), Bob's pull finds nobody answering, and when she answers again nothing tried it.
+test('a picture that could not be pulled while its sender was briefly away comes by itself once she answers', async ({ crowd }) => {
+  test.slow();
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  const held: string[] = [];
+  alice.wire.down = (frame) => { if (!frame.includes('"t":"link"')) return frame; held.push(frame); return null; };
+  const picture = png(640, 480);
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'stripes.png', mimeType: 'image/png', buffer: picture });
+  await expect(bob.page.locator('.chat-log .att-media figcaption')).toContainText("Couldn't reach Alice. Trying again soon.", { timeout: 45_000 });
+
+  // She is back: what was sent meanwhile reaches her at once, and she answers it. Nobody left the room or came back.
+  alice.wire.down = null;
+  for (const frame of held.splice(0)) alice.wire.deliver(frame);
+  expect(await bob.online()).toContain('Alice');
+
+  const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
+  await expect(shown).toHaveCount(1, { timeout: 60_000 });
+  const url = (await shown.getAttribute('src'))!;
+  expect(await bob.page.evaluate(pageHash(url), url)).toBe(sha256(picture));
+});
+
+// Attachments ticket 05 (Grumpy Friend, review of PR #68): a holder serves eight links at once. Five friends pulling two
+// photos each from a slow phone ask for ten: she now answers the two she has no place for "busy", and they ask again.
+test('every friend gets the pictures of a busy holder by itself, once her places free', async ({ crowd }) => {
+  test.slow();
+  const alice = await crowd.open('Alice');
+  const pullers = [];
+  for (const name of ['Bob', 'Carol', 'Dave', 'Erin', 'Frank']) pullers.push(await crowd.open(name));
+  await alice.page.evaluate(slowUplink);
+  for (const [i, buffer] of [heavy(png(640, 480), 1024 * 1024), heavy(png(480, 640), 1024 * 1024)].entries()) {
+    await alice.page.getByTestId('attach').setInputFiles({ name: `big-${i}.png`, mimeType: 'image/png', buffer });
+  }
+  for (const f of pullers) {
+    await expect(f.page.locator('.chat-log .att-media img:not(.att-preview)'), `${f.name} has both`).toHaveCount(2, { timeout: 180_000 });
+  }
+});

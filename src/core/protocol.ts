@@ -45,7 +45,7 @@ export const MAX_CANDIDATES_PER_MESSAGE = 64;
  * Signaling of a file link (ADR 0006), relayed untouched between any two friends attached to the Room. `link` names the
  * pull's connection, chosen by the friend who pulls; a description is signed like a call's (`sig`, ADR 0004).
  */
-export type LinkData = { link: string; description?: unknown; sig?: string; candidates?: unknown[] };
+export type LinkData = { link: string; description?: unknown; sig?: string; candidates?: unknown[]; busy?: true };
 
 /**
  * Names a `join` or `ice` request; the `call` or `ice` that answers it repeats it, so an answer that comes late (a slow TURN
@@ -321,7 +321,9 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
         if (!Array.isArray(d.candidates) || d.candidates.length > MAX_CANDIDATES_PER_MESSAGE) return invalid('unrecognised message');
         data.candidates = d.candidates;
       }
-      if (!('description' in data) && !('candidates' in data)) return invalid('unrecognised message');
+      // A holder at her limit says so instead of nothing, and the puller asks again later (attachments ticket 05).
+      if (d.busy === true) data.busy = true;
+      if (!('description' in data) && !('candidates' in data) && !data.busy) return invalid('unrecognised message');
       return { t: 'link', to: m.to, data };
     }
     case 'linkice':

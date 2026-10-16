@@ -1,6 +1,6 @@
 # 05 · A pull that failed is tried again by itself while its friend is online
 
-Status: needs-triage
+Status: in progress
 Blocked by: 01
 Raised by: the review of PR #68 (Grumpy Friend), 2026-10-16
 
