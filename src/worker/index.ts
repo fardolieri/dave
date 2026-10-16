@@ -26,9 +26,17 @@ export default {
           if (!success) return new Response('too many attempts', { status: 429 });
         }
         const id = env.ROOM.idFromName(roomId);
-        return await env.ROOM.get(id).fetch(request);
+        try {
+          return await env.ROOM.get(id).fetch(request);
+        } catch (e) {
+          // Cloudflare's "internal error; reference = …" from the Room's stub, neither retryable nor overloaded, seen on
+          // nightly and a preview (ticket 55): the socket was not taken yet, so the Room is asked once more, on a new stub.
+          logUpgradeFailed(env, ctx, e, 1);
+          await new Promise((r) => setTimeout(r, 100));
+          return await env.ROOM.get(id).fetch(request);
+        }
       } catch (e) {
-        logUpgradeFailed(env, ctx, e);
+        logUpgradeFailed(env, ctx, e, 2);
         return new Response('upgrade failed', { status: 500 });
       }
     }
