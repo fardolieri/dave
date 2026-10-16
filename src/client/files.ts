@@ -148,10 +148,18 @@ export const big = {
     for (const name of names) await dir.removeEntry(name).catch(() => undefined);
     const verified = names.length ? 0 : await big.verified(hash);
     const writer = fileWriter();
-    let onDisk: number;
-    try { onDisk = (await writer.ask({ t: 'open', name: hash })).size ?? 0; } catch (e) { writer.stop(); throw e; }
-    // The file may be shorter than its record says (cleared by the browser), never trusted past it.
-    const start = Math.min(size, Math.floor(Math.min(verified, onDisk) / piece) * piece);
+    let start: number;
+    try {
+      const onDisk = (await writer.ask({ t: 'open', name: hash })).size ?? 0;
+      // The file may be shorter than its record says (cleared by the browser), never trusted past it.
+      start = Math.min(size, Math.floor(Math.min(verified, onDisk) / piece) * piece);
+      // Saved before the first byte, so a pull that writes nothing is still swept after BIG_KEEP_MS.
+      await idbSet(`partial:${hash}`, { verified: start, size, at: Date.now() });
+    } catch (e) {
+      // Nobody gets this writer to end: its file is let go here.
+      writer.stop();
+      throw e;
+    }
     let at = start;
     let closed = false;
     // A write and `end` take turns.
@@ -166,8 +174,6 @@ export const big = {
       closed = true;
       try { await writer.ask({ t: 'close' }); } finally { writer.stop(); }
     };
-    // Saved before the first byte, so a pull that writes nothing is still swept after BIG_KEEP_MS.
-    await idbSet(`partial:${hash}`, { verified: start, size, at: Date.now() });
     return {
       start,
       write: (offset, bytes) => turn(async () => {

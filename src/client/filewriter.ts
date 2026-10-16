@@ -4,12 +4,12 @@
 // one opened to go on copies the whole file first (review of PR #72), so a pull was kept only in whole segments of 16 MB,
 // and one cut off under that started again from 0 (report of 2026-10-16).
 
-/** What `createSyncAccessHandle` gives, which the DOM types do not name. */
+/** What `createSyncAccessHandle` gives, which the DOM types do not name. Early ones (Chrome before 108, Safari 15.2 to 16) answer with promises. */
 type SyncAccess = {
   write(bytes: ArrayBufferView | ArrayBuffer, options: { at: number }): number;
-  flush(): void;
-  getSize(): number;
-  close(): void;
+  flush(): void | Promise<void>;
+  getSize(): number | Promise<number>;
+  close(): void | Promise<void>;
 };
 export type WriterAsk =
   | { id: number; t: 'open'; name: string }
@@ -30,16 +30,22 @@ scope.onmessage = (e) => {
         const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('files', { create: true });
         const handle = await dir.getFileHandle(ask.name, { create: true }) as unknown as { createSyncAccessHandle?: () => Promise<SyncAccess> };
         if (!handle.createSyncAccessHandle) throw new DOMException('No writing in place here', 'NotSupportedError');
-        access = await handle.createSyncAccessHandle();
-        scope.postMessage({ id: ask.id, size: access.getSize() });
+        // A page reloaded during a pull of it lets its handle go a moment after the new page asks: asked again for 2 s.
+        for (let tries = 0; ; tries++) {
+          try { access = await handle.createSyncAccessHandle(); break; } catch (err) {
+            if (!(err instanceof DOMException && err.name === 'NoModificationAllowedError') || tries >= 20) throw err;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+        }
+        scope.postMessage({ id: ask.id, size: await access.getSize() });
       } else if (ask.t === 'write') {
         if (!access) throw new DOMException('Not open', 'InvalidStateError');
         const wrote = access.write(ask.bytes, { at: ask.at });
         if (wrote !== ask.bytes.byteLength) throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
-        access.flush();
+        await access.flush();
         scope.postMessage({ id: ask.id });
       } else {
-        access?.close();
+        await access?.close();
         access = null;
         scope.postMessage({ id: ask.id });
       }
