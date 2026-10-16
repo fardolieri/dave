@@ -1441,7 +1441,11 @@ function FileView(props: { file: FileMeta; attachment: Attachment | undefined; h
     switch (now.status) {
       case 'pulling': return (
         <span class="att-state" aria-live="polite">
-          <progress max={props.file.size} value={now.received} />{Math.floor((100 * now.received) / Math.max(1, props.file.size))}% of {formatSize(props.file.size)}
+          {/* A bar of its own: a native progress this thin is drawn as a bare track in Chromium, its fill not seen */}
+          <span class="att-bar" role="progressbar" aria-valuemin={0} aria-valuemax={props.file.size} aria-valuenow={now.received}>
+            <span style={{ width: `${(100 * now.received) / Math.max(1, props.file.size)}%` }} />
+          </span>
+          {Math.floor((100 * now.received) / Math.max(1, props.file.size))}% of {formatSize(props.file.size)}
           <button type="button" class="att-cancel" onClick={(e) => { e.stopPropagation(); props.onCancel(); }} title="Stop loading it" aria-label="Cancel">✕</button>
         </span>
       );
