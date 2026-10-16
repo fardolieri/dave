@@ -122,3 +122,10 @@ test('diag supersede: a friend whose socket went silent comes in again after the
     await bob.page.reload();
   });
 });
+
+test('diag steady: a friend comes in again every few seconds for as long as the idle runs take', async ({ crowd, browser, browserName }) => {
+  asked('diag steady');
+  const rounds = 140;
+  test.setTimeout(rounds * 10_000 + 120_000);
+  await observe(crowd, browser, browserName, 'steady', rounds, async (bob) => { await idle(2_000); await bob.page.reload(); });
+});
