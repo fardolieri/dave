@@ -257,6 +257,19 @@ test('an app script cut off on the first load is loaded again, and the room conn
   expect(cut).toBe(2);
 });
 
+test('a page whose app script went with a deploy loads again, onto the new one', async ({ crowd }) => {
+  // A page from before a deploy asks for a script the deploy removed, and the single-page fallback answers with
+  // index.html (wrangler.jsonc): a module of the wrong type, which runs nothing, like a script cut off (ticket 58).
+  const alice = await crowd.open('Alice', { connect: false });
+  alice.expectWarning(/MIME type|Loading failed for the module with source/);
+  alice.expectWarning(/has been classified as a bounce tracker/);
+  let served = 0;
+  await alice.page.route(/\/(assets\/index-[^/]*\.js|src\/client\/index\.tsx)$/, (r) =>
+    (served++ ? r.continue() : r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html>' })));
+  await alice.open();
+  expect(served).toBe(2);
+});
+
 test('a friend whose socket drops without a goodbye is shown as lost, then recovers', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
