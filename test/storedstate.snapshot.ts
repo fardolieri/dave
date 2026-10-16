@@ -31,4 +31,5 @@ export const STORED_STATE: Record<string, unknown> = {
   "sessionStorage dave.tabHeld": "not parsed",
   "sessionStorage dave.update-taken": "not parsed",
   "sessionStorage dave.update-taken-ms": "not parsed",
+  "sessionStorage dave.load-retried": "not parsed",
 };

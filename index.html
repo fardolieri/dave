@@ -13,6 +13,21 @@
     <!-- The first frame, before the stylesheet or any script: only the app's dark, the colour of the phone's splash
          (manifest.webmanifest). Nothing in it to see, so Chrome keeps its splash up until the app shows the room. -->
     <style>html, body { background: #111318; margin: 0; height: 100%; color-scheme: dark; }</style>
+    <!-- The app's script cut off on its way, by a connection reset under it (ticket 58), leaves this page empty for good:
+         a module that failed to load runs nothing, and the browser keeps the failure for the page's life, so the page is
+         loaded again, once. A second failure within 30 s stays: a page offline does not reload over and over. Once the
+         service worker is installed, the script comes from its cache (client/sw.ts). -->
+    <script>
+      addEventListener('error', function (e) {
+        var s = e.target;
+        if (!(s instanceof HTMLScriptElement) || s.type !== 'module') return;
+        try {
+          if (Date.now() - Number(sessionStorage.getItem('dave.load-retried')) < 30000) return;
+          sessionStorage.setItem('dave.load-retried', String(Date.now()));
+        } catch (_) { return; }
+        location.reload();
+      }, true);
+    </script>
   </head>
   <body>
     <div id="app"></div>
