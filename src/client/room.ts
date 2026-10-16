@@ -452,7 +452,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             // end: nothing to ask anyone for (review of PR #72).
             const complete = await big.complete(hash);
             if (complete) return complete;
-            const writer = await big.writer(hash, file.size);
+            const writer = await big.writer(hash, file.size, piece);
             if (writer.start >= file.size) return writer.done();
             const sink = { list: await big.list(hash), keepList: (list: Uint8Array) => big.keepList(hash, list), start: writer.start, write: writer.write };
             try {
@@ -483,7 +483,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           // Cancelled: back to waiting for a click, and not pulled by itself again.
           if (abort.signal.aborted) { posthog.capture('file_pull_cancelled', { bytes: file.size }); if (!disposed && current()) {
               setAttachment(hash, { status: 'idle' });
-              // What a large one kept on disk: its complete segments, which the next pull goes on after (ticket 03).
+              // What a large one kept on disk: every piece it checked, which the next pull goes on after (ticket 03).
               if (file.piece && got) void big.verified(hash).then((partial) => { if (partial && attachmentNow.get(hash)?.status === 'idle') setAttachment(hash, { status: 'idle', partial }); });
             }
             return;

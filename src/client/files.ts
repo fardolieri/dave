@@ -7,6 +7,7 @@
 import { idbDelete, idbGet, idbSet } from './storage';
 import { MAX_PREVIEW_LENGTH, PIECE_BYTES, PREVIEW_SIDE, inlineKind, keepWithin, listHash, parseBigIndex, parseFileIndex, parsePartialPull } from '../core/attachment';
 import { toBase64Url } from '../core/identity';
+import type { WriterAnswer, WriterAsk } from './filewriter';
 
 export async function hashOf(blob: Blob): Promise<string> {
   return toBase64Url(new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())));
@@ -64,34 +65,63 @@ export async function piecesOf(file: Blob, progress: (read: number) => void = ()
 /** Large files kept this long after they came, and partial ones this long after their pull last moved. */
 export const BIG_KEEP_MS = 3 * 24 * 3600 * 1000;
 /**
- * A large file is written in segments of this size, each its own OPFS file, written once and never reopened: an OPFS
- * writer that keeps existing data starts as a copy of them, so reopening one file to commit copied all of it every time
- * (review of PR #72). The whole is the segments' Files in a Blob, which copies nothing. A pull that stops keeps its
- * complete segments and goes on after them.
+ * A large file is one OPFS file named by its hash, written in place by a worker (client/filewriter.ts), each piece flushed
+ * before the next: a pull that stops, a reload too, goes on after the last piece it checked. Until 2026-10-17 it was
+ * written in segments of 16 MB, `<hash>.<n>`, which are still read and swept.
  */
-export const SEGMENT_BYTES = 16 * 1024 * 1024;
-const segmentName = (hash: string, n: number) => `${hash}.${n}`;
-/** Names OPFS refuses storage with: no room left, or no storage at all (a private window). */
-const NO_ROOM = new Set(['QuotaExceededError', 'SecurityError', 'NotAllowedError']);
+const OLD_SEGMENT_BYTES = 16 * 1024 * 1024;
+const oldSegmentName = (hash: string, n: number) => `${hash}.${n}`;
+/** Names OPFS refuses storage with: no room left, no storage at all (a private window), or no writing in place. */
+const NO_ROOM = new Set(['QuotaExceededError', 'SecurityError', 'NotAllowedError', 'NotSupportedError']);
+
+/** The worker that writes one file, asked one thing at a time. Rejects with what it threw, as a DOMException. */
+function fileWriter(): { ask: (ask: DistributiveOmit<WriterAsk, 'id'>, transfer?: Transferable[]) => Promise<WriterAnswer>; stop: () => void } {
+  const worker = new Worker(new URL('./filewriter.ts', import.meta.url), { type: 'module' });
+  const waiting = new Map<number, { resolve: (a: WriterAnswer) => void; reject: (e: unknown) => void }>();
+  let next = 0;
+  const fail = (e: unknown) => { for (const w of waiting.values()) w.reject(e); waiting.clear(); };
+  worker.onmessage = (e: MessageEvent<WriterAnswer>) => {
+    const w = waiting.get(e.data.id);
+    waiting.delete(e.data.id);
+    if (e.data.error) w?.reject(new DOMException(e.data.error.message, e.data.error.name));
+    else w?.resolve(e.data);
+  };
+  worker.onerror = (e) => { e.preventDefault(); fail(new Error(`the file writer failed: ${e.message}`)); };
+  return {
+    ask: (ask, transfer = []) => new Promise((resolve, reject) => {
+      const id = next++;
+      waiting.set(id, { resolve, reject });
+      worker.postMessage({ ...ask, id }, transfer);
+    }),
+    stop: () => { worker.terminate(); fail(new Error('the file writer stopped')); },
+  };
+}
+type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
 export const noRoom = (e: unknown): boolean => e instanceof DOMException && NO_ROOM.has(e.name);
 
 /** Large files in the Origin Private File System, by hash: complete ones listed in `bigFiles`, partial ones in `partial:<hash>`. */
 export const big = {
-  /** Whether this browser can keep them: the Origin Private File System with writers (Chrome, Firefox, Safari 26). */
-  available: (): boolean => typeof navigator !== 'undefined' && !!navigator.storage?.getDirectory && 'createWritable' in (globalThis.FileSystemFileHandle?.prototype ?? {}),
+  /**
+   * Whether this browser may keep them: the Origin Private File System and workers. Writing in place is seen only in the
+   * worker: where it is missing (Safari before 15.2), a pull fails as "no room".
+   */
+  available: (): boolean => typeof navigator !== 'undefined' && !!navigator.storage?.getDirectory && typeof Worker !== 'undefined',
   async dir(): Promise<FileSystemDirectoryHandle> { return (await navigator.storage.getDirectory()).getDirectoryHandle('files', { create: true }); },
-  /** A complete large file, its segments as one Blob on disk, or null. */
+  /** A complete large file on disk, or null. */
   async complete(hash: string): Promise<Blob | null> {
     try {
       const entry = parseBigIndex(await idbGet<unknown>('bigFiles')).find((f) => f.hash === hash);
       if (!entry) return null;
       const dir = await big.dir();
-      const count = Math.ceil(entry.size / SEGMENT_BYTES);
-      const parts = await Promise.all(Array.from({ length: count }, async (_, n) => (await dir.getFileHandle(segmentName(hash, n))).getFile()));
+      const whole = await dir.getFileHandle(hash).then((h) => h.getFile(), () => null);
+      if (whole?.size === entry.size) return whole;
+      // One from before 2026-10-17: its segments' Files in a Blob, which copies nothing.
+      const count = Math.ceil(entry.size / OLD_SEGMENT_BYTES);
+      const parts = await Promise.all(Array.from({ length: count }, async (_, n) => (await dir.getFileHandle(oldSegmentName(hash, n))).getFile()));
       return new Blob(parts);
     } catch { return null; }
   },
-  /** How many bytes of a pull of it are on disk and checked, in whole segments; 0 for none. */
+  /** How many bytes of a pull of it are on disk and checked, from the start; 0 for none. */
   async verified(hash: string): Promise<number> { return parsePartialPull(await idbGet<unknown>(`partial:${hash}`).catch(() => undefined))?.verified ?? 0; },
   /** Its list of piece hashes, kept from a pull or a send. */
   async list(hash: string): Promise<Uint8Array | null> {
@@ -106,36 +136,51 @@ export const big = {
   exclusive: <T>(hash: string, run: () => Promise<T>): Promise<T> =>
     typeof navigator !== 'undefined' && navigator.locks ? navigator.locks.request(`dave-big:${hash}`, run) : run(),
   /**
-   * A writer for a pull of it, from the first segment not on disk (`start`). Pieces come in order; a segment is closed,
-   * which keeps it, when full, and the progress saved then. `end` drops a segment under way; `done` lists the file as
-   * complete. Run it inside `exclusive`.
+   * A writer for a pull of it in pieces of `piece`, from the first piece not on disk (`start`). Pieces come in order; each
+   * is flushed to disk and the progress saved before the next. `end` lets the file go, as far as it got; `done` lists it
+   * as complete. Run it inside `exclusive`.
    */
-  async writer(hash: string, size: number): Promise<{ start: number; write: (offset: number, bytes: ArrayBuffer) => Promise<void>; end: () => Promise<void>; done: () => Promise<Blob> }> {
+  async writer(hash: string, size: number, piece: number): Promise<{ start: number; write: (offset: number, bytes: ArrayBuffer) => Promise<void>; end: () => Promise<void>; done: () => Promise<Blob> }> {
     const dir = await big.dir();
-    const start = Math.min(size, Math.floor((await big.verified(hash)) / SEGMENT_BYTES) * SEGMENT_BYTES);
-    let segment = start / SEGMENT_BYTES;
-    let filled = 0;
-    let open: FileSystemWritableFileStream | null = null;
+    // Segments from before 2026-10-17 are not gone on from: the pull starts again, once.
+    const names: string[] = [];
+    for await (const name of (dir as unknown as { keys(): AsyncIterable<string> }).keys()) if (name.startsWith(`${hash}.`)) names.push(name);
+    for (const name of names) await dir.removeEntry(name).catch(() => undefined);
+    const verified = names.length ? 0 : await big.verified(hash);
+    const writer = fileWriter();
+    let onDisk: number;
+    try { onDisk = (await writer.ask({ t: 'open', name: hash })).size ?? 0; } catch (e) { writer.stop(); throw e; }
+    // The file may be shorter than its record says (cleared by the browser), never trusted past it.
+    const start = Math.min(size, Math.floor(Math.min(verified, onDisk) / piece) * piece);
+    let at = start;
+    let closed = false;
+    // A write and `end` take turns.
+    let turns: Promise<unknown> = Promise.resolve();
+    const turn = <T>(f: () => Promise<T>): Promise<T> => {
+      const next = turns.then(f);
+      turns = next.catch(() => undefined);
+      return next;
+    };
+    const close = async () => {
+      if (closed) return;
+      closed = true;
+      try { await writer.ask({ t: 'close' }); } finally { writer.stop(); }
+    };
     // Saved before the first byte, so a pull that writes nothing is still swept after BIG_KEEP_MS.
     await idbSet(`partial:${hash}`, { verified: start, size, at: Date.now() });
     return {
       start,
-      async write(offset, bytes) {
-        if (offset !== segment * SEGMENT_BYTES + filled) throw new Error(`piece out of order at ${offset}`);
-        // A fresh file: without keepExistingData nothing is copied into it.
-        open ??= await (await dir.getFileHandle(segmentName(hash, segment), { create: true })).createWritable();
-        await open.write(bytes);
-        filled += bytes.byteLength;
-        if (filled >= SEGMENT_BYTES || offset + bytes.byteLength >= size) {
-          await open.close();
-          open = null;
-          segment++;
-          filled = 0;
-          await idbSet(`partial:${hash}`, { verified: Math.min(size, segment * SEGMENT_BYTES), size, at: Date.now() });
-        }
-      },
-      async end() { await open?.abort().catch(() => undefined); open = null; },
+      write: (offset, bytes) => turn(async () => {
+        if (closed) throw new Error('pull ended');
+        if (offset !== at) throw new Error(`piece out of order at ${offset}`);
+        const length = bytes.byteLength;
+        await writer.ask({ t: 'write', at, bytes }, [bytes]);
+        at += length;
+        await idbSet(`partial:${hash}`, { verified: at, size, at: Date.now() });
+      }),
+      end: () => turn(close).catch(() => undefined),
       async done() {
+        await turn(close);
         await serial(async () => {
           const index = parseBigIndex(await idbGet<unknown>('bigFiles')).filter((f) => f.hash !== hash);
           await idbSet('bigFiles', [...index, { hash, size, at: Date.now() }]);

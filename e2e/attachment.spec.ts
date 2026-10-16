@@ -390,8 +390,8 @@ test('a file comes from a friend who pulled it once its sender is gone, past one
 });
 
 // Attachments ticket 03: a large file comes in pieces, each checked and written to disk as it comes, and a pull that
-// stopped goes on from the last complete segment (16 MB) instead of from the start.
-test('a large file stopped past its first segment goes on from there, and arrives whole', async ({ crowd }) => {
+// stopped goes on from the last piece it checked instead of from the start.
+test('a large file stopped part way goes on from there, and arrives whole', async ({ crowd }) => {
   test.slow();
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
@@ -413,8 +413,8 @@ test('a large file stopped past its first segment goes on from there, and arrive
   });
   await media.locator('button.att-get').click();
   await expect(media.locator('figcaption')).toHaveText(/\b8\d% of 20 MB/, { timeout: 60_000 });
-  // Bob stops it: the complete segment is kept (16 MB of a little over 20), and the button says so.
-  const kept = Math.floor((100 * 16 * 1024 * 1024) / picture.length);
+  // Bob stops it: the 17 MB he checked are kept (of a little over 20), and the button says so.
+  const kept = Math.floor((100 * 17 * 1024 * 1024) / picture.length);
   await media.getByRole('button', { name: 'Cancel' }).click();
   await expect(media.locator('button.att-get')).toHaveText(new RegExp(`Resume, ${kept}% of 20 MB`));
   // Going on, with Alice's uplink still held: it starts there, not at 0, before a byte more can come.
@@ -488,14 +488,18 @@ test('a browser out of room for a large file says so, and does not call it a dro
   await alice.page.getByTestId('attach').setInputFiles({ name: 'big.png', mimeType: 'image/png', buffer: picture });
   const media = bob.page.locator('.chat-log .att-media');
   await expect(media.locator('button.att-get')).toBeVisible({ timeout: 60_000 });
-  // Bob's disk is full after 3 pieces.
+  // Bob's disk is full after 3 pieces: his file writer (client/filewriter.ts) answers the fourth with the browser's error.
   await bob.page.evaluate(() => {
-    const write = FileSystemWritableFileStream.prototype.write;
+    const post = Worker.prototype.postMessage;
     let pieces = 0;
-    FileSystemWritableFileStream.prototype.write = function (this: FileSystemWritableFileStream, data: FileSystemWriteChunkType) {
-      if (++pieces > 3) return Promise.reject(new DOMException('The quota has been exceeded.', 'QuotaExceededError'));
-      return write.call(this, data);
-    };
+    Worker.prototype.postMessage = function (this: Worker, message: unknown, transfer?: Transferable[]) {
+      const ask = message as { t?: string; id?: number };
+      if (ask?.t === 'write' && ++pieces > 3) {
+        setTimeout(() => this.onmessage?.(new MessageEvent('message', { data: { id: ask.id, error: { name: 'QuotaExceededError', message: 'The quota has been exceeded.' } } })));
+        return;
+      }
+      post.call(this, message, { transfer: transfer ?? [] });
+    } as Worker['postMessage'];
   });
   await media.locator('button.att-get').click();
   await expect(media).toContainText("This browser can't keep files this large", { timeout: 60_000 });

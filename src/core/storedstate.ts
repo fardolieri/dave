@@ -142,7 +142,7 @@ export const IDB = {
     fixtures: { '2026-10-15, attachments': [{ hash: 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg', size: 123456, at: 1760500001000 }] },
   },
   bigFiles: {
-    about: 'Large files complete in the Origin Private File System (directory `files`, in segments `<hash>.<n>` of SEGMENT_BYTES), outside the budget, gone after BIG_KEEP_MS (attachments ticket 03, client/files.ts).',
+    about: 'Large files complete in the Origin Private File System (directory `files`, one file `<hash>`, or segments `<hash>.<n>` of 16 MB from before 2026-10-17), outside the budget, gone after BIG_KEEP_MS (attachments ticket 03, client/files.ts).',
     parse: parseBigIndex,
     fixtures: { '2026-10-16, large files': [{ hash: 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg', size: 734003200, at: 1760600000000 }] },
   },
