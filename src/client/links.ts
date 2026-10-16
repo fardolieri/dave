@@ -45,9 +45,18 @@ type Link = {
   held: RTCIceCandidateInit[] | null;
   /** Holder side: this link serves; `busy` while a `get` is answered, one at a time. */
   serving: boolean;
+  /** Its channel came up once. One that never did is reported as it closes (`file_link_failed`). */
+  opened: boolean;
+  /** Candidate types gathered here and received from the other side (host, srflx, prflx, relay), and whether TURN was offered. */
+  local: Set<string>;
+  remote: Set<string>;
+  turn: boolean;
   busy: boolean;
   idle?: ReturnType<typeof setTimeout>;
 };
+
+/** The type an ICE candidate line names (`typ host`, `typ relay`, …). */
+const candidateType = (line: string): string => /\btyp (\w+)/.exec(line)?.[1] ?? 'unknown';
 
 const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(9)), (x) => x.toString(16).padStart(2, '0')).join('');
 
@@ -92,10 +101,15 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
     const pc = new RTCPeerConnection({ iceServers: servers });
     const channel = pc.createDataChannel('file', { negotiated: true, id: 0, ordered: true });
     channel.binaryType = 'arraybuffer';
-    const link: Link = { peer, id, pc, channel, latch: closeLatch(), early: [], remoteSet: false, held: [], serving: false, busy: false };
+    const link: Link = {
+      peer, id, pc, channel, latch: closeLatch(), early: [], remoteSet: false, held: [], serving: false, busy: false, opened: false,
+      local: new Set(), remote: new Set(), turn: servers.some((s) => [s.urls].flat().some((u) => String(u).startsWith('turn'))),
+    };
     links.set(keyOf(peer, id), link);
+    channel.addEventListener('open', () => { link.opened = true; });
     pc.onicecandidate = (e) => {
       if (!e.candidate) return;
+      link.local.add(candidateType(e.candidate.candidate));
       if (link.held) link.held.push(e.candidate.toJSON());
       else opts.send({ t: 'link', to: peer, data: { link: id, candidates: [e.candidate.toJSON()] } });
     };
@@ -107,6 +121,14 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
   function close(link: Link): void {
     if (links.get(keyOf(link.peer, link.id)) !== link) return;
     links.delete(keyOf(link.peer, link.id));
+    // Why a link never came up, from either side: no answer, no route both sides could reach, no relay offered.
+    if (!link.opened) {
+      const { pc } = link;
+      posthog.capture('file_link_failed', {
+        side: link.serving ? 'holder' : 'puller', answered: link.remoteSet, connection: pc.connectionState, ice: pc.iceConnectionState,
+        gathering: pc.iceGatheringState, signaling: pc.signalingState, local: [...link.local].sort(), remote: [...link.remote].sort(), turn: link.turn,
+      });
+    }
     clearTimeout(link.idle);
     link.latch.close();
     link.channel.onmessage = link.channel.onclose = null;
@@ -145,9 +167,15 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
         return;
       }
       if (description.type === 'offer') {
+        if (link) return;
+        // A friend's links that never came up are pulls they gave up: a new ask from them takes their place, oldest first.
+        // Before, they held the friend's places for a minute, and every "Try again" in it went unanswered (report of
+        // 2026-10-16).
+        const mine = () => [...links.values()].filter((l) => l.serving && l.peer === from);
+        for (const stale of mine().filter((l) => !l.opened)) if (mine().length + starting.filter((p) => p === from).length >= MAX_SERVING_PER_FRIEND) close(stale);
         // Counted with the offers still waiting for ICE servers: offers from different friends run on chains of their own.
         const serving = [...[...links.values()].filter((l) => l.serving).map((l) => l.peer), ...starting];
-        if (link || serving.length >= MAX_SERVING || serving.filter((p) => p === from).length >= MAX_SERVING_PER_FRIEND) return;
+        if (serving.length >= MAX_SERVING || serving.filter((p) => p === from).length >= MAX_SERVING_PER_FRIEND) return;
         starting.push(from);
         let servers: IceServer[];
         try { servers = await iceServers(); } finally { starting.splice(starting.indexOf(from), 1); }
@@ -156,6 +184,8 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
         const served = link;
         link.channel.onmessage = (e) => { void serve(served, e).catch((err: unknown) => { console.error('serving a file failed', err); close(served); }); };
         idle(link);
+        // The puller gives up after CONNECT_TIMEOUT_MS; a link not up by then is closed here too.
+        setTimeout(() => { if (!served.opened) close(served); }, CONNECT_TIMEOUT_MS + 2000);
         await remote(link, description);
         await unlessClosed(link.latch.closed, link.pc.setLocalDescription());
         await describe(link, link.pc.localDescription);
@@ -165,6 +195,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
     }
     if (link && data.candidates) {
       for (const c of data.candidates as RTCIceCandidateInit[]) {
+        if (typeof c?.candidate === 'string') link.remote.add(candidateType(c.candidate));
         if (link.remoteSet) await unlessClosed(link.latch.closed, link.pc.addIceCandidate(c)).catch(() => undefined);
         else link.early.push(c);
       }
