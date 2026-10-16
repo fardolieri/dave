@@ -161,8 +161,9 @@ export const big = {
             const segment = await (await dir.getFileHandle(oldSegmentName(hash, n))).getFile();
             for (let at = 0; at < segment.size; at += PIECE_BYTES) {
               const bytes = await segment.slice(at, at + PIECE_BYTES).arrayBuffer();
+              const length = bytes.byteLength; // read before it goes: a buffer handed to the worker is empty here after
               await writer.ask({ t: 'write', at: onDisk, bytes }, [bytes]);
-              onDisk += bytes.byteLength;
+              onDisk += length;
             }
             await dir.removeEntry(oldSegmentName(hash, n)).catch(() => undefined);
           }
