@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { exportPublicKey, fromBase64Url, generateIdentityKeyPair, toBase64Url } from '../src/core/identity';
-import { MAX_SEALED_LENGTH, MAX_TEXT_LENGTH } from '../src/core/protocol';
+import { MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_TEXT_LENGTH } from '../src/core/protocol';
+import { MAX_FILE_NAME, MAX_PREVIEW_LENGTH, type FileMeta } from '../src/core/attachment';
 import { roomIdOf, textKeyOf } from '../src/core/rooms';
-import { openText, sealText } from '../src/core/sealed';
+import { openFile, openText, sealFile, sealText } from '../src/core/sealed';
 
 async function writer() {
   const keys = await generateIdentityKeyPair();
@@ -77,5 +78,39 @@ describe('sealed texts (ADR 0005)', async () => {
   it('refuses a properly signed text the composer would never have sent', async () => {
     expect(await open(await seal('   '))).toEqual({ ok: false, reason: 'invalid text' });
     expect(await open(await seal('x'.repeat(MAX_TEXT_LENGTH + 1)))).toEqual({ ok: false, reason: 'invalid text' });
+  });
+});
+
+describe('sealed file announcements (ADR 0006)', async () => {
+  const key = await textKeyOf('a secret');
+  const roomId = await roomIdOf('a secret');
+  const alice = await writer();
+  const file: FileMeta = { name: 'cat.jpg', type: 'image/jpeg', size: 2_000_000, hash: 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg', preview: 'data:image/webp;base64,UklGRg==', width: 4032, height: 3024 };
+  const base = { key, roomId, id: 'c0ffee', ...alice };
+
+  it('round-trips a file description, and nothing of it shows on the wire', async () => {
+    const sealed = await sealFile({ ...base, file });
+    expect(await openFile({ ...base, sealed })).toEqual({ ok: true, file });
+    expect(sealed).not.toContain('cat');
+    expect(new TextDecoder().decode(fromBase64Url(sealed)!)).not.toContain('cat');
+  });
+
+  it('a text cannot be passed off as a file, nor a file as a text', async () => {
+    const asText = await sealText({ ...base, text: JSON.stringify(file) });
+    expect(await openFile({ ...base, sealed: asText })).toEqual({ ok: false, reason: 'unreadable' });
+    expect(await openText({ ...base, sealed: await sealFile({ ...base, file }) })).toEqual({ ok: false, reason: 'unreadable' });
+  });
+
+  it('refuses one signed by another member, or one that does not describe a file', async () => {
+    const mallory = await writer();
+    expect(await openFile({ ...base, sealed: await sealFile({ ...base, privateKey: mallory.privateKey, file }) })).toEqual({ ok: false, reason: 'bad signature' });
+    expect(await openFile({ ...base, sealed: await sealFile({ ...base, file: { ...file, hash: 'nope' } }) })).toEqual({ ok: false, reason: 'invalid file' });
+  });
+
+  it('the longest description a client can write stays within what the Room takes', async () => {
+    const longest: FileMeta = { ...file, name: '😀'.repeat(MAX_FILE_NAME / 2), type: 'x'.repeat(100), preview: `data:image/jpeg;base64,${'A'.repeat(MAX_PREVIEW_LENGTH - 23)}`, size: 104857600 };
+    const sealed = await sealFile({ ...base, file: longest });
+    expect(sealed.length).toBeLessThanOrEqual(MAX_SEALED_FILE_LENGTH);
+    expect(await openFile({ ...base, sealed })).toEqual({ ok: true, file: longest });
   });
 });

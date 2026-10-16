@@ -27,6 +27,11 @@ export const PEER_GRACE_MS = 60_000;
 /** TURN credentials are minted with this TTL and refreshed when older than the refresh age. */
 export const ICE_TTL_SECONDS = 12 * 3600;
 export const ICE_REFRESH_AFTER_MS = 11 * 3600 * 1000;
+/**
+ * How long the TURN credentials of a file link live (ADR 0006). They are not tracked or revoked: a pull is short, and one
+ * that outlives them only loses its relay.
+ */
+export const LINK_ICE_TTL_SECONDS = 3600;
 
 /** ICE disconnected: wait this long before restarting ICE. Failed: restart with this backoff. */
 export const ICE_DISCONNECTED_GRACE_MS = 5_000;

@@ -1,5 +1,6 @@
 // Wire protocol shared by client and server. Runtime-neutral: plain data only.
 // Binary values (nonces, keys, MACs, signatures) travel as base64url strings.
+import { MAX_FILE_BODY_BYTES } from './attachment';
 
 export type Identity = {
   /** Uncompressed P-256 public key, 65 bytes, base64url. This is the participant's identity. */
@@ -41,6 +42,12 @@ const CONN_ID = /^[A-Za-z0-9_-]{1,32}$/;
 export const MAX_CANDIDATES_PER_MESSAGE = 64;
 
 /**
+ * Signaling of a file link (ADR 0006), relayed untouched between any two friends attached to the Room. `link` names the
+ * pull's connection, chosen by the friend who pulls; a description is signed like a call's (`sig`, ADR 0004).
+ */
+export type LinkData = { link: string; description?: unknown; sig?: string; candidates?: unknown[] };
+
+/**
  * Names a `join` or `ice` request; the `call` or `ice` that answers it repeats it, so an answer that comes late (a slow TURN
  * mint) is never taken for the answer to a newer request of the same kind (ticket 47). Optional both ways while the
  * fleet is mixed after a deploy: the server answers a request without one as before, and the client takes an answer
@@ -71,6 +78,8 @@ export type ClientMessage =
    * sent in plain before; the Room refuses it as from an app out of date.
    */
   | { t: 'sealed'; sealed: string; id: TextId }
+  /** A file's announcement, sealed like a text under its own domain (ADR 0006); its bytes never come this way. */
+  | { t: 'file'; sealed: string; id: TextId }
   | { t: 'text'; text: string; id?: TextId }
   /** Enter the Call (or re-declare after a server reconnect). */
   /** `sharing` lets a re-join after a server reconnect keep an ongoing share visible to everyone. */
@@ -86,6 +95,10 @@ export type ClientMessage =
   | { t: 'signal'; to: string; data: SignalData }
   /** Ask for fresh TURN credentials (before an ICE restart with expired ones). */
   | { t: 'ice'; id?: RequestId }
+  /** Signaling of a file link to another friend attached to the Room, in the call or not (ADR 0006). */
+  | { t: 'link'; to: string; data: LinkData }
+  /** Ask for ICE servers for a file link: short-lived TURN credentials, for visitors too. */
+  | { t: 'linkice'; id: RequestId }
   /** Announce that my share started or stopped; everyone learns through the presence flag. */
   | { t: 'share'; on: boolean }
   /** Ask a sharer to start or stop sending me their share; `scale` asks for a downscaled encoding (small screens). */
@@ -98,6 +111,8 @@ export type ServerMessage =
   | { t: 'presence'; people: Person[] }
   /** A sealed text, tagged with who sent it and when the Room got it. Neither is signed: the text inside is (ADR 0005). */
   | { t: 'sealed'; from: Identity; sealed: string; at: number; id: TextId }
+  /** A file's announcement, tagged like a sealed text. */
+  | { t: 'file'; from: Identity; sealed: string; at: number; id: TextId }
   /** Reply to join: your place in the Call and the ICE servers to build peer connections with. */
   | { t: 'call'; joinSeq: number; iceServers: IceServer[]; issuedAt: number; id?: RequestId }
   /** A participant left on purpose; peers close that connection at once. A vanished socket only drops out of presence. */
@@ -105,6 +120,8 @@ export type ServerMessage =
   | { t: 'signal'; from: string; data: SignalData }
   | { t: 'subscribe'; from: string; on: boolean; scale?: number }
   | { t: 'ice'; iceServers: IceServer[]; issuedAt: number; id?: RequestId }
+  | { t: 'link'; from: string; data: LinkData }
+  | { t: 'linkice'; iceServers: IceServer[]; issuedAt: number; id: RequestId }
   | { t: 'pong' }
   /** `ref` names the client message type that was rejected, when known, so the client can attribute it. */
   | { t: 'error'; reason: string; ref?: ClientMessage['t'] };
@@ -130,6 +147,8 @@ export const MAX_PICTURE_LENGTH = 16;
  * becomes U+FFFD). The Room refuses longer ones without reading them.
  */
 export const MAX_SEALED_LENGTH = Math.ceil(((12 + Math.ceil((64 + 3 * MAX_TEXT_LENGTH + 1) / 256) * 256 + 16) * 4) / 3);
+/** The longest sealed file announcement a client writes, the same way: its body is JSON of at most MAX_FILE_BODY_BYTES. */
+export const MAX_SEALED_FILE_LENGTH = Math.ceil(((12 + Math.ceil((64 + MAX_FILE_BODY_BYTES + 1) / 256) * 256 + 16) * 4) / 3);
 /** What the Room answers a plain text with: only an app from before ADR 0005 sends one. */
 export const OUT_OF_DATE = 'this app is out of date, reload the page to send';
 
@@ -163,7 +182,7 @@ export function normalisePicture(raw: string): string | null {
 export type Invalid = { t: 'invalid'; reason: string; ref?: ClientMessage['t'] };
 const invalid = (reason: string): Invalid => ({ t: 'invalid', reason });
 
-const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'sealed', 'text', 'join', 'leave', 'mute', 'name', 'picture', 'signal', 'ice', 'share', 'subscribe', 'telemetry']);
+const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'sealed', 'file', 'link', 'linkice', 'text', 'join', 'leave', 'mute', 'name', 'picture', 'signal', 'ice', 'share', 'subscribe', 'telemetry']);
 const isClientType = (v: unknown): v is ClientMessage['t'] => typeof v === 'string' && CLIENT_TYPES.has(v);
 
 /**
@@ -282,6 +301,31 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
       if (!isTextId(m.id) || typeof m.sealed !== 'string' || !B64URL.test(m.sealed)) return invalid('unrecognised message');
       if (m.sealed.length > MAX_SEALED_LENGTH) return invalid(`message longer than ${MAX_TEXT_LENGTH} characters`);
       return { t: 'sealed', sealed: m.sealed, id: m.id };
+    case 'file':
+      if (!isTextId(m.id) || typeof m.sealed !== 'string' || !B64URL.test(m.sealed)) return invalid('unrecognised message');
+      if (m.sealed.length > MAX_SEALED_FILE_LENGTH) return invalid('file description too long');
+      return { t: 'file', sealed: m.sealed, id: m.id };
+    case 'link': {
+      if (!b64(m.to) || typeof m.data !== 'object' || m.data === null) return invalid('unrecognised message');
+      const d = m.data as Record<string, unknown>;
+      if (typeof d.link !== 'string' || !CONN_ID.test(d.link)) return invalid('unrecognised message');
+      const data: LinkData = { link: d.link };
+      if ('description' in d) {
+        data.description = d.description;
+        if ('sig' in d) {
+          if (!b64(d.sig)) return invalid('unrecognised message');
+          data.sig = d.sig;
+        }
+      }
+      if ('candidates' in d) {
+        if (!Array.isArray(d.candidates) || d.candidates.length > MAX_CANDIDATES_PER_MESSAGE) return invalid('unrecognised message');
+        data.candidates = d.candidates;
+      }
+      if (!('description' in data) && !('candidates' in data)) return invalid('unrecognised message');
+      return { t: 'link', to: m.to, data };
+    }
+    case 'linkice':
+      return isRequestId(m.id) ? { t: 'linkice', id: m.id } : invalid('unrecognised message');
     case 'text':
       return invalid(OUT_OF_DATE);
     default:

@@ -18,6 +18,7 @@ import { normalisePicture } from './protocol';
 import { parseRejoinMarker } from './rejoin';
 import { parseStoredRooms } from './rooms';
 import { parseHistory } from './chatlog';
+import { parseFileIndex } from './attachment';
 import { parseUnsent } from './unsent';
 import { parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes } from './settings';
 
@@ -121,7 +122,29 @@ export const IDB = {
         { from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna', picture: '🦕' }, text: 'hi', at: 1760450000000, id: '0a1b2c3d4e5f60718293a4b5' },
         { from: { publicKey: 'pkB', fingerprint: 'DEF456', name: 'Ben' }, text: 'from an old client', at: 1760450001000 },
       ],
+      '2026-10-15, attachments': [
+        { from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna', picture: '🦕' }, text: 'hi', at: 1760500000000, id: '0a1b2c3d4e5f60718293a4b5' },
+        {
+          from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna' }, text: 'cat.jpg', at: 1760500001000, id: '1a1b2c3d4e5f60718293a4b5',
+          file: { name: 'cat.jpg', type: 'image/jpeg', size: 123456, hash: 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg', preview: 'data:image/webp;base64,UklGRg==', width: 4032, height: 3024 },
+        },
+        {
+          from: { publicKey: 'pkB', fingerprint: 'DEF456', name: 'Ben' }, text: 'notes.zip', at: 1760500002000, id: '2a1b2c3d4e5f60718293a4b5',
+          file: { name: 'notes.zip', type: 'application/zip', size: 2048, hash: 'AAAAgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg' },
+        },
+        { from: { publicKey: 'pkB', fingerprint: 'DEF456', name: 'Ben' }, text: 'from an old client', at: 1760500003000 },
+      ],
     },
+  },
+  files: {
+    about: 'The files this browser keeps, oldest first, with their size, within a budget (core/attachment.ts, client/files.ts).',
+    parse: parseFileIndex,
+    fixtures: { '2026-10-15, attachments': [{ hash: 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg', size: 123456, at: 1760500001000 }] },
+  },
+  'file:<hash>': {
+    about: "One file's bytes, a Blob, by the SHA-256 its announcement names (client/files.ts). Not parsed: the hash is checked as it is pulled.",
+    parse: null,
+    fixtures: {},
   },
   history: {
     about: 'The one chat history from before rooms; moved to `history:<roomId>` on load and removed (client/history.ts).',
@@ -129,7 +152,7 @@ export const IDB = {
     fixtures: { '2026-09-08, before rooms': [{ from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna' }, text: 'hi', at: 1757500000000 }] },
   },
 } satisfies Record<string, StoredKey<unknown>>;
-export type IdbKey = Exclude<keyof typeof IDB, 'history:<roomId>'> | `history:${string}`;
+export type IdbKey = Exclude<keyof typeof IDB, 'history:<roomId>' | 'file:<hash>'> | `history:${string}` | `file:${string}`;
 
 /** sessionStorage, per tab and gone with it, so a changed shape meets old values only across one reload. Read in place. */
 export const SESSION = {

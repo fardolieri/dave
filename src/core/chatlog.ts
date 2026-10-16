@@ -1,4 +1,5 @@
 import type { Identity, TextId } from './protocol';
+import { parseFileMeta, type FileMeta } from './attachment';
 
 /** Texts from more than this long before a room came on screen start out folded away above the log (ticket 38). */
 export const FOLD_OLDER_MS = 18 * 3600 * 1000;
@@ -15,15 +16,21 @@ export function olderCount(lines: ReadonlyArray<{ at: number }>, cutoff: number)
 /**
  * One text as this browser keeps it in its history (ticket 09, IndexedDB `history:<roomId>`). `id`: the writer's, since
  * 2026-10-14 (quality ticket 10), so a text sent again after a reload is still shown once; none in texts from before.
+ * `file`: an attachment's announcement as opened (ADR 0006), since 2026-10-15; its `text` is the file's name.
  */
-export type StoredText = { from: Identity; text: string; at: number; id?: TextId };
+export type StoredText = { from: Identity; text: string; at: number; id?: TextId; file?: FileMeta };
 /** The history keeps the most recent texts only. */
 export const MAX_HISTORY = 500;
 
 // Only texts count. Until Sep 20 the list also held dated reconnect notes (`{ note, at }`); they are dropped
 // here on read, so the next write leaves them out for good.
 const validText = (m: Partial<StoredText> | null) => !!m && typeof m.at === 'number' && typeof m.text === 'string' && !!m.from?.publicKey;
-/** A stored history as read from IndexedDB: anything but a list of texts is dropped, and the list is capped. */
+/** A stored history as read from IndexedDB: anything but a list of texts is dropped, and the list is capped. An attachment that does not parse is dropped too. */
 export function parseHistory(raw: unknown): StoredText[] {
-  return Array.isArray(raw) ? (raw as Array<Partial<StoredText> | null>).filter(validText).slice(-MAX_HISTORY) as StoredText[] : [];
+  if (!Array.isArray(raw)) return [];
+  return (raw as Array<Partial<StoredText> | null>).filter(validText).flatMap((m): StoredText[] => {
+    if (m!.file === undefined) return [m as StoredText];
+    const file = parseFileMeta(m!.file);
+    return file ? [{ ...(m as StoredText), file }] : [];
+  }).slice(-MAX_HISTORY);
 }

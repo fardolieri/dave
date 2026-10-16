@@ -5,7 +5,7 @@
 import { fromBase64Url, fingerprint, randomNonce, toBase64Url, verifyAnswer } from './identity';
 import { CLOSE_AUTH_FAILED, OUT_OF_DATE, parseClientMessage, type ClientMessage, type IceServer, type Person, type ServerMessage } from './protocol';
 import { SIGNAL_BURST, SIGNAL_RATE_PER_SECOND, newBucket, takeToken, type Bucket } from './ratelimit';
-import { nextJoinSeq } from './mesh';
+import { LINK_ICE_TTL_SECONDS, nextJoinSeq } from './mesh';
 
 export const MAX_AUTH_ATTEMPTS = 3;
 /** A socket that has not answered its challenge within this window is closed by the sweep. */
@@ -19,7 +19,7 @@ export type SocketState =
    * included (`takeOverTurn`); revoked when she leaves the call, and by nothing else. `joins`: how many times this
    * socket joined the call, so a TURN user minted for an earlier join is told from the call's (settleTurnUser).
    */
-  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; attachedAt: number; turnUsers?: string[]; joins?: number; telemetry?: true }
+  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; linkBucket?: Bucket; linkIceAt?: number; attachedAt: number; turnUsers?: string[]; joins?: number; telemetry?: true }
   /**
    * Told to close (superseded, silent too long, errored) or closed, but still attached until the runtime finishes the handshake; invisible meanwhile.
    * `attachedAt` as it was when attached, for the log of its close (worker/room.ts); none in sockets from before it was kept.
@@ -34,7 +34,7 @@ export type Outcome = {
   broadcast?: ServerMessage[];
   /** The set or shape of attached people changed; the adapter must broadcast a fresh snapshot. */
   presenceChanged?: boolean;
-  /** Deliver to the one attached participant with this public key. */
+  /** Deliver to the one attached friend with this public key. */
   relay?: { to: string; message: ServerMessage };
   /** Close every other socket attached under this public key: one live socket per identity (spec §4). */
   supersede?: string;
@@ -45,7 +45,7 @@ export type Outcome = {
    * sends what it returns, so a second join arriving mid-fetch already sees the new join sequence.
    * A TURN user it minted goes where settleTurnUser says, by the socket's state by then.
    */
-  after?: () => Promise<{ replies: ServerMessage[]; minted: MintedTurn }>;
+  after?: () => Promise<{ replies: ServerMessage[]; minted: MintedTurn | null }>;
   /** This friend joined the call: the adapter hands this socket the TURN users her earlier sockets left. Her public key. */
   takeOverTurn?: string;
   /** TURN credentials to revoke (participant left). */
@@ -67,8 +67,8 @@ export type RoomContext = {
   now: number;
   /** Everyone else currently attached (this socket excluded). Join sequences derive from it. */
   others: Iterable<Person>;
-  /** Mints ICE servers (TURN credentials) for a participant. Provided by the adapter. */
-  mintIce: () => Promise<{ iceServers: IceServer[]; turnUser: string | null }>;
+  /** Mints ICE servers (TURN credentials) for a participant, or for a file link with a shorter life. Provided by the adapter. */
+  mintIce: (ttlSeconds?: number) => Promise<{ iceServers: IceServer[]; turnUser: string | null }>;
 };
 
 /** ICE servers minted for the socket's join number `forJoin` (SocketState `joins`); `turnUser` null when STUN only. */
@@ -79,6 +79,8 @@ export type MintedTurn = { turnUser: string | null; forJoin: number };
  * on flaky Wi-Fi could grow the list past the attachment's 16 KB; the oldest are let go unrevoked, to run out on their own.
  */
 export const MAX_TURN_USERS = 16;
+/** A socket asks for a file link's ICE servers once a minute at most (`linkice`). */
+export const LINK_ICE_COOLDOWN_MS = 60_000;
 
 /**
  * Where minted ICE servers go once the mint is back. If the socket is still in the join they were minted for, its TURN user
@@ -175,12 +177,17 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
 
   const error = (reason: string, ref: ClientMessage['t'] | undefined): ServerMessage => (ref ? { t: 'error', reason, ref } : { t: 'error', reason });
 
-  // Rate limit every authenticated frame, parseable or not. Signaling has its own generous bucket (see ratelimit.ts).
+  // Rate limit every authenticated frame, parseable or not. Signaling has its own generous bucket (see ratelimit.ts), and
+  // file links another as generous, so pulls cannot hold up the call's own signaling.
   let next: SocketState;
   if (msg.t === 'signal') {
     const taken = takeToken(state.signalBucket ?? newBucket(ctx.now, SIGNAL_BURST), ctx.now, SIGNAL_RATE_PER_SECOND, SIGNAL_BURST);
     next = { ...state, signalBucket: taken.bucket };
     if (!taken.ok) return { state: next, replies: [error('rate limited', 'signal')] };
+  } else if (msg.t === 'link') {
+    const taken = takeToken(state.linkBucket ?? newBucket(ctx.now, SIGNAL_BURST), ctx.now, SIGNAL_RATE_PER_SECOND, SIGNAL_BURST);
+    next = { ...state, linkBucket: taken.bucket };
+    if (!taken.ok) return { state: next, replies: [error('rate limited', 'link')] };
   } else {
     const taken = takeToken(state.bucket, ctx.now);
     next = { ...state, bucket: taken.bucket };
@@ -188,6 +195,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     if (!taken.ok) return { state: next, replies: [error('rate limited', ref)] };
   }
   const notInCall = (ref: ClientMessage['t']): Outcome => ({ state: next, replies: [{ t: 'error', reason: 'not in the call', ref }] });
+  const attachedByKey = (key: string): boolean => { for (const p of ctx.others) if (p.publicKey === key) return true; return false; };
   // Any participant entry for the key counts, whatever else is listed under it.
   const participantByKey = (key: string): Person | undefined => { for (const p of ctx.others) if (p.publicKey === key && p.role === 'participant') return p; return undefined; };
 
@@ -207,8 +215,24 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       const { publicKey, fingerprint: fp, name, picture } = state.person;
       return { state: next, replies: [], broadcast: [{ t: 'sealed', from: { publicKey, fingerprint: fp, name, ...(picture ? { picture } : {}) }, sealed: msg.sealed, at: ctx.now, id: msg.id }] };
     }
+    case 'file': {
+      const { publicKey, fingerprint: fp, name, picture } = state.person;
+      return { state: next, replies: [], broadcast: [{ t: 'file', from: { publicKey, fingerprint: fp, name, ...(picture ? { picture } : {}) }, sealed: msg.sealed, at: ctx.now, id: msg.id }] };
+    }
     case 'text':
       return { state: next, replies: [error(OUT_OF_DATE, 'text')] }; // the parser refuses it already
+    case 'link': {
+      // Visitors too: a file link is not part of the call (ADR 0006).
+      if (msg.to === state.person.publicKey || !attachedByKey(msg.to)) return { state: next, replies: [{ t: 'error', reason: 'that friend is not here', ref: 'link' }] };
+      return { state: next, replies: [], relay: { to: msg.to, message: { t: 'link', from: state.person.publicKey, data: msg.data } } };
+    }
+    case 'linkice': {
+      // A client keeps them for most of their hour; asking again within a minute is a loop or a flood of TURN users.
+      if (state.linkIceAt !== undefined && ctx.now - state.linkIceAt < LINK_ICE_COOLDOWN_MS) return { state: next, replies: [error('asked too soon', 'linkice')] };
+      const now = ctx.now;
+      const id = msg.id;
+      return { state: { ...next, linkIceAt: now }, replies: [], after: async () => { const { iceServers } = await ctx.mintIce(LINK_ICE_TTL_SECONDS); return { replies: [{ t: 'linkice', iceServers, issuedAt: now, id }], minted: null }; } };
+    }
     case 'join': {
       // Joining twice (after a server reconnect) is fine: a fresh join sequence, same identity.
       // The sequence is fixed and stored before the TURN fetch so concurrent joins cannot collide.

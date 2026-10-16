@@ -13,11 +13,11 @@ const stunOnly: Minted = { iceServers: STUN_ONLY, turnUser: null };
 // `.dev.vars.example` sets the placeholder `unused-locally`, which means: no TURN in local dev.
 const usable = (env: Env): string | null => (env.TURN_KEY_API_TOKEN && env.TURN_KEY_API_TOKEN !== 'unused-locally' ? env.TURN_KEY_API_TOKEN : null);
 
-export async function mintIceServers(env: Env): Promise<Minted> {
+export async function mintIceServers(env: Env, ttlSeconds = ICE_TTL_SECONDS): Promise<Minted> {
   const token = usable(env);
   if (!token) return stunOnly;
   try {
-    const req = turnCredentialRequest(env.TURN_KEY_ID, token, ICE_TTL_SECONDS);
+    const req = turnCredentialRequest(env.TURN_KEY_ID, token, ttlSeconds);
     const res = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body, signal: AbortSignal.timeout(5000) });
     if (!res.ok) return stunOnly;
     const servers = parseIceServers(await res.json());

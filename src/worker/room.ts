@@ -72,7 +72,7 @@ export class Room extends DurableObject<Env> {
       authKey,
       now: Date.now(),
       others: others.flatMap((s) => (s && s.stage === 'attached' ? [s.person] : [])),
-      mintIce: () => mintIceServers(this.env),
+      mintIce: (ttlSeconds) => mintIceServers(this.env, ttlSeconds),
     });
     await this.apply(ws, outcome);
   }
@@ -159,6 +159,7 @@ export class Room extends DurableObject<Env> {
     if (outcome.after) {
       // State is already stored; other messages may interleave with this I/O safely, a Leave or the close among them.
       const { replies, minted } = await outcome.after();
+      if (!minted) { for (const reply of replies) this.trySend(ws, JSON.stringify(reply)); return; } // a file link's: not tracked (core/room.ts)
       const settled = settleTurnUser(ws.deserializeAttachment() as SocketState | null, minted);
       if ('revoke' in settled) {
         if (settled.revoke) this.ctx.waitUntil(revokeIce(this.env, settled.revoke));
