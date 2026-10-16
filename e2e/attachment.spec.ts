@@ -168,3 +168,24 @@ test('a file sent again by a second friend comes from her while the first is awa
   const url = (await save.getAttribute('href'))!;
   expect(await bob.page.evaluate(pageHash(url), url)).toBe(sha256(meme));
 });
+
+// Report of 2026-10-16 (PR #67 preview, Android): "Couldn't reach" a friend, and "Try again" stayed at 0% though she was
+// online. The pulls that never connected left their links open on her side for a minute, two per friend at most, so
+// every new ask from that friend in that minute went unanswered.
+test('regression: a pull tried again after its friend could not be reached is answered', async ({ crowd }) => {
+  test.slow();
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  // Alice's answers never reach Bob: his pulls do not connect, and give up.
+  alice.wire.up = (frame) => (frame.startsWith('{"t":"link"') ? null : frame);
+  for (const [i, name] of ['one.png', 'two.png'].entries()) {
+    await alice.page.getByTestId('attach').setInputFiles({ name, mimeType: 'image/png', buffer: png(64 + i, 48) });
+  }
+  const failed = bob.page.locator('.chat-log .att-media figcaption', { hasText: "Couldn't reach Alice" });
+  await expect(failed).toHaveCount(2, { timeout: 60_000 });
+
+  // The line is fine again; Bob tries once more, at once.
+  alice.wire.up = null;
+  await failed.first().getByRole('button', { name: 'Try again' }).click();
+  await expect(bob.page.locator('.chat-log .att-media img:not(.att-preview)')).toHaveCount(1, { timeout: 15_000 });
+});
