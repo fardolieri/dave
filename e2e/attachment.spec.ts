@@ -328,3 +328,21 @@ test('every friend gets the pictures of a busy holder by itself, once her places
     await expect(f.page.locator('.chat-log .att-media img:not(.att-preview)'), `${f.name} has both`).toHaveCount(2, { timeout: 180_000 });
   }
 });
+
+// PR #69's preview, 2026-10-16 (Firefox): Bob's Try again came in the second his socket was being replaced after a
+// drop (ticket 57). The pull's offer could not go out, nothing said so, and it sat at 0% for its whole connect timeout.
+test('regression: a pull asked while the socket is being replaced is not left waiting for an offer that never went', async ({ crowd }) => {
+  test.slow();
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('zip, zip') });
+  const card = bob.page.locator('.chat-log .att-card');
+  await expect(card).toHaveCount(1);
+  // His socket is gone and not back yet: he asks all the same.
+  await bob.wire.cut();
+  await card.getByRole('button', { name: /⬇/ }).click();
+  bob.wire.restore();
+  await bob.connected();
+  // Well inside the 20 s a pull waits for an answer: the ask did not wait for one that could never come.
+  await expect(card.locator('a.att-save')).toHaveAttribute('download', 'notes.zip', { timeout: 15_000 });
+});
