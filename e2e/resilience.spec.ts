@@ -243,6 +243,20 @@ test('a socket the server never answers is given up and tried again, and the roo
   await expect(alice.banner).toHaveCount(0);
 });
 
+test('an app script cut off on the first load is loaded again, and the room connects', async ({ crowd }) => {
+  // Preview run of PR #72, 2026-10-16 (presence.spec.ts, Chromium, run 38939823521): the connection was reset under the
+  // app's script, nothing ran, and Alice's page stayed empty (ticket 58). Here the first fetch of the script is reset.
+  const alice = await crowd.open('Alice', { connect: false });
+  alice.expectWarning(/Failed to load resource: net::ERR_CONNECTION_RESET|Loading failed for the module with source/);
+  // Firefox names a page that reloads itself before any click a bounce tracker; it would clear the site's storage only if
+  // no click followed within the hour, and a friend using the app clicks.
+  alice.expectWarning(/has been classified as a bounce tracker/);
+  let cut = 0;
+  await alice.page.route(/\/(assets\/index-[^/]*\.js|src\/client\/index\.tsx)$/, (r) => (cut++ ? r.continue() : r.abort('connectionreset')));
+  await alice.open();
+  expect(cut).toBe(2);
+});
+
 test('a friend whose socket drops without a goodbye is shown as lost, then recovers', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
