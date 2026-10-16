@@ -6,6 +6,7 @@
 // - `node`: a socket from the test's own Node process, no browser at all, authenticated by hand.
 // A drop seen by `proxy` alone is the proxy's; by `proxy` and `page` but never `node`, the browsers'; by all three, the
 // edge's or the Room's. Each drop is printed with how long after Bob's last welcome it came.
+import { randomUUID } from 'node:crypto';
 import { expect, test } from './fixtures';
 import { originFor, type Engine } from './browsers';
 import { authKeyOf, roomIdOf } from '../src/core/rooms';
@@ -43,7 +44,7 @@ async function nodeObserver(origin: string, secret: string, drops: Drop[]): Prom
 
 type Round = (bob: Awaited<ReturnType<Parameters<Parameters<typeof test>[2]>[0]['crowd']['open']>>, i: number) => Promise<void>;
 
-async function observe(crowd: Parameters<Parameters<typeof test>[2]>[0]['crowd'], browser: import('@playwright/test').Browser, browserName: string, label: string, rounds: number, round: Round) {
+async function observe(crowd: Parameters<Parameters<typeof test>[2]>[0]['crowd'], browser: import('@playwright/test').Browser, browserName: string, label: string, rounds: number, round: Round, bobElsewhere = false) {
   const origin = originFor(browserName as Engine);
   const drops: Drop[] = [];
   const node = await nodeObserver(origin, crowd.room.secret, drops);
@@ -71,7 +72,8 @@ async function observe(crowd: Parameters<Parameters<typeof test>[2]>[0]['crowd']
   await doraPage.goto('/');
   await expect(doraPage.locator('.chat-field > input')).toBeEnabled();
 
-  const bob = await crowd.open('Bob');
+  // Elsewhere: Bob comes and goes in a room of his own, so the observers' Room never hears of him.
+  const bob = await crowd.open('Bob', bobElsewhere ? { rooms: [{ secret: randomUUID(), name: 'Elsewhere' }] } : {});
   const welcomes: number[] = [];
   const reloads: number[] = [];
   for (let i = 0; i < rounds; i++) {
@@ -80,7 +82,7 @@ async function observe(crowd: Parameters<Parameters<typeof test>[2]>[0]['crowd']
     await bob.connected();
     welcomes.push(Date.now());
   }
-  await expect.poll(() => alice.online()).toContain('Bob');
+  if (!bobElsewhere) await expect.poll(() => alice.online()).toContain('Bob');
 
   for (const c of alice.wire.closes) if (c.side === 'server') drops.push({ who: 'proxy', code: c.code ?? 0, at: c.at });
   for (const c of bob.wire.closes) if (c.side === 'server' && c.code === 1006) drops.push({ who: 'bob', code: 1006, at: c.at });
@@ -128,4 +130,11 @@ test('diag steady: a friend comes in again every few seconds for as long as the 
   const rounds = 140;
   test.setTimeout(rounds * 10_000 + 120_000);
   await observe(crowd, browser, browserName, 'steady', rounds, async (bob) => { await idle(2_000); await bob.page.reload(); });
+});
+
+test('diag elsewhere: a friend comes in again every few seconds, into another room', async ({ crowd, browser, browserName }) => {
+  asked('diag elsewhere');
+  const rounds = 140;
+  test.setTimeout(rounds * 10_000 + 120_000);
+  await observe(crowd, browser, browserName, 'elsewhere', rounds, async (bob) => { await idle(2_000); await bob.page.reload(); }, true);
 });
