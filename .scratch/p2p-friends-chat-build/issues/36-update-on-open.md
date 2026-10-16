@@ -1,6 +1,6 @@
 # 36 · A new version found as the app opens is taken by itself, behind a thin progress line
 
-Status: shipped 2026-10-01 (prod d46467c, nightly e2e green first)
+Status: shipped 2026-10-01 (prod d46467c, nightly e2e green first); report of 2026-10-16 fixed, shipped 2026-10-16 to prod (1eacd20)
 Asked for 2026-10-01: Daniel: "When opening the app though it feels weird to immediately manually reload the page when I
 just opened it." A new version found as the app opens freezes the app (Join disabled, as while it connects), shows a slim
 download progress line at the top and reloads by itself when the download is done. Online friends may show meanwhile;
@@ -116,3 +116,9 @@ answer at all; the "Connecting…" pill then comes 2.5 s after that). This undoe
 2026-10-01, which was about every opening waiting; only openings with a slow answer wait longer now. Regression test: the preview server answers /sw.js 2.5 s late (`e2e-sw-delay`).
 Not covered: the iOS opening ended 25 ms after the app started, with the version found 1.8 s later. Perhaps Safari
 answered `update()` while its own check was still under way; not reproduced, and one case.
+Also from its adversarial review (1eacd20): a page held for the opening update passes an unused Rejoin on fresh at
+pagehide, so a call left moments before (a marker near its 30 s) is still rejoined after the update's reload.
+Still open (round 3 of the review, left for Daniel): a version already waiting from before is taken with `opening` still
+`checking`, so the `reg.update()` answer ("nothing new" once the waiting worker activated, update.ts `watch`) or the 5 s
+timer can end the opening during the take's 1 s: the rooms connect just before the reload, and the Rejoin is not passed
+on. Fix: require `!installed` there, as the 10 s timer does, or set `downloading` when `offerWaiting` takes it.
