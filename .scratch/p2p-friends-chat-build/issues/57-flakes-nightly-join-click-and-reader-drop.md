@@ -23,6 +23,13 @@ Neither had failed before in the 54 e2e runs scanned (every e2e.yml run back to 
 - The silent-socket test checks Alice's side first (4009, the text back and no longer waiting), then Bob's: the text once,
   or, after a drop his wire saw (`droppedSince`), once or not at all, as ticket 53 did for two text tests.
 
+## Again, mid-test (2026-10-16)
+PR #68's preview run 38904928449, Firefox, shard 3, passed on the retry: `resilience.spec.ts:142` "a late answer to a
+join declared again…", Bob's `leave()` never saw the Join button. His click ran from 97900 to 97974 ms, Alice's `left`
+and presence reached his page at 97949 to 97953 ms, and no `leave` frame went up: her row left the call list above his
+Leave button under the click. Settling presence at `crowd.open` cannot help a row that comes or goes later, so the
+fixture's `join` and `leave` now click again when no frame of their kind went up and the button is still there.
+
 ## The drop itself (diagnostic, 2026-10-16)
 Branch diag/socket-drops (kept for reference, not for master): `e2e/diag-drop.spec.ts` puts three observer
 sockets in one room, Alice through Playwright's proxy, Dora in a page without it, and one from Node with no browser, while

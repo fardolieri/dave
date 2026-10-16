@@ -375,13 +375,28 @@ export class Friend {
   }
 
   async join(): Promise<void> {
-    await this.selectedRoom.locator('button.join').click();
+    await this.press(this.selectedRoom.locator('button.join'));
     await expect(this.selectedRoom.locator('button.leave')).toBeVisible();
   }
 
   async leave(): Promise<void> {
-    await this.selectedRoom.locator('button.leave').click();
+    await this.press(this.selectedRoom.locator('button.leave'));
     await expect(this.selectedRoom.locator('button.join')).toBeVisible();
+  }
+
+  /**
+   * Clicks Join or Leave, whose place moves whenever a friend's row comes or goes in the lists above it: Bob's Leave hit
+   * the call list as Alice's row left it (PR #68's preview, 2026-10-16, ticket 57). Only a click the button itself never
+   * got is made again; one it got and the app then did nothing with still fails the test, at the caller's wait.
+   */
+  private async press(button: Locator): Promise<void> {
+    for (let tries = 0; tries < 3; tries++) {
+      const target = await button.elementHandle();
+      await target?.evaluate((el) => { (el as HTMLElement & { e2eClicked?: boolean }).e2eClicked = false; el.addEventListener('click', () => { (el as HTMLElement & { e2eClicked?: boolean }).e2eClicked = true; }, { once: true }); });
+      await button.click();
+      const hit = await target?.evaluate((el) => (el as HTMLElement & { e2eClicked?: boolean }).e2eClicked).catch(() => true);
+      if (hit !== false) return;
+    }
   }
 
   /** The connection badge this friend shows for another participant in the call list. */
