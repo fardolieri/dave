@@ -41,9 +41,9 @@ async function nodeObserver(origin: string, secret: string, drops: Drop[]): Prom
   return { stop: () => { stopped = true; clearInterval(ping); }, welcomed: () => welcomes };
 }
 
-test('diag: which observers lose their socket while another friend keeps coming in', async ({ crowd, browser, browserName }) => {
-  test.skip(!process.env['E2E_GREP']?.includes('diag'), 'diagnostic: only when asked for by name');
-  test.setTimeout(ROUNDS * 6_000 + 120_000);
+type Round = (bob: Awaited<ReturnType<Parameters<Parameters<typeof test>[2]>[0]['crowd']['open']>>, i: number) => Promise<void>;
+
+async function observe(crowd: Parameters<Parameters<typeof test>[2]>[0]['crowd'], browser: import('@playwright/test').Browser, browserName: string, label: string, rounds: number, round: Round) {
   const origin = originFor(browserName as Engine);
   const drops: Drop[] = [];
   const node = await nodeObserver(origin, crowd.room.secret, drops);
@@ -74,22 +74,51 @@ test('diag: which observers lose their socket while another friend keeps coming 
   const bob = await crowd.open('Bob');
   const welcomes: number[] = [];
   const reloads: number[] = [];
-  for (let i = 0; i < ROUNDS; i++) {
+  for (let i = 0; i < rounds; i++) {
     reloads.push(Date.now());
-    await bob.page.reload();
+    await round(bob, i);
     await bob.connected();
     welcomes.push(Date.now());
   }
   await expect.poll(() => alice.online()).toContain('Bob');
 
   for (const c of alice.wire.closes) if (c.side === 'server') drops.push({ who: 'proxy', code: c.code ?? 0, at: c.at });
+  for (const c of bob.wire.closes) if (c.side === 'server' && c.code === 1006) drops.push({ who: 'bob', code: 1006, at: c.at });
   node.stop();
   await dora.close();
   const since = (list: number[], at: number) => { const w = list.filter((x) => x <= at).at(-1); return w === undefined ? null : at - w; };
   const report = {
-    engine: browserName, target: origin, rounds: ROUNDS, nodeWelcomes: node.welcomed(), aliceSockets: alice.wire.closes.length + alice.wire.open,
-    drops: drops.map((d) => ({ ...d, sinceBobReload: since(reloads, d.at), sinceBobConnected: since(welcomes, d.at) })),
+    label, engine: browserName, target: origin, rounds, nodeWelcomes: node.welcomed(),
+    drops: drops.map((d) => ({ ...d, round: reloads.filter((x) => x <= d.at).length - 1, sinceRoundStart: since(reloads, d.at), sinceBobConnected: since(welcomes, d.at) })),
   };
   console.log(`DIAG ${JSON.stringify(report)}`);
-  test.info().annotations.push({ type: 'diag', description: JSON.stringify(report) });
+}
+
+const asked = (name: string) => test.skip(!process.env['E2E_GREP'] || !name.includes(process.env['E2E_GREP']), 'diagnostic: only when asked for by name');
+const idle = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Idle gaps before each round, cycling: the Room may hibernate after some seconds with nothing but pings. */
+const GAPS = [0, 20_000, 45_000, 75_000];
+
+test('diag busy: which observers lose their socket while another friend keeps coming in', async ({ crowd, browser, browserName }) => {
+  asked('diag busy');
+  test.setTimeout(ROUNDS * 6_000 + 120_000);
+  await observe(crowd, browser, browserName, 'busy', ROUNDS, async (bob) => { await bob.page.reload(); });
+});
+
+test('diag idle: a friend comes in again after the room was idle for a while', async ({ crowd, browser, browserName }) => {
+  asked('diag idle');
+  const rounds = 12;
+  test.setTimeout(rounds * 90_000 + 120_000);
+  await observe(crowd, browser, browserName, 'idle', rounds, async (bob, i) => { await idle(GAPS[i % GAPS.length]!); await bob.page.reload(); });
+});
+
+test('diag supersede: a friend whose socket went silent comes in again after the room was idle', async ({ crowd, browser, browserName }) => {
+  asked('diag supersede');
+  const rounds = 12;
+  test.setTimeout(rounds * 90_000 + 120_000);
+  await observe(crowd, browser, browserName, 'supersede', rounds, async (bob, i) => {
+    await idle(GAPS[i % GAPS.length]!);
+    bob.wire.sever(); // the Room keeps his old socket until the new one supersedes it, as Alice's in ticket 57
+    await bob.page.reload();
+  });
 });
