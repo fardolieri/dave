@@ -427,6 +427,57 @@ test('a large file stopped past its first segment goes on from there, and arrive
   expect(await bob.page.evaluate(pageHash(url), url)).toBe(sha256(picture));
 });
 
+// Report of 2026-10-16: a friend's download of a 24 MB photo on an iPhone was cut off by leaving the app, and started
+// again from 0 bytes. Only whole segments of 16 MB were kept, so nothing of a file under 32 MB ever was before its end.
+test('a large file cut off by a reload before 16 MB goes on from what it checked', async ({ crowd }) => {
+  test.slow();
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  const picture = heavy(png(640, 480), 20 * 1024 * 1024);
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'big.png', mimeType: 'image/png', buffer: picture });
+  const media = bob.page.locator('.chat-log .att-media');
+  await expect(media.locator('button.att-get')).toBeVisible({ timeout: 60_000 });
+  // Alice's uplink stalls after 160 slices of 64 KB (10 MB, inside the first segment), until let go.
+  await alice.page.evaluate(() => {
+    const read = Blob.prototype.arrayBuffer;
+    let slices = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    (window as unknown as { releasePull: () => void }).releasePull = release;
+    Blob.prototype.arrayBuffer = async function (this: Blob) {
+      if (this.size === 64 * 1024 && ++slices > 160) await gate;
+      return read.call(this);
+    };
+  });
+  await media.locator('button.att-get').click();
+  const half = Math.floor((100 * 10 * 1024 * 1024) / picture.length);
+  await expect(media.locator('figcaption')).toHaveText(new RegExp(`\\b${half}% of 20 MB`), { timeout: 60_000 });
+  // What Bob checked reaches his disk while the pull still runs: a phone leaving the app gets no chance to save it.
+  await expect.poll(() => bob.page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('dave'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+    try {
+      const store = db.transaction('kv', 'readonly').objectStore('kv');
+      const all = await new Promise<{ keys: IDBValidKey[]; values: unknown[] }>((resolve, reject) => {
+        const keys = store.getAllKeys(), values = store.getAll();
+        values.onsuccess = () => resolve({ keys: keys.result, values: values.result });
+        values.onerror = () => reject(values.error);
+      });
+      return all.keys.flatMap((k, i) => (String(k).startsWith('partial:') ? [(all.values[i] as { verified: number }).verified] : []));
+    } finally { db.close(); }
+  }), { message: 'the 10 MB Bob checked are kept on disk', timeout: 15_000 }).toEqual([10 * 1024 * 1024]);
+  await bob.page.reload();
+  const again = bob.page.locator('.chat-log .att-media');
+  await expect(again.locator('button.att-get')).toHaveText(new RegExp(`Resume, ${half}% of 20 MB`), { timeout: 30_000 });
+  // Going on, with Alice's uplink still held: it starts there, not at 0, before a byte more can come.
+  await again.locator('button.att-get').click();
+  await expect(again.locator('figcaption')).toHaveText(new RegExp(`\\b${half}% of 20 MB`), { timeout: 30_000 });
+  await alice.page.evaluate(() => (window as unknown as { releasePull: () => void }).releasePull());
+  const shown = again.locator('img:not(.att-preview)');
+  await expect(shown).toHaveCount(1, { timeout: 120_000 });
+  const url = (await shown.getAttribute('src'))!;
+  expect(await bob.page.evaluate(pageHash(url), url)).toBe(sha256(picture));
+});
+
 // Review of PR #72 (Grumpy Friend): a 4 GB video on a phone with 1 GB free. A full disk was taken for a dropped
 // connection and tried again; it says so instead, and is not tried again by itself.
 test('a browser out of room for a large file says so, and does not call it a dropped connection', async ({ crowd }) => {
