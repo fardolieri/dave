@@ -275,6 +275,38 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const online = (key: string): boolean => people().some((p) => p.publicKey === key);
   /** The friends a file can be pulled from now: those who announced it and are online, newest announcement first. */
   const reachable = (hash: string): string[] => [...(holders.get(hash)?.from ?? [])].reverse().filter((k) => k !== opts.identity.publicKey && online(k));
+  /**
+   * Friends asked for a file in this round who did not give it (not there, unreachable, busy). A round ends when no one
+   * is left to ask; then the retry schedule, or the wait for a friend to come online, takes over (attachments ticket 02).
+   */
+  const asked = new Map<string, Set<string>>();
+  /**
+   * The round's most hopeful reason so far, which it ends on: a friend busy with others has it, one who could not be
+   * reached may, one who said "not there" has not. The last friend asked is often one who never pulled it.
+   */
+  const roundReason = new Map<string, PullError>();
+  const HOPE: PullError[] = ['busy', 'unreachable', 'lost', 'damaged', 'not there'];
+  /**
+   * Friends who said a file is "not there", and when: not asked for it again for NOT_THERE_MS, across rounds. Else a
+   * file nobody online has asked every friend again on each presence update, a mute or a rename included (review of
+   * PR #71). Past that they may have pulled it meanwhile.
+   */
+  const notThere = new Map<string, Map<string, number>>();
+  const NOT_THERE_MS = 10 * 60_000;
+  const saidNotThere = (hash: string, key: string): boolean => Date.now() - (notThere.get(hash)?.get(key) ?? -Infinity) < NOT_THERE_MS;
+  /** A new round: everyone may be asked again but those who said "not there" lately. */
+  const newRound = (hash: string): void => { asked.delete(hash); roundReason.delete(hash); };
+  /**
+   * Whom to ask for a file, in order: friends who announced it, newest first, then every other friend online, who may
+   * have pulled it (ticket 02). A friend without it answers "not there", and the next is asked. Not asked again within a
+   * round: those who did not give it.
+   */
+  const candidates = (hash: string): string[] => {
+    const tried = asked.get(hash);
+    const announcers = reachable(hash);
+    const others = people().map((p) => p.publicKey).filter((k) => k !== opts.identity.publicKey && !announcers.includes(k));
+    return [...announcers, ...others].filter((k, i, all) => all.indexOf(k) === i && !tried?.has(k) && !saidNotThere(hash, k));
+  };
   const hold = (file: FileMeta, from: string): void => {
     const known = holders.get(file.hash);
     if (!known) holders.set(file.hash, { file, from: [from] });
@@ -325,6 +357,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
 
   function show(file: FileMeta, blob: Blob): void {
     stopRetry(file.hash);
+    asked.delete(file.hash);
+    roundReason.delete(file.hash);
     const url = URL.createObjectURL(new Blob([blob], { type: inlineKind(file.type) ? file.type : 'application/octet-stream' }));
     urls.push(url);
     setAttachment(file.hash, { status: 'ready', url });
@@ -351,20 +385,37 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     const holder = holders.get(hash);
     const now = attachmentNow.get(hash);
     if (!holder || now?.status === 'ready' || now?.status === 'pulling' || queue.includes(hash)) return;
-    // Only my own, gone from this browser's store: nobody to pull it from until ticket 02.
-    if (holder.from.every((k) => k === opts.identity.publicKey)) { setAttachment(hash, { status: 'failed', reason: 'not there' }); return; }
-    if (!reachable(hash).length) { setAttachment(hash, { status: 'waiting' }); return; }
+    // Nobody left to ask in a round that was cut short (a cancel, a lost socket): a new one.
+    if (!candidates(hash).length && asked.has(hash)) newRound(hash);
+    if (!candidates(hash).length) {
+      newRound(hash);
+      settle(hash);
+      return;
+    }
     setAttachment(hash, { status: 'pulling', received: 0 });
     queue.push(hash);
     nextPull();
+  }
+
+  /**
+   * Nobody online can be asked for a file: everyone said "not there" lately. It waits while one who announced it is away;
+   * otherwise nobody has it, and it says so, a click asking again.
+   */
+  function settle(hash: string): void {
+    stopRetry(hash);
+    const away = (holders.get(hash)?.from ?? []).some((k) => k !== opts.identity.publicKey && !online(k));
+    setAttachment(hash, away ? { status: 'waiting' } : { status: 'failed', reason: 'not there' });
   }
 
   function nextPull(): void {
     while (pulling < PULLS_AT_ONCE && queue.length && !stopped) {
       const hash = queue.shift()!;
       const { file } = holders.get(hash)!;
-      const from = reachable(hash)[0];
-      if (!from) { setAttachment(hash, { status: 'waiting' }); continue; }
+      let from = candidates(hash)[0];
+      // Its turn came with nobody left in its round (a friend left while it was queued): a new round, or it settles.
+      // Straight to "waiting" left it there with a sender online who had only been busy (review round 2 of PR #71).
+      if (!from) { newRound(hash); from = candidates(hash)[0]; }
+      if (!from) { settle(hash); continue; }
       pulling++;
       const started = Date.now();
       const abort = new AbortController();
@@ -386,16 +437,26 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
         .catch((e: unknown) => {
           // Cancelled: back to waiting for a click, and not pulled by itself again.
           if (abort.signal.aborted) { posthog.capture('file_pull_cancelled', { bytes: file.size }); if (!disposed && current()) setAttachment(hash, { status: 'idle' }); return; }
-          const reason = e instanceof PullFailed ? e.reason : 'lost';
+          let reason: PullError = e instanceof PullFailed ? e.reason : 'lost';
           posthog.capture('file_pull_failed', { reason, bytes: file.size });
           if (!(e instanceof PullFailed)) console.error('pulling a file failed', e);
           if (disposed || !current()) return;
           // No socket let in: its ask could not go out, which says nothing of the friend. Not a try: it is due again as
           // soon as the Room lets this tab back in (review of PR #70).
           if (welcomed === null) { setAttachment(hash, { status: 'failed', reason, retryAt: Date.now() }); return; }
-          // The friend left under it: it waits for them, and goes on by itself when they are back, with all its tries.
-          if (!reachable(hash).length) { stopRetry(hash); setAttachment(hash, { status: 'waiting' }); }
-          else failed(hash, reason);
+          // Someone else may have it: asked at once, not counted as a try. When nobody is left, the round ends.
+          (asked.get(hash) ?? asked.set(hash, new Set()).get(hash)!).add(from);
+          if (reason === 'not there') (notThere.get(hash) ?? notThere.set(hash, new Map()).get(hash)!).set(from, Date.now());
+          const best = roundReason.get(hash);
+          if (!best || HOPE.indexOf(reason) < HOPE.indexOf(best)) roundReason.set(hash, reason);
+          if (candidates(hash).length) { setAttachment(hash, { status: 'idle' }); want(hash); return; }
+          const ended = roundReason.get(hash)!;
+          newRound(hash);
+          // Someone has it, busy or out of reach (whether they announced it or only pulled it): tried again on the
+          // schedule. Everyone said "not there": it waits for one who announced it, or says nobody has it.
+          if (ended !== 'not there' && ended !== 'damaged') failed(hash, ended);
+          else if (!reachable(hash).length) settle(hash);
+          else failed(hash, ended);
         })
         .finally(() => {
           if (current()) { aborts.delete(hash); movedAt.delete(hash); saving.delete(hash); }
@@ -412,7 +473,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     at: Date.now(),
     files: stopped || welcomed === null ? [] : [...attachmentNow].map(([hash, a], i) => ({
       key: String(i), status: a.status, running: aborts.has(hash) || queue.includes(hash), active: aborts.has(hash) && !saving.has(hash),
-      movedAt: movedAt.get(hash) ?? null, holderOnline: reachable(hash).length > 0, retryAt: a.status === 'failed' ? (a.retryAt ?? null) : null,
+      movedAt: movedAt.get(hash) ?? null, holderOnline: reachable(hash).some((k) => !saidNotThere(hash, k)), retryAt: a.status === 'failed' ? (a.retryAt ?? null) : null,
     })),
   }));
   if (exposeHooks) {
@@ -437,7 +498,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     const now = new Set(ps.map((p) => p.publicKey));
     const back = (hash: string) => (holders.get(hash)?.from ?? []).some((k) => now.has(k) && !wasOnline.has(k));
     for (const [hash, a] of attachmentNow) {
-      if (a.status === 'waiting' || (a.status === 'failed' && (a.reason === 'unreachable' || a.reason === 'lost') && back(hash))) want(hash);
+      // Only on someone coming online, not on every update (a mute, a rename): a waiting file asks the newcomer.
+      const newcomer = [...now].some((k) => !wasOnline.has(k));
+      if ((a.status === 'waiting' && newcomer) || (a.status === 'failed' && (a.reason === 'unreachable' || a.reason === 'lost') && back(hash))) want(hash);
     }
     wasOnline = now;
   });
@@ -680,6 +743,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     attachment: (hash: string): Attachment | undefined => attachments()[hash],
     /** Stops a pull, running or queued; the file waits for a click again, at once, whatever the pull is waiting on. */
     cancelPull: (hash: string): void => {
+      newRound(hash);
       const queued = queue.indexOf(hash);
       if (queued >= 0) queue.splice(queued, 1);
       aborts.get(hash)?.abort();
@@ -688,7 +752,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       if (now?.status === 'pulling' || (now?.status === 'failed' && now.retryAt)) setAttachment(hash, { status: 'idle' });
     },
     /** Pulls a file that waits for a click, or one that failed. */
-    pull: (hash: string): void => { const a = attachmentNow.get(hash); if (a?.status === 'idle' || a?.status === 'failed') { stopRetry(hash); setAttachment(hash, { status: 'idle' }); want(hash); } },
+    pull: (hash: string): void => { const a = attachmentNow.get(hash); if (a?.status === 'idle' || a?.status === 'failed') { stopRetry(hash); newRound(hash); notThere.delete(hash); setAttachment(hash, { status: 'idle' }); want(hash); } },
     unread,
     /** The room is on screen: nothing in it is unread. */
     markRead: () => setUnread(0),

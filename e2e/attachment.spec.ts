@@ -346,3 +346,45 @@ test('regression: a pull asked while the socket is being replaced is not left wa
   // Well inside the 20 s a pull waits for an answer: the ask did not wait for one that could never come.
   await expect(card.locator('a.att-save')).toHaveAttribute('download', 'notes.zip', { timeout: 15_000 });
 });
+
+// Attachments ticket 02: a file comes from any friend who has it, not only from those who sent it. Bob pulled Alice's
+// file; Alice is gone, and so is Bob for a while. Carol asks Dave, who never pulled it: he says so, and the file waits.
+// When Bob is back Carol asks him, not Dave again, and gets it from him.
+test('a file comes from a friend who pulled it once its sender is gone, past one who does not have it', async ({ crowd }) => {
+  test.slow();
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  const carol = await crowd.open('Carol');
+  const dave = await crowd.open('Dave');
+  const notes = randomBytes(40_000);
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'notes.zip', mimeType: 'application/zip', buffer: notes });
+  const bobs = bob.page.locator('.chat-log .att-card');
+  await bobs.getByRole('button', { name: /⬇/ }).click();
+  await expect(bobs.locator('a.att-save')).toHaveAttribute('download', 'notes.zip', { timeout: 30_000 });
+  await expect(dave.page.locator('.chat-log .att-card')).toHaveCount(1);
+  const keyOf = (f: Friend) => (JSON.parse(f.wire.log.find((x) => x.dir === 'down' && x.frame.startsWith('{"t":"welcome"'))!.frame) as { you: { publicKey: string } }).you.publicKey;
+  const [daveKey, bobKey] = [keyOf(dave), keyOf(bob)];
+  /** The links Carol opened to a friend, by their offers. */
+  const offersTo = (key: string) => carol.wire.log.filter((x) => x.dir === 'up' && x.frame.startsWith(`{"t":"link","to":"${key}"`) && x.frame.includes('"type":"offer"')).length;
+
+  // Alice leaves; Bob closes his tab, his store kept in his browser.
+  await alice.close();
+  await bob.page.close();
+  await expect.poll(async () => (await carol.online()).sort()).toEqual(['Carol', 'Dave']);
+  const carols = carol.page.locator('.chat-log .att-card');
+  await carols.getByRole('button', { name: /⬇/ }).click();
+  await expect(carols).toContainText('Waiting for Alice', { timeout: 30_000 });
+  expect(offersTo(daveKey), 'Dave was asked, and said it is not there').toBeGreaterThanOrEqual(1);
+
+  // Bob is back: Carol asks him, not Dave again, and gets it.
+  const asked = offersTo(daveKey);
+  bob.page = await bob.context.newPage();
+  bob.watch(bob.page);
+  await bob.open();
+  const save = carols.locator('a.att-save');
+  await expect(save).toHaveAttribute('download', 'notes.zip', { timeout: 30_000 });
+  const url = (await save.getAttribute('href'))!;
+  expect(await carol.page.evaluate(pageHash(url), url)).toBe(sha256(notes));
+  expect(offersTo(bobKey), 'Bob gave it').toBeGreaterThanOrEqual(1);
+  expect(offersTo(daveKey), 'Dave, who said it is not there, was not asked again').toBe(asked);
+});
