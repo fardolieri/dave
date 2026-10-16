@@ -151,16 +151,20 @@ export const big = {
       let onDisk = (await writer.ask({ t: 'open', name: hash })).size ?? 0;
       // A pull stopped on the app before 2026-10-17 kept whole segments of 16 MB, `<hash>.<n>`: copied into the file, a
       // piece at a time, so it goes on where its button says (Grumpy Friend). Nothing is fetched again that is on disk.
+      // Each segment goes once copied, so it never needs twice the room; a copy cut short goes on from the first segment
+      // left, the ones before it being in the file.
       if (names.length) {
-        onDisk = 0;
+        let n = Math.floor(onDisk / OLD_SEGMENT_BYTES);
+        onDisk = n * OLD_SEGMENT_BYTES;
         try {
-          for (let n = 0; n * OLD_SEGMENT_BYTES < verified; n++) {
+          for (; n * OLD_SEGMENT_BYTES < verified; n++) {
             const segment = await (await dir.getFileHandle(oldSegmentName(hash, n))).getFile();
             for (let at = 0; at < segment.size; at += PIECE_BYTES) {
               const bytes = await segment.slice(at, at + PIECE_BYTES).arrayBuffer();
               await writer.ask({ t: 'write', at: onDisk, bytes }, [bytes]);
               onDisk += bytes.byteLength;
             }
+            await dir.removeEntry(oldSegmentName(hash, n)).catch(() => undefined);
           }
         } catch (e) {
           if (noRoom(e)) throw e;
