@@ -94,7 +94,7 @@ async function observe(crowd: Parameters<Parameters<typeof test>[2]>[0]['crowd']
   console.log(`DIAG ${JSON.stringify(report)}`);
 }
 
-const asked = (name: string) => test.skip(!process.env['E2E_GREP'] || !name.includes(process.env['E2E_GREP']), 'diagnostic: only when asked for by name');
+const asked = (name: string) => test.skip(!process.env['E2E_GREP'] || !new RegExp(process.env['E2E_GREP']).test(name), 'diagnostic: only when asked for by name');
 const idle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Idle gaps before each round, cycling: the Room may hibernate after some seconds with nothing but pings. */
 const GAPS = [0, 20_000, 45_000, 75_000];
