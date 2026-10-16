@@ -92,6 +92,8 @@ function serviceWorker(build: BuildInfo): Plugin {
  *   a fetch from inside the worker passes them by.
  * - `e2e-throttle=<bytes per second>`: every answer trickles out at that rate, a slow line, so the download of a new
  *   version takes long enough to watch (ticket 36). Playwright's own throttling does not reach the service worker.
+ * - `e2e-sw-delay=<ms>`: /sw.js is answered only after that long, as a phone's check for a new version is (report of
+ *   2026-10-16): the browser fetches it, then starts the new worker, before the page hears of a new version.
  * Preview only: a deploy never runs this.
  */
 function e2eServer(): Plugin {
@@ -106,14 +108,20 @@ function e2eServer(): Plugin {
         if (cookies.get('e2e-outage')) { req.socket.destroy(); return; }
         const rate = Number(cookies.get('e2e-throttle'));
         if (rate > 0) throttle(res, rate);
-        const tag = cookies.get('e2e-deploy');
-        if (!tag || req.url?.split('?')[0] !== `/${SW_FILE}`) { next(); return; }
-        const code = readFileSync(swPath, 'utf8');
-        const rest = code.slice(code.indexOf('\n'));
-        const precache = JSON.parse(code.slice('var __PRECACHE__='.length, code.indexOf('\n') - 1)) as { version: string; urls: string[]; sizes: number[] };
-        res.setHeader('Content-Type', 'text/javascript');
-        res.setHeader('Cache-Control', 'no-store');
-        res.end(precacheLine({ ...precache, version: laterVersion(precache.version, tag) }) + rest);
+        if (req.url?.split('?')[0] !== `/${SW_FILE}`) { next(); return; }
+        const answer = () => {
+          const tag = cookies.get('e2e-deploy');
+          if (!tag) { next(); return; }
+          const code = readFileSync(swPath, 'utf8');
+          const rest = code.slice(code.indexOf('\n'));
+          const precache = JSON.parse(code.slice('var __PRECACHE__='.length, code.indexOf('\n') - 1)) as { version: string; urls: string[]; sizes: number[] };
+          res.setHeader('Content-Type', 'text/javascript');
+          res.setHeader('Cache-Control', 'no-store');
+          res.end(precacheLine({ ...precache, version: laterVersion(precache.version, tag) }) + rest);
+        };
+        const delay = Number(cookies.get('e2e-sw-delay'));
+        if (delay > 0) setTimeout(answer, delay);
+        else answer();
       });
     },
   };

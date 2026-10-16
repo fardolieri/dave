@@ -188,6 +188,25 @@ test('ticket 36: a new version the browser is still downloading as the page load
   await expect(bar(alice.page)).toHaveCount(0);
 });
 
+test('report of 2026-10-16: a new version the browser takes 2.5 s to find as the app opens is still taken, not asked for', async ({ crowd }) => {
+  needPreview();
+  const alice = await crowd.open('Alice');
+  await controlled(alice.page);
+
+  // On a phone, and in Brave restoring its tabs, the check's answer came 2 to 4 s after the page load when there was a
+  // new version (the browser starts the new worker before it says so), and the opening had ended at 1.5 s: the bar asked.
+  await cookie(alice, 'e2e-sw-delay', '2500');
+  await cookie(alice, 'e2e-deploy', 'next');
+  const count = countLoads(alice.page);
+  await alice.page.reload();
+  await expect(alice.composer, 'the app waits for the answer').toBeDisabled();
+
+  await expect.poll(() => versionsNow(alice.page), { message: 'the page reloaded onto the new version by itself', timeout: 30_000 }).toEqual(['next']);
+  await alice.connected();
+  expect(count.loads, 'her reload, then the one for the update').toBe(2);
+  await expect(bar(alice.page)).toHaveCount(0);
+});
+
 test('ticket 44: a register() that fails holds nothing, and a new version is still taken through the registration the page has', async ({ crowd }) => {
   needPreview();
   const alice = await crowd.open('Alice');
