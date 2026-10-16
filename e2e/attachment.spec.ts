@@ -266,3 +266,26 @@ test('waiting for a friend to come online while one who has it is online is repo
   await expect(bob.page.locator('.chat-log .att-card')).toContainText('Waiting for Alice');
   await expect.poll(files(bob).fired, { timeout: 30_000 }).toEqual(['file_waiting_online']);
 });
+
+// Review of PR #69 (Grumpy Friend), 2026-10-16: a pull cancelled and asked again while the first still waited for its
+// ICE servers ran twice; the first one's end set the picture back to the button over the second, and took the second's
+// bookkeeping with it, so Cancel then stopped nothing.
+test('regression: a picture cancelled and asked again while its first pull waited is one pull, and Cancel stops it', async ({ crowd }) => {
+  test.slow();
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.page.evaluate(slowUplink);
+  // The Room's ICE servers for links never reach Bob: each pull of his waits its 5 s for them (client/links.ts).
+  bob.wire.down = (frame) => (frame.includes('"t":"linkice"') ? null : frame);
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'big.png', mimeType: 'image/png', buffer: heavy(png(640, 480), 2 * 1024 * 1024) });
+  const media = bob.page.locator('.chat-log .att-media');
+  await media.getByRole('button', { name: 'Cancel' }).click({ timeout: 30_000 });
+  await media.locator('button.att-get').click(); // both within the first pull's 5 s wait
+  await expect(media.locator('figcaption')).toHaveText(/\b[1-9]\d?% of/, { timeout: 30_000 });
+  // Bob changes his mind once more: it stops, and stays stopped while five more slices would have come.
+  await media.getByRole('button', { name: 'Cancel' }).click();
+  await expect(media.locator('button.att-get')).toBeVisible();
+  await bob.page.waitForTimeout(5_000);
+  await expect(media.locator('button.att-get')).toBeVisible();
+  await expect(media.locator('img:not(.att-preview)')).toHaveCount(0);
+});
