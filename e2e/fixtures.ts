@@ -288,7 +288,7 @@ export class Friend {
   async isConnected(): Promise<boolean> { return await this.composer.isEnabled() && await this.away.count() === 0; }
 
   // --- the page, as a friend sees it ---
-  get composer(): Locator { return this.page.locator('.chat-input > input'); }
+  get composer(): Locator { return this.page.locator('.chat-field > input'); }
   get banner(): Locator { return this.page.locator('.banner'); }
   /** The banner while the room's socket is away or not let in yet. */
   get away(): Locator { return this.banner.filter({ hasText: /Connecting|Reconnecting|Server unavailable/ }); }

@@ -111,7 +111,7 @@ test('ticket 25: one tab at a time; the first keeps working, a second waits, tak
 
   // "Use it here instead": the first tab steps back and leaves the call cleanly.
   await second.getByRole('button', { name: 'Use it here instead' }).click();
-  await expect(second.locator('.chat-input > input')).toBeEnabled();
+  await expect(second.locator('.chat-field > input')).toBeEnabled();
   await expect(notice(alice.page)).toBeVisible();
   await expect.poll(() => bob.inCall()).toEqual(['Bob']);
   await expect.poll(() => bob.online()).toEqual(['Alice']); // Bob is in the call, so only Alice is listed as online

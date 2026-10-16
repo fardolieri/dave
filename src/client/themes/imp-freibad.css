@@ -44,7 +44,7 @@
 :where(:root[data-theme="imp-freibad"]) input,
 :where(:root[data-theme="imp-freibad"]) textarea,
 :where(:root[data-theme="imp-freibad"]) select.picker { border-color: var(--edge); border-radius: 4px; }
-:where(:root[data-theme="imp-freibad"]) .chat-input > input { background: #fff; }
+:where(:root[data-theme="imp-freibad"]) .chat-field > input { background: #fff; }
 :where(:root[data-theme="imp-freibad"]) button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #fff; }
 :where(:root[data-theme="imp-freibad"]) .side button.on:not(.link) { background: var(--sign); border-color: var(--sign); color: #111; }
 :where(:root[data-theme="imp-freibad"]) button.join { background: #5fe39a; color: #062b17; font-weight: 600; }

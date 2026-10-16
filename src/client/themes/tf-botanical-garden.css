@@ -55,6 +55,6 @@
 /* the selected room is underlined in marigold, like a label stuck in a seed tray */
 :root[data-theme="tf-botanical-garden"] .room.selected .room-title { color: var(--fg); text-decoration: underline 3px #f9a620; text-underline-offset: 4px; }
 :root[data-theme="tf-botanical-garden"] .unread { background: #b7472a; color: #fff; }
-:root[data-theme="tf-botanical-garden"] .chat-input > input { border-radius: 999px; padding-left: 14px; background: #fffdf8; }
+:root[data-theme="tf-botanical-garden"] .chat-field > input { border-radius: 999px; padding-left: 14px; background: #fffdf8; }
 :root[data-theme="tf-botanical-garden"] .share-live { border-color: #f9a620; box-shadow: 0 0 0 1px #f9a620; }
 :root[data-theme="tf-botanical-garden"] .side { box-shadow: inset -1px 0 0 var(--line); }

@@ -26,7 +26,7 @@
 :where(:root[data-theme="imp-kino"]) input,
 :where(:root[data-theme="imp-kino"]) textarea,
 :where(:root[data-theme="imp-kino"]) select.picker { border-color: var(--field); border-radius: 12px; }
-:where(:root[data-theme="imp-kino"]) .chat-input > input { border-radius: 999px; padding: 10px 16px; background: #1e1513; }
+:where(:root[data-theme="imp-kino"]) .chat-field > input { border-radius: 999px; padding: 10px 16px; background: #1e1513; }
 :where(:root[data-theme="imp-kino"]) button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #0d1a2b; }
 :where(:root[data-theme="imp-kino"]) button.join { background: var(--ok); color: #0a2a17; font-weight: 600; }
 :where(:root[data-theme="imp-kino"]) button.leave { background: var(--bad); color: #2a0806; font-weight: 600; }

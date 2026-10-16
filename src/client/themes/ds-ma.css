@@ -96,7 +96,7 @@
 @media (max-width: 700px) {
   :where(:root[data-theme="ds-ma"]) .chat-log { font-size: 16px; }
   :where(:root[data-theme="ds-ma"]) :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
-  :where(:root[data-theme="ds-ma"]) .actions button, :where(:root[data-theme="ds-ma"]) .chat-input > button { min-height: 44px; }
+  :where(:root[data-theme="ds-ma"]) .actions button, :where(:root[data-theme="ds-ma"]) .chat-input > button, :where(:root[data-theme="ds-ma"]) .chat-field > .emoji-open { min-height: 44px; }
 }
 
 /* ── Character: paper and ink ──────────────────────────────────────────────────────────────────────────── */

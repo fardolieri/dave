@@ -70,7 +70,7 @@
 :root[data-theme="fd-walkie"] .chat-new { background: var(--rubber); color: var(--rubber-fg); border-color: var(--rubber); }
 :root[data-theme="fd-walkie"] .chat-new:hover { color: #fff; }
 :root[data-theme="fd-walkie"] .chat-input { background: var(--rubber); }
-:root[data-theme="fd-walkie"] .chat-input > input { background: var(--lcd); border-color: #000; }
+:root[data-theme="fd-walkie"] .chat-field > input { background: var(--lcd); border-color: #000; }
 :root[data-theme="fd-walkie"] .chat-input > button:not(.emoji-open) { background: var(--chassis); border-color: var(--chassis-dk); color: var(--rubber); }
 :root[data-theme="fd-walkie"] .chat-input .emoji-open { color: var(--rubber-fg); }
 

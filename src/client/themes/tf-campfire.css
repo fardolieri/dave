@@ -58,4 +58,4 @@
 :root[data-theme="tf-campfire"] .room.selected .room-title { color: var(--tf-link); }
 :root[data-theme="tf-campfire"] .avatar.speaking { box-shadow: 0 0 0 2px var(--ok), 0 0 14px rgba(255,138,61,.45); }
 :root[data-theme="tf-campfire"] .share-live { border-color: var(--acc); box-shadow: 0 0 20px rgba(255,138,61,.25); }
-:root[data-theme="tf-campfire"] .chat-input > input { border-radius: 999px; padding-left: 14px; }
+:root[data-theme="tf-campfire"] .chat-field > input { border-radius: 999px; padding-left: 14px; }

@@ -88,7 +88,7 @@
 @media (max-width: 700px) {
   :where(:root[data-theme="ds-brutalist"]) .chat-log { font-size: 16px; }
   :where(:root[data-theme="ds-brutalist"]) :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
-  :where(:root[data-theme="ds-brutalist"]) .actions button, :where(:root[data-theme="ds-brutalist"]) .chat-input > button { min-height: 44px; }
+  :where(:root[data-theme="ds-brutalist"]) .actions button, :where(:root[data-theme="ds-brutalist"]) .chat-input > button, :where(:root[data-theme="ds-brutalist"]) .chat-field > .emoji-open { min-height: 44px; }
 }
 
 /* ── Character: the box model, exposed ─────────────────────────────────────────────────────────────────── */

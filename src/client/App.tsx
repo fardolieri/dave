@@ -7,7 +7,9 @@ import { getName, getPicture, inviteLinkFor, setName, setPicture, takeInviteLink
 import { addRoom, forgetRoom, getSelectedRoom, loadRooms, setSelectedRoom, type SavedRoom } from './rooms';
 import { newRoomSecret, normaliseRoomName, parseInviteText, type InviteLink } from '../core/rooms';
 import { encodeQr, qrPath } from '../core/qr';
-import { createRoom, type ChatLine, type ServerStatus } from './room';
+import { createRoom, type Attachment, type ChatLine, type ServerStatus } from './room';
+import { formatSize, inlineKind, type FileMeta } from '../core/attachment';
+import type { PullError } from './links';
 import { MIC_TEST_RECORD_MS, createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
 import { createAttention, type RoomLink } from './attention';
 import { contactOf, isKnown, markKnown, setNickname } from './contacts';
@@ -489,9 +491,12 @@ function Workspace(props: WorkspaceProps) {
               </For>
             </section>
           )}</Show>
-          <ChatLog lines={cur().room.lines()} openedAt={openedAt()} jumpToken={jumpToken()} label={labelOf} />
+          <ChatLog lines={cur().room.lines()} openedAt={openedAt()} jumpToken={jumpToken()} label={labelOf}
+                   attachment={(hash) => cur().room.attachment(hash)} onPull={(hash) => cur().room.pull(hash)} onCancel={(hash) => cur().room.cancelPull(hash)}
+                   onFiles={writable() ? (files) => { for (const f of files) void cur().room.sendFile(f); setJumpToken((n) => n + 1); } : undefined} />
         </div>
-        <Composer connected={connected()} writable={writable()} roomName={cur().saved.name} onSend={(text) => { cur().room.sendText(text); setJumpToken((n) => n + 1); }}>
+        <Composer connected={connected()} writable={writable()} roomName={cur().saved.name} onSend={(text) => { cur().room.sendText(text); setJumpToken((n) => n + 1); }}
+                  onFiles={(files) => { for (const f of files) void cur().room.sendFile(f); setJumpToken((n) => n + 1); }}>
           {/* Anchored to the composer's top edge, whatever its height on this device (ticket 32) */}
           <Show when={consent() === null || askingConsent()}><TelemetryNotice onAnswer={(c) => { setConsent(c); setAskingConsent(false); }} /></Show>
         </Composer>
@@ -1259,10 +1264,18 @@ const when = (at: number): string => new Date(at).toLocaleString([], { hour: '2-
  * The message input. A separate grid item from the log so phones can keep it as the bottom row of the screen.
  * The emoji button opens the picker (issue #3); a pick lands at the caret and the picker stays for the next one.
  */
-function Composer(props: { connected: boolean; writable: boolean; roomName: string; onSend: (text: string) => void; children?: any }) {
+function Composer(props: { connected: boolean; writable: boolean; roomName: string; onSend: (text: string) => void; onFiles: (files: File[]) => void; children?: any }) {
   const [draft, setDraft] = createSignal('');
   let input: HTMLInputElement | undefined;
   let emojiButton: HTMLButtonElement | undefined;
+  let picker: HTMLInputElement | undefined;
+  // A picture pasted from the clipboard (a screenshot) is sent as a file; pasted text stays text.
+  const onPaste = (e: ClipboardEvent) => {
+    const files = [...(e.clipboardData?.files ?? [])];
+    if (!files.length || !props.writable) return;
+    e.preventDefault();
+    props.onFiles(files);
+  };
   const submit = (e: Event) => {
     e.preventDefault();
     const text = draft().trim();
@@ -1282,10 +1295,17 @@ function Composer(props: { connected: boolean; writable: boolean; roomName: stri
   };
   return (
     <form class="chat-input" onSubmit={submit}>
-      <button type="button" class="emoji-open" ref={emojiButton} popovertarget="composer-emoji" disabled={!props.writable} title="Emoji" aria-label="Emoji">🙂</button>
-      <EmojiPicker id="composer-emoji" anchor={() => emojiButton} onPick={insert} />
-      <input ref={input} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} disabled={!props.writable} maxlength={MAX_TEXT_LENGTH}
-             placeholder={props.connected ? `Message ${props.roomName}` : props.writable ? `Message ${props.roomName}, sent once reconnected` : holding() ? 'A new version of dave is loading…' : "Can't send while disconnected"} />
+      {/* The text field with its two buttons over its edges, as messengers do; the field itself keeps the theme's look */}
+      <div class="chat-field">
+        <button type="button" class="emoji-open" ref={emojiButton} popovertarget="composer-emoji" disabled={!props.writable} title="Emoji" aria-label="Emoji">🙂</button>
+        <EmojiPicker id="composer-emoji" anchor={() => emojiButton} onPick={insert} />
+        <input ref={input} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} onPaste={onPaste} disabled={!props.writable} maxlength={MAX_TEXT_LENGTH}
+               placeholder={props.connected ? `Message ${props.roomName}` : props.writable ? `Message ${props.roomName}, sent once reconnected` : holding() ? 'A new version of dave is loading…' : "Can't send while disconnected"} />
+        {/* Looks like the emoji button, in every theme: the themes style that one by its class */}
+        <button type="button" class="emoji-open attach-open" disabled={!props.writable} onClick={() => picker?.click()} title="Send a picture, a video or a file" aria-label="Attach a file">📎</button>
+        {/* Wrapped: the text field is the field's one direct input child (styles and the e2e fixtures find it so) */}
+        <span hidden><input ref={picker} type="file" multiple data-testid="attach" onChange={(e) => { const files = [...(e.currentTarget.files ?? [])]; e.currentTarget.value = ''; if (files.length) props.onFiles(files); }} /></span>
+      </div>
       <button disabled={!props.writable || !draft().trim()}>Send</button>
       {props.children}
     </form>
@@ -1297,8 +1317,23 @@ function Composer(props: { connected: boolean; writable: boolean; roomName: stri
  * Texts from more than 18 h before the room came on screen (`openedAt`) wait behind a button above the log, until
  * clicked or until the room comes on screen again (ticket 38).
  */
-function ChatLog(props: { lines: ChatLine[]; openedAt: number; jumpToken: number; label: (id: Identity) => Label }) {
+function ChatLog(props: {
+  lines: ChatLine[]; openedAt: number; jumpToken: number; label: (id: Identity) => Label;
+  attachment: (hash: string) => Attachment | undefined; onPull: (hash: string) => void; onCancel: (hash: string) => void;
+  /** Files dropped on the log; none while nothing can be sent. */
+  onFiles?: (files: File[]) => void;
+}) {
   let log: HTMLDivElement | undefined;
+  let viewer: HTMLDialogElement | undefined;
+  const [viewing, setViewing] = createSignal<{ url: string; name: string } | null>(null);
+  const [dragging, setDragging] = createSignal(false);
+  const view = (url: string, name: string) => { setViewing({ url, name }); if (viewer && !viewer.open) viewer.showModal(); };
+  // A file dragged in is never left to the browser, which would open it in place of the app; sent only when it can be.
+  const hasFiles = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].includes('Files');
+  const file = (m: Extract<ChatLine, { kind: 'file' }>) => (
+    <FileView file={m.file} attachment={props.attachment(m.file.hash)} holder={props.label(m.from).shown}
+              onPull={() => props.onPull(m.file.hash)} onCancel={() => props.onCancel(m.file.hash)} onView={view} />
+  );
   const [unfoldedFor, setUnfoldedFor] = createSignal<number | null>(null); // the opening the reader unfolded the older lines in
   const folded = createMemo(() => (unfoldedFor() === props.openedAt ? 0 : olderCount(props.lines, props.openedAt - FOLD_OLDER_MS)));
   const lines = createMemo(() => props.lines.slice(folded()));
@@ -1328,7 +1363,10 @@ function ChatLog(props: { lines: ChatLine[]; openedAt: number; jumpToken: number
   });
   createEffect(() => props.jumpToken, (t, prev) => { if (prev !== undefined && t !== prev) jump(); });
   return (
-    <div class="chat">
+    <div class={dragging() ? 'chat dropping' : 'chat'}
+         onDragOver={(e) => { if (!hasFiles(e)) return; e.preventDefault(); setDragging(!!props.onFiles); }}
+         onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false); }}
+         onDrop={(e) => { setDragging(false); if (!hasFiles(e)) return; e.preventDefault(); props.onFiles?.([...(e.dataTransfer?.files ?? [])]); }}>
       <div class="chat-log" ref={log} onScroll={onScroll}>
         <Show when={folded() > 0}>
           <button class="chat-older" onClick={() => setUnfoldedFor(props.openedAt)} title="Messages from more than 18 hours before you opened this room">
@@ -1352,12 +1390,93 @@ function ChatLog(props: { lines: ChatLine[]; openedAt: number; jumpToken: number
                   </Show>
                 )}
               </Match>
+              <Match when={l.kind === 'file' && l}>
+                {(m) => (
+                  <Show when={!continues(lines(), i())} fallback={<div class={m().pending ? 'msg msg-cont msg-pending' : 'msg msg-cont'} title={m().pending ? 'Not sent yet' : when(m().at)}>{file(m())}</div>}>
+                    <div class={m().pending ? 'msg msg-pending' : 'msg'} title={m().pending ? 'Not sent yet' : undefined}>
+                      <span class="msg-from" title={props.label(m().from).title}>{props.label(m().from).shown}</span>
+                      <span class="msg-at">{when(m().at)}</span>
+                      {file(m())}
+                    </div>
+                  </Show>
+                )}
+              </Match>
             </Switch>
           )}
         </For>
       </div>
       <Show when={unseen()}><button class="chat-new" onClick={jump} title="Scroll to the newest message">new messages ↓</button></Show>
+      <Show when={dragging()}><div class="drop-hint">Drop to send</div></Show>
+      <dialog class="viewer" ref={viewer} onClick={() => viewer?.close()} onClose={() => setViewing(null)}>
+        <Show when={viewing()}>{(v) => <img src={v().url} alt={v().name} />}</Show>
+      </dialog>
     </div>
+  );
+}
+
+/** The longest side of a picture or a video in the chat, in CSS pixels; a portrait one is as tall, and narrower. */
+const MEDIA_SIDE = 320;
+const PULL_FAILED: Record<PullError, (holder: string) => string> = {
+  unreachable: (h) => `Couldn't reach ${h}`,
+  lost: () => 'The connection dropped',
+  'not there': (h) => `${h} doesn't have it any more`,
+  damaged: () => 'It arrived damaged',
+};
+
+/**
+ * An attachment in the chat (ADR 0006): a picture or a video inline once its bytes are here, its preview until then,
+ * with what is happening over it; anything else a card with its name, size and a button. A picture opens full size.
+ */
+function FileView(props: { file: FileMeta; attachment: Attachment | undefined; holder: string; onPull: () => void; onCancel: () => void; onView: (url: string, name: string) => void }) {
+  const kind = () => inlineKind(props.file.type);
+  const a = () => props.attachment ?? { status: 'idle' as const };
+  const url = () => { const now = a(); return now.status === 'ready' ? now.url : null; };
+  // The box keeps the picture's shape, so the log does not jump when the bytes replace the preview.
+  const box = () => {
+    const { width: w, height: h } = props.file;
+    return w && h ? { 'aspect-ratio': `${w} / ${h}`, width: `${Math.round(Math.min(MEDIA_SIDE, (MEDIA_SIDE * w) / h))}px` } : {};
+  };
+  const state = () => {
+    const now = a();
+    switch (now.status) {
+      case 'pulling': return (
+        <span class="att-state" aria-live="polite">
+          <progress max={props.file.size} value={now.received} />{Math.floor((100 * now.received) / Math.max(1, props.file.size))}% of {formatSize(props.file.size)}
+          <button type="button" class="att-cancel" onClick={(e) => { e.stopPropagation(); props.onCancel(); }} title="Stop loading it" aria-label="Cancel">✕</button>
+        </span>
+      );
+      case 'waiting': return <span class="att-state">Waiting for {props.holder} to come online</span>;
+      case 'failed': return <span class="att-state">{PULL_FAILED[now.reason](props.holder)}. <button type="button" onClick={(e) => { e.stopPropagation(); props.onPull(); }}>Try again</button></span>;
+      case 'idle': return <button type="button" class="att-get" onClick={(e) => { e.stopPropagation(); props.onPull(); }}>⬇ {formatSize(props.file.size)}</button>;
+      default: return null;
+    }
+  };
+  return (
+    <Switch fallback={
+      <div class="att att-card" data-status={a().status}>
+        <span class="att-icon" aria-hidden="true">📄</span>
+        <span class="att-name" title={props.file.name}>{props.file.name}</span>
+        <span class="att-size">{formatSize(props.file.size)}</span>
+        <Show when={url()} fallback={state()}>{(u) => <a class="att-save" href={u()} download={props.file.name}>Save</a>}</Show>
+      </div>
+    }>
+      <Match when={kind() === 'image'}>
+        <figure class="att att-media" data-status={a().status} style={box()}>
+          <Show when={url()} fallback={<Show when={props.file.preview}>{(p) => <img class="att-preview" src={p()} alt="" />}</Show>}>
+            {(u) => <img src={u()} alt={props.file.name} title={props.file.name} onClick={() => props.onView(u(), props.file.name)} />}
+          </Show>
+          <Show when={!url()}><figcaption>{state()}</figcaption></Show>
+        </figure>
+      </Match>
+      <Match when={kind() === 'video'}>
+        <figure class="att att-media" data-status={a().status} style={box()}>
+          <Show when={url()} fallback={<Show when={props.file.preview}>{(p) => <img class="att-preview" src={p()} alt="" />}</Show>}>
+            {(u) => <video src={u()} controls playsinline preload="metadata" title={props.file.name} />}
+          </Show>
+          <Show when={!url()}><figcaption>{state()}</figcaption></Show>
+        </figure>
+      </Match>
+    </Switch>
   );
 }
 
@@ -1366,7 +1485,7 @@ const GROUP_MS = 5 * 60 * 1000;
 /** Whether line i follows straight on from the same writer's previous text, so it goes under that name without its own. */
 const continues = (lines: ChatLine[], i: number): boolean => {
   const l = lines[i], prev = lines[i - 1];
-  return l?.kind === 'text' && prev?.kind === 'text' && prev.from.publicKey === l.from.publicKey && l.at - prev.at < GROUP_MS;
+  return l?.kind !== 'system' && !!l && prev?.kind !== undefined && prev.kind !== 'system' && prev.from.publicKey === l.from.publicKey && l.at - prev.at < GROUP_MS;
 };
 
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g;

@@ -30,7 +30,7 @@
 :where(:root[data-theme="imp-olympia"]) input,
 :where(:root[data-theme="imp-olympia"]) textarea,
 :where(:root[data-theme="imp-olympia"]) select.picker { border-color: var(--field); border-radius: 2px; background-color: #fff; }
-:where(:root[data-theme="imp-olympia"]) .chat-input > input { border-width: 2px; padding: 9px 12px; }
+:where(:root[data-theme="imp-olympia"]) .chat-field > input { border-width: 2px; padding: 9px 12px; }
 :where(:root[data-theme="imp-olympia"]) button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #fff; }
 :where(:root[data-theme="imp-olympia"]) .side button.on:not(.link) { background: #0b3f7a; border-color: #0b3f7a; }
 :where(:root[data-theme="imp-olympia"]) button.join { background: var(--green); color: #062b17; border-color: transparent; font-weight: 700; }

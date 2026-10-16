@@ -92,7 +92,7 @@
 @media (max-width: 700px) {
   :where(:root[data-theme="ds-scandi"]) .chat-log { font-size: 16px; }
   :where(:root[data-theme="ds-scandi"]) :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
-  :where(:root[data-theme="ds-scandi"]) .actions button, :where(:root[data-theme="ds-scandi"]) .chat-input > button { min-height: 44px; }
+  :where(:root[data-theme="ds-scandi"]) .actions button, :where(:root[data-theme="ds-scandi"]) .chat-input > button, :where(:root[data-theme="ds-scandi"]) .chat-field > .emoji-open { min-height: 44px; }
 }
 
 /* ── Character: cabin ──────────────────────────────────────────────────────────────────────────────────── */
@@ -121,7 +121,7 @@
 :where(:root[data-theme="ds-scandi"]) .chat-log { gap: 12px; }
 :where(:root[data-theme="ds-scandi"]) .msg-from { font-weight: 800; }
 :where(:root[data-theme="ds-scandi"]) .msg-text { line-height: 1.5; }
-:where(:root[data-theme="ds-scandi"]) .chat-input > input { border-radius: var(--border-radius-full); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
+:where(:root[data-theme="ds-scandi"]) .chat-field > input { border-radius: var(--border-radius-full); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
 :where(:root[data-theme="ds-scandi"]) .chat-input > button:not(.emoji-open) { border-radius: var(--border-radius-full); padding: 8px 18px; background: var(--acc); border-color: var(--acc); color: var(--color-text-on-accent); }
 :where(:root[data-theme="ds-scandi"]) .chat-new { border-radius: var(--border-radius-full); }
 :where(:root[data-theme="ds-scandi"]) .consent .bubble { border: 1px solid var(--line); }

@@ -61,7 +61,7 @@
 :root[data-theme="fd-lounge"] .msg-text { max-width: 68ch; }
 :root[data-theme="fd-lounge"] .msg-cont { margin-top: -11px; }
 :root[data-theme="fd-lounge"] .chat-new { background: rgba(58,40,70,.92); border-color: transparent; }
-:root[data-theme="fd-lounge"] .chat-input > input { border-radius: 999px; background: var(--panel); }
+:root[data-theme="fd-lounge"] .chat-field > input { border-radius: 999px; background: var(--panel); }
 
 :root[data-theme="fd-lounge"] .share { background: #160E1B; border: 0; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
 :root[data-theme="fd-lounge"] .share-live { box-shadow: 0 0 0 2px var(--acc), 0 10px 30px rgba(0,0,0,.35); }

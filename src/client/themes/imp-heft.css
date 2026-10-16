@@ -33,7 +33,7 @@
 :where(:root[data-theme="imp-heft"]) input,
 :where(:root[data-theme="imp-heft"]) textarea,
 :where(:root[data-theme="imp-heft"]) select.picker { border-color: var(--edge); border-radius: 6px; }
-:where(:root[data-theme="imp-heft"]) .chat-input > input { background: #fff; color: var(--ink); }
+:where(:root[data-theme="imp-heft"]) .chat-field > input { background: #fff; color: var(--ink); }
 :where(:root[data-theme="imp-heft"]) button.on:not(.link) { background: var(--ink); border-color: var(--ink); color: #fff; }
 :where(:root[data-theme="imp-heft"]) .side button.on:not(.link) { background: #fff; border-color: #fff; color: #233f94; }
 :where(:root[data-theme="imp-heft"]) button.join { background: #8ef0b0; color: #0b3a1d; font-weight: 700; }

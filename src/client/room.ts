@@ -1,7 +1,10 @@
 import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 import posthog, { onConsentChange, telemetryOn } from './posthog';
 import { buildAuthMessage } from '../core/identity';
-import { openText, sealText } from '../core/sealed';
+import { openFile, openText, sealFile, sealText } from '../core/sealed';
+import { MAX_FILE_BYTES, MAX_FILE_NAME, formatSize, inlineKind, pullsByItself, type FileMeta } from '../core/attachment';
+import { createLinks, PullFailed, type PullError } from './links';
+import { hashOf, holdSent, keepFile, keptFile, makePreview } from './files';
 import {
   CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, MAX_TEXT_LENGTH, PING_FRAME, PING_INTERVAL_MS,
   type ClientMessage, type Identity, type Person, type RequestId, type ServerMessage, type TextId,
@@ -27,10 +30,26 @@ export type ServerStatus =
 export type ChatLine =
   /** `pending`: my own text the Room has not brought back yet; it waits at the end of the log, `at` my own clock's. */
   | { kind: 'text'; id: string; from: Identity; text: string; at: number; pending?: true }
+  /** An attachment (ADR 0006); its bytes are in `attachment(file.hash)`. `pending`: mine, not back from the Room yet. */
+  | { kind: 'file'; id: string; from: Identity; file: FileMeta; at: number; pending?: true }
   | { kind: 'system'; id: string; text: string; at: number };
 
-/** A friend's text as opened: the Room relayed it sealed (ADR 0005). */
+/** A friend's text as opened: the Room relayed it sealed (ADR 0005). An attachment's `text` is its name. */
 export type Text = { from: Identity; text: string; at: number; id: TextId };
+
+/**
+ * Where an attachment's bytes are, in this browser. `idle`: not pulled, waits for a click. `waiting`: whoever has it is
+ * not online. `pulling`: `received` bytes so far. `ready`: `url` is a blob URL of a type safe to show. `failed`: `reason`.
+ */
+export type Attachment =
+  | { status: 'idle' | 'waiting' }
+  | { status: 'pulling'; received: number }
+  | { status: 'ready'; url: string }
+  | { status: 'failed'; reason: PullError };
+/** Pulls running at once per room; the rest queue. */
+const PULLS_AT_ONCE = 2;
+/** Attachments in the history from this recent are pulled by themselves, like new ones, when this browser lacks them. */
+const PULL_HISTORY_MS = 7 * 24 * 3600 * 1000;
 
 const UNAVAILABLE_AFTER_MS = 30_000;
 /** Texts shown remembered by writer and id, to show a text sent again only once (ticket 51); the oldest are forgotten. */
@@ -80,6 +99,19 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const unconfirmed = loadUnsent(opts.roomId);
   /** `unconfirmed` as shown: after the lines, as waiting. */
   const [pending, setPending] = createSignal([...unconfirmed]);
+  /**
+   * My attachments not back from the Room yet, with their sealed announcement once sealed: sent again on the next socket,
+   * like texts. Not kept over a reload.
+   */
+  const [pendingFiles, setPendingFiles] = createSignal<Array<{ id: string; file: FileMeta; at: number; sealed?: string }>>([]);
+  const [attachments, setAttachments] = createSignal<Record<string, Attachment>>({});
+  /** The same, read at once: a signal's write shows to readers only after the batch (client/contacts.ts). */
+  const attachmentNow = new Map<string, Attachment>();
+  const setAttachment = (hash: string, a: Attachment) => { attachmentNow.set(hash, a); setAttachments((all) => ({ ...all, [hash]: a })); };
+  /** Files announced in this room, by hash: the only ones a friend may pull from me here. */
+  const announced = new Set<string>();
+  /** Blob URLs handed out, revoked when the room goes. */
+  const urls: string[] = [];
   /** Drops the texts that waited too long to be sent, with a line saying so. */
   const dropTooOld = () => {
     const now = Date.now();
@@ -108,12 +140,17 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     return false;
   };
   // Recent history from this browser, loaded once; live lines append after it.
-  const fromStored = ({ from, text, at }: StoredText): ChatLine => ({ kind: 'text', id: textKey({ from, at }), from, text, at });
-  void loadHistory(opts.roomId).then((stored) => {
+  const fromStored = ({ from, text, at, file }: StoredText): ChatLine =>
+    file ? { kind: 'file', id: textKey({ from, at }), from, file, at } : { kind: 'text', id: textKey({ from, at }), from, text, at };
+  /** The history is loaded: until then, a friend's pull of a file announced before this page opened waits for it. */
+  const historyLoaded = loadHistory(opts.roomId).then((stored) => {
     for (const m of stored) if (m.id !== undefined) seen(m.from.publicKey, m.id);
     setLines((l) => [...stored.map(fromStored), ...l]);
+    const now = Date.now();
+    // An older picture this browser no longer keeps is pulled on a click: every start would pull them all again.
+    for (const m of stored) if (m.file) void arrived(m.file, m.from.publicKey, now - m.at < PULL_HISTORY_MS);
   });
-  const push = (line: { kind: 'text'; id: string; from: Identity; text: string; at: number } | { kind: 'system'; text: string; at: number }) =>
+  const push = (line: { kind: 'text'; id: string; from: Identity; text: string; at: number } | { kind: 'file'; id: string; from: Identity; file: FileMeta; at: number } | { kind: 'system'; text: string; at: number }) =>
     setLines((l) => [...l, 'id' in line ? (line as ChatLine) : ({ ...line, id: `sys-${nextId++}` } as ChatLine)]);
   let ws: WebSocket | null = null;
   /** The socket the server has let in (its welcome came), and how many sockets it has let in so far. */
@@ -196,6 +233,123 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     }
   }
 
+  /** An attachment's announcement from the Room: shown like a text, then its bytes are looked for (`arrived`). */
+  async function receivedFile(m: Extract<ServerMessage, { t: 'file' }>): Promise<void> {
+    const opened = await openFile({ key: opts.textKey, roomId: opts.roomId, id: m.id, from: m.from.publicKey, sealed: m.sealed });
+    if (stopped) return;
+    const own = m.from.publicKey === opts.identity.publicKey;
+    if (own) setPendingFiles((p) => p.filter((f) => f.id !== m.id));
+    if (!opened.ok) {
+      console.warn(`file rejected: ${opened.reason}`);
+      posthog.capture('text_rejected', { reason: opened.reason, writer: m.from.fingerprint, own, sealed_length: m.sealed.length, kind: 'file' });
+      return;
+    }
+    if (seen(m.from.publicKey, m.id)) return;
+    const { file } = opened;
+    push({ kind: 'file', id: textKey({ from: m.from, at: m.at }), from: m.from, file, at: m.at });
+    void appendHistory(opts.roomId, { from: m.from, text: file.name, at: m.at, id: m.id, file });
+    arrived(file, m.from.publicKey);
+    if (!own) {
+      setUnread((n) => n + 1);
+      for (const l of textListeners) l({ from: m.from, text: file.name, at: m.at, id: m.id });
+    }
+  }
+
+  const links = createLinks({ identity: opts.identity, send: (m) => send(m), serves: async (hash) => { await historyLoaded; return announced.has(hash); } });
+  /** Who announced each file I want, by hash; pulled from them (ticket 02: from anyone who has it). */
+  /** Who announced each file, by hash, oldest first: any of them has it (ticket 02: anyone who pulled it, too). */
+  const holders = new Map<string, { file: FileMeta; from: string[] }>();
+  const online = (key: string): boolean => people().some((p) => p.publicKey === key);
+  /** The friends a file can be pulled from now: those who announced it and are online, newest announcement first. */
+  const reachable = (hash: string): string[] => [...(holders.get(hash)?.from ?? [])].reverse().filter((k) => k !== opts.identity.publicKey && online(k));
+  const hold = (file: FileMeta, from: string): void => {
+    const known = holders.get(file.hash);
+    if (!known) holders.set(file.hash, { file, from: [from] });
+    else if (!known.from.includes(from)) known.from.push(from);
+  };
+  const queue: string[] = [];
+  let pulling = 0;
+  /** The pulls running, by hash, to cancel them. */
+  const aborts = new Map<string, AbortController>();
+
+  /** Shows a file from bytes I hold: a blob URL of its own type if it shows inline, else one that only downloads. */
+  function show(file: FileMeta, blob: Blob): void {
+    const url = URL.createObjectURL(new Blob([blob], { type: inlineKind(file.type) ? file.type : 'application/octet-stream' }));
+    urls.push(url);
+    setAttachment(file.hash, { status: 'ready', url });
+  }
+
+  /** A file announced in this room, live or from the history: shown from the store, or pulled, or left for a click. */
+  async function arrived(file: FileMeta, from: string, byItself = true): Promise<void> {
+    announced.add(file.hash);
+    hold(file, from);
+    // Known already: one waiting for a friend who is away may come from this one.
+    if (attachmentNow.has(file.hash)) { if (attachmentNow.get(file.hash)!.status === 'waiting') want(file.hash); return; }
+    setAttachment(file.hash, { status: 'idle' });
+    const kept = await keptFile(file.hash);
+    if (stopped) return;
+    if (kept) show(file, kept);
+    else if (byItself && pullsByItself(file)) want(file.hash);
+  }
+
+  /** Asks for a file's bytes: pulled when its holder is online and a pull is free, else it waits. */
+  function want(hash: string): void {
+    const holder = holders.get(hash);
+    const now = attachmentNow.get(hash);
+    if (!holder || now?.status === 'ready' || now?.status === 'pulling' || queue.includes(hash)) return;
+    // Only my own, gone from this browser's store: nobody to pull it from until ticket 02.
+    if (holder.from.every((k) => k === opts.identity.publicKey)) { setAttachment(hash, { status: 'failed', reason: 'not there' }); return; }
+    if (!reachable(hash).length) { setAttachment(hash, { status: 'waiting' }); return; }
+    setAttachment(hash, { status: 'pulling', received: 0 });
+    queue.push(hash);
+    nextPull();
+  }
+
+  function nextPull(): void {
+    while (pulling < PULLS_AT_ONCE && queue.length && !stopped) {
+      const hash = queue.shift()!;
+      const { file } = holders.get(hash)!;
+      const from = reachable(hash)[0];
+      if (!from) { setAttachment(hash, { status: 'waiting' }); continue; }
+      pulling++;
+      const started = Date.now();
+      const abort = new AbortController();
+      aborts.set(hash, abort);
+      void links.pull(from, hash, file.size, (received) => { if (!stopped && !abort.signal.aborted) setAttachment(hash, { status: 'pulling', received }); }, abort.signal)
+        .then(async (blob) => {
+          posthog.capture('file_pulled', { bytes: file.size, ms: Date.now() - started, inline: inlineKind(file.type) ?? 'none' });
+          // Shown from the store's copy, which is on disk: the pulled one is in memory, as large as the file.
+          await keepFile(hash, blob);
+          const kept = await keptFile(hash);
+          if (!stopped) show(file, kept ?? blob);
+        })
+        .catch((e: unknown) => {
+          // Cancelled: back to waiting for a click, and not pulled by itself again.
+          if (abort.signal.aborted) { posthog.capture('file_pull_cancelled', { bytes: file.size }); if (!stopped) setAttachment(hash, { status: 'idle' }); return; }
+          const reason = e instanceof PullFailed ? e.reason : 'lost';
+          posthog.capture('file_pull_failed', { reason, bytes: file.size });
+          if (!(e instanceof PullFailed)) console.error('pulling a file failed', e);
+          if (stopped) return;
+          // The friend left under it: it waits for them, and goes on by itself when they are back.
+          if (!reachable(hash).length) setAttachment(hash, { status: 'waiting' });
+          else setAttachment(hash, { status: 'failed', reason });
+        })
+        .finally(() => { aborts.delete(hash); pulling--; nextPull(); });
+    }
+  }
+
+  // A friend who holds a file I wait for came online: pull it now. One whose pull failed for a link that did not come up
+  // or dropped (a tab frozen in the background, a phone that changed networks) is tried again when they come back.
+  let wasOnline = new Set<string>();
+  createEffect(() => people(), (ps) => {
+    const now = new Set(ps.map((p) => p.publicKey));
+    const back = (hash: string) => (holders.get(hash)?.from ?? []).some((k) => now.has(k) && !wasOnline.has(k));
+    for (const [hash, a] of attachmentNow) {
+      if (a.status === 'waiting' || (a.status === 'failed' && (a.reason === 'unreachable' || a.reason === 'lost') && back(hash))) want(hash);
+    }
+    wasOnline = now;
+  });
+
   function open() {
     if (stopped) return;
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -256,6 +410,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           // answers them in that order too. One that waited a day is not sent: it would come out of the blue.
           dropTooOld();
           for (const u of unconfirmed) sendText(u);
+          for (const f of pendingFiles()) if (f.sealed) send({ t: 'file', sealed: f.sealed, id: f.id });
           setStatus({ kind: 'connected' });
           if (everConnected) {
             // No line in the chat about it: the status pill already shows the outage live, and dated lines that stayed
@@ -268,11 +423,20 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           clearTimeout(unavailableTimer);
           return;
         case 'presence':
+          // A friend gone from it keeps their file links: a link does not need the socket, which a phone changing
+          // networks drops for a moment. A link to one who is gone for good fails or stalls by itself (client/links.ts).
           forgetEnded(latest, m.people);
           setPeople(m.people);
           return;
         case 'sealed':
           opening = opening.then(() => received(m)).catch((e: unknown) => console.error('opening a text failed', e));
+          return;
+        case 'file':
+          opening = opening.then(() => receivedFile(m)).catch((e: unknown) => console.error('opening a file failed', e));
+          return;
+        case 'link':
+        case 'linkice':
+          links.onMessage(m);
           return;
         case 'error':
           if (you()) {
@@ -280,6 +444,17 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             // signaling ones, and any the server cannot attribute, are a developer concern and would only confuse in the
             // chat: an oversized signal once showed as "Not sent" (ticket 30).
             posthog.capture('frame_dropped', { ref: m.ref ?? 'unknown', reason: m.reason });
+            if (m.ref === 'link' || m.ref === 'linkice') return; // the pull that sent it times out and says so
+            if (m.ref === 'file') {
+              // The Room answers in order: the oldest attachment still waiting was refused.
+              const at = Date.now();
+              opening = opening.then(() => {
+                if (stopped || welcomed !== socket) return;
+                push({ kind: 'system', text: `Not sent: ${m.reason}.`, at });
+                setPendingFiles((p) => p.slice(1));
+              });
+              return;
+            }
             if (!m.ref || m.ref === 'signal' || m.ref === 'ice') console.warn('dropped', m.ref ?? 'unknown', m.reason);
             else if (m.ref === 'sealed' || m.ref === 'text') {
               // The Room answers texts in the order they came: a refusal is for the oldest one still waiting, once the texts
@@ -377,6 +552,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   onCleanup(() => {
     offConsent();
     stopped = true;
+    links.close();
+    for (const url of urls) URL.revokeObjectURL(url);
     clearTimeout(reconnectTimer);
     clearTimeout(unavailableTimer);
     clearInterval(pingTimer);
@@ -392,11 +569,27 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     /** The chat: what came back from the Room, then my own texts still on their way, as waiting. */
     lines: createMemo((): ChatLine[] => {
       const waiting = pending();
-      if (!waiting.length) return lines();
+      const files = pendingFiles();
+      if (!waiting.length && !files.length) return lines();
       const { name, picture } = carried(latest);
       const me: Identity = you() ?? { publicKey: opts.identity.publicKey, fingerprint: opts.identity.fingerprint, name, ...(picture ? { picture } : {}) };
-      return [...lines(), ...waiting.map((u): ChatLine => ({ kind: 'text', id: `pending:${u.id}`, from: me, text: u.text, at: u.at, pending: true }))];
+      const mine = [
+        ...waiting.map((u): ChatLine => ({ kind: 'text', id: `pending:${u.id}`, from: me, text: u.text, at: u.at, pending: true })),
+        ...files.map((f): ChatLine => ({ kind: 'file', id: `pending:${f.id}`, from: me, file: f.file, at: f.at, pending: true })),
+      ].sort((a, b) => a.at - b.at);
+      return [...lines(), ...mine];
     }),
+    /** Where an attachment's bytes are (`Attachment`); undefined before its announcement is shown. */
+    attachment: (hash: string): Attachment | undefined => attachments()[hash],
+    /** Stops a pull, running or queued; the file waits for a click again, at once, whatever the pull is waiting on. */
+    cancelPull: (hash: string): void => {
+      const queued = queue.indexOf(hash);
+      if (queued >= 0) queue.splice(queued, 1);
+      aborts.get(hash)?.abort();
+      if (attachmentNow.get(hash)?.status === 'pulling') setAttachment(hash, { status: 'idle' });
+    },
+    /** Pulls a file that waits for a click, or one that failed. */
+    pull: (hash: string): void => { const a = attachmentNow.get(hash); if (a?.status === 'idle' || a?.status === 'failed') { setAttachment(hash, { status: 'idle' }); want(hash); } },
     unread,
     /** The room is on screen: nothing in it is unread. */
     markRead: () => setUnread(0),
@@ -434,6 +627,32 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       unconfirmedChanged();
       sendText({ id, text });
       posthog.capture('message_sent');
+    },
+    /**
+     * Sends a file (ADR 0006): it is kept here, and its announcement goes sealed, with a preview for a picture or a video.
+     * Friends pull the bytes from this browser. Like a text, it waits for a socket, and goes again on the next one if the
+     * last took it without bringing it back; unlike a text, a reload forgets it.
+     */
+    sendFile: async (picked: File): Promise<void> => {
+      if (picked.size > MAX_FILE_BYTES) { push({ kind: 'system', text: `Not sent: ${picked.name} is ${formatSize(picked.size)}; files up to ${formatSize(MAX_FILE_BYTES)} for now.`, at: Date.now() }); return; }
+      const id = Array.from(crypto.getRandomValues(new Uint8Array(12)), (x) => x.toString(16).padStart(2, '0')).join('');
+      const at = Date.now();
+      const [hash, look] = await Promise.all([hashOf(picked), makePreview(picked)]);
+      const file: FileMeta = { name: picked.name.slice(0, MAX_FILE_NAME).trim() || 'file', type: picked.type.slice(0, 100), size: picked.size, hash, ...look };
+      if (stopped) return;
+      holdSent(hash, picked);
+      void keepFile(hash, picked);
+      announced.add(hash);
+      hold(file, opts.identity.publicKey);
+      if (attachmentNow.get(hash)?.status !== 'ready') show(file, picked);
+      setPendingFiles((p) => [...p, { id, file, at }]);
+      sealing = sealing.then(async () => {
+        const sealed = await sealFile({ key: opts.textKey, privateKey: opts.identity.keys.privateKey, roomId: opts.roomId, id, from: opts.identity.publicKey, file });
+        // Kept for the next socket, which sends it again; friends show an id they have shown already no more.
+        setPendingFiles((p) => p.map((f) => (f.id === id ? { ...f, sealed } : f)));
+        send({ t: 'file', sealed, id });
+      }).catch((e: unknown) => console.error('sealing a file failed', e));
+      posthog.capture('file_sent', { bytes: file.size, inline: inlineKind(file.type) ?? 'none', preview: !!file.preview });
     },
     /** Empties the local history; the server never had it. */
     clearHistory: async () => { await clearHistory(opts.roomId); setLines([]); },

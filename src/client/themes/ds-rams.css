@@ -90,7 +90,7 @@
 @media (max-width: 700px) {
   :where(:root[data-theme="ds-rams"]) .chat-log { font-size: 16px; }
   :where(:root[data-theme="ds-rams"]) :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
-  :where(:root[data-theme="ds-rams"]) .actions button, :where(:root[data-theme="ds-rams"]) .chat-input > button { min-height: 44px; }
+  :where(:root[data-theme="ds-rams"]) .actions button, :where(:root[data-theme="ds-rams"]) .chat-input > button, :where(:root[data-theme="ds-rams"]) .chat-field > .emoji-open { min-height: 44px; }
 }
 
 /* ── Character: Braun ──────────────────────────────────────────────────────────────────────────────────── */
