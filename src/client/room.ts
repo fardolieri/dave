@@ -288,7 +288,6 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const movedAt = new Map<string, number>();
   const saving = new Set<string>();
 
-  /** Shows a file from bytes I hold: a blob URL of its own type if it shows inline, else one that only downloads. */
   /** Tries again so far, and the timer of the next, per file. */
   const retries = new Map<string, { tries: number; timer?: ReturnType<typeof setTimeout> }>();
   const stopRetry = (hash: string): void => { clearTimeout(retries.get(hash)?.timer); retries.delete(hash); };
@@ -307,6 +306,21 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     }, delay);
     retries.set(hash, { tries: reason === 'busy' ? was.tries : was.tries + 1, timer });
     setAttachment(hash, { status: 'failed', reason, retryAt });
+  }
+
+  /** Shows a file from bytes I hold: a blob URL of its own type if it shows inline, else one that only downloads. */
+  /**
+   * Every try again whose time has come is made now: after an outage, or when this tab takes the room back, a timer that
+   * fired meanwhile found no socket or a tab not in charge (review of PR #70).
+   */
+  function retryDue(): void {
+    const now = Date.now();
+    for (const [hash, a] of [...attachmentNow]) {
+      if (a.status !== 'failed' || a.retryAt === undefined || a.retryAt > now) continue;
+      clearTimeout(retries.get(hash)?.timer);
+      setAttachment(hash, { status: 'idle' });
+      want(hash);
+    }
   }
 
   function show(file: FileMeta, blob: Blob): void {
@@ -376,8 +390,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           posthog.capture('file_pull_failed', { reason, bytes: file.size });
           if (!(e instanceof PullFailed)) console.error('pulling a file failed', e);
           if (disposed || !current()) return;
-          // The friend left under it: it waits for them, and goes on by itself when they are back.
-          if (!reachable(hash).length) setAttachment(hash, { status: 'waiting' });
+          // No socket let in: its ask could not go out, which says nothing of the friend. Not a try: it is due again as
+          // soon as the Room lets this tab back in (review of PR #70).
+          if (welcomed === null) { setAttachment(hash, { status: 'failed', reason, retryAt: Date.now() }); return; }
+          // The friend left under it: it waits for them, and goes on by itself when they are back, with all its tries.
+          if (!reachable(hash).length) { stopRetry(hash); setAttachment(hash, { status: 'waiting' }); }
           else failed(hash, reason);
         })
         .finally(() => {
@@ -389,10 +406,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   }
 
   // What the chat shows of each attachment against what the pulls have (attachments ticket 04, core/invariants.ts).
-  // A tab another took the room from is not in charge of it: its view is not judged until it takes the room back.
+  // A tab another took the room from is not in charge of it, and one without a socket can ask nobody: their view is not
+  // judged until the Room lets them in again.
   const watchdog = createFileWatchdog(() => ({
     at: Date.now(),
-    files: stopped ? [] : [...attachmentNow].map(([hash, a], i) => ({
+    files: stopped || welcomed === null ? [] : [...attachmentNow].map(([hash, a], i) => ({
       key: String(i), status: a.status, running: aborts.has(hash) || queue.includes(hash), active: aborts.has(hash) && !saving.has(hash),
       movedAt: movedAt.get(hash) ?? null, holderOnline: reachable(hash).length > 0, retryAt: a.status === 'failed' ? (a.retryAt ?? null) : null,
     })),
@@ -485,6 +503,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           dropTooOld();
           for (const u of unconfirmed) sendText(u);
           for (const f of pendingFiles()) if (f.sealed) send({ t: 'file', sealed: f.sealed, id: f.id });
+          retryDue();
           setStatus({ kind: 'connected' });
           if (everConnected) {
             // No line in the chat about it: the status pill already shows the outage live, and dated lines that stayed

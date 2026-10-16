@@ -39,7 +39,7 @@ export function logUpgradeFailed(env: Env, ctx: ExecutionContext, error: unknown
     message: typeof e?.message === 'string' ? e.message.slice(0, 300) : String(error).slice(0, 300),
     retryable: e?.retryable === true,
     overloaded: e?.overloaded === true,
-    // 1: the Room is asked once more; 2: that failed too, and the browser got the 500.
+    // 0: before the Room was asked; 1: its first ask failed (asked once more unless overloaded); 2: the second failed too.
     attempt,
   };
   console.error('upgrade failed', JSON.stringify(properties));

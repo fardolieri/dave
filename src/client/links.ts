@@ -18,7 +18,10 @@ const CONNECT_TIMEOUT_MS = 20_000;
 const STALL_TIMEOUT_MS = 20_000;
 /** A link the holder kept open with nothing asked of it for this long is closed. */
 const IDLE_MS = 60_000;
-/** Links a holder keeps open at once, from all friends and from any one friend; an offer past either is not answered. */
+/**
+ * Links a holder keeps open at once, from all friends and from any one friend. An offer past the first is answered
+ * `busy`; one past the second takes the place of that friend's quietest link.
+ */
 const MAX_SERVING = 8;
 const MAX_SERVING_PER_FRIEND = PULLS_AT_ONCE;
 /** The largest chunk sent; both browsers take this, and the link's own limit lowers it if it says less. */
@@ -195,7 +198,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
         // Counted with the offers still waiting for ICE servers: offers from different friends run on chains of their own.
         const serving = [...[...links.values()].filter((l) => l.serving).map((l) => l.peer), ...starting];
         // At her limit she says so: silence would leave the friend at "Couldn't reach" for good (ticket 05).
-        if (serving.length >= MAX_SERVING || serving.filter((p) => p === from).length >= MAX_SERVING_PER_FRIEND) {
+        if (serving.length >= MAX_SERVING) {
           opts.send({ t: 'link', to: from, data: { link: data.link, busy: true } });
           return;
         }
@@ -286,7 +289,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
       await link.pc.setLocalDescription();
       // An offer that did not go out is never answered: the pull ends now, not after its connect timeout, and is tried
       // again (client/room.ts). The ask came in the second a socket the network cut was being replaced (ticket 57).
-      if (!(await describe(link, link.pc.localDescription))) throw new PullFailed('lost');
+      if (!(await describe(link, link.pc.localDescription))) { close(link, 'unsent'); throw new PullFailed('lost'); }
       await Promise.race([gone('unreachable'), new Promise<void>((resolve, reject) => {
         if (link.channel.readyState === 'open') { resolve(); return; }
         const timer = setTimeout(() => reject(new PullFailed('unreachable')), CONNECT_TIMEOUT_MS);

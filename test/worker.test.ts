@@ -92,9 +92,10 @@ describe('worker routing', () => {
   it('refuses a room path without an upgrade', async () => {
     expect((await exports.default.fetch(`https://dave.test${await wsPath(SECRET)}`)).status).toBe(426);
   });
-  it('an upgrade that throws is answered 500 and reported, with the error and whether Cloudflare calls it retryable (ticket 55)', async () => {
+  it('an upgrade that throws is tried once more, then answered 500, each failure reported with the error and whether Cloudflare calls it retryable (ticket 55)', async () => {
     const thrown = Object.assign(new Error('Durable Object reset because its code was updated.'), { retryable: true });
-    const room = { idFromName: env.ROOM.idFromName.bind(env.ROOM), get: () => ({ fetch: () => Promise.reject(thrown) }) };
+    let asked = 0;
+    const room = { idFromName: env.ROOM.idFromName.bind(env.ROOM), get: () => ({ fetch: () => { asked++; return Promise.reject(thrown); } }) };
     const sent: Array<Promise<unknown>> = [];
     const posted = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -103,14 +104,39 @@ describe('worker routing', () => {
       const ctx = { waitUntil: (p: Promise<unknown>) => sent.push(p), passThroughOnException: () => {} } as unknown as ExecutionContext;
       const res = await worker.fetch!(new Request(`https://dave.test${await wsPath(SECRET)}`, { headers: { Upgrade: 'websocket' } }) as Parameters<NonNullable<typeof worker.fetch>>[0], testEnv, ctx);
       expect(res.status).toBe(500);
+      expect(asked, 'the Room was asked once more').toBe(2);
       await Promise.all(sent);
-      expect(posted).toHaveBeenCalledTimes(1);
-      const [url, init] = posted.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe('https://eu.i.posthog.com/i/v0/e/');
-      const body = JSON.parse(init.body as string);
-      expect(body.event).toBe('server_upgrade_failed');
-      expect(body.properties).toMatchObject({ name: 'Error', message: thrown.message, retryable: true, overloaded: false, build_target: 'nightly' });
+      expect(posted).toHaveBeenCalledTimes(2);
+      for (const [i, call] of posted.mock.calls.entries()) {
+        const [url, init] = call as [string, RequestInit];
+        expect(url).toBe('https://eu.i.posthog.com/i/v0/e/');
+        const body = JSON.parse(init.body as string);
+        expect(body.event).toBe('server_upgrade_failed');
+        expect(body.properties).toMatchObject({ name: 'Error', message: thrown.message, retryable: true, overloaded: false, build_target: 'nightly', attempt: i + 1 });
+      }
       expect(errors).toHaveBeenCalledWith('upgrade failed', expect.stringContaining('retryable":true'));
+    } finally {
+      posted.mockRestore();
+      errors.mockRestore();
+    }
+  });
+  it('an upgrade whose first ask of the Room throws and whose second succeeds is answered by the Room (ticket 55)', async () => {
+    let asked = 0;
+    const room = {
+      idFromName: env.ROOM.idFromName.bind(env.ROOM),
+      get: () => ({ fetch: () => (++asked === 1 ? Promise.reject(new Error('internal error; reference = test')) : Promise.resolve(new Response('from the Room', { status: 200 }))) }),
+    };
+    const posted = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const testEnv = { ...env, ROOM: room, UPGRADE_LIMIT: undefined, POSTHOG_KEY: 'phc_test', POSTHOG_HOST: 'https://eu.i.posthog.com', BUILD_TARGET: 'nightly' } as unknown as Env;
+      const sent: Array<Promise<unknown>> = [];
+      const ctx = { waitUntil: (p: Promise<unknown>) => sent.push(p), passThroughOnException: () => {} } as unknown as ExecutionContext;
+      const res = await worker.fetch!(new Request(`https://dave.test${await wsPath(SECRET)}`, { headers: { Upgrade: 'websocket' } }) as Parameters<NonNullable<typeof worker.fetch>>[0], testEnv, ctx);
+      expect(await res.text()).toBe('from the Room');
+      expect(asked).toBe(2);
+      await Promise.all(sent);
+      expect(posted).toHaveBeenCalledTimes(1); // the first failure, reported as attempt 1
     } finally {
       posted.mockRestore();
       errors.mockRestore();
