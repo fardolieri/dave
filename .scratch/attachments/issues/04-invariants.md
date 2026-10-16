@@ -1,6 +1,6 @@
 # 04 · Invariants: an attachment never says it is coming when nothing can bring it
 
-Status: in progress
+Status: shipped 2026-10-16 to prod (5ec0b8a), nightly e2e green first
 Blocked by: 01
 Asked by: the owner, 2026-10-16, after the reports of that day ("Try again keeps being at 0%")
 

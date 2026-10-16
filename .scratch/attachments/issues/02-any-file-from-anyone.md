@@ -1,6 +1,6 @@
 # 02 · A file comes from any friend who has it
 
-Status: in progress
+Status: shipped 2026-10-16 to prod (aea8f71), nightly e2e green first
 Blocked by: 01
 
 **Why:** with ticket 01 a file reaches a friend only while its sender is online, and the sender uploads it once per friend.

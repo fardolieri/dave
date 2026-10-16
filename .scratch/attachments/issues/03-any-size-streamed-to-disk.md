@@ -1,6 +1,6 @@
 # 03 · Files of any size, streamed to disk
 
-Status: in progress
+Status: shipped 2026-10-16 to prod (dd3b87e), nightly e2e green first
 Blocked by: 01
 
 **Why:** ticket 01 reads, hashes and stores a file whole, so it caps files at 100 MB.

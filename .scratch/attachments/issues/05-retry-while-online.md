@@ -1,6 +1,6 @@
 # 05 · A pull that failed is tried again by itself while its friend is online
 
-Status: in progress
+Status: shipped 2026-10-16 to prod (5ec0b8a), nightly e2e green first
 Blocked by: 01
 Raised by: the review of PR #68 (Grumpy Friend), 2026-10-16
 
