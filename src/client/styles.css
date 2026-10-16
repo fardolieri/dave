@@ -133,7 +133,9 @@ dialog.viewer img { display: block; max-width: 96vw; max-height: 96dvh; object-f
 .chat-field > input { flex: 1; min-width: 0; padding-inline: 40px !important; }
 .chat-field > .emoji-open { position: absolute; inset-block: 0; margin-block: auto; height: fit-content; left: 2px; z-index: 1; }
 .chat-field > .attach-open { left: auto; right: 2px; }
-.chat-field > .emoji-open:hover:not(:disabled) { border-color: transparent; }
+/* No frame on the two buttons inside the field, hovered or not, whatever a theme gives the emoji button elsewhere: the
+   field is their frame. The keyboard's focus ring is an outline, and stays. */
+.chat-field > .emoji-open, .chat-field > .emoji-open:hover { border-color: transparent !important; box-shadow: none !important; }
 
 /* call */
 .plist li { flex-wrap: nowrap; }
