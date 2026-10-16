@@ -53,9 +53,15 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy
-          secrets: |
-            TURN_KEY_API_TOKEN
+      # wrangler-action's `secrets:` runs `wrangler secret bulk`, which took the Worker's name from wrangler.jsonc
+      # (`dave-preview`), not from the renamed deploy config: no preview ever had the TURN token, and a phone behind a
+      # strict NAT could neither pull a file nor call there (report of 2026-10-16, e2e/turn.spec.ts). Put it on the
+      # Worker just deployed, by name.
+      - name: TURN token on the preview's Worker
+        run: printf '%s' "$TURN_KEY_API_TOKEN" | pnpm exec wrangler secret put TURN_KEY_API_TOKEN --name "$WORKER"
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           TURN_KEY_API_TOKEN: ${{ secrets.TURN_KEY_API_TOKEN }}
       - name: Link the preview on the PR
         env:

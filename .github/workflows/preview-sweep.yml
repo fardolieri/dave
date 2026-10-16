@@ -1,7 +1,8 @@
 name: preview-sweep
 # A preview Worker (preview.yml) is deleted when its PR closes or turns into a draft. A run that failed or was cancelled
 # then would leave it behind, and the free plan allows 100 Workers. Once a week, and by hand from the Actions tab, every
-# dave-pr-<n> whose PR is closed or a draft is deleted.
+# dave-pr-<n> whose PR is closed or a draft is deleted, and `dave-preview`, which no deploy uses: a preview deploy's
+# secrets once went to that name from wrangler.jsonc and made a Worker of it (2026-10-16, e2e/turn.spec.ts).
 on:
   schedule:
     - cron: '0 4 * * 1' # Mondays 04:00 UTC, clear of the soak (01:00) and the night shift (02:30)
@@ -36,4 +37,8 @@ jobs:
             echo "$w: PR $state, deleting"
             npx --yes wrangler@4.146.0 delete --name "$w" --force || { echo "::warning::$w: delete failed"; failed=1; }
           done
+          if jq -e '.result[] | select(.id == "dave-preview")' <<<"$scripts" >/dev/null; then
+            echo "dave-preview: no deploy uses it, deleting"
+            npx --yes wrangler@4.146.0 delete --name dave-preview --force || { echo "::warning::dave-preview: delete failed"; failed=1; }
+          fi
           exit $failed
