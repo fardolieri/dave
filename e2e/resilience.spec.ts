@@ -679,12 +679,28 @@ test('regression: a socket gone silent without a close is given up, and the text
   test.slow(); // the app waits for two unanswered pings, 30 s apart, before it gives the socket up
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
+  const start = Date.now();
   alice.wire.sever();
   await alice.composer.fill('into the silence');
   await alice.composer.press('Enter');
-  await expect.poll(() => bob.chatTexts(), { message: 'the text arrives on the socket that replaced the silent one', timeout: 150_000 })
-    .toEqual(['into the silence']);
-  expect(alice.wire.closes.filter((c) => c.side === 'page').map((c) => c.code), 'Alice gave the silent socket up herself').toEqual([4009]);
+  const gaveUp = () => alice.wire.closes.filter((c) => c.side === 'page').map((c) => c.code);
+  await expect.poll(gaveUp, { message: 'Alice gives the silent socket up herself', timeout: 150_000 }).toEqual([4009]);
   await alice.connected();
-  await expect.poll(() => alice.chatTexts()).toEqual(['into the silence']);
+  // The Room took it on the new socket, once: it came back to her, and no longer waits.
+  await expect.poll(() => alice.pendingTexts(), { message: 'the text arrives on the socket that replaced the silent one' }).toEqual([]);
+  expect(await alice.chatTexts()).toEqual(['into the silence']);
+  // Sent again once: into the silence, then on the new socket. Only the frames tell: the app shows a text of an id once.
+  expect(alice.wire.log.filter((f) => f.dir === 'up' && f.frame.startsWith('{"t":"sealed"')), 'Alice sent it twice, once per socket').toHaveLength(2);
+  // Bob gets it, once, unless the network dropped his own socket meanwhile (nightly, 2026-10-16: 0.6 s after Alice's new
+  // socket came in, ticket 57). The Room keeps no texts, so one sent while his socket was down is not his to get. His wire
+  // can hear of the drop after Alice has the text back, so the drop is looked for all the while.
+  await expect.poll(async () => (bob.wire.droppedSince(start) ? 'dropped' : (await bob.chatTexts()).join('|')), { message: 'Bob gets the text, or his socket dropped' })
+    .toMatch(/^(dropped|into the silence)$/);
+  if (bob.wire.droppedSince(start)) {
+    await bob.connected();
+    expect([[], ['into the silence']], 'Bob has it once, or not at all').toContainEqual(await bob.chatTexts());
+    return;
+  }
+  expect(await bob.chatTexts()).toEqual(['into the silence']);
+  expect(bob.wire.log.filter((f) => f.dir === 'down' && f.frame.startsWith('{"t":"sealed"')), 'the Room passed it on to Bob once').toHaveLength(1);
 });

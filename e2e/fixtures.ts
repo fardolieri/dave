@@ -295,6 +295,16 @@ export class Friend {
   get selectedRoom(): Locator { return this.page.locator('section.room.selected'); }
   /** Names in the Online list, "(you)" stripped. */
   async online(): Promise<string[]> { return (await this.page.locator('aside.side > ul.plist .nm').allInnerTexts()).map(clean); }
+  /**
+   * Waits until the Online list holds these names and has stopped moving: a row slides in over 460 ms, after up to 400 ms
+   * (`open` in App.tsx), and a click that Playwright found stable can still land where the row pushed it from. Endless
+   * animations (a speaking glow, a spinner) never stop, and move nothing: they do not count.
+   */
+  async settledOnline(...names: string[]): Promise<void> {
+    await expect.poll(async () => { const online = await this.online(); return names.filter((n) => !online.includes(n)); }, { message: `${this.name} lists ${names.join(', ')}` }).toEqual([]);
+    await expect.poll(() => this.page.locator('aside.side > ul.plist').first().evaluate((ul) => ul.getAnimations({ subtree: true }).filter((a) => a.effect?.getTiming().iterations !== Infinity).length), { message: `${this.name}'s Online list stops moving` }).toBe(0);
+  }
+
   /** Names in the selected room's call list, "(you)" stripped. */
   async inCall(): Promise<string[]> { return (await this.selectedRoom.locator('li.prow .nm').allInnerTexts()).map(clean); }
   /**
@@ -474,13 +484,30 @@ export const test = base.extend<{ crowd: Crowd }>({
       if (!extra.has(key)) extra.set(key, playwright[engine].launch(launchOptions(engine, { autoplay })));
       return extra.get(key)!;
     };
+    /** Friends let in so far, with the secrets of their rooms. */
+    const opened: Array<{ friend: Friend; secrets: string[] }> = [];
     await use({
       room,
       async open(name, options = {}) {
         const friend = new Friend(name, { ...options, rooms: options.rooms ?? [room] });
         friends.push(friend);
         await friend.launch(await browserFor(options), options.engine ?? (browserName as Engine));
-        if (options.connect !== false) await friend.open();
+        if (options.connect !== false) {
+          await friend.open();
+          // Everyone connected in a room of the newcomer's lists them, and they list everyone, before the test goes on: a
+          // row arriving in the Online list moves what is below it, the Join button too, and a click in that moment lands
+          // beside it. Alice's Join hit "nobody in the call" as Bob's row came in (nightly, 2026-10-16, Firefox, ticket 57).
+          const secrets = (options.rooms ?? [room]).map((r) => r.secret);
+          const peers: Friend[] = [];
+          for (const o of opened) {
+            if (!o.secrets.some((x) => secrets.includes(x))) continue;
+            // A friend without a composer (a form, a step-back screen) is not in the room: isConnected would wait for one.
+            if ((await o.friend.composer.count().catch(() => 0)) > 0 && (await o.friend.isConnected().catch(() => false))) peers.push(o.friend);
+          }
+          for (const f of peers) await f.settledOnline(name);
+          await friend.settledOnline(...peers.map((f) => f.name));
+          opened.push({ friend, secrets });
+        }
         return friend;
       },
     });
