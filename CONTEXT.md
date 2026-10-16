@@ -24,6 +24,18 @@ _Avoid_: Room key, chat password
 A text as it travels: encrypted with the text key and signed by its writer, so the server passes it on without being able to read or forge it.
 _Avoid_: Encrypted message (in UI copy), ciphertext (fine in code)
 
+**Attachment**:
+A file sent into the chat: a picture, a GIF, a video or anything else. Its announcement travels like a sealed text, with a small preview; its bytes go from friend to friend and never through the server (ADR 0006).
+_Avoid_: Upload, media, image (unless it is one)
+
+**Pull**:
+Fetching an attachment's bytes from a friend who has them, over a file link. Pictures and videos up to 16 MB are pulled by themselves; anything else on a click. A running pull can be cancelled.
+_Avoid_: Download (what the browser does with a pulled file), fetch, sync
+
+**File link**:
+A data-only connection between two friends, opened for a pull and closed after it. Visitors have them too. Not part of the call.
+_Avoid_: Data channel (its transport, fine in code), peer connection, transfer
+
 **Call**:
 The live voice and screen session in the room. Exists while at least one participant is in it.
 _Avoid_: Voice channel, session, meeting
