@@ -207,6 +207,37 @@ test('report of 2026-10-16: a new version the browser takes 2.5 s to find as the
   await expect(bar(alice.page)).toHaveCount(0);
 });
 
+test('report of 2026-10-16: a call left 26 s ago, as when Android killed the browser, is rejoined after an opening update found late', async ({ crowd }) => {
+  needPreview();
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await controlled(alice.page);
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+
+  // Android kills a background browser without a pagehide: the marker is as old as its last heartbeat (up to 10 s) plus
+  // the time to come back. Aged at the first load only; the page the update loads reads what the first one left.
+  await alice.page.addInitScript(() => {
+    if (sessionStorage.getItem('e2e-aged')) return;
+    sessionStorage.setItem('e2e-aged', '1');
+    const m = JSON.parse(localStorage.getItem('dave.rejoin') ?? 'null') as { at: number } | null;
+    if (m) localStorage.setItem('dave.rejoin', JSON.stringify({ ...m, at: Date.now() - 26_000 }));
+  });
+  // Found about 2.6 s in, downloaded in about 3 s: taken within the 10 s freeze, past the marker's 30 s.
+  await cookie(alice, 'e2e-sw-delay', '2500');
+  await stageBigDeploy(alice, 2_000_000);
+  const count = countLoads(alice.page);
+  await alice.page.reload();
+
+  await expect.poll(() => versionsNow(alice.page), { message: 'taken by itself', timeout: 30_000 }).toEqual(['next']);
+  await alice.connected();
+  expect(count.loads, 'her reload, then the one for the update').toBe(2);
+  await expect(alice.button('Leave'), 'rejoined: the page that held the app passed the marker on').toBeVisible();
+  await alice.connectedTo('Bob');
+  await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
+});
+
 test('ticket 44: a register() that fails holds nothing, and a new version is still taken through the registration the page has', async ({ crowd }) => {
   needPreview();
   const alice = await crowd.open('Alice');
