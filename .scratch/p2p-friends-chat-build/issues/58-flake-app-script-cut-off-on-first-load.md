@@ -1,7 +1,7 @@
 # 58 · Flake: the app's script was cut off on the first load, and the page stayed empty
 
-Status: fixed on master 2026-10-16 (cadb931; nightly e2e passed for bc2393a), not released to prod yet; one question for
-the owner below
+Status: shipped 2026-10-16 to prod (cadb931, released with f39d74d, nightly e2e green first); one question for the owner
+below
 Seen 2026-10-16: the preview run of PR #72 (38939823521, head 1e45988, against `dave-pr-72`), Chromium, shard 3, passed on
 the retry: `presence.spec.ts:28` "rooms are separate: presence and text do not cross". Alice's `open()` found no composer
 in 20 s, and her console had one line: "Failed to load resource: net::ERR_CONNECTION_RESET".
