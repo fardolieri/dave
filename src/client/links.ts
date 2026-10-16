@@ -322,7 +322,9 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
       link.channel.onmessage = (e: MessageEvent) => {
         fresh();
         alive();
-        steps = steps.then(async () => { if (await step(e.data)) { clearTimeout(stall); resolve(); } }).catch((err: unknown) => { clearTimeout(stall); reject(err); });
+        // A piece written counts as a sign of life too: a slow disk may still be writing what came long after the last
+        // frame (review of the report of 2026-10-16, Grumpy Friend).
+        steps = steps.then(async () => { if (await step(e.data)) { clearTimeout(stall); resolve(); } else fresh(); }).catch((err: unknown) => { clearTimeout(stall); reject(err); });
       };
       link.channel.send(JSON.stringify(ask));
     })]);

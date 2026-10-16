@@ -142,17 +142,36 @@ export const big = {
    */
   async writer(hash: string, size: number, piece: number): Promise<{ start: number; write: (offset: number, bytes: ArrayBuffer) => Promise<void>; end: () => Promise<void>; done: () => Promise<Blob> }> {
     const dir = await big.dir();
-    // Segments from before 2026-10-17 are not gone on from: the pull starts again, once.
     const names: string[] = [];
     for await (const name of (dir as unknown as { keys(): AsyncIterable<string> }).keys()) if (name.startsWith(`${hash}.`)) names.push(name);
-    for (const name of names) await dir.removeEntry(name).catch(() => undefined);
-    const verified = names.length ? 0 : await big.verified(hash);
+    const verified = await big.verified(hash);
     const writer = fileWriter();
     let start: number;
     try {
-      const onDisk = (await writer.ask({ t: 'open', name: hash })).size ?? 0;
-      // The file may be shorter than its record says (cleared by the browser), never trusted past it.
-      start = Math.min(size, Math.floor(Math.min(verified, onDisk) / piece) * piece);
+      let onDisk = (await writer.ask({ t: 'open', name: hash })).size ?? 0;
+      // A pull stopped on the app before 2026-10-17 kept whole segments of 16 MB, `<hash>.<n>`: copied into the file, a
+      // piece at a time, so it goes on where its button says (Grumpy Friend). Nothing is fetched again that is on disk.
+      if (names.length) {
+        onDisk = 0;
+        try {
+          for (let n = 0; n * OLD_SEGMENT_BYTES < verified; n++) {
+            const segment = await (await dir.getFileHandle(oldSegmentName(hash, n))).getFile();
+            for (let at = 0; at < segment.size; at += PIECE_BYTES) {
+              const bytes = await segment.slice(at, at + PIECE_BYTES).arrayBuffer();
+              await writer.ask({ t: 'write', at: onDisk, bytes }, [bytes]);
+              onDisk += bytes.byteLength;
+            }
+          }
+        } catch (e) {
+          if (noRoom(e)) throw e;
+          // A segment missing or unreadable: what was copied before it stands.
+        }
+        for (const name of names) await dir.removeEntry(name).catch(() => undefined);
+      }
+      // The file may be shorter than its record says (cleared by the browser), never trusted past it. All of it on disk:
+      // nothing to ask for, not the last piece again.
+      const kept = Math.min(verified, onDisk);
+      start = kept >= size ? size : Math.floor(kept / piece) * piece;
       // Saved before the first byte, so a pull that writes nothing is still swept after BIG_KEEP_MS.
       await idbSet(`partial:${hash}`, { verified: start, size, at: Date.now() });
     } catch (e) {

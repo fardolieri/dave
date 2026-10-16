@@ -478,6 +478,96 @@ test('a large file cut off by a reload before 16 MB goes on from what it checked
   expect(await bob.page.evaluate(pageHash(url), url)).toBe(sha256(picture));
 });
 
+// Grumpy Friend, review of the report of 2026-10-16: each piece is flushed to disk and its progress saved before the next,
+// and a cheap phone does that slower than Wi-Fi brings the bytes. Every byte was in and still being written when the
+// wait for a sign of life, fed by arriving frames only, called the link lost (client/links.ts, `receive`).
+test('a large file that comes faster than the disk takes it is not called a dropped connection', async ({ crowd }) => {
+  test.slow();
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  const picture = heavy(png(640, 480), 20 * 1024 * 1024);
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'big.png', mimeType: 'image/png', buffer: picture });
+  const media = bob.page.locator('.chat-log .att-media');
+  await expect(media.locator('button.att-get')).toBeVisible({ timeout: 60_000 });
+  // Bob's disk takes 1.5 s a piece: some 30 s of writing after Alice's last byte, past the 20 s wait.
+  await bob.page.evaluate(() => {
+    const post = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function (this: Worker, message: unknown, transfer?: Transferable[]) {
+      const go = () => post.call(this, message, { transfer: transfer ?? [] });
+      if ((message as { t?: string })?.t === 'write') setTimeout(go, 1500); else go();
+    } as Worker['postMessage'];
+    const w = window as unknown as { failed: boolean };
+    w.failed = false;
+    new MutationObserver(() => { if (document.querySelector('.chat-log .att-media[data-status="failed"]')) w.failed = true; })
+      .observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-status'] });
+  });
+  await media.locator('button.att-get').click();
+  const shown = media.locator('img:not(.att-preview)');
+  await expect(shown).toHaveCount(1, { timeout: 120_000 });
+  expect(await bob.page.evaluate(() => (window as unknown as { failed: boolean }).failed), 'the pull never failed').toBe(false);
+  const url = (await shown.getAttribute('src'))!;
+  expect(await bob.page.evaluate(pageHash(url), url)).toBe(sha256(picture));
+});
+
+// Grumpy Friend: a pull stopped on the app before 2026-10-17 kept its first 16 MB as a segment, `<hash>.0`, and its button
+// says "Resume, 79%" after the update. It goes on from there, not from 0.
+test('a large file part pulled by the app before 2026-10-17 goes on from its segments, as its button says', async ({ crowd }) => {
+  test.slow();
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await needHooks(bob);
+  const picture = heavy(png(640, 480), 20 * 1024 * 1024);
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'big.png', mimeType: 'image/png', buffer: picture });
+  const media = bob.page.locator('.chat-log .att-media');
+  await expect(media.locator('button.att-get')).toBeVisible({ timeout: 60_000 });
+  // Alice's uplink stalls after 272 slices of 64 KB (17 MB), until let go.
+  await alice.page.evaluate(() => {
+    const read = Blob.prototype.arrayBuffer;
+    let slices = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    (window as unknown as { releasePull: () => void }).releasePull = release;
+    Blob.prototype.arrayBuffer = async function (this: Blob) {
+      if (this.size === 64 * 1024 && ++slices > 272) await gate;
+      return read.call(this);
+    };
+  });
+  await media.locator('button.att-get').click();
+  await expect(media.locator('figcaption')).toHaveText(/\b8\d% of 20 MB/, { timeout: 60_000 });
+  await media.getByRole('button', { name: 'Cancel' }).click();
+  await expect(media.locator('button.att-get')).toHaveText(/Resume/);
+  const [hash] = Object.keys(await files(bob).call<Record<string, string>>('attachments'));
+  // What the app before left instead: the first 16 MB as segment `<hash>.0`, and its record.
+  await bob.page.evaluate(async ([hash, size]) => {
+    const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('files');
+    const whole = await (await dir.getFileHandle(hash)).getFile();
+    const segment = await (await dir.getFileHandle(`${hash}.0`, { create: true })).createWritable();
+    await segment.write(await whole.slice(0, 16 * 1024 * 1024).arrayBuffer());
+    await segment.close();
+    await dir.removeEntry(hash);
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('dave'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('kv', 'readwrite');
+      tx.objectStore('kv').put({ verified: 16 * 1024 * 1024, size, at: Date.now() }, `partial:${hash}`);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  }, [hash!, picture.length] as const);
+  await bob.page.reload();
+  const kept = Math.floor((100 * 16 * 1024 * 1024) / picture.length);
+  const again = bob.page.locator('.chat-log .att-media');
+  await expect(again.locator('button.att-get')).toHaveText(new RegExp(`Resume, ${kept}% of 20 MB`), { timeout: 30_000 });
+  // Going on, with Alice's uplink still held: it starts there, not at 0, before a byte more can come.
+  await again.locator('button.att-get').click();
+  await expect(again.locator('figcaption')).toHaveText(new RegExp(`\\b${kept}% of 20 MB`), { timeout: 30_000 });
+  await alice.page.evaluate(() => (window as unknown as { releasePull: () => void }).releasePull());
+  const shown = again.locator('img:not(.att-preview)');
+  await expect(shown).toHaveCount(1, { timeout: 120_000 });
+  const url = (await shown.getAttribute('src'))!;
+  expect(await bob.page.evaluate(pageHash(url), url)).toBe(sha256(picture));
+});
+
 // Review of PR #72 (Grumpy Friend): a 4 GB video on a phone with 1 GB free. A full disk was taken for a dropped
 // connection and tried again; it says so instead, and is not tried again by itself.
 test('a browser out of room for a large file says so, and does not call it a dropped connection', async ({ crowd }) => {
