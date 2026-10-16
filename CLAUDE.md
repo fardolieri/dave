@@ -61,7 +61,8 @@ Rules:
   (for bugs no test can reach). Put any hook or helper the test needs (`src/client/hooks.ts`, `e2e/fixtures.ts`) in the
   "Regression test:" commit, so the test fails on the bug and not on a missing hook: the job calls that inconclusive.
 - **Review before the first push to master**, not after: an independent review subagent (or `/code-review`) on the diff.
-  Past reviews found real bugs every time they ran.
+  Past reviews found real bugs every time they ran. Then review the fixes again, until a round finds nothing real, at most
+  three rounds (`/ship` step 2 says how).
 - **Saved state needs a migration story.** Anything in `localStorage` or IndexedDB outlives a deploy: changing a default or a
   stored shape does not reach existing browsers by itself. Either migrate, or say plainly in the report who will not see it.
   Every stored key is listed in `src/core/storedstate.ts` with its parser and fixtures. `test/storedstate.test.ts` fails on

@@ -37,6 +37,14 @@ Then:
 - Fix real findings. Add the Grumpy Friend tests that cover something new (to `e2e/`, matching the existing style), and drop
   the ones that duplicate coverage. Say which you dropped and why.
 - If a finding is a judgment call (complexity against a rare race, say), do not decide alone: list it for the owner.
+- **Review the fixes again**, until a round finds nothing real. Fixes made after a review are new code nobody has read:
+  on 2026-10-16 the fixes from one round had real bugs the next round found, PR after PR (#68 to #71).
+  - Each further round reviews the **fix diff only** (what changed since the last review), not the whole branch.
+  - **Real** means a concrete sequence that breaks something. Nits and hypotheticals do not count, and do not start
+    another round.
+  - Stop when a round has no real findings, and after **three rounds** in any case: list what is still open for the
+    owner instead of going on.
+  - The Grumpy Friend runs in the first round only; later rounds check the fixes, not new attack ideas.
 
 ## 3. Push and let CI judge
 
@@ -62,7 +70,7 @@ Lead with the outcome. Then:
 ```
 Verified: rung 3 (nightly e2e passed for <sha>). Not verified: <phone / real device / whatever is true>.
 Preview: <the PR's preview link, if it had one>, e2e against it <passed / not run>.
-Review: <n> findings, <fixed / left for you: …>. Grumpy Friend: <n> tests added (<names>), <n> dropped as covered.
+Review: <n> rounds, <n> findings, <fixed / left for you: …>. Grumpy Friend: <n> tests added (<names>), <n> dropped as covered.
 Saved state: <none touched | migrated | not migrated: who will not see it>.
 ```
 
