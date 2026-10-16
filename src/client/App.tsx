@@ -1327,6 +1327,8 @@ function ChatLog(props: {
   let viewer: HTMLDialogElement | undefined;
   const [viewing, setViewing] = createSignal<{ url: string; name: string } | null>(null);
   const [dragging, setDragging] = createSignal(false);
+  /** Enters minus leaves: a drag over the lines enters and leaves each, and Safari gives no relatedTarget to tell them apart. */
+  let depth = 0;
   const view = (url: string, name: string) => { setViewing({ url, name }); if (viewer && !viewer.open) viewer.showModal(); };
   // A file dragged in is never left to the browser, which would open it in place of the app; sent only when it can be.
   const hasFiles = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].includes('Files');
@@ -1364,9 +1366,10 @@ function ChatLog(props: {
   createEffect(() => props.jumpToken, (t, prev) => { if (prev !== undefined && t !== prev) jump(); });
   return (
     <div class={dragging() ? 'chat dropping' : 'chat'}
+         onDragEnter={(e) => { if (hasFiles(e)) { depth++; setDragging(!!props.onFiles); } }}
          onDragOver={(e) => { if (!hasFiles(e)) return; e.preventDefault(); setDragging(!!props.onFiles); }}
-         onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false); }}
-         onDrop={(e) => { setDragging(false); if (!hasFiles(e)) return; e.preventDefault(); props.onFiles?.([...(e.dataTransfer?.files ?? [])]); }}>
+         onDragLeave={(e) => { if (hasFiles(e) && --depth <= 0) { depth = 0; setDragging(false); } }}
+         onDrop={(e) => { depth = 0; setDragging(false); if (!hasFiles(e)) return; e.preventDefault(); props.onFiles?.([...(e.dataTransfer?.files ?? [])]); }}>
       <div class="chat-log" ref={log} onScroll={onScroll}>
         <Show when={folded() > 0}>
           <button class="chat-older" onClick={() => setUnfoldedFor(props.openedAt)} title="Messages from more than 18 hours before you opened this room">
@@ -1442,7 +1445,7 @@ function FileView(props: { file: FileMeta; attachment: Attachment | undefined; h
       case 'pulling': return (
         <span class="att-state" aria-live="polite">
           {/* A bar of its own: a native progress this thin is drawn as a bare track in Chromium, its fill not seen */}
-          <span class="att-bar" role="progressbar" aria-valuemin={0} aria-valuemax={props.file.size} aria-valuenow={now.received}>
+          <span class="att-bar" role="progressbar" aria-label={`Loading ${props.file.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor((100 * now.received) / Math.max(1, props.file.size))}>
             <span style={{ width: `${(100 * now.received) / Math.max(1, props.file.size)}%` }} />
           </span>
           {Math.floor((100 * now.received) / Math.max(1, props.file.size))}% of {formatSize(props.file.size)}
