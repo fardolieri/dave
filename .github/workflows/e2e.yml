@@ -121,7 +121,7 @@ jobs:
 
   # Diagnostic branch only (ticket 57): the Room's own view of the drops, while a `diag` test runs against nightly.
   tail:
-    if: github.event_name == 'workflow_dispatch' && contains(inputs.grep, 'diag') && inputs.target == 'nightly'
+    if: github.event_name == 'workflow_dispatch' && contains(inputs.grep, 'diag') && inputs.target != 'local'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -132,8 +132,12 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: timeout 2100 pnpm exec wrangler tail dave-nightly --format json > tail.jsonl || true
+      - run: |
+          name=dave-nightly
+          case "$TARGET" in https://dave-pr-*) name=$(echo "$TARGET" | sed -E 's#https://(dave-pr-[0-9]+)\..*#\1#');; esac
+          timeout 2100 pnpm exec wrangler tail "$name" --format json > tail.jsonl || true
         env:
+          TARGET: ${{ inputs.target }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - if: always()

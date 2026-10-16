@@ -43,11 +43,38 @@ function logEnd(event: 'close' | 'error', code: number | null, state: SocketStat
 // evicted while sockets stay attached. The per-socket state machine lives in
 // the attachment (16 KB cap); this class deliberately has no fields of its own,
 // so nothing is lost when the object is evicted and re-created.
+/**
+ * Diagnostic only (ticket 57, branch diag/socket-drops): sockets accepted the standard way instead of with the
+ * hibernation API, the object kept in memory while any is open, to see whether the drops at Cloudflare follow hibernation.
+ * Attachments, the socket list and the last ping are kept in memory by `hold` below; the Room's logic is unchanged.
+ */
+const NO_HIBERNATION = true;
+
 export class Room extends DurableObject<Env> {
+  private live = new Set<WebSocket>();
+  private lastSeen = new WeakMap<WebSocket, number>();
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     // Pings are answered at the edge without waking this object (spec §4).
-    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING_FRAME, PONG_FRAME));
+    if (!NO_HIBERNATION) ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING_FRAME, PONG_FRAME));
+  }
+
+  private sockets(): WebSocket[] { return NO_HIBERNATION ? [...this.live] : this.ctx.getWebSockets(); }
+
+  /** Standard accept, with the attachment and the socket list kept here. */
+  private hold(ws: WebSocket): void {
+    let attachment: unknown = null;
+    Object.assign(ws, { serializeAttachment: (v: unknown) => { attachment = structuredClone(v); }, deserializeAttachment: () => attachment });
+    ws.accept();
+    this.live.add(ws);
+    this.lastSeen.set(ws, Date.now());
+    ws.addEventListener('message', (e) => {
+      this.lastSeen.set(ws, Date.now());
+      if (e.data === PING_FRAME) { try { ws.send(PONG_FRAME); } catch { /* gone */ } return; }
+      void this.webSocketMessage(ws, e.data as string | ArrayBuffer);
+    });
+    ws.addEventListener('close', (e) => { void this.webSocketClose(ws, e.code, e.reason).finally(() => this.live.delete(ws)); });
+    ws.addEventListener('error', () => { void this.webSocketError(ws); });
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -56,7 +83,8 @@ export class Room extends DurableObject<Env> {
     }
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
-    this.ctx.acceptWebSocket(server);
+    if (NO_HIBERNATION) this.hold(server);
+    else this.ctx.acceptWebSocket(server);
     const authKey = await this.ctx.storage.get<string>(AUTH_KEY);
     await this.apply(server, openSocket(Date.now(), authKey === undefined));
     await this.scheduleSweep(CHALLENGE_TIMEOUT_MS);
@@ -65,7 +93,7 @@ export class Room extends DurableObject<Env> {
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const state = ws.deserializeAttachment() as SocketState;
-    const others = this.ctx.getWebSockets().filter((s) => s !== ws).map((s) => s.deserializeAttachment() as SocketState | null);
+    const others = this.sockets().filter((s) => s !== ws).map((s) => s.deserializeAttachment() as SocketState | null);
     // The verifier is only needed to check an answer; attached sockets never touch storage.
     const authKey = state.stage === 'challenge' ? (await this.ctx.storage.get<string>(AUTH_KEY)) ?? null : null;
     const outcome = await onMessage(state, message, {
@@ -83,7 +111,7 @@ export class Room extends DurableObject<Env> {
     const state = ws.deserializeAttachment() as SocketState | null;
     logEnd('close', code, state);
     if (state?.stage === 'attached') this.letGo(ws, state); // before the close, while the attachment is surely writable
-    ws.close(valid ? code : 1000, reason);
+    try { ws.close(valid ? code : 1000, reason); } catch { /* closed already */ }
     if (state?.stage !== 'attached') return; // never in presence (a challenge), or out of it since it was told to close
     this.broadcastPresence(ws);
   }
@@ -111,7 +139,7 @@ export class Room extends DurableObject<Env> {
     let dropped = false;
     let attachedLeft = 0;
     let challengesLeft = 0;
-    for (const ws of this.ctx.getWebSockets()) {
+    for (const ws of this.sockets()) {
       const state = ws.deserializeAttachment() as SocketState | null;
       if (!state) continue;
       if (state.stage === 'challenge') {
@@ -120,7 +148,7 @@ export class Room extends DurableObject<Env> {
         continue;
       }
       if (state.stage === 'closing') { try { ws.close(CLOSE_SILENT, 'still closing'); } catch { /* handshake under way */ } continue; }
-      const lastPing = this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? state.attachedAt;
+      const lastPing = NO_HIBERNATION ? (this.lastSeen.get(ws) ?? state.attachedAt) : (this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? state.attachedAt);
       if (now - lastPing >= SILENT_TIMEOUT_MS) {
         this.letGo(ws, state); // out of presence now, whenever the runtime lets go
         ws.close(CLOSE_SILENT, 'no sign of life');
@@ -177,7 +205,7 @@ export class Room extends DurableObject<Env> {
    */
   private supersede(keeper: WebSocket, publicKey: string): WebSocket[] {
     const gone: WebSocket[] = [];
-    for (const s of this.ctx.getWebSockets()) {
+    for (const s of this.sockets()) {
       if (s === keeper) continue;
       const state = s.deserializeAttachment() as SocketState | null;
       if (state?.stage !== 'attached' || state.person.publicKey !== publicKey) continue;
@@ -215,7 +243,7 @@ export class Room extends DurableObject<Env> {
 
   /** The presence snapshot as computed right now from attachments alone. Public so tests can compare a fresh instance's view. */
   currentPresence(...leaving: WebSocket[]): ServerMessage {
-    const sockets = this.ctx.getWebSockets().filter((s) => !leaving.includes(s));
+    const sockets = this.sockets().filter((s) => !leaving.includes(s));
     return presenceSnapshot(sockets.map((s) => s.deserializeAttachment() as SocketState | null));
   }
 
@@ -226,12 +254,12 @@ export class Room extends DurableObject<Env> {
 
   private fanOut(m: ServerMessage, exclude: WebSocket[] = []): void {
     const frame = JSON.stringify(m);
-    for (const s of this.ctx.getWebSockets()) if (!exclude.includes(s) && this.personOf(s)) this.trySend(s, frame);
+    for (const s of this.sockets()) if (!exclude.includes(s) && this.personOf(s)) this.trySend(s, frame);
   }
 
   private deliver(publicKey: string, m: ServerMessage): void {
     const frame = JSON.stringify(m);
-    for (const s of this.ctx.getWebSockets()) if (this.personOf(s)?.publicKey === publicKey) this.trySend(s, frame);
+    for (const s of this.sockets()) if (this.personOf(s)?.publicKey === publicKey) this.trySend(s, frame);
   }
 
   private personOf(ws: WebSocket): Person | null {
