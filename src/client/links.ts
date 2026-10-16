@@ -125,7 +125,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
   }
 
   /** Why a link was closed, for `file_link_failed`. */
-  type CloseReason = 'failed' | 'closed' | 'refused' | 'evicted' | 'timeout' | 'idle' | 'cancelled' | 'pulled' | 'disposed' | 'error' | 'busy';
+  type CloseReason = 'failed' | 'closed' | 'refused' | 'evicted' | 'timeout' | 'idle' | 'cancelled' | 'pulled' | 'disposed' | 'error' | 'busy' | 'unsent';
   function close(link: Link, reason: CloseReason): void {
     if (links.get(keyOf(link.peer, link.id)) !== link) return;
     links.delete(keyOf(link.peer, link.id));
@@ -144,15 +144,20 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
     link.pc.close();
   }
 
-  async function describe(link: Link, description: RTCSessionDescription | null): Promise<void> {
-    if (!description) return;
+  /**
+   * Sends my description, then the candidates held for it. False when it could not go out: no socket let in (one the
+   * network cut a moment ago, ticket 57). Nothing would ever answer it, so the caller ends the link at once.
+   */
+  async function describe(link: Link, description: RTCSessionDescription | null): Promise<boolean> {
+    if (!description) return false;
     const sig = await signDescription({ privateKey: opts.identity.keys.privateKey, from: me, to: link.peer, sdp: description.sdp });
-    opts.send({ t: 'link', to: link.peer, data: { link: link.id, description: description.toJSON(), ...(sig ? { sig } : {}) } });
+    if (!opts.send({ t: 'link', to: link.peer, data: { link: link.id, description: description.toJSON(), ...(sig ? { sig } : {}) } })) return false;
     const held = link.held ?? [];
     link.held = null;
     for (let i = 0; i < held.length; i += MAX_CANDIDATES_PER_MESSAGE) {
       opts.send({ t: 'link', to: link.peer, data: { link: link.id, candidates: held.slice(i, i + MAX_CANDIDATES_PER_MESSAGE) } });
     }
+    return true;
   }
 
   async function remote(link: Link, description: RTCSessionDescriptionInit): Promise<void> {
@@ -206,7 +211,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
         setTimeout(() => { if (!served.opened) close(served, 'timeout'); }, CONNECT_TIMEOUT_MS + 2000);
         await remote(link, description);
         await unlessClosed(link.latch.closed, link.pc.setLocalDescription());
-        await describe(link, link.pc.localDescription);
+        if (!(await describe(link, link.pc.localDescription))) close(link, 'unsent');
       } else if (description.type === 'answer' && link && !link.remoteSet) {
         await remote(link, description);
       }
@@ -279,7 +284,9 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
     const gone = (reason: PullError) => link.latch.closed.then((): never => { throw new PullFailed(link.atLimit ? 'busy' : reason); });
     try {
       await link.pc.setLocalDescription();
-      await describe(link, link.pc.localDescription);
+      // An offer that did not go out is never answered: the pull ends now, not after its connect timeout, and is tried
+      // again (client/room.ts). The ask came in the second a socket the network cut was being replaced (ticket 57).
+      if (!(await describe(link, link.pc.localDescription))) throw new PullFailed('lost');
       await Promise.race([gone('unreachable'), new Promise<void>((resolve, reject) => {
         if (link.channel.readyState === 'open') { resolve(); return; }
         const timer = setTimeout(() => reject(new PullFailed('unreachable')), CONNECT_TIMEOUT_MS);
