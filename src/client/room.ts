@@ -2,7 +2,7 @@ import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 import posthog, { onConsentChange, telemetryOn } from './posthog';
 import { buildAuthMessage } from '../core/identity';
 import { openFile, openText, sealFile, sealText } from '../core/sealed';
-import { MAX_FILE_BYTES, MAX_FILE_NAME, formatSize, inlineKind, pullsByItself, type FileMeta } from '../core/attachment';
+import { MAX_FILE_BYTES, MAX_FILE_NAME, PULLS_AT_ONCE, formatSize, inlineKind, pullsByItself, type FileMeta } from '../core/attachment';
 import { createLinks, PullFailed, type PullError } from './links';
 import { hashOf, holdSent, keepFile, keptFile, makePreview } from './files';
 import {
@@ -46,8 +46,6 @@ export type Attachment =
   | { status: 'pulling'; received: number }
   | { status: 'ready'; url: string }
   | { status: 'failed'; reason: PullError };
-/** Pulls running at once per room; the rest queue. */
-const PULLS_AT_ONCE = 2;
 /** Attachments in the history from this recent are pulled by themselves, like new ones, when this browser lacks them. */
 const PULL_HISTORY_MS = 7 * 24 * 3600 * 1000;
 

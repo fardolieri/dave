@@ -19,6 +19,11 @@ export type FileMeta = {
 
 /** The most a file may weigh for now: it is read, hashed and kept whole (ticket 03 lifts this). */
 export const MAX_FILE_BYTES = 100 * 1024 * 1024;
+/**
+ * Pulls a browser runs at once per room, from anyone. A holder keeps as many links per friend (client/links.ts), so a
+ * further ask from a friend means the oldest of their links is one they gave up, its goodbye lost.
+ */
+export const PULLS_AT_ONCE = 2;
 /** Pictures and videos up to this size are pulled as they arrive; anything else waits for a click. */
 export const AUTO_PULL_BYTES = 16 * 1024 * 1024;
 /** What this browser keeps of files, its own and its friends'; the oldest go first. */

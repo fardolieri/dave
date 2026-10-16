@@ -7,7 +7,7 @@ import { signDescription, verifyDescription } from '../core/dtls';
 import { CLOSED, closeLatch, keyedChain, unlessClosed } from '../core/signalchain';
 import { STUN_ONLY } from '../core/turn';
 import { LINK_ICE_TTL_SECONDS } from '../core/mesh';
-import { parsePullFrame, type PullFrame } from '../core/attachment';
+import { PULLS_AT_ONCE, parsePullFrame, type PullFrame } from '../core/attachment';
 import { MAX_CANDIDATES_PER_MESSAGE, type ClientMessage, type IceServer, type LinkData, type ServerMessage } from '../core/protocol';
 import type { LocalIdentity } from './identity';
 import { hashOf, keptFile } from './files';
@@ -20,7 +20,7 @@ const STALL_TIMEOUT_MS = 20_000;
 const IDLE_MS = 60_000;
 /** Links a holder keeps open at once, from all friends and from any one friend; an offer past either is not answered. */
 const MAX_SERVING = 8;
-const MAX_SERVING_PER_FRIEND = 2;
+const MAX_SERVING_PER_FRIEND = PULLS_AT_ONCE;
 /** The largest chunk sent; both browsers take this, and the link's own limit lowers it if it says less. */
 const CHUNK_BYTES = 64 * 1024;
 /** The sender waits while more than this is queued on the channel, until it drains to a quarter of it. */
@@ -51,10 +51,14 @@ type Link = {
   local: Set<string>;
   remote: Set<string>;
   turn: boolean;
+  createdAt: number;
+  /** When it last moved: made, asked, or a chunk handed to the channel. A dead link stops once its buffer is full. */
+  lastActive: number;
   busy: boolean;
   idle?: ReturnType<typeof setTimeout>;
 };
 
+const CANDIDATE_TYPES = new Set(['host', 'srflx', 'prflx', 'relay']);
 /** The type an ICE candidate line names (`typ host`, `typ relay`, …). */
 const candidateType = (line: string): string => /\btyp (\w+)/.exec(line)?.[1] ?? 'unknown';
 
@@ -103,7 +107,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
     channel.binaryType = 'arraybuffer';
     const link: Link = {
       peer, id, pc, channel, latch: closeLatch(), early: [], remoteSet: false, held: [], serving: false, busy: false, opened: false,
-      local: new Set(), remote: new Set(), turn: servers.some((s) => [s.urls].flat().some((u) => String(u).startsWith('turn'))),
+      local: new Set(), remote: new Set(), turn: servers.some((s) => [s.urls].flat().some((u) => String(u).startsWith('turn'))), createdAt: Date.now(), lastActive: Date.now(),
     };
     links.set(keyOf(peer, id), link);
     channel.addEventListener('open', () => { link.opened = true; });
@@ -113,19 +117,21 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
       if (link.held) link.held.push(e.candidate.toJSON());
       else opts.send({ t: 'link', to: peer, data: { link: id, candidates: [e.candidate.toJSON()] } });
     };
-    pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') close(link); };
-    channel.onclose = () => close(link);
+    pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') close(link, 'failed'); };
+    channel.onclose = () => close(link, 'closed');
     return link;
   }
 
-  function close(link: Link): void {
+  /** Why a link was closed, for `file_link_failed`. */
+  type CloseReason = 'failed' | 'closed' | 'refused' | 'evicted' | 'timeout' | 'idle' | 'cancelled' | 'pulled' | 'disposed' | 'error';
+  function close(link: Link, reason: CloseReason): void {
     if (links.get(keyOf(link.peer, link.id)) !== link) return;
     links.delete(keyOf(link.peer, link.id));
     // Why a link never came up, from either side: no answer, no route both sides could reach, no relay offered.
     if (!link.opened) {
       const { pc } = link;
       posthog.capture('file_link_failed', {
-        side: link.serving ? 'holder' : 'puller', answered: link.remoteSet, connection: pc.connectionState, ice: pc.iceConnectionState,
+        side: link.serving ? 'holder' : 'puller', reason, answered: link.remoteSet, connection: pc.connectionState, ice: pc.iceConnectionState,
         gathering: pc.iceGatheringState, signaling: pc.signalingState, local: [...link.local].sort(), remote: [...link.remote].sort(), turn: link.turn,
       });
     }
@@ -163,16 +169,18 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
         // Only a server in the middle, or an app that cheats, sends one.
         console.warn(`file link refused: ${verdict}`);
         posthog.capture('link_refused', { verdict });
-        if (link) close(link);
+        if (link) close(link, 'refused');
         return;
       }
       if (description.type === 'offer') {
         if (link) return;
-        // A friend's links that never came up are pulls they gave up: a new ask from them takes their place, oldest first.
-        // Before, they held the friend's places for a minute, and every "Try again" in it went unanswered (report of
-        // 2026-10-16).
-        const mine = () => [...links.values()].filter((l) => l.serving && l.peer === from);
-        for (const stale of mine().filter((l) => !l.opened)) if (mine().length + starting.filter((p) => p === from).length >= MAX_SERVING_PER_FRIEND) close(stale);
+        // A friend runs PULLS_AT_ONCE pulls at most: an ask from one who holds that many links here means one of
+        // them is a pull they gave up, whether it ever came up or not (a pull that never connected; a tab killed mid-pull,
+        // whose goodbye never came). It gives way. Before, such links held the friend's places for a minute, and every
+        // "Try again" in it went unanswered (report of 2026-10-16).
+        // Of their links, the one quiet longest goes: a pull they cancelled stalls, one still running keeps sending.
+        const mine = () => [...links.values()].filter((l) => l.serving && l.peer === from).sort((a, b) => a.lastActive - b.lastActive);
+        while (mine().length >= MAX_SERVING_PER_FRIEND) close(mine()[0]!, 'evicted');
         // Counted with the offers still waiting for ICE servers: offers from different friends run on chains of their own.
         const serving = [...[...links.values()].filter((l) => l.serving).map((l) => l.peer), ...starting];
         if (serving.length >= MAX_SERVING || serving.filter((p) => p === from).length >= MAX_SERVING_PER_FRIEND) return;
@@ -182,10 +190,10 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
         link = open(from, data.link, servers);
         link.serving = true;
         const served = link;
-        link.channel.onmessage = (e) => { void serve(served, e).catch((err: unknown) => { console.error('serving a file failed', err); close(served); }); };
+        link.channel.onmessage = (e) => { void serve(served, e).catch((err: unknown) => { console.error('serving a file failed', err); close(served, 'error'); }); };
         idle(link);
         // The puller gives up after CONNECT_TIMEOUT_MS; a link not up by then is closed here too.
-        setTimeout(() => { if (!served.opened) close(served); }, CONNECT_TIMEOUT_MS + 2000);
+        setTimeout(() => { if (!served.opened) close(served, 'timeout'); }, CONNECT_TIMEOUT_MS + 2000);
         await remote(link, description);
         await unlessClosed(link.latch.closed, link.pc.setLocalDescription());
         await describe(link, link.pc.localDescription);
@@ -195,7 +203,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
     }
     if (link && data.candidates) {
       for (const c of data.candidates as RTCIceCandidateInit[]) {
-        if (typeof c?.candidate === 'string') link.remote.add(candidateType(c.candidate));
+        if (typeof c?.candidate === 'string') { const type = candidateType(c.candidate); if (CANDIDATE_TYPES.has(type)) link.remote.add(type); }
         if (link.remoteSet) await unlessClosed(link.latch.closed, link.pc.addIceCandidate(c)).catch(() => undefined);
         else link.early.push(c);
       }
@@ -205,7 +213,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
   /** The holder's link closes after a while with nothing asked of it. */
   function idle(link: Link): void {
     clearTimeout(link.idle);
-    link.idle = setTimeout(() => close(link), IDLE_MS);
+    link.idle = setTimeout(() => close(link, 'idle'), IDLE_MS);
   }
 
   /**
@@ -214,6 +222,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
    */
   async function serve(link: Link, e: MessageEvent): Promise<void> {
     const frame = parsePullFrame(e.data);
+    link.lastActive = Date.now();
     if (frame?.t !== 'get' || link.busy) return;
     const channel = link.channel;
     const say = (f: PullFrame) => { if (channel.readyState === 'open') channel.send(JSON.stringify(f)); };
@@ -234,7 +243,11 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
           await Promise.race([new Promise<void>((resolve) => { channel.addEventListener('bufferedamountlow', () => resolve(), { once: true }); }), link.latch.closed]);
           if (channel.readyState !== 'open') return;
         }
-        channel.send(at === frame.offset ? first : await blob.slice(at, at + chunk).arrayBuffer());
+        const bytes = at === frame.offset ? first : await blob.slice(at, at + chunk).arrayBuffer();
+        // Closed while the chunk was read (given up, replaced, the room left): the pull ends here, as the loop does above.
+        if (channel.readyState !== 'open') return;
+        channel.send(bytes);
+        link.lastActive = Date.now();
       }
     } finally {
       link.busy = false;
@@ -250,7 +263,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
     const servers = await iceServers();
     if (signal.aborted) throw new PullFailed('lost');
     const link = open(from, randomId(), servers);
-    signal.addEventListener('abort', () => close(link), { once: true });
+    signal.addEventListener('abort', () => close(link, 'cancelled'), { once: true });
     // The link closed under the pull (the friend left, the connection failed, the room went): no event says so.
     const gone = (reason: PullError) => link.latch.closed.then((): never => { throw new PullFailed(reason); });
     try {
@@ -290,7 +303,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
       if (blob.size !== size || (await hashOf(blob)) !== hash) throw new PullFailed('damaged');
       return blob;
     } finally {
-      close(link);
+      close(link, 'pulled');
     }
   }
 
@@ -301,6 +314,6 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
       if (m.t === 'link') void chain(m.from, () => onLink(m.from, m.data));
       else if (m.t === 'linkice') iceWaiters.get(m.id)?.(m.iceServers);
     },
-    close(): void { for (const l of [...links.values()]) close(l); },
+    close(): void { for (const l of [...links.values()]) close(l, 'disposed'); },
   };
 }
