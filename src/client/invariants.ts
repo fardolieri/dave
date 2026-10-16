@@ -63,9 +63,18 @@ export function createInvariantWatchdog(read: () => CallFacts | null, describe: 
 export function createFileWatchdog(read: () => RoomFacts) {
   const watch = createInvariantWatch();
   const fired: InvariantReport[] = [];
+  /**
+   * When the tab last came back from being hidden or asleep. Quiet is counted from then at the earliest: a locked phone
+   * ran neither the pull's own timers nor this, and on waking the pull still has its own time to end.
+   */
+  let resumedAt = 0;
+  let lastTick: number | null = null;
   const tick = () => {
-    if (document.visibilityState === 'hidden') return;
-    const now = read();
+    if (document.visibilityState === 'hidden') { lastTick = null; return; }
+    const read_ = read();
+    if (lastTick === null || read_.at - lastTick > 3 * INVARIANT_EVERY_MS) resumedAt = read_.at;
+    lastTick = read_.at;
+    const now: RoomFacts = { ...read_, files: read_.files.map((f) => (f.movedAt === null ? f : { ...f, movedAt: Math.max(f.movedAt, resumedAt) })) };
     for (const v of watch.feed(now.at, fileBreaches(now))) {
       const f = now.files.find((x) => x.key === v.key);
       const file = f && { status: f.status, running: f.running, active: f.active, quietMs: f.movedAt === null ? null : now.at - f.movedAt, holderOnline: f.holderOnline };

@@ -257,9 +257,10 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
 
   /**
    * Puller side: the file of this hash from this friend, checked against the hash. Rejects with PullFailed. `progress`
-   * hears the bytes received so far. Aborting `signal` closes the link, which ends the pull.
+   * hears the bytes received so far, `alive` every sign of life (the channel open, any frame). Aborting `signal` closes
+   * the link, which ends the pull.
    */
-  async function pull(from: string, hash: string, size: number, progress: (received: number) => void, signal: AbortSignal): Promise<Blob> {
+  async function pull(from: string, hash: string, size: number, progress: (received: number) => void, signal: AbortSignal, alive: () => void = () => {}): Promise<Blob> {
     const servers = await iceServers();
     if (signal.aborted) throw new PullFailed('lost');
     const link = open(from, randomId(), servers);
@@ -272,7 +273,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
       await Promise.race([gone('unreachable'), new Promise<void>((resolve, reject) => {
         if (link.channel.readyState === 'open') { resolve(); return; }
         const timer = setTimeout(() => reject(new PullFailed('unreachable')), CONNECT_TIMEOUT_MS);
-        link.channel.onopen = () => { clearTimeout(timer); resolve(); };
+        link.channel.onopen = () => { clearTimeout(timer); alive(); resolve(); };
         link.channel.onclose = () => { clearTimeout(timer); reject(new PullFailed('unreachable')); };
       })]);
       const chunks: ArrayBuffer[] = [];
@@ -283,6 +284,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
         let announced = false;
         link.channel.onclose = () => { clearTimeout(stall); reject(new PullFailed('lost')); };
         link.channel.onmessage = (e: MessageEvent) => {
+          alive();
           alive();
           if (typeof e.data === 'string') {
             const frame = parsePullFrame(e.data);

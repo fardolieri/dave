@@ -151,8 +151,9 @@ export type FileFacts = {
 export type RoomFacts = { at: number; files: FileFacts[] };
 
 /**
- * A running pull gives up after at most the ICE servers' wait (5 s) and its connect timeout (20 s), or a stall of 20 s
- * (client/links.ts). Quiet for longer, it should have ended.
+ * How long a running pull may be quiet: until its channel opens, the ICE servers' wait (5 s) and its connect timeout
+ * (20 s) add up to 25 s; after, any frame within its stall timeout (20 s). The room counts the channel opening and every
+ * frame as a sign of life (client/room.ts, `moved`). Quiet for longer, the pull should have ended.
  */
 export const PULL_QUIET_MS = 30_000;
 

@@ -165,6 +165,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   let callOn: number | null = null;
   const inCall = (): boolean => welcomed !== null && callOn === welcomes;
   let stopped = false;
+  /**
+   * The room is gone (left, the app closed). `stopped` is also true for a tab another took the room from, whose pulls go
+   * on and must still say how they ended: what shows when it takes the room back.
+   */
+  let disposed = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let pingTimer: ReturnType<typeof setInterval> | undefined;
   let unavailableTimer: ReturnType<typeof setTimeout> | undefined;
@@ -295,8 +300,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     else if (byItself && pullsByItself(file)) want(file.hash);
   }
 
+  /** Files a test set a status of on purpose (the `pretend` hook): left as they are. */
+  const pretended = new Set<string>();
   /** Asks for a file's bytes: pulled when its holder is online and a pull is free, else it waits. */
   function want(hash: string): void {
+    if (pretended.has(hash)) return;
     const holder = holders.get(hash);
     const now = attachmentNow.get(hash);
     if (!holder || now?.status === 'ready' || now?.status === 'pulling' || queue.includes(hash)) return;
@@ -319,34 +327,43 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       const abort = new AbortController();
       aborts.set(hash, abort);
       movedAt.set(hash, Date.now());
-      void links.pull(from, hash, file.size, (received) => { movedAt.set(hash, Date.now()); if (!stopped && !abort.signal.aborted) setAttachment(hash, { status: 'pulling', received }); }, abort.signal)
+      // A pull cancelled and asked again before it ended runs beside the new one: only the pull still in `aborts` is the
+      // file's, and only it may touch what the file shows and its bookkeeping (review of PR #69).
+      const current = () => aborts.get(hash) === abort;
+      const moved = () => { if (current()) movedAt.set(hash, Date.now()); };
+      void links.pull(from, hash, file.size, (received) => { moved(); if (!disposed && current() && !abort.signal.aborted) setAttachment(hash, { status: 'pulling', received }); }, abort.signal, moved)
         .then(async (blob) => {
-          saving.add(hash); // a large file takes a while to write on a slow phone: not a pull gone quiet
+          if (current()) saving.add(hash); // a large file takes a while to write on a slow phone: not a pull gone quiet
           posthog.capture('file_pulled', { bytes: file.size, ms: Date.now() - started, inline: inlineKind(file.type) ?? 'none' });
           // Shown from the store's copy, which is on disk: the pulled one is in memory, as large as the file.
           await keepFile(hash, blob);
           const kept = await keptFile(hash);
-          if (!stopped) show(file, kept ?? blob);
+          if (!disposed) show(file, kept ?? blob);
         })
         .catch((e: unknown) => {
           // Cancelled: back to waiting for a click, and not pulled by itself again.
-          if (abort.signal.aborted) { posthog.capture('file_pull_cancelled', { bytes: file.size }); if (!stopped) setAttachment(hash, { status: 'idle' }); return; }
+          if (abort.signal.aborted) { posthog.capture('file_pull_cancelled', { bytes: file.size }); if (!disposed && current()) setAttachment(hash, { status: 'idle' }); return; }
           const reason = e instanceof PullFailed ? e.reason : 'lost';
           posthog.capture('file_pull_failed', { reason, bytes: file.size });
           if (!(e instanceof PullFailed)) console.error('pulling a file failed', e);
-          if (stopped) return;
+          if (disposed || !current()) return;
           // The friend left under it: it waits for them, and goes on by itself when they are back.
           if (!reachable(hash).length) setAttachment(hash, { status: 'waiting' });
           else setAttachment(hash, { status: 'failed', reason });
         })
-        .finally(() => { aborts.delete(hash); movedAt.delete(hash); saving.delete(hash); pulling--; nextPull(); });
+        .finally(() => {
+          if (current()) { aborts.delete(hash); movedAt.delete(hash); saving.delete(hash); }
+          pulling--;
+          nextPull();
+        });
     }
   }
 
   // What the chat shows of each attachment against what the pulls have (attachments ticket 04, core/invariants.ts).
+  // A tab another took the room from is not in charge of it: its view is not judged until it takes the room back.
   const watchdog = createFileWatchdog(() => ({
     at: Date.now(),
-    files: [...attachmentNow].map(([hash, a], i) => ({
+    files: stopped ? [] : [...attachmentNow].map(([hash, a], i) => ({
       key: String(i), status: a.status, running: aborts.has(hash) || queue.includes(hash), active: aborts.has(hash) && !saving.has(hash),
       movedAt: movedAt.get(hash) ?? null, holderOnline: reachable(hash).length > 0,
     })),
@@ -360,7 +377,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       [opts.roomId]: {
         invariants: () => watchdog.violations(),
         attachments: () => Object.fromEntries([...attachmentNow].map(([h, a]) => [h, a.status])),
-        pretend: (hash: string, status: 'pulling' | 'waiting') => { setAttachment(hash, status === 'pulling' ? { status, received: 0 } : { status }); },
+        // Held there: nothing pulls it meanwhile, as a presence update would for a file pretended to wait.
+        pretend: (hash: string, status: 'pulling' | 'waiting') => { pretended.add(hash); setAttachment(hash, status === 'pulling' ? { status, received: 0 } : { status }); },
       },
     };
   }
@@ -579,7 +597,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   onCleanup(() => {
     offConsent();
     stopped = true;
+    disposed = true;
     watchdog.stop();
+    delete (window as unknown as { __daveFiles?: Record<string, unknown> }).__daveFiles?.[opts.roomId];
     links.close();
     for (const url of urls) URL.revokeObjectURL(url);
     clearTimeout(reconnectTimer);
@@ -697,6 +717,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       unconfirmed.push(...loadUnsent(opts.roomId));
       unconfirmedChanged(false);
       stopped = false; attempt = 0; downSince = null; setStatus({ kind: 'connecting' }); open();
+      nextPull(); // pulls queued while another tab had the room
     },
     /** Fires for texts from other people (for the message cue). */
     onText: (l: (m: Text) => void) => { textListeners.add(l); return () => textListeners.delete(l); },
