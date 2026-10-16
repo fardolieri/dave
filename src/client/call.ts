@@ -25,6 +25,7 @@ import type { createRoom } from './room';
 import { cueContext, tryUnlockSound } from './sound';
 import { restartOnFailure, type ContextStarter } from './audiofailure';
 import { local, type LocalValue } from './storage';
+import { holding } from './update';
 import { canRemoveNoise, createVoiceProcessor, type VoiceLevel, type VoiceLoad, type VoiceProcessor } from './voice';
 import { createVoiceGuard, sendRatePct, type ClockSample, type GuardFault } from '../core/voiceclock';
 
@@ -214,8 +215,15 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     local.set(REJOIN_KEY, JSON.stringify(m));
   };
   let heartbeat: ReturnType<typeof setInterval> | undefined;
-  /** Written at every heartbeat and on pagehide: Android kills a background app without any page event. */
-  const onPageHide = () => { if (joined) writeRejoinMarker(); };
+  /**
+   * Written at every heartbeat and on pagehide: Android kills a background app without any page event. A page held for
+   * an opening update (update.ts) never joins, and its reload can come after the marker it read had run out: its Rejoin
+   * is passed on fresh, so the next page still makes it (report of 2026-10-16).
+   */
+  const onPageHide = () => {
+    if (joined) writeRejoinMarker();
+    else if (pendingRejoin && holding()) local.set(REJOIN_KEY, JSON.stringify({ ...pendingRejoin, at: Date.now() }));
+  };
   window.addEventListener('pagehide', onPageHide);
   /** Read at load: another tab superseding this one clears the marker, so a later read could miss it. A tab that waited
    * behind another open tab is not a reload and never rejoins (ticket 25): that tab may have just left the call by closing. */

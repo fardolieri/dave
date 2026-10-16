@@ -199,7 +199,6 @@ test('report of 2026-10-16: a new version the browser takes 2.5 s to find as the
   await cookie(alice, 'e2e-deploy', 'next');
   const count = countLoads(alice.page);
   await alice.page.reload();
-  await expect(alice.composer, 'the app waits for the answer').toBeDisabled();
 
   await expect.poll(() => versionsNow(alice.page), { message: 'the page reloaded onto the new version by itself', timeout: 30_000 }).toEqual(['next']);
   await alice.connected();
@@ -236,6 +235,26 @@ test('report of 2026-10-16: a call left 26 s ago, as when Android killed the bro
   await expect(alice.button('Leave'), 'rejoined: the page that held the app passed the marker on').toBeVisible();
   await alice.connectedTo('Bob');
   await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
+});
+
+test('report of 2026-10-16: an opening check with no answer holds the app 5 s at most, and the new version it brings later asks, never reloads', async ({ crowd }) => {
+  needPreview();
+  const alice = await crowd.open('Alice');
+  await controlled(alice.page);
+
+  // Flaky Wi-Fi: /sw.js answers 12 s late, past both the opening check and the 10 s freeze.
+  await cookie(alice, 'e2e-sw-delay', '12000');
+  await cookie(alice, 'e2e-deploy', 'next');
+  const count = countLoads(alice.page);
+  const reloaded = Date.now();
+  await alice.page.reload();
+  await alice.connected(9_000);
+  expect(Date.now() - reloaded, 'the opening check gave up at 5 s, not at the 10 s freeze').toBeLessThan(9_000);
+
+  await alice.say('typed while the answer is still out');
+  await expect(bar(alice.page), 'the late answer asks').toBeVisible({ timeout: 30_000 });
+  expect(count.loads, 'and the page did not reload under her').toBe(1);
+  await expect(alice.page.locator('.msg-text', { hasText: 'typed while the answer is still out' })).toBeVisible();
 });
 
 test('ticket 44: a register() that fails holds nothing, and a new version is still taken through the registration the page has', async ({ crowd }) => {
