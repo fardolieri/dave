@@ -264,8 +264,9 @@ test('ticket 36: a download past 10 s unfreezes the app on the version it has, t
   const alice = await crowd.open('Alice');
   await controlled(alice.page);
 
-  // RNNoise at 350 kB/s takes about 16 s.
-  await stageBigDeploy(alice, 350_000);
+  // RNNoise at 200 kB/s takes about 28 s: past the 10 s unfreeze and the connect after it with room to spare. At
+  // 350 kB/s (16 s) a slow runner's connect left the download done before the line was looked for (PR #72, 2026-10-16).
+  await stageBigDeploy(alice, 200_000);
   const count = countLoads(alice.page);
   const reloaded = Date.now();
   await alice.page.reload();

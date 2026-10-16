@@ -25,8 +25,10 @@ bytes from anyone are checked against it before they show.
 - The original goes as it is, metadata included (owner, 2026-10-15): a photo's location and camera reach every friend
   who pulls it. Only the preview is made by the sender, downscaled to 160 px and re-encoded.
 - Pictures and videos up to 16 MB are pulled by themselves when they arrive, and a pull can be cancelled while it runs,
-  for a slow line or a phone on mobile data (owner, 2026-10-16); anything else waits for a click. A file up to 100 MB can be sent for now: it is read, hashed and stored whole. Larger files stream to disk in a
-  later ticket.
+  for a slow line or a phone on mobile data (owner, 2026-10-16); anything else waits for a click. Files over 16 MB go in pieces of 1 MB (ticket 03): the announced
+  hash is that of the list of piece hashes, a puller fetches the list first and checks each piece as it comes, writes it
+  to the Origin Private File System, and goes on from the last good piece after a stop. Such files are kept outside the
+  budget for three days; the sender serves them from the file picked, never copied.
 - Files live in this browser's IndexedDB, by hash, within a budget of 300 MB; the oldest go first, and come back from
   any friend who still has them. Sent files are kept too, so a sender who reloads can still serve them.
 - Only pictures and videos of a short list of types show inline, from a blob of that type. Anything else, SVG and HTML

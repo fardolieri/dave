@@ -388,3 +388,65 @@ test('a file comes from a friend who pulled it once its sender is gone, past one
   expect(offersTo(bobKey), 'Bob gave it').toBeGreaterThanOrEqual(1);
   expect(offersTo(daveKey), 'Dave, who said it is not there, was not asked again').toBe(asked);
 });
+
+// Attachments ticket 03: a large file comes in pieces, each checked and written to disk as it comes, and a pull that
+// stopped goes on from the last complete segment (16 MB) instead of from the start.
+test('a large file stopped past its first segment goes on from there, and arrives whole', async ({ crowd }) => {
+  test.slow();
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  const picture = heavy(png(640, 480), 20 * 1024 * 1024); // over 16 MB: in pieces, and pulled on a click
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'big.png', mimeType: 'image/png', buffer: picture });
+  const media = bob.page.locator('.chat-log .att-media');
+  await expect(media.locator('button.att-get')).toBeVisible({ timeout: 60_000 });
+  // Once it is announced, Alice's uplink stalls after 272 slices of 64 KB (17 MB, past the first segment), until let go.
+  await alice.page.evaluate(() => {
+    const read = Blob.prototype.arrayBuffer;
+    let slices = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    (window as unknown as { releasePull: () => void }).releasePull = release;
+    Blob.prototype.arrayBuffer = async function (this: Blob) {
+      if (this.size === 64 * 1024 && ++slices > 272) await gate;
+      return read.call(this);
+    };
+  });
+  await media.locator('button.att-get').click();
+  await expect(media.locator('figcaption')).toHaveText(/\b8\d% of 20 MB/, { timeout: 60_000 });
+  // Bob stops it: the complete segment is kept (16 MB of a little over 20), and the button says so.
+  const kept = Math.floor((100 * 16 * 1024 * 1024) / picture.length);
+  await media.getByRole('button', { name: 'Cancel' }).click();
+  await expect(media.locator('button.att-get')).toHaveText(new RegExp(`Resume, ${kept}% of 20 MB`));
+  // Going on, with Alice's uplink still held: it starts there, not at 0, before a byte more can come.
+  await media.locator('button.att-get').click();
+  await expect(media.locator('figcaption')).toHaveText(new RegExp(`\\b${kept}% of 20 MB`), { timeout: 30_000 });
+  await alice.page.evaluate(() => (window as unknown as { releasePull: () => void }).releasePull());
+  const shown = media.locator('img:not(.att-preview)');
+  await expect(shown).toHaveCount(1, { timeout: 120_000 });
+  const url = (await shown.getAttribute('src'))!;
+  expect(await bob.page.evaluate(pageHash(url), url)).toBe(sha256(picture));
+});
+
+// Review of PR #72 (Grumpy Friend): a 4 GB video on a phone with 1 GB free. A full disk was taken for a dropped
+// connection and tried again; it says so instead, and is not tried again by itself.
+test('a browser out of room for a large file says so, and does not call it a dropped connection', async ({ crowd }) => {
+  test.slow();
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  const picture = heavy(png(640, 480), 20 * 1024 * 1024);
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'big.png', mimeType: 'image/png', buffer: picture });
+  const media = bob.page.locator('.chat-log .att-media');
+  await expect(media.locator('button.att-get')).toBeVisible({ timeout: 60_000 });
+  // Bob's disk is full after 3 pieces.
+  await bob.page.evaluate(() => {
+    const write = FileSystemWritableFileStream.prototype.write;
+    let pieces = 0;
+    FileSystemWritableFileStream.prototype.write = function (this: FileSystemWritableFileStream, data: FileSystemWriteChunkType) {
+      if (++pieces > 3) return Promise.reject(new DOMException('The quota has been exceeded.', 'QuotaExceededError'));
+      return write.call(this, data);
+    };
+  });
+  await media.locator('button.att-get').click();
+  await expect(media).toContainText("This browser can't keep files this large", { timeout: 60_000 });
+  await expect(media).not.toContainText('Trying again soon');
+});

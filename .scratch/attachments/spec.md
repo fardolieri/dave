@@ -17,7 +17,7 @@ go from friend to friend.
 3. **Pulled by itself or on a click** by size: pictures and videos up to 16 MB by themselves, anything else on a click; a running pull can be
    cancelled, and then waits for a click.
 4. **Kept in the browser**, by hash, in IndexedDB, within 300 MB; the oldest go first. No cloud store yet.
-5. **100 MB per file** until files stream to disk (ticket 03).
+5. **Any size** (ticket 03): over 16 MB in 1 MB pieces, checked one by one, written to disk as they come, resumed from the last good one.
 
 ## 3. Wire
 

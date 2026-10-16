@@ -18,7 +18,7 @@ import { normalisePicture } from './protocol';
 import { parseRejoinMarker } from './rejoin';
 import { parseStoredRooms } from './rooms';
 import { parseHistory } from './chatlog';
-import { parseFileIndex } from './attachment';
+import { parseBigIndex, parseFileIndex, parsePartialPull } from './attachment';
 import { parseUnsent } from './unsent';
 import { parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes } from './settings';
 
@@ -141,6 +141,21 @@ export const IDB = {
     parse: parseFileIndex,
     fixtures: { '2026-10-15, attachments': [{ hash: 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg', size: 123456, at: 1760500001000 }] },
   },
+  bigFiles: {
+    about: 'Large files complete in the Origin Private File System (directory `files`, in segments `<hash>.<n>` of SEGMENT_BYTES), outside the budget, gone after BIG_KEEP_MS (attachments ticket 03, client/files.ts).',
+    parse: parseBigIndex,
+    fixtures: { '2026-10-16, large files': [{ hash: 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg', size: 734003200, at: 1760600000000 }] },
+  },
+  'partial:<hash>': {
+    about: 'How far a pull of a large file got: bytes on disk and checked, from the start (client/files.ts). A pull goes on from there.',
+    parse: parsePartialPull,
+    fixtures: { '2026-10-16, large files': { verified: 16777216, size: 734003200, at: 1760600000000 } },
+  },
+  'pieces:<hash>': {
+    about: "A large file's list of piece hashes, a Uint8Array of 32 bytes each, checked against the file's hash as pulled (client/files.ts). Not parsed: it is checked where it is read.",
+    parse: null,
+    fixtures: {},
+  },
   'file:<hash>': {
     about: "One file's bytes, a Blob, by the SHA-256 its announcement names (client/files.ts). Not parsed: the hash is checked as it is pulled.",
     parse: null,
@@ -152,7 +167,7 @@ export const IDB = {
     fixtures: { '2026-09-08, before rooms': [{ from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna' }, text: 'hi', at: 1757500000000 }] },
   },
 } satisfies Record<string, StoredKey<unknown>>;
-export type IdbKey = Exclude<keyof typeof IDB, 'history:<roomId>' | 'file:<hash>'> | `history:${string}` | `file:${string}`;
+export type IdbKey = Exclude<keyof typeof IDB, 'history:<roomId>' | 'file:<hash>' | 'partial:<hash>' | 'pieces:<hash>'> | `history:${string}` | `file:${string}` | `partial:${string}` | `pieces:${string}`;
 
 /** sessionStorage, per tab and gone with it, so a changed shape meets old values only across one reload. Read in place. */
 export const SESSION = {

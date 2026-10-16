@@ -7,13 +7,15 @@ import { signDescription, verifyDescription } from '../core/dtls';
 import { CLOSED, closeLatch, keyedChain, unlessClosed } from '../core/signalchain';
 import { STUN_ONLY } from '../core/turn';
 import { LINK_ICE_TTL_SECONDS } from '../core/mesh';
-import { PULLS_AT_ONCE, parsePullFrame, type PullFrame } from '../core/attachment';
+import { PULLS_AT_ONCE, listHash, parsePullFrame, pieceCount, type PullFrame } from '../core/attachment';
 import { MAX_CANDIDATES_PER_MESSAGE, type ClientMessage, type IceServer, type LinkData, type ServerMessage } from '../core/protocol';
 import type { LocalIdentity } from './identity';
-import { hashOf, keptFile } from './files';
+import { hashOf, keptFile, listOf } from './files';
 
 /** A link that has not opened its channel within this long is given up: the friend is unreachable from here. */
 const CONNECT_TIMEOUT_MS = 20_000;
+/** A friend asked for a pieced file's list answers within this long, or she does not know the ask (an app from before). */
+const LIST_ANSWER_MS = 5_000;
 /** A pull that receives nothing for this long is given up. */
 const STALL_TIMEOUT_MS = 20_000;
 /** A link the holder kept open with nothing asked of it for this long is closed. */
@@ -30,7 +32,17 @@ const CHUNK_BYTES = 64 * 1024;
 const HIGH_WATER = 1024 * 1024;
 
 /** Why a pull failed, as the chat says it. */
-export type PullError = 'unreachable' | 'lost' | 'not there' | 'damaged' | 'busy';
+export type PullError = 'unreachable' | 'lost' | 'not there' | 'damaged' | 'busy' | 'no room';
+/** Where a pieced pull puts what it checked (client/files.ts, `big.writer`): its list, and each piece at its offset. */
+export type PieceSink = {
+  /** The list of piece hashes, if kept from an earlier pull; else it is fetched first. */
+  list: Uint8Array | null;
+  keepList: (list: Uint8Array) => Promise<void>;
+  /** Bytes already on disk and checked. */
+  start: number;
+  write: (offset: number, bytes: ArrayBuffer) => Promise<void>;
+};
+
 export class PullFailed extends Error {
   constructor(readonly reason: PullError) { super(`pull failed: ${reason}`); }
 }
@@ -241,27 +253,30 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
   async function serve(link: Link, e: MessageEvent): Promise<void> {
     const frame = parsePullFrame(e.data);
     link.lastActive = Date.now();
-    if (frame?.t !== 'get' || link.busy) return;
+    if ((frame?.t !== 'get' && frame?.t !== 'list') || link.busy) return;
     const channel = link.channel;
     const say = (f: PullFrame) => { if (channel.readyState === 'open') channel.send(JSON.stringify(f)); };
     link.busy = true;
     clearTimeout(link.idle);
     try {
-      const blob = (await opts.serves(frame.hash)) ? await keptFile(frame.hash) : null;
-      if (!blob || frame.offset > blob.size) { say({ t: 'none' }); return; }
+      // A pieced file's list of piece hashes, asked first (ticket 03): sent like its bytes, from the start.
+      const list = frame.t === 'list' && (await opts.serves(frame.hash)) ? await listOf(frame.hash) : null;
+      const blob = frame.t === 'list' ? (list ? new Blob([list as BlobPart]) : null) : (await opts.serves(frame.hash)) ? await keptFile(frame.hash) : null;
+      const offset = frame.t === 'get' ? frame.offset : 0;
+      if (!blob || offset > blob.size) { say({ t: 'none' }); return; }
       const chunk = Math.min(CHUNK_BYTES, link.pc.sctp?.maxMessageSize || CHUNK_BYTES);
       let first: ArrayBuffer;
-      try { first = await blob.slice(frame.offset, frame.offset + chunk).arrayBuffer(); } catch { say({ t: 'none' }); return; }
+      try { first = await blob.slice(offset, offset + chunk).arrayBuffer(); } catch { say({ t: 'none' }); return; }
       say({ t: 'have', size: blob.size });
       channel.bufferedAmountLowThreshold = HIGH_WATER / 4;
-      for (let at = frame.offset; at < blob.size; at += chunk) {
+      for (let at = offset; at < blob.size; at += chunk) {
         if (channel.readyState !== 'open') return;
         if (channel.bufferedAmount > HIGH_WATER) {
           // pc.close() closes the channel without a close event: the latch says so instead.
           await Promise.race([new Promise<void>((resolve) => { channel.addEventListener('bufferedamountlow', () => resolve(), { once: true }); }), link.latch.closed]);
           if (channel.readyState !== 'open') return;
         }
-        const bytes = at === frame.offset ? first : await blob.slice(at, at + chunk).arrayBuffer();
+        const bytes = at === offset ? first : await blob.slice(at, at + chunk).arrayBuffer();
         // Closed while the chunk was read (given up, replaced, the room left): the pull ends here, as the loop does above.
         if (channel.readyState !== 'open') return;
         channel.send(bytes);
@@ -275,16 +290,48 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
 
   /**
    * Puller side: the file of this hash from this friend, checked against the hash. Rejects with PullFailed. `progress`
-   * hears the bytes received so far, `alive` every sign of life (the channel open, any frame). Aborting `signal` closes
-   * the link, which ends the pull.
+   * hears the bytes received so far (for a pieced file, those checked), `alive` every sign of life (the channel open, any
+   * frame). Aborting `signal` closes the link, which ends the pull.
+   *
+   * A pieced file (`pieced`, ticket 03) comes another way: its list of piece hashes first (unless `sink.list` has it),
+   * checked against `hash`, then its bytes from `sink.start`, each piece checked against the list and handed to
+   * `sink.write` before the next. Nothing of it is held but the piece under way, and nothing is returned.
    */
-  async function pull(from: string, hash: string, size: number, progress: (received: number) => void, signal: AbortSignal, alive: () => void = () => {}): Promise<Blob> {
+  async function pull(
+    from: string, hash: string, size: number, progress: (received: number) => void, signal: AbortSignal, alive: () => void = () => {},
+    pieced?: { piece: number; sink: PieceSink },
+  ): Promise<Blob | null> {
     const servers = await iceServers();
     if (signal.aborted) throw new PullFailed('lost');
     const link = open(from, randomId(), servers);
     signal.addEventListener('abort', () => close(link, 'cancelled'), { once: true });
     // The link closed under the pull (the friend left, the connection failed, the room went): no event says so.
     const gone = (reason: PullError) => link.latch.closed.then((): never => { throw new PullFailed(link.atLimit ? 'busy' : reason); });
+    /**
+     * Listens on the channel until `step` says done: `step` gets each frame and returns true when the stream is over.
+     * Fails when nothing comes for STALL_TIMEOUT_MS, the channel closes, or `step` throws.
+     */
+    const receive = (ask: PullFrame, step: (data: unknown) => boolean | Promise<boolean>, first?: { ms: number; reason: PullError }) => Promise.race([gone('lost'), new Promise<void>((resolve, reject) => {
+      let stall: ReturnType<typeof setTimeout>;
+      const fresh = () => { clearTimeout(stall); stall = setTimeout(() => reject(new PullFailed('lost')), STALL_TIMEOUT_MS); };
+      // Waiting for the first answer, a shorter wait can say what silence means.
+      stall = setTimeout(() => reject(new PullFailed(first?.reason ?? 'lost')), first?.ms ?? STALL_TIMEOUT_MS);
+      // Frames are taken in order, one at a time: a piece is written before the next is looked at.
+      let steps = Promise.resolve();
+      link.channel.onclose = () => { clearTimeout(stall); reject(new PullFailed('lost')); };
+      link.channel.onmessage = (e: MessageEvent) => {
+        fresh();
+        alive();
+        steps = steps.then(async () => { if (await step(e.data)) { clearTimeout(stall); resolve(); } }).catch((err: unknown) => { clearTimeout(stall); reject(err); });
+      };
+      link.channel.send(JSON.stringify(ask));
+    })]);
+    /** The `have` a stream opens with, of this length; `none` or anything else fails the pull. */
+    const opening = (data: unknown, length: number): void => {
+      const frame = typeof data === 'string' ? parsePullFrame(data) : null;
+      if (frame?.t === 'have' && frame.size === length) return;
+      throw new PullFailed(frame?.t === 'none' ? 'not there' : 'damaged');
+    };
     try {
       await link.pc.setLocalDescription();
       // An offer that did not go out is never answered: the pull ends now, not after its connect timeout, and is tried
@@ -296,34 +343,75 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
         link.channel.onopen = () => { clearTimeout(timer); alive(); resolve(); };
         link.channel.onclose = () => { clearTimeout(timer); reject(new PullFailed('unreachable')); };
       })]);
-      const chunks: ArrayBuffer[] = [];
-      let received = 0;
-      await Promise.race([gone('lost'), new Promise<void>((resolve, reject) => {
-        let stall = setTimeout(() => reject(new PullFailed('lost')), STALL_TIMEOUT_MS);
-        const alive = () => { clearTimeout(stall); stall = setTimeout(() => reject(new PullFailed('lost')), STALL_TIMEOUT_MS); };
+
+      if (!pieced) {
+        const chunks: ArrayBuffer[] = [];
+        let received = 0;
         let announced = false;
-        link.channel.onclose = () => { clearTimeout(stall); reject(new PullFailed('lost')); };
-        link.channel.onmessage = (e: MessageEvent) => {
-          alive();
-          alive();
-          if (typeof e.data === 'string') {
-            const frame = parsePullFrame(e.data);
-            if (frame?.t === 'have' && frame.size === size) { announced = true; if (size === 0) { clearTimeout(stall); resolve(); } return; }
-            clearTimeout(stall);
-            reject(new PullFailed(frame?.t === 'none' ? 'not there' : 'damaged'));
-            return;
-          }
-          if (!announced) return;
-          chunks.push(e.data as ArrayBuffer);
-          received += (e.data as ArrayBuffer).byteLength;
+        await receive({ t: 'get', hash, offset: 0 }, (data) => {
+          if (!announced) { opening(data, size); announced = true; return size === 0; }
+          if (typeof data === 'string') throw new PullFailed('damaged');
+          chunks.push(data as ArrayBuffer);
+          received += (data as ArrayBuffer).byteLength;
           progress(received);
-          if (received >= size) { clearTimeout(stall); resolve(); }
-        };
-        link.channel.send(JSON.stringify({ t: 'get', hash, offset: 0 } satisfies PullFrame));
-      })]);
-      const blob = new Blob(chunks);
-      if (blob.size !== size || (await hashOf(blob)) !== hash) throw new PullFailed('damaged');
-      return blob;
+          return received >= size;
+        });
+        const blob = new Blob(chunks);
+        if (blob.size !== size || (await hashOf(blob)) !== hash) throw new PullFailed('damaged');
+        return blob;
+      }
+
+      const { piece, sink } = pieced;
+      const count = pieceCount(size, piece);
+      let list = sink.list;
+      if (!list) {
+        const want = count * 32;
+        const got = new Uint8Array(want);
+        let at = -1;
+        // An app from before pieces does not know `list` and says nothing: taken for "not there" after a while, not for a
+        // lost link the retry schedule would ask again and again (review of PR #72).
+        await receive({ t: 'list', hash }, (data) => {
+          if (at < 0) { opening(data, want); at = 0; return want === 0; }
+          if (typeof data === 'string' || at + (data as ArrayBuffer).byteLength > want) throw new PullFailed('damaged');
+          got.set(new Uint8Array(data as ArrayBuffer), at);
+          at += (data as ArrayBuffer).byteLength;
+          return at >= want;
+        }, { ms: LIST_ANSWER_MS, reason: 'not there' });
+        if ((await listHash(got)) !== hash) throw new PullFailed('damaged');
+        list = got;
+        await sink.keepList(list);
+      }
+      // From the first piece not yet on disk: a pull of it that broke goes on where it stopped.
+      const start = Math.floor(sink.start / piece) * piece;
+      progress(start);
+      if (start >= size) return null;
+      let index = start / piece;
+      let buffer = new Uint8Array(Math.min(piece, size - start));
+      let filled = 0;
+      let announced = false;
+      await receive({ t: 'get', hash, offset: start }, async (data) => {
+        if (!announced) { opening(data, size); announced = true; return false; }
+        if (typeof data === 'string') throw new PullFailed('damaged');
+        let bytes = new Uint8Array(data as ArrayBuffer);
+        while (bytes.length) {
+          const take = Math.min(bytes.length, buffer.length - filled);
+          buffer.set(bytes.subarray(0, take), filled);
+          filled += take;
+          bytes = bytes.subarray(take);
+          if (filled < buffer.length) break;
+          const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', buffer as BufferSource));
+          const expected = list!.subarray(index * 32, index * 32 + 32);
+          if (!digest.every((b, i) => b === expected[i])) throw new PullFailed('damaged');
+          await sink.write(index * piece, buffer.buffer as ArrayBuffer);
+          index++;
+          progress(Math.min(size, index * piece));
+          if (index >= count) return true;
+          buffer = new Uint8Array(Math.min(piece, size - index * piece));
+          filled = 0;
+        }
+        return false;
+      });
+      return null;
     } finally {
       close(link, 'pulled');
     }

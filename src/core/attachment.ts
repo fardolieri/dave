@@ -1,5 +1,6 @@
 // Attachments (ADR 0006): what a file's announcement says, which files show inline, what this browser keeps, and the
-// frames of a pull on a file link. Runtime-neutral: plain data only.
+// frames of a pull on a file link. Runtime-neutral: plain data and WebCrypto.
+import { toBase64Url } from './identity';
 
 /** A file as its sealed announcement describes it. The bytes travel apart, checked against `hash`. */
 export type FileMeta = {
@@ -15,10 +16,26 @@ export type FileMeta = {
   /** The picture's or video's own size in pixels, so the chat keeps its place while the bytes come. */
   width?: number;
   height?: number;
+  /**
+   * A large file is sent in pieces of this many bytes (attachments ticket 03). Then `hash` is the SHA-256 of the list
+   * of its pieces' SHA-256s, which a puller fetches first: each piece is checked as it comes, kept on disk, and a pull
+   * goes on from the last good one. Without it, `hash` is the whole file's.
+   */
+  piece?: number;
 };
 
-/** The most a file may weigh for now: it is read, hashed and kept whole (ticket 03 lifts this). */
-export const MAX_FILE_BYTES = 100 * 1024 * 1024;
+/** The most a file may weigh: far past anything friends send, a sanity bound for what an announcement may claim. */
+export const MAX_FILE_BYTES = 2 ** 40;
+/** The most a file sent whole may weigh: it is read, hashed and kept whole, in memory on the way. Larger ones go in pieces. */
+export const WHOLE_FILE_MAX = 100 * 1024 * 1024;
+/** Files larger than this go in pieces, kept on disk as they come (ticket 03); smaller ones whole, as before. */
+export const PIECED_FROM = 16 * 1024 * 1024;
+/** The size of a piece. */
+export const PIECE_BYTES = 1024 * 1024;
+/** The most pieces a file may have: its list of piece hashes is 32 bytes each. */
+export const MAX_PIECES = 1024 * 1024;
+/** How many pieces a file of `size` has. */
+export const pieceCount = (size: number, piece: number): number => Math.ceil(size / piece);
 /**
  * Pulls a browser runs at once per room, from anyone. A holder keeps as many links per friend (client/links.ts), so a
  * further ask from a friend means the oldest of their links is one they gave up, its goodbye lost.
@@ -62,6 +79,13 @@ export function parseFileMeta(raw: unknown): FileMeta | null {
   if (!Number.isSafeInteger(m.size) || (m.size as number) < 0 || (m.size as number) > MAX_FILE_BYTES) return null;
   if (!isFileHash(m.hash)) return null;
   const meta: FileMeta = { name: m.name, type: m.type, size: m.size as number, hash: m.hash };
+  if (m.piece !== undefined) {
+    // A power of two from 64 KiB to 16 MiB, and at most MAX_PIECES of them: the list, fetched before the bytes, stays
+    // within 32 MB however large the file.
+    if (!Number.isSafeInteger(m.piece) || (m.piece as number) < 65_536 || (m.piece as number) > 16 * 1024 * 1024 || ((m.piece as number) & ((m.piece as number) - 1)) !== 0) return null;
+    if (pieceCount(meta.size, m.piece as number) > MAX_PIECES) return null;
+    meta.piece = m.piece as number;
+  } else if (meta.size > WHOLE_FILE_MAX) return null;
   if (m.preview !== undefined) {
     if (typeof m.preview !== 'string' || m.preview.length > MAX_PREVIEW_LENGTH || !PREVIEW.test(m.preview)) return null;
     meta.preview = m.preview;
@@ -81,6 +105,16 @@ export type KeptFile = { hash: string; size: number; at: number };
 export function parseFileIndex(raw: unknown): KeptFile[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((f): f is KeptFile => !!f && typeof f === 'object' && isFileHash(f.hash) && Number.isSafeInteger(f.size) && f.size >= 0 && typeof f.at === 'number');
+}
+
+/** A large file complete on disk (client/files.ts, IndexedDB `bigFiles`), outside the budget, gone after a few days. */
+export type BigFile = { hash: string; size: number; at: number };
+export function parseBigIndex(raw: unknown): BigFile[] { return parseFileIndex(raw); }
+/** How far a pull of a large file got (IndexedDB `partial:<hash>`): checked bytes on disk, from the start. */
+export type PartialPull = { verified: number; size: number; at: number };
+export function parsePartialPull(raw: unknown): PartialPull | null {
+  const p = raw as PartialPull | null | undefined;
+  return p && typeof p === 'object' && Number.isSafeInteger(p.verified) && p.verified >= 0 && Number.isSafeInteger(p.size) && p.verified <= p.size && typeof p.at === 'number' ? { verified: p.verified, size: p.size, at: p.at } : null;
 }
 
 /**
@@ -106,7 +140,12 @@ export function keepWithin(index: readonly KeptFile[], added: KeptFile, budget =
  * The control frames of a pull, as JSON text on the link's data channel; the bytes follow as binary frames. The puller
  * asks for a file from an offset; the holder says it has it, with its size, and sends the bytes, or says it has not.
  */
-export type PullFrame = { t: 'get'; hash: string; offset: number } | { t: 'have'; size: number } | { t: 'none' };
+export type PullFrame =
+  | { t: 'get'; hash: string; offset: number }
+  /** A pieced file's list of piece hashes, asked before its bytes: answered `have` with the list's length, then the list. */
+  | { t: 'list'; hash: string }
+  | { t: 'have'; size: number }
+  | { t: 'none' };
 
 export function parsePullFrame(raw: unknown): PullFrame | null {
   if (typeof raw !== 'string' || raw.length > 256) return null;
@@ -120,6 +159,7 @@ export function parsePullFrame(raw: unknown): PullFrame | null {
   }
   const count = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0 && (v as number) <= MAX_FILE_BYTES;
   if (m.t === 'get' && isFileHash(m.hash) && count(m.offset)) return { t: 'get', hash: m.hash, offset: m.offset };
+  if (m.t === 'list' && isFileHash(m.hash)) return { t: 'list', hash: m.hash };
   if (m.t === 'have' && count(m.size)) return { t: 'have', size: m.size };
   if (m.t === 'none') return { t: 'none' };
   return null;
@@ -131,4 +171,9 @@ export function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   const mb = bytes / (1024 * 1024);
   return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+}
+
+/** The SHA-256 of a pieced file's list of piece hashes, base64url: its `hash`. */
+export async function listHash(list: Uint8Array): Promise<string> {
+  return toBase64Url(new Uint8Array(await crypto.subtle.digest('SHA-256', list as BufferSource)));
 }

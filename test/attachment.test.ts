@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AUTO_PULL_BYTES, MAX_FILE_BYTES, MAX_PREVIEW_LENGTH, formatSize, inlineKind, keepWithin, parseFileIndex, parseFileMeta, parsePullFrame, pullsByItself,
+  AUTO_PULL_BYTES, MAX_FILE_BYTES, MAX_PREVIEW_LENGTH, WHOLE_FILE_MAX, listHash, parsePartialPull, formatSize, inlineKind, keepWithin, parseFileIndex, parseFileMeta, parsePullFrame, pullsByItself,
   type FileMeta,
 } from '../src/core/attachment';
 import { MAX_SEALED_FILE_LENGTH, parseClientMessage, type Person } from '../src/core/protocol';
@@ -22,6 +22,22 @@ describe('attachments (ADR 0006)', () => {
     ]) expect(parseFileMeta({ ...photo, ...off }), JSON.stringify(off)).toBeNull();
     expect(parseFileMeta(null)).toBeNull();
     expect(parseFileMeta('cat.jpg')).toBeNull();
+  });
+
+  it('takes a large file only in pieces of a sane size, and a whole one up to its cap (ticket 03)', () => {
+    const big = { ...photo, size: 5 * WHOLE_FILE_MAX };
+    expect(parseFileMeta(big)).toBeNull(); // too large to go whole
+    expect(parseFileMeta({ ...big, piece: 1024 * 1024 })).toEqual({ ...big, piece: 1024 * 1024 });
+    for (const piece of [1000, 1024 * 1024 + 1, 32 * 1024, 32 * 1024 * 1024, 1.5]) expect(parseFileMeta({ ...big, piece }), String(piece)).toBeNull();
+    expect(parseFileMeta({ ...photo, size: MAX_FILE_BYTES + 1, piece: 1024 * 1024 })).toBeNull();
+  });
+
+  it('a pieced file is named by the hash of its list of piece hashes, and a pull says how far it got', async () => {
+    const list = new Uint8Array(64).fill(7);
+    expect(await listHash(list)).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(await listHash(list)).not.toBe(await listHash(new Uint8Array(64)));
+    expect(parsePartialPull({ verified: 3, size: 10, at: 1 })).toEqual({ verified: 3, size: 10, at: 1 });
+    for (const off of [null, { verified: 11, size: 10, at: 1 }, { verified: -1, size: 10, at: 1 }, { verified: 1, size: 10 }]) expect(parsePartialPull(off)).toBeNull();
   });
 
   it('shows only pictures and videos of known types inline, never SVG or HTML', () => {
@@ -58,6 +74,7 @@ describe('attachments (ADR 0006)', () => {
     expect(parsePullFrame(JSON.stringify({ t: 'get', hash: HASH, offset: 0 }))).toEqual({ t: 'get', hash: HASH, offset: 0 });
     expect(parsePullFrame(JSON.stringify({ t: 'have', size: 12 }))).toEqual({ t: 'have', size: 12 });
     expect(parsePullFrame(JSON.stringify({ t: 'none' }))).toEqual({ t: 'none' });
+    expect(parsePullFrame(JSON.stringify({ t: 'list', hash: HASH }))).toEqual({ t: 'list', hash: HASH });
     for (const bad of ['{', '"get"', JSON.stringify({ t: 'get', hash: 'x', offset: 0 }), JSON.stringify({ t: 'get', hash: HASH, offset: -1 }), JSON.stringify({ t: 'have', size: MAX_FILE_BYTES + 1 })]) {
       expect(parsePullFrame(bad), bad).toBeNull();
     }

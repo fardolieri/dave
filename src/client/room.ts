@@ -2,11 +2,11 @@ import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 import posthog, { onConsentChange, telemetryOn } from './posthog';
 import { buildAuthMessage } from '../core/identity';
 import { openFile, openText, sealFile, sealText } from '../core/sealed';
-import { MAX_FILE_BYTES, MAX_FILE_NAME, PULLS_AT_ONCE, formatSize, inlineKind, pullsByItself, type FileMeta } from '../core/attachment';
+import { MAX_FILE_BYTES, MAX_FILE_NAME, PIECED_FROM, PIECE_BYTES, PULLS_AT_ONCE, formatSize, inlineKind, pullsByItself, type FileMeta } from '../core/attachment';
 import { createLinks, PullFailed, type PullError } from './links';
 import { createFileWatchdog } from './invariants';
 import { exposeHooks } from './hooks';
-import { hashOf, holdSent, keepFile, keptFile, makePreview } from './files';
+import { big, hashOf, holdSent, holdSentList, keepFile, keptFile, makePreview, noRoom, piecesOf } from './files';
 import {
   CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, MAX_TEXT_LENGTH, PING_FRAME, PING_INTERVAL_MS,
   type ClientMessage, type Identity, type Person, type RequestId, type ServerMessage, type TextId,
@@ -44,7 +44,9 @@ export type Text = { from: Identity; text: string; at: number; id: TextId };
  * not online. `pulling`: `received` bytes so far. `ready`: `url` is a blob URL of a type safe to show. `failed`: `reason`.
  */
 export type Attachment =
-  | { status: 'idle' | 'waiting' }
+  /** `partial`: bytes of a large file already on disk, from a pull that stopped; the next goes on from there (ticket 03). */
+  | { status: 'idle'; partial?: number }
+  | { status: 'waiting' }
   | { status: 'pulling'; received: number }
   | { status: 'ready'; url: string }
   /** `retryAt`: tried again by itself then, while a friend who has it stays online (attachments ticket 05). */
@@ -55,6 +57,8 @@ export type Attachment =
  * BUSY_RETRY_MS for as long as she says so: she is there, only full (ticket 05).
  */
 const RETRY_MS = [5_000, 15_000, 45_000];
+/** Large files past their time are swept once a page. */
+let sweptBig = false;
 const BUSY_RETRY_MS = 15_000;
 /** Attachments in the history from this recent are pulled by themselves, like new ones, when this browser lacks them. */
 const PULL_HISTORY_MS = 7 * 24 * 3600 * 1000;
@@ -320,6 +324,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const movedAt = new Map<string, number>();
   const saving = new Set<string>();
 
+  // Large files past their time go, once a page (ticket 03).
+  if (!sweptBig) { sweptBig = true; void big.sweep(); }
+
   /** Tries again so far, and the timer of the next, per file. */
   const retries = new Map<string, { tries: number; timer?: ReturnType<typeof setTimeout> }>();
   const stopRetry = (hash: string): void => { clearTimeout(retries.get(hash)?.timer); retries.delete(hash); };
@@ -375,6 +382,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     if (stopped) return;
     if (kept) show(file, kept);
     else if (byItself && pullsByItself(file)) want(file.hash);
+    else if (file.piece) {
+      // A pull of it that stopped, before a reload too: the button says how far it got, and goes on from there.
+      const partial = await big.verified(file.hash);
+      if (partial && attachmentNow.get(file.hash)?.status === 'idle') setAttachment(file.hash, { status: 'idle', partial });
+    }
   }
 
   /** Files a test set a status of on purpose (the `pretend` hook): left as they are. */
@@ -425,10 +437,43 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       // file's, and only it may touch what the file shows and its bookkeeping (review of PR #69).
       const current = () => aborts.get(hash) === abort;
       const moved = () => { if (current()) movedAt.set(hash, Date.now()); };
-      void links.pull(from, hash, file.size, (received) => { moved(); if (!disposed && current() && !abort.signal.aborted) setAttachment(hash, { status: 'pulling', received }); }, abort.signal, moved)
+      let got = 0;
+      const progress = (received: number) => { got = received; moved(); if (!disposed && current() && !abort.signal.aborted) setAttachment(hash, { status: 'pulling', received }); };
+      // A large file comes in pieces, each checked and written to disk as it comes, from where an earlier pull of it
+      // stopped (ticket 03); what it got is kept when it breaks off. Nothing of it is held but the piece under way.
+      const run = async (): Promise<Blob> => {
+        if (!file.piece) return (await links.pull(from, hash, file.size, progress, abort.signal, moved))!;
+        if (!big.available()) throw new PullFailed('no room');
+        const piece = file.piece;
+        try {
+          return await big.exclusive(hash, async () => {
+            if (abort.signal.aborted) throw new PullFailed('lost');
+            // Complete already (another room pulled it), or every segment on disk from a pull that died before the
+            // end: nothing to ask anyone for (review of PR #72).
+            const complete = await big.complete(hash);
+            if (complete) return complete;
+            const writer = await big.writer(hash, file.size);
+            if (writer.start >= file.size) return writer.done();
+            const sink = { list: await big.list(hash), keepList: (list: Uint8Array) => big.keepList(hash, list), start: writer.start, write: writer.write };
+            try {
+              await links.pull(from, hash, file.size, progress, abort.signal, moved, { piece, sink });
+            } catch (e) {
+              await writer.end();
+              throw e;
+            }
+            return writer.done();
+          });
+        } catch (e) {
+          // No room left, or no storage at all (a private window): said so, not tried again (review of PR #72).
+          throw noRoom(e) ? new PullFailed('no room') : e;
+        }
+      };
+      void run()
         .then(async (blob) => {
           if (current()) saving.add(hash); // a large file takes a while to write on a slow phone: not a pull gone quiet
-          posthog.capture('file_pulled', { bytes: file.size, ms: Date.now() - started, inline: inlineKind(file.type) ?? 'none' });
+          posthog.capture('file_pulled', { bytes: file.size, ms: Date.now() - started, inline: inlineKind(file.type) ?? 'none', pieced: !!file.piece });
+          // On disk already, outside the budget.
+          if (file.piece) { if (!disposed) show(file, blob); return; }
           // Shown from the store's copy, which is on disk: the pulled one is in memory, as large as the file.
           await keepFile(hash, blob);
           const kept = await keptFile(hash);
@@ -436,7 +481,13 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
         })
         .catch((e: unknown) => {
           // Cancelled: back to waiting for a click, and not pulled by itself again.
-          if (abort.signal.aborted) { posthog.capture('file_pull_cancelled', { bytes: file.size }); if (!disposed && current()) setAttachment(hash, { status: 'idle' }); return; }
+          if (abort.signal.aborted) { posthog.capture('file_pull_cancelled', { bytes: file.size }); if (!disposed && current()) {
+              setAttachment(hash, { status: 'idle' });
+              // What a large one kept on disk: its complete segments, which the next pull goes on after (ticket 03).
+              if (file.piece && got) void big.verified(hash).then((partial) => { if (partial && attachmentNow.get(hash)?.status === 'idle') setAttachment(hash, { status: 'idle', partial }); });
+            }
+            return;
+          }
           let reason: PullError = e instanceof PullFailed ? e.reason : 'lost';
           posthog.capture('file_pull_failed', { reason, bytes: file.size });
           if (!(e instanceof PullFailed)) console.error('pulling a file failed', e);
@@ -449,8 +500,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           if (reason === 'not there') (notThere.get(hash) ?? notThere.set(hash, new Map()).get(hash)!).set(from, Date.now());
           const best = roundReason.get(hash);
           if (!best || HOPE.indexOf(reason) < HOPE.indexOf(best)) roundReason.set(hash, reason);
-          if (candidates(hash).length) { setAttachment(hash, { status: 'idle' }); want(hash); return; }
-          const ended = roundReason.get(hash)!;
+          // No room here is no friend's doing: asking another would end the same way.
+          if (reason !== 'no room' && candidates(hash).length) { setAttachment(hash, { status: 'idle' }); want(hash); return; }
+          const ended = reason === 'no room' ? reason : roundReason.get(hash)!;
           newRound(hash);
           // Someone has it, busy or out of reach (whether they announced it or only pulled it): tried again on the
           // schedule. Everyone said "not there": it waits for one who announced it, or says nobody has it.
@@ -797,14 +849,19 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
      * last took it without bringing it back; unlike a text, a reload forgets it.
      */
     sendFile: async (picked: File): Promise<void> => {
-      if (picked.size > MAX_FILE_BYTES) { push({ kind: 'system', text: `Not sent: ${picked.name} is ${formatSize(picked.size)}; files up to ${formatSize(MAX_FILE_BYTES)} for now.`, at: Date.now() }); return; }
+      if (picked.size > MAX_FILE_BYTES) { push({ kind: 'system', text: `Not sent: ${picked.name} is ${formatSize(picked.size)}.`, at: Date.now() }); return; }
       const id = Array.from(crypto.getRandomValues(new Uint8Array(12)), (x) => x.toString(16).padStart(2, '0')).join('');
       const at = Date.now();
-      const [hash, look] = await Promise.all([hashOf(picked), makePreview(picked)]);
-      const file: FileMeta = { name: picked.name.slice(0, MAX_FILE_NAME).trim() || 'file', type: picked.type.slice(0, 100), size: picked.size, hash, ...look };
+      // A large file is hashed a piece at a time, which takes a while, and is served from the file picked: never copied,
+      // so it can be pulled while this tab stays open, and from friends who pulled it after that (ticket 03).
+      const pieced = picked.size > PIECED_FROM;
+      if (pieced) push({ kind: 'system', text: `Preparing ${picked.name} (${formatSize(picked.size)}) to send…`, at });
+      const [{ hash, list }, look] = await Promise.all([pieced ? piecesOf(picked) : hashOf(picked).then((h) => ({ hash: h, list: null })), makePreview(picked)]);
+      const file: FileMeta = { name: picked.name.slice(0, MAX_FILE_NAME).trim() || 'file', type: picked.type.slice(0, 100), size: picked.size, hash, ...look, ...(pieced ? { piece: PIECE_BYTES } : {}) };
       if (stopped) return;
       holdSent(hash, picked);
-      void keepFile(hash, picked);
+      if (list) holdSentList(hash, list);
+      else void keepFile(hash, picked);
       announced.add(hash);
       hold(file, opts.identity.publicKey);
       if (attachmentNow.get(hash)?.status !== 'ready') show(file, picked);

@@ -1425,6 +1425,7 @@ const PULL_FAILED: Record<PullError, (holder: string) => string> = {
   'not there': (h) => `${h} doesn't have it any more`,
   damaged: () => 'It arrived damaged',
   busy: (h) => `${h} is sending to others`,
+  'no room': () => "This browser can't keep files this large",
 };
 
 /**
@@ -1455,7 +1456,11 @@ function FileView(props: { file: FileMeta; attachment: Attachment | undefined; h
       );
       case 'waiting': return <span class="att-state">Waiting for {props.holder} to come online</span>;
       case 'failed': return <span class="att-state">{PULL_FAILED[now.reason](props.holder)}.{now.retryAt ? ' Trying again soon.' : ''} <button type="button" onClick={(e) => { e.stopPropagation(); props.onPull(); }}>Try again</button></span>;
-      case 'idle': return <button type="button" class="att-get" onClick={(e) => { e.stopPropagation(); props.onPull(); }}>⬇ {formatSize(props.file.size)}</button>;
+      case 'idle': return (
+        <button type="button" class="att-get" onClick={(e) => { e.stopPropagation(); props.onPull(); }}>
+          ⬇ {now.partial ? `Resume, ${Math.floor((100 * now.partial) / Math.max(1, props.file.size))}% of ${formatSize(props.file.size)}` : formatSize(props.file.size)}
+        </button>
+      );
       default: return null;
     }
   };
