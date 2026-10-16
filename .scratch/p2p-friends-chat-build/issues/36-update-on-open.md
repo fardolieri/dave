@@ -104,3 +104,15 @@ is new, and the 1.5 s was agreed), and the demo's copies of the test helpers (a 
 - Videos (`.scratch/p2p-friends-chat-build/demo-36`, `pnpm exec playwright test -c` that folder; the videos stay out of
   git): a big update on desktop and on a phone, a reload in a call that rejoins, a typical small update, and a slow
   line that gives up after 10 s and ends in the bar.
+
+## Report of 2026-10-16: the bar asked right after the app had downloaded a new version
+A friend on Android Chrome opened the app, saw the line fill, then got the bar. Every opening since 2026-10-12 that
+ended in the bar (four in Brave on desktop, restoring its tabs; three on Android Chrome; one on iOS) had a session
+recording. In all but the iOS one the opening ended at the 1.5 s limit (PostHog's script fetched at 1.50 to 1.51 s
+after the load), and the bar came 0.2 to 1.5 s later. Of 23 openings recorded since 2026-10-13, 15 ended 0.1 to 0.8 s
+after the app started; 8 hit the limit, at least 4 of them with a new version: a new version is said only once the browser has started its worker, the same bytes as
+soon as they are fetched. The limit is now 5 s from the page load, which costs only openings with a new version (or no
+answer at all; the "Connecting…" pill then comes 2.5 s after that). This undoes part of Daniel's 3 s → 1.5 s of
+2026-10-01, which was about every opening waiting; only openings with a slow answer wait longer now. Regression test: the preview server answers /sw.js 2.5 s late (`e2e-sw-delay`).
+Not covered: the iOS opening ended 25 ms after the app started, with the version found 1.8 s later. Perhaps Safari
+answered `update()` while its own check was still under way; not reproduced, and one case.

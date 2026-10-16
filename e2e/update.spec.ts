@@ -168,7 +168,7 @@ test('ticket 36: a new version the browser is still downloading as the page load
   await controlled(alice.page);
 
   // The browser's own check finds the new version before the page asks (Firefox checks as a navigation starts): its
-  // install runs, and `register()` in the page loaded meanwhile waits for it to end, past the 1.5 s the opening check
+  // install runs, and `register()` in the page loaded meanwhile waits for it to end, past the time the opening check
   // has. Flaky that way in Firefox for the test above (ticket 44, 1 in 80); staged here for sure: the check starts in
   // the page before, and the reload comes while the download, about 6 s at 1 MB/s, goes on.
   await stageBigDeploy(alice, 1_000_000);

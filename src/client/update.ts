@@ -32,8 +32,15 @@ const OPEN_TAKES = 2;
 const TAKEN_KEY = 'dave.update-taken';
 /** The ms from the load to the last take, for `update_taken_on_open`: the page that takes it loads no PostHog, the next one tells. */
 const TAKEN_MS_KEY = 'dave.update-taken-ms';
-/** How long the opening check may take before the app goes on without its answer: the rooms wait for it (Daniel, 2026-10-01). */
-const OPEN_CHECK_MS = 1500;
+/**
+ * How long, from the page load, the opening check may take before the app goes on without its answer: the rooms wait for
+ * it (Daniel, 2026-10-01, then 1.5 s; 5 s since 2026-10-16). "Nothing new" comes within 0.1 to 0.8 s of the app's start, the same bytes being found as soon
+ * as they are fetched. A new version is said only once the browser has started its worker, and on a phone, or in Brave
+ * restoring its tabs, that was 2 to 4 s after the load: the 1.5 s this was at ended those openings first, and the bar
+ * asked (report of 2026-10-16, read from the session recordings). It is this long only with a new version, or a slow
+ * answer or none.
+ */
+const OPEN_CHECK_MS = 5000;
 /** How long, from the page load, the app may stay frozen for a new version (Daniel, 2026-10-01). */
 export const OPEN_FREEZE_MS = 10_000;
 
@@ -195,7 +202,7 @@ export function watchForUpdates(): void {
   };
   // A page already served has its registration at once. `register()` waits behind any install under way, the browser's
   // own check at a navigation included (Firefox starts it before the page asks): a big download kept it from resolving
-  // past the opening check's 1.5 s, and the opening ended with no line, then the bar asked (ticket 44).
+  // past the opening check's time (1.5 s then), and the opening ended with no line, then the bar asked (ticket 44).
   // A register() that fails may say so before that registration is found: only with none at all does the opening end.
   const had = container.controller ? container.getRegistration().then(watch, () => {}) : Promise.resolve();
   container.register('/sw.js').then(watch, (e: unknown) => {
