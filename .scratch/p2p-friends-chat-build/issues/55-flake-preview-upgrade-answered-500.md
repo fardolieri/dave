@@ -1,6 +1,7 @@
 # 55 · Flake: the preview Worker answered a socket upgrade with 500, five times in a row
 
-Status: open, cause not known; diagnostic on branch flake/55-upgrade-500, 2026-10-15: the Worker reports the exception
+Status: open, cause is Cloudflare's; the Room is asked twice since 54ad1a5 (shipped 2026-10-16 to prod), which saved
+6 of the 7 failed asks seen since; one upgrade failed both asks and was answered 500
 Seen 2026-10-15: the preview run of PR #64 (38777674741, head 986231c, against `dave-pr-64`), Chromium, shard 3, passed on
 the retry: `resilience.spec.ts:237` "a socket the server never answers is given up and tried again, and the room
 connects". Alice stayed on the banner; her console had five "Error during WebSocket handshake: Unexpected response code:
@@ -32,3 +33,18 @@ that is it, the Worker should try the Room once more on a retryable error rather
 - Tail the Worker's logs (`wrangler tail dave-pr-<n>`) while the test runs against a preview, or look in the Cloudflare
   dashboard's logs for dave-pr-64 around 2026-10-15 17:32 UTC, for the exception behind the 500.
 - Check whether a Room whose first socket never finished its handshake is left in a state that throws on the next upgrade.
+
+## Since the second ask (2026-10-16)
+Read from PostHog `server_upgrade_failed` the same evening. Every event so far came from nightly or a preview, none from
+live. Before 54ad1a5: one on nightly (14:19 UTC) and one on a preview (15:00). After it, on a preview (`attempt` set):
+- 15:25:39.856 attempt 1, then 15:25:39.958 attempt 2: both asks failed, the friend got the 500.
+- 15:31:37 to 15:31:40 four times attempt 1, 15:40:35 and 15:40:36 twice attempt 1: no attempt 2 followed, so the second
+  ask went through. (A good upgrade is not counted, so how often the Room is asked at all is not known.)
+All were "internal error; reference = …", neither retryable nor overloaded. The second ask helps; it does not make the
+error go away. Seven came in 25 minutes on previews while the attachments PRs (#67 to #72) were being pushed and
+deployed one after another; whether those minutes match a deploy was not checked.
+
+## Next (2026-10-16)
+- Watch whether any `server_upgrade_failed` with attempt 2 shows up on live. If it does, or if previews keep seeing it,
+  ask Cloudflare support with the reference ids above.
+
