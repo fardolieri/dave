@@ -189,3 +189,40 @@ test('regression: a pull tried again after its friend could not be reached is an
   await failed.first().getByRole('button', { name: 'Try again' }).click();
   await expect(bob.page.locator('.chat-log .att-media img:not(.att-preview)')).toHaveCount(1, { timeout: 15_000 });
 });
+
+/** Every 64 KB slice a holder reads for a pull takes a second: a phone's slow uplink, so pulls stay under way a while. */
+const slowUplink = () => {
+  const read = Blob.prototype.arrayBuffer;
+  Blob.prototype.arrayBuffer = async function (this: Blob) {
+    if (this.size === 64 * 1024) await new Promise((resolve) => setTimeout(resolve, 1000));
+    return read.call(this);
+  };
+};
+
+// Review of PR #68 (Grumpy Friend), 2026-10-16: a phone's browser kills the tab mid-pull, and its links never say
+// goodbye. Alice's two links to Bob were up and busy, so neither counted as given up, and every ask from his reopened
+// tab found no place.
+test('regression: pictures asked again after the puller\'s tab died mid-pull come, though his old links never closed', async ({ crowd, browserName }) => {
+  test.skip(browserName !== 'chromium', 'crashes the renderer through CDP');
+  test.slow();
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.page.evaluate(slowUplink);
+  for (const [i, buffer] of [heavy(png(640, 480), 2 * 1024 * 1024), heavy(png(480, 640), 2 * 1024 * 1024)].entries()) {
+    await alice.page.getByTestId('attach').setInputFiles({ name: `big-${i}.png`, mimeType: 'image/png', buffer });
+  }
+  // Both under way, and kept: the reopened tab finds them in its history and pulls them by itself.
+  await expect(bob.page.locator('.chat-log .att-media figcaption', { hasText: /\b[1-9]\d?% of/ })).toHaveCount(2, { timeout: 30_000 });
+  await expect.poll(async () => (await bob.storedTexts()).sort()).toEqual(['big-0.png', 'big-1.png']);
+
+  // The tab is killed: nothing goes out, on the socket or on the links. He opens it again at once, same browser.
+  const cdp = await bob.context.newCDPSession(bob.page);
+  const crashed = bob.page.waitForEvent('crash');
+  void cdp.send('Page.crash').catch(() => {});
+  await crashed;
+  bob.page = await bob.context.newPage();
+  bob.watch(bob.page);
+  await bob.open();
+
+  await expect(bob.page.locator('.chat-log .att-media img:not(.att-preview)')).toHaveCount(2, { timeout: 120_000 });
+});
