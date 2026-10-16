@@ -4,6 +4,8 @@ import { buildAuthMessage } from '../core/identity';
 import { openFile, openText, sealFile, sealText } from '../core/sealed';
 import { MAX_FILE_BYTES, MAX_FILE_NAME, PULLS_AT_ONCE, formatSize, inlineKind, pullsByItself, type FileMeta } from '../core/attachment';
 import { createLinks, PullFailed, type PullError } from './links';
+import { createFileWatchdog } from './invariants';
+import { exposeHooks } from './hooks';
 import { hashOf, holdSent, keepFile, keptFile, makePreview } from './files';
 import {
   CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, MAX_TEXT_LENGTH, PING_FRAME, PING_INTERVAL_MS,
@@ -269,6 +271,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   let pulling = 0;
   /** The pulls running, by hash, to cancel them. */
   const aborts = new Map<string, AbortController>();
+  /** When each running pull started or last received bytes, for the watchdog; and those whose bytes are all here and being kept. */
+  const movedAt = new Map<string, number>();
+  const saving = new Set<string>();
 
   /** Shows a file from bytes I hold: a blob URL of its own type if it shows inline, else one that only downloads. */
   function show(file: FileMeta, blob: Blob): void {
@@ -313,8 +318,10 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       const started = Date.now();
       const abort = new AbortController();
       aborts.set(hash, abort);
-      void links.pull(from, hash, file.size, (received) => { if (!stopped && !abort.signal.aborted) setAttachment(hash, { status: 'pulling', received }); }, abort.signal)
+      movedAt.set(hash, Date.now());
+      void links.pull(from, hash, file.size, (received) => { movedAt.set(hash, Date.now()); if (!stopped && !abort.signal.aborted) setAttachment(hash, { status: 'pulling', received }); }, abort.signal)
         .then(async (blob) => {
+          saving.add(hash); // a large file takes a while to write on a slow phone: not a pull gone quiet
           posthog.capture('file_pulled', { bytes: file.size, ms: Date.now() - started, inline: inlineKind(file.type) ?? 'none' });
           // Shown from the store's copy, which is on disk: the pulled one is in memory, as large as the file.
           await keepFile(hash, blob);
@@ -332,8 +339,30 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           if (!reachable(hash).length) setAttachment(hash, { status: 'waiting' });
           else setAttachment(hash, { status: 'failed', reason });
         })
-        .finally(() => { aborts.delete(hash); pulling--; nextPull(); });
+        .finally(() => { aborts.delete(hash); movedAt.delete(hash); saving.delete(hash); pulling--; nextPull(); });
     }
+  }
+
+  // What the chat shows of each attachment against what the pulls have (attachments ticket 04, core/invariants.ts).
+  const watchdog = createFileWatchdog(() => ({
+    at: Date.now(),
+    files: [...attachmentNow].map(([hash, a], i) => ({
+      key: String(i), status: a.status, running: aborts.has(hash) || queue.includes(hash), active: aborts.has(hash) && !saving.has(hash),
+      movedAt: movedAt.get(hash) ?? null, holderOnline: reachable(hash).length > 0,
+    })),
+  }));
+  if (exposeHooks) {
+    // Inspection hooks for the e2e suite, per room id: the watchdog's reports, and a status set against the pulls, so a
+    // test can break each invariant on purpose. Absent in the builds friends get.
+    const w = window as unknown as { __daveFiles?: Record<string, unknown> };
+    w.__daveFiles = {
+      ...w.__daveFiles,
+      [opts.roomId]: {
+        invariants: () => watchdog.violations(),
+        attachments: () => Object.fromEntries([...attachmentNow].map(([h, a]) => [h, a.status])),
+        pretend: (hash: string, status: 'pulling' | 'waiting') => { setAttachment(hash, status === 'pulling' ? { status, received: 0 } : { status }); },
+      },
+    };
   }
 
   // A friend who holds a file I wait for came online: pull it now. One whose pull failed for a link that did not come up
@@ -550,6 +579,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   onCleanup(() => {
     offConsent();
     stopped = true;
+    watchdog.stop();
     links.close();
     for (const url of urls) URL.revokeObjectURL(url);
     clearTimeout(reconnectTimer);

@@ -13,7 +13,14 @@ export type InvariantKind =
   /** The same for their share's sound, against their volume and the share's own volume (problem report of Oct 3). */
   | 'share_gain'
   /** A badge says "direct" or "via relay" for a connection whose transport has failed or closed. */
-  | 'conn_transport';
+  | 'conn_transport'
+  /**
+   * An attachment shows a pull under way, and none is running or waiting its turn, or the one running has had nothing
+   * for longer than a pull gives itself (report of 2026-10-16: "Try again keeps being at 0%"). Attachments ticket 04.
+   */
+  | 'file_pulling_stuck'
+  /** An attachment says it waits for someone to come online while a friend who has it is online. */
+  | 'file_waiting_online';
 
 export const INVARIANT_EVERY_MS = 2_000;
 /**
@@ -26,6 +33,10 @@ export const INVARIANT_GRACE_MS: Record<InvariantKind, number> = {
   voice_gain: 6_000,
   share_gain: 6_000,
   conn_transport: 10_000,
+  // A pull's status and its bookkeeping change in the same task; what a stuck pull adds is PULL_QUIET_MS.
+  file_pulling_stuck: 10_000,
+  // A friend coming online starts the pull in the same presence update.
+  file_waiting_online: 10_000,
 };
 
 /** What a share tile shows (App.tsx ShareTile reads it from here too, so the watch sees what the tile shows). */
@@ -117,4 +128,40 @@ export function createInvariantWatch(grace: Record<InvariantKind, number> = INVA
     /** A new call: nothing seen so far counts, and every kind may be reported again. */
     reset(): void { since = new Map(); lastAt = null; reported.clear(); },
   };
+}
+
+/**
+ * One attachment of a room as the chat shows it and as the pulls have it (client/room.ts). No names, no hashes: `key`
+ * only tells the attachments of this room apart.
+ */
+export type FileFacts = {
+  key: string;
+  /** What the chat shows (client/room.ts, Attachment). */
+  status: 'idle' | 'waiting' | 'pulling' | 'ready' | 'failed';
+  /** A pull of it is running, or queued for its turn. */
+  running: boolean;
+  /** A pull of it is running, not only queued. */
+  active: boolean;
+  /** When the running pull started or last received bytes; null with none. */
+  movedAt: number | null;
+  /** A friend who has it, other than me, is online. */
+  holderOnline: boolean;
+};
+/** Read at `at`: every attachment of the room that has a status. */
+export type RoomFacts = { at: number; files: FileFacts[] };
+
+/**
+ * A running pull gives up after at most the ICE servers' wait (5 s) and its connect timeout (20 s), or a stall of 20 s
+ * (client/links.ts). Quiet for longer, it should have ended.
+ */
+export const PULL_QUIET_MS = 30_000;
+
+/** Every contradiction among a room's attachments. */
+export function fileBreaches(now: RoomFacts): Breach[] {
+  const out: Breach[] = [];
+  for (const f of now.files) {
+    if (f.status === 'pulling' && (!f.running || (f.active && f.movedAt !== null && now.at - f.movedAt > PULL_QUIET_MS))) out.push({ kind: 'file_pulling_stuck', key: f.key });
+    if (f.status === 'waiting' && f.holderOnline) out.push({ kind: 'file_waiting_online', key: f.key });
+  }
+  return out;
 }

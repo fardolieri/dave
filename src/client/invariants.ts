@@ -7,7 +7,9 @@
  * line, which stays in this tab unless a problem report is sent, names the fingerprint.
  */
 import posthog from './posthog';
-import { INVARIANT_EVERY_MS, breaches, createInvariantWatch, gainFor, type CallFacts, type InvariantKind, type Violation } from '../core/invariants';
+import {
+  INVARIANT_EVERY_MS, breaches, createInvariantWatch, fileBreaches, gainFor, type CallFacts, type InvariantKind, type RoomFacts, type Violation,
+} from '../core/invariants';
 
 export type InvariantReport = { kind: InvariantKind; heldMs: number; snapshot: Record<string, unknown> };
 
@@ -52,4 +54,27 @@ export function createInvariantWatchdog(read: () => CallFacts | null, describe: 
     stop(): void { clearInterval(timer); timer = undefined; },
     violations: (): InvariantReport[] => fired.slice(),
   };
+}
+
+/**
+ * The watchdog of one room's attachments (attachments ticket 04): running while the room is open, in a call or not, with
+ * the same reports as the call's. Once per kind for the room's life.
+ */
+export function createFileWatchdog(read: () => RoomFacts) {
+  const watch = createInvariantWatch();
+  const fired: InvariantReport[] = [];
+  const tick = () => {
+    if (document.visibilityState === 'hidden') return;
+    const now = read();
+    for (const v of watch.feed(now.at, fileBreaches(now))) {
+      const f = now.files.find((x) => x.key === v.key);
+      const file = f && { status: f.status, running: f.running, active: f.active, quietMs: f.movedAt === null ? null : now.at - f.movedAt, holderOnline: f.holderOnline };
+      const snapshot = { files: now.files.length, file };
+      fired.push({ kind: v.kind, heldMs: v.heldMs, snapshot });
+      console.warn(`[invariant] ${v.kind} held for ${Math.round(v.heldMs / 1000)} s`, JSON.stringify(snapshot));
+      posthog.capture('invariant_violation', { kind: v.kind, held_ms: v.heldMs, files: now.files.length, snapshot: JSON.stringify(snapshot) });
+    }
+  };
+  const timer = setInterval(tick, INVARIANT_EVERY_MS);
+  return { stop: () => clearInterval(timer), violations: (): InvariantReport[] => fired.slice() };
 }

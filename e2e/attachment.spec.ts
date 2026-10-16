@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { crc32, deflateSync } from 'node:zlib';
-import { expect, test } from './fixtures';
+import { expect, needHooks, test, type Friend } from './fixtures';
 
 // Attachments (ADR 0006): the announcement goes sealed through the Room, the bytes from friend to friend over a file
 // link. Bob stays a visitor throughout: file links do not need the call.
@@ -225,4 +225,44 @@ test('regression: pictures asked again after the puller\'s tab died mid-pull com
   await bob.open();
 
   await expect(bob.page.locator('.chat-log .att-media img:not(.att-preview)')).toHaveCount(2, { timeout: 120_000 });
+});
+
+/** A room's attachment hooks (client/room.ts), in a page that shows one room. */
+const files = (f: Friend) => ({
+  call: <T>(name: string, ...args: unknown[]) => f.page.evaluate(([n, a]) => {
+    const rooms = (window as unknown as { __daveFiles: Record<string, Record<string, (...x: unknown[]) => unknown>> }).__daveFiles;
+    return Object.values(rooms)[0]![n as string]!(...(a as unknown[]));
+  }, [name, args] as const) as Promise<T>,
+  fired: async () => (await files(f).call<Array<{ kind: string }>>('invariants')).map((v) => v.kind),
+});
+
+// Attachments ticket 04: the chat never says a file is coming when nothing can bring it. Every other test checks that the
+// watchdog stays quiet ([invariant] warnings fail a test); here each invariant is broken on purpose through the hooks.
+test('a pull shown under way with none running is reported (file_pulling_stuck)', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await needHooks(bob);
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'stripes.png', mimeType: 'image/png', buffer: png(64, 48) });
+  await expect(bob.page.locator('.chat-log .att-media img:not(.att-preview)')).toHaveCount(1, { timeout: 30_000 });
+  const [hash] = Object.keys(await files(bob).call<Record<string, string>>('attachments'));
+  bob.expectInvariant('file_pulling_stuck');
+  await files(bob).call('pretend', hash, 'pulling');
+  await expect.poll(files(bob).fired, { timeout: 30_000 }).toEqual(['file_pulling_stuck']);
+  const [report] = await files(bob).call<Array<{ heldMs: number; snapshot: Record<string, unknown> }>>('invariants');
+  expect(report!.heldMs).toBeGreaterThanOrEqual(10_000);
+  expect(report!.snapshot).toMatchObject({ file: { status: 'pulling', running: false } });
+  expect(JSON.stringify(report)).not.toContain(hash!); // no hashes
+});
+
+test('waiting for a friend to come online while one who has it is online is reported (file_waiting_online)', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await needHooks(bob);
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('zip') });
+  await expect(bob.page.locator('.chat-log .att-card')).toHaveCount(1);
+  const [hash] = Object.keys(await files(bob).call<Record<string, string>>('attachments'));
+  bob.expectInvariant('file_waiting_online');
+  await files(bob).call('pretend', hash, 'waiting');
+  await expect(bob.page.locator('.chat-log .att-card')).toContainText('Waiting for Alice');
+  await expect.poll(files(bob).fired, { timeout: 30_000 }).toEqual(['file_waiting_online']);
 });

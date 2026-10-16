@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { DECODING_RECENT_MS, INVARIANT_GRACE_MS, breaches, createInvariantWatch, gainFor, shareTileState, type CallFacts, type PeerFacts, type Violation } from '../src/core/invariants';
+import {
+  DECODING_RECENT_MS, INVARIANT_GRACE_MS, PULL_QUIET_MS, breaches, createInvariantWatch, fileBreaches, gainFor, shareTileState,
+  type CallFacts, type FileFacts, type PeerFacts, type Violation,
+} from '../src/core/invariants';
 
 /** A friend in a healthy call: connected, not sharing, gains as their controls say. */
 const peer = (o: Partial<PeerFacts> = {}): PeerFacts => ({
@@ -102,5 +105,38 @@ describe('invariant watch', () => {
     expect(w.feed(0, [b])).toEqual([]);
     expect(w.feed(2000, [{ ...b, key: 'carol' }])).toEqual([]);
     expect(w.feed(4000, [b])).toEqual([]); // bob's run broke at 2000
+  });
+});
+
+describe('attachment invariant rules (attachments ticket 04)', () => {
+  const at = 1_000_000;
+  const file = (o: Partial<FileFacts> = {}): FileFacts => ({ key: '0', status: 'ready', running: false, active: false, movedAt: null, holderOnline: true, ...o });
+  const kinds = (f: FileFacts) => fileBreaches({ at, files: [f] }).map((b) => b.kind);
+
+  it('is quiet for what the chat shows in a healthy room', () => {
+    for (const f of [
+      file(), file({ status: 'idle' }), file({ status: 'failed' }), file({ status: 'waiting', holderOnline: false }),
+      file({ status: 'pulling', running: true }), // queued for its turn: no time limit
+      file({ status: 'pulling', running: true, active: true, movedAt: at - PULL_QUIET_MS }),
+      file({ status: 'pulling', running: true, active: false, movedAt: at - 10 * PULL_QUIET_MS }), // its bytes are being kept
+    ]) expect(kinds(f), JSON.stringify(f)).toEqual([]);
+  });
+
+  it('a pull shown with none running, or one quiet past its own give-up, is stuck', () => {
+    expect(kinds(file({ status: 'pulling' }))).toEqual(['file_pulling_stuck']);
+    expect(kinds(file({ status: 'pulling', running: true, active: true, movedAt: at - PULL_QUIET_MS - 1 }))).toEqual(['file_pulling_stuck']);
+  });
+
+  it('waiting for someone to come online while one who has it is online contradicts', () => {
+    expect(kinds(file({ status: 'waiting', holderOnline: true }))).toEqual(['file_waiting_online']);
+  });
+
+  it('the watch reports them after their grace, once each', () => {
+    const watch = createInvariantWatch();
+    const stuck = { at, files: [file({ status: 'pulling' })] };
+    expect(watch.feed(at, fileBreaches(stuck))).toEqual([]);
+    let due: Violation[] = [];
+    for (let t = at + 2000; t <= at + INVARIANT_GRACE_MS.file_pulling_stuck; t += 2000) due = watch.feed(t, fileBreaches({ ...stuck, at: t }));
+    expect(due.map((v) => v.kind)).toEqual(['file_pulling_stuck']);
   });
 });
