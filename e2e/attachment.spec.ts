@@ -127,6 +127,58 @@ test('a GIF holds still while the window is not focused, and moves again when it
   await expect(stripes.locator('canvas')).toHaveCount(0);
 });
 
+test('a GIF that arrives in a window never focused shows held still, a whole frame, and moves once focused', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  // Every load of Bob's page from here on starts without focus, as after a reload on the second screen: no blur ever fires.
+  await bob.page.addInitScript(() => { document.hasFocus = () => false; });
+  await bob.page.reload();
+  await bob.connected();
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'blink.gif', mimeType: 'image/gif', buffer: gif(32) });
+  const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
+  await expect.poll(() => shown.evaluate((img: HTMLImageElement) => img.naturalWidth), { timeout: 30_000 }).toBe(32);
+  const still = bob.page.locator('.chat-log .att-media canvas.still');
+  await expect(still).toBeVisible();
+  await expect(shown).toHaveCSS('opacity', '0');
+  // Drawn once the bytes were there: the GIF's own size, not an empty 300 by 150, and a whole frame.
+  expect(await still.evaluate((c: HTMLCanvasElement) => [c.width, c.height])).toEqual([32, 32]);
+  const middle = await still.evaluate((c: HTMLCanvasElement) => Array.from(c.getContext('2d')!.getImageData(16, 16, 1, 1).data));
+  expect([[255, 0, 0, 255], [0, 0, 255, 255]]).toContainEqual(middle);
+  await bob.page.evaluate(() => { document.hasFocus = () => true; window.dispatchEvent(new Event('focus')); });
+  await expect(still).toHaveCount(0);
+  await expect(shown).toHaveCSS('opacity', '1');
+});
+
+test('while the window is not focused only a GIF on screen is held still, and one scrolled back to gets a fresh still', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await bob.page.setViewportSize({ width: 1200, height: 500 });
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'blink.gif', mimeType: 'image/gif', buffer: gif(32) });
+  const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
+  await expect.poll(() => shown.evaluate((img: HTMLImageElement) => img.naturalWidth), { timeout: 30_000 }).toBe(32);
+  // Lines until the GIF has left the log: how many that takes is the layout's business, not this test's.
+  const onScreen = () => shown.evaluate((img) => new Promise<boolean>((done) => {
+    const seen = new IntersectionObserver(([e]) => { seen.disconnect(); done(!!e?.isIntersecting); });
+    seen.observe(img);
+  }));
+  await bob.page.locator('.chat-log').hover();
+  for (let i = 0; i < 100 && (await onScreen()); i++) {
+    await alice.say(`line ${i}`);
+    await bob.page.mouse.wheel(0, 10_000);
+  }
+  await expect(shown).not.toBeInViewport();
+  await bob.page.evaluate(() => { document.hasFocus = () => false; window.dispatchEvent(new Event('blur')); });
+  const still = bob.page.locator('.chat-log .att-media canvas.still');
+  await expect(still).toHaveCount(0); // off screen: no copy made
+  await bob.page.mouse.wheel(0, -10_000); // the wheel works over a window without focus
+  await expect(shown).toBeInViewport();
+  await expect(still).toBeVisible();
+  const middle = await still.evaluate((c: HTMLCanvasElement) => Array.from(c.getContext('2d')!.getImageData(c.width >> 1, c.height >> 1, 1, 1).data));
+  expect([[255, 0, 0, 255], [0, 0, 255, 255]]).toContainEqual(middle);
+  await bob.page.mouse.wheel(0, 10_000);
+  await expect(still).toHaveCount(0);
+});
+
 test('a file that does not show inline waits for a click, then saves under its own name', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
