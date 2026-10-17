@@ -177,6 +177,22 @@ const VOICE_SEND_EVERY_MS = 30_000;
 const SPEAK_THRESHOLD = 0.02;
 const SPEAK_HOLD_MS = 300;
 
+/** A setting signal that also persists: [read, write]. */
+function persisted<K extends 'shareSettings' | 'volumes' | 'shareVolumes' | 'audioSettings' | 'viewerSettings'>(key: K): [() => LocalValue<K>, (next: LocalValue<K>) => void] {
+  const [get, set] = createSignal<LocalValue<K>>(local.read(key) as Exclude<LocalValue<K>, Function>);
+  return [get, (next) => { set(() => next); local.set(key, JSON.stringify(next)); }];
+}
+
+/**
+ * The saved volumes, one copy per browser that every room's call shares. With a copy per call, read at its start and
+ * written back whole, a volume set in one room dropped the one set in another (Grumpy Friend review, Oct 17).
+ */
+const volumeStores = new Map<'volumes' | 'shareVolumes', unknown>();
+function sharedVolumes<K extends 'volumes' | 'shareVolumes'>(key: K): [() => LocalValue<K>, (next: LocalValue<K>) => void] {
+  if (!volumeStores.has(key)) volumeStores.set(key, persisted(key));
+  return volumeStores.get(key) as [() => LocalValue<K>, (next: LocalValue<K>) => void];
+}
+
 /**
  * The Call from this browser's point of view (ADR 0001): one RTCPeerConnection per other
  * participant, three fixed transceivers, perfect negotiation with polite = lower key,
@@ -232,16 +248,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   const [audioBlocked, setAudioBlocked] = createSignal(false);
 
   // ---- settings (spec §6.1, §6.3), remembered per browser
-  /** A setting signal that also persists: [read, write]. */
-  function persisted<K extends 'shareSettings' | 'volumes' | 'shareVolumes' | 'audioSettings' | 'viewerSettings'>(key: K): [() => LocalValue<K>, (next: LocalValue<K>) => void] {
-    const [get, set] = createSignal<LocalValue<K>>(local.read(key) as Exclude<LocalValue<K>, Function>);
-    return [get, (next) => { set(() => next); local.set(key, JSON.stringify(next)); }];
-  }
   const [shareSettings, storeShareSettings] = persisted('shareSettings');
   /** Local volume per participant public key, remembered per browser. */
-  const [volumes, storeVolumes] = persisted('volumes');
+  const [volumes, storeVolumes] = sharedVolumes('volumes');
   /** Local volume of a participant's share sound, set from the share tile, so it never quiets their voice. */
-  const [shareVolumes, storeShareVolumes] = persisted('shareVolumes');
+  const [shareVolumes, storeShareVolumes] = sharedVolumes('shareVolumes');
   const [audioSettings, storeAudioSettings] = persisted('audioSettings');
   const [viewerSettings, storeViewerSettings] = persisted('viewerSettings');
   /** Plain mirror of the low bandwidth voice setting (ticket 27), read while descriptions go out and come in. */
