@@ -33,9 +33,9 @@
   --acc: #ffffff; --ok: #9df5bf; --warn: #ffd3a1; --bad: #ffd0d0; color: var(--fg); border-right: 0;
   color-scheme: dark; accent-color: var(--acc); }
 
-/* Lane ropes: each room is a lane, the rope runs across its top. */
-:where(:root[data-theme="imp-freibad"]) .room { padding-top: 6px; background: repeating-linear-gradient(90deg, var(--rope) 0 12px, #ffffff 12px 24px) top / 100% 5px no-repeat; }
-:where(:root[data-theme="imp-freibad"]) .room-head { margin-top: 10px; }
+/* Lane ropes: each room is a lane, the rope runs across its top, as far from the list above as from the lane's name. */
+:where(:root[data-theme="imp-freibad"]) .room { margin-top: 12px; padding-top: 12px; background: repeating-linear-gradient(90deg, var(--rope) 0 12px, #ffffff 12px 24px) top / 100% 5px no-repeat; }
+:where(:root[data-theme="imp-freibad"]) .room-head { margin-top: 0; }
 
 /* controls: tiles with small radii */
 :where(:root[data-theme="imp-freibad"]) button { font: inherit; font-weight: 500; border-radius: 4px; border-color: var(--edge); transition: background-color .15s ease-out; }
