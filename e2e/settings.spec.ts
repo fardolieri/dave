@@ -1,4 +1,4 @@
-import { expect, needHooks, test } from './fixtures';
+import { expect, needHooks, newSecret, test } from './fixtures';
 
 // Audio settings, volumes, the problem report, and the phone layout.
 
@@ -295,6 +295,34 @@ test('a friend\'s volume and the master volume multiply, and survive a reload', 
   await expect(alice.button('Leave')).toBeVisible(); // a reload rejoins the call by itself (ticket 24)
   await alice.connectedTo('Bob');
   await expect.poll(gainOfBob).toBeCloseTo(0.75);
+});
+
+test('regression: a volume set in one room survives one set in another', async ({ crowd }) => {
+  // Oct 2026, Grumpy Friend review: each room's call kept its own copy of the saved volumes and wrote it back whole, so
+  // a volume set in one room dropped the one set in the other.
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice');
+  const carol = await crowd.open('Carol', { rooms: [other] });
+  const bob = await crowd.open('Bob', { rooms: [crowd.room, other] });
+  const setVolume = async (of: string, value: string) => {
+    await bob.selectedRoom.locator('li.prow', { hasText: of }).locator('button.vol').click();
+    await bob.selectedRoom.locator('.volrow input[type=range]').fill(value);
+  };
+  const saved = () => bob.page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('dave.volumes') ?? '{}') as Record<string, number>).sort());
+
+  await alice.join();
+  await bob.join();
+  await bob.connectedTo('Alice');
+  await setVolume('Alice', '40');
+  await expect.poll(saved).toEqual([0.4]);
+  await bob.leave();
+
+  await bob.selectRoom('Other');
+  await carol.join();
+  await bob.join();
+  await bob.connectedTo('Carol');
+  await setVolume('Carol', '50');
+  await expect.poll(saved).toEqual([0.4, 0.5]);
 });
 
 test('a problem report is sent to the error log, with the friend told so', async ({ crowd }) => {
