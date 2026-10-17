@@ -7,7 +7,7 @@ import { getName, getPicture, inviteLinkFor, setName, setPicture, takeInviteLink
 import { addRoom, forgetRoom, getSelectedRoom, loadRooms, setSelectedRoom, type SavedRoom } from './rooms';
 import { newRoomSecret, normaliseRoomName, parseInviteText, type InviteLink } from '../core/rooms';
 import { encodeQr, qrPath } from '../core/qr';
-import { createRoom, type Attachment, type ChatLine, type ServerStatus } from './room';
+import { createRoom, prepareFile, type Attachment, type ChatLine, type PreparedFile, type ServerStatus } from './room';
 import { formatSize, inlineKind, pastedImageUrl, type FileMeta } from '../core/attachment';
 import type { PullError } from './links';
 import { MIC_TEST_RECORD_MS, createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
@@ -350,6 +350,48 @@ function Workspace(props: WorkspaceProps) {
   const bannerStatus = (l: Link): ServerStatus => (firstConnect() && l.room.status().kind === 'connecting' ? { kind: 'connected' } : l.room.status());
   // Bumped when I send or switch rooms: the log jumps to the newest line (the composer and the log are separate grid items).
   const [jumpToken, setJumpToken] = createSignal(0);
+  // Files waiting above the composer for Send, from a paste, the attach button or a drop. Like the typed text, they go
+  // with Send to the room on screen then. Each is made ready to send at once (a pasted picture's original fetched, the
+  // file hashed), and Send waits for all of them: nothing slow is left for the room, which keeps them and the text in
+  // the order handed over. A reload drops them.
+  const [staged, setStaged] = createSignal<Staged[]>([]);
+  let stagedIds = 0;
+  const stageFile = (file: File, original?: Promise<File | null>) => {
+    const id = ++stagedIds;
+    setStaged((all) => [...all, { id, file, url: thumbnailUrl(file), state: original ? 'original' : 'preparing', prepared: null }]);
+    const update = (change: (x: Staged) => Staged) => setStaged((all) => all.map((x) => (x.id === id ? change(x) : x)));
+    void (async () => {
+      const picked = (await original) ?? file;
+      update((x) => {
+        if (picked === file) return { ...x, state: 'preparing' };
+        if (x.url) URL.revokeObjectURL(x.url);
+        return { ...x, file: picked, url: thumbnailUrl(picked), state: 'preparing' };
+      });
+      try {
+        const prepared = await prepareFile(picked);
+        update((x) => ({ ...x, state: 'ready', prepared }));
+      } catch {
+        update((x) => ({ ...x, state: 'unreadable' })); // gone from the disk since it was picked, say
+      }
+    })();
+  };
+  const unstageFile = (id: number) => {
+    const gone = staged().find((x) => x.id === id);
+    if (gone?.url) URL.revokeObjectURL(gone.url);
+    setStaged((all) => all.filter((x) => x.id !== id));
+  };
+  // The files in the order shown, then the text, as a message with pictures reads: handed to the room together, which
+  // sends them in that order. One that could not be read is dropped; its chip said so.
+  const send = (text: string) => {
+    const room = current()?.room;
+    const files = staged();
+    if (!room || !files.every(settled)) return;
+    setStaged([]);
+    for (const x of files) if (x.url) URL.revokeObjectURL(x.url);
+    for (const x of files) if (x.prepared) room.sendPrepared(x.prepared);
+    if (text) room.sendText(text);
+    setJumpToken((n) => n + 1);
+  };
   // When the room on screen came on screen: texts from well before then start out folded away (ticket 38).
   const openedAt = createMemo(() => (current(), Date.now()));
   // The room on screen has nothing unread, however many lines arrive while it is up.
@@ -494,10 +536,10 @@ function Workspace(props: WorkspaceProps) {
           )}</Show>
           <ChatLog lines={cur().room.lines()} openedAt={openedAt()} jumpToken={jumpToken()} label={labelOf}
                    attachment={(hash) => cur().room.attachment(hash)} onPull={(hash) => cur().room.pull(hash)} onCancel={(hash) => cur().room.cancelPull(hash)}
-                   onFiles={writable() ? (files) => { for (const f of files) void cur().room.sendFile(f); setJumpToken((n) => n + 1); } : undefined} />
+                   onFiles={writable() ? (files) => { for (const f of files) stageFile(f); } : undefined} />
         </div>
-        <Composer connected={connected()} writable={writable()} roomName={cur().saved.name} onSend={(text) => { cur().room.sendText(text); setJumpToken((n) => n + 1); }}
-                  onFiles={(files) => { const room = cur().room; void Promise.resolve(files).then((fs) => { for (const f of fs) void room.sendFile(f); setJumpToken((n) => n + 1); }); }}>
+        <Composer connected={connected()} writable={writable()} roomName={cur().saved.name} onSend={send}
+                  staged={staged()} onStage={stageFile} onUnstage={unstageFile}>
           {/* Anchored to the composer's top edge, whatever its height on this device (ticket 32) */}
           <Show when={consent() === null || askingConsent()}><TelemetryNotice onAnswer={(c) => { setConsent(c); setAskingConsent(false); }} /></Show>
         </Composer>
@@ -1271,14 +1313,30 @@ const OVERLAY_HIDE_MS = 2500;
 /** Clock time on a 24-hour clock; older than a day also says which day. */
 const when = (at: number): string => new Date(at).toLocaleString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(Date.now() - at > 20 * 3600 * 1000 ? { day: '2-digit', month: 'short' } : {}) });
 
-/** How long a paste waits for the original of a picture copied in a browser before it sends the clipboard's copy. */
+/**
+ * A file waiting above the composer: `original` while a pasted picture's original may still come, `preparing` while it
+ * is hashed, then `ready` with what the room needs to send it at once, or `unreadable`.
+ */
+type Staged = { id: number; file: File; url: string | null; state: 'original' | 'preparing' | 'ready' | 'unreadable'; prepared: PreparedFile | null };
+/** Whether Send can take this file: ready, or never going to be. */
+const settled = (x: Staged): boolean => x.state === 'ready' || x.state === 'unreadable';
+const STAGED_STATE: Record<Staged['state'], string> = { original: 'Getting the original…', preparing: 'Preparing…', ready: '', unreadable: "Can't be read, won't be sent" };
+
+/** A blob URL for a staged file's thumbnail, for pictures shown inline (never SVG); the caller revokes it. */
+const thumbnailUrl = (file: File): string | null => (inlineKind(file.type) === 'image' ? URL.createObjectURL(file) : null);
+
+/** "PDF": what a staged file without a thumbnail shows instead, from its name. */
+const fileEnding = (name: string): string => /\.([A-Za-z0-9]{1,5})$/.exec(name)?.[1]?.toUpperCase() ?? 'FILE';
+
+/** How long a paste waits for the original of a picture copied in a browser before it stages the clipboard's copy. */
 const ORIGINAL_WAIT_MS = 10_000;
 
 /**
  * The picture at `url` as a file, or null: its site does not let other pages read it (CORS), it is not a picture shown
- * inline, or it took longer than ORIGINAL_WAIT_MS.
+ * inline, it took longer than ORIGINAL_WAIT_MS, or it is not the picture the browser copied (`still`) by its shape and
+ * size. A page that loads pictures late may have a 1-pixel placeholder, or a small fallback, as the `src` it puts there.
  */
-async function originalPicture(url: string): Promise<File | null> {
+async function originalPicture(url: string, still: File): Promise<File | null> {
   try {
     const res = await fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(ORIGINAL_WAIT_MS) });
     const type = (res.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
@@ -1286,7 +1344,13 @@ async function originalPicture(url: string): Promise<File | null> {
     const last = new URL(res.url || url).pathname.split('/').pop() ?? '';
     let name = last;
     try { name = decodeURIComponent(last); } catch { /* the name as the URL has it */ }
-    return new File([await res.blob()], name || 'image', { type });
+    const original = new File([await res.blob()], name || 'image', { type });
+    // The same picture by its shape, and no smaller: not a placeholder, nor a small fallback for a sharp copy.
+    const [a, b] = await Promise.all([createImageBitmap(original, { imageOrientation: 'from-image' }), createImageBitmap(still, { imageOrientation: 'from-image' })]);
+    const same = Math.abs(a.width / a.height - b.width / b.height) <= 0.02 * (b.width / b.height) && a.width >= b.width - 1;
+    a.close();
+    b.close();
+    return same ? original : null;
   } catch {
     return null;
   }
@@ -1296,26 +1360,34 @@ async function originalPicture(url: string): Promise<File | null> {
  * The message input. A separate grid item from the log so phones can keep it as the bottom row of the screen.
  * The emoji button opens the picker (issue #3); a pick lands at the caret and the picker stays for the next one.
  */
-function Composer(props: { connected: boolean; writable: boolean; roomName: string; onSend: (text: string) => void; onFiles: (files: File[] | Promise<File[]>) => void; children?: any }) {
+function Composer(props: {
+  connected: boolean; writable: boolean; roomName: string; children?: any;
+  /** Sends the text (maybe empty) with the staged files. */
+  onSend: (text: string) => void;
+  staged: Staged[]; onStage: (file: File, original?: Promise<File | null>) => void; onUnstage: (id: number) => void;
+}) {
   const [draft, setDraft] = createSignal('');
   let input: HTMLInputElement | undefined;
   let emojiButton: HTMLButtonElement | undefined;
   let picker: HTMLInputElement | undefined;
-  // A picture pasted from the clipboard (a screenshot) is sent as a file; pasted text stays text. A picture copied in a
-  // browser comes as a still PNG; the original it points at goes instead when the page can read it, so a GIF moves. It
-  // goes to the room of the paste, chosen now, though the original may take a while.
+  // A picture pasted from the clipboard (a screenshot) is staged as a file; pasted text stays text. A picture copied in a
+  // browser comes as a still PNG; the original it points at takes its place when the page can read it, so a GIF moves.
   const onPaste = (e: ClipboardEvent) => {
     const files = [...(e.clipboardData?.files ?? [])];
     if (!files.length || !props.writable) return;
     e.preventDefault();
     const url = files.length === 1 && files[0]!.type.startsWith('image/') ? pastedImageUrl(e.clipboardData?.getData('text/html') ?? '') : null;
-    if (!url) return props.onFiles(files);
-    props.onFiles(originalPicture(url).then((original) => [original ?? files[0]!]));
+    if (!url) for (const f of files) props.onStage(f);
+    else props.onStage(files[0]!, originalPicture(url, files[0]!));
   };
+  // A file staged from the attach button or a drop: Enter sends it, so the text field takes the focus where there is a
+  // keyboard. A phone's would cover the chat, and it has the Send button.
+  createEffect(() => props.staged.length, (n, prev) => { if (n > (prev ?? 0) && matchMedia('(pointer: fine)').matches) input?.focus(); });
   const submit = (e: Event) => {
     e.preventDefault();
     const text = draft().trim();
-    if (!text || !props.writable) return;
+    // Waits for files still being made ready: the text stays, and Send says why.
+    if ((!text && !props.staged.length) || !props.writable || !props.staged.every(settled)) return;
     props.onSend(text);
     setDraft('');
   };
@@ -1331,6 +1403,17 @@ function Composer(props: { connected: boolean; writable: boolean; roomName: stri
   };
   return (
     <form class="chat-input" onSubmit={submit}>
+      <Show when={props.staged.length}>
+        <ul class="staged" aria-label="To send">
+          <For each={props.staged}>{(x) => (
+            <li class={settled(x) ? x.state : `${x.state} pending`}>
+              <span class="thumb"><Show when={x.url} fallback={fileEnding(x.file.name)}>{(u) => <Picture src={u()} type={x.file.type} alt="" />}</Show></span>
+              <span class="meta"><span class="name" title={x.file.name}>{x.file.name}</span><span class="size">{STAGED_STATE[x.state] || formatSize(x.file.size)}</span></span>
+              <button type="button" class="unstage" onClick={() => props.onUnstage(x.id)} title={`Don't send ${x.file.name}`} aria-label={`Remove ${x.file.name}`}>✕</button>
+            </li>
+          )}</For>
+        </ul>
+      </Show>
       {/* The text field with its two buttons over its edges, as messengers do; the field itself keeps the theme's look */}
       <div class="chat-field">
         <button type="button" class="emoji-open" ref={emojiButton} popovertarget="composer-emoji" disabled={!props.writable} title="Emoji" aria-label="Emoji">🙂</button>
@@ -1340,9 +1423,10 @@ function Composer(props: { connected: boolean; writable: boolean; roomName: stri
         {/* Looks like the emoji button, in every theme: the themes style that one by its class */}
         <button type="button" class="emoji-open attach-open" disabled={!props.writable} onClick={() => picker?.click()} title="Send a picture, a video or a file" aria-label="Attach a file">📎</button>
         {/* Wrapped: the text field is the field's one direct input child (styles and the e2e fixtures find it so) */}
-        <span hidden><input ref={picker} type="file" multiple data-testid="attach" onChange={(e) => { const files = [...(e.currentTarget.files ?? [])]; e.currentTarget.value = ''; if (files.length) props.onFiles(files); }} /></span>
+        <span hidden><input ref={picker} type="file" multiple data-testid="attach" onChange={(e) => { const files = [...(e.currentTarget.files ?? [])]; e.currentTarget.value = ''; for (const f of files) props.onStage(f); }} /></span>
       </div>
-      <button disabled={!props.writable || !draft().trim()}>Send</button>
+      <button disabled={!props.writable || (!draft().trim() && !props.staged.length) || !props.staged.every(settled)}
+              title={props.staged.every(settled) ? undefined : 'Waiting for the files to be ready'}>Send</button>
       {props.children}
     </form>
   );

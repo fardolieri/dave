@@ -84,6 +84,22 @@ const sockets = new Set<WebSocket>();
 /** One socket's life, for `server_socket_closed`: when the Room let it in, when its last frame came. */
 type Life = { welcomedAt: number | null; frameAt: number | null };
 
+/** A file made ready to send (`prepareFile`): its announcement but for the sealing, and what this browser keeps of it. */
+export type PreparedFile = { picked: File; file: FileMeta; list: Uint8Array | null };
+
+/**
+ * Hashes a file and makes its preview: the slow part of sending it, done before it is handed to a room, so that it takes
+ * its place among texts and files there at once. A large file is hashed a piece at a time, which takes a while, and is
+ * served from the file picked: never copied, so it can be pulled while this tab stays open, and from friends who pulled
+ * it after that (ticket 03).
+ */
+export async function prepareFile(picked: File): Promise<PreparedFile> {
+  const pieced = picked.size > PIECED_FROM;
+  const [{ hash, list }, look] = await Promise.all([pieced ? piecesOf(picked) : hashOf(picked).then((h) => ({ hash: h, list: null })), makePreview(picked)]);
+  const file: FileMeta = { name: picked.name.slice(0, MAX_FILE_NAME).trim() || 'file', type: picked.type.slice(0, 100), size: picked.size, hash, ...look, ...(pieced ? { piece: PIECE_BYTES } : {}) };
+  return { picked, file, list };
+}
+
 /**
  * The client's view of one Room: one WebSocket with the challenge handshake,
  * reconnection with exponential backoff (spec §8.1), presence snapshots, and
@@ -196,6 +212,28 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       const sealed = await sealText({ key: opts.textKey, privateKey: opts.identity.keys.privateKey, roomId: opts.roomId, id: u.id, from: opts.identity.publicKey, text: u.text });
       send({ t: 'sealed', sealed, id: u.id });
     }).catch((e: unknown) => console.error('sealing a text failed', e));
+  };
+  /** A prepared file into the chat and on its way (ADR 0006): see `sendPrepared` below. */
+  const sendPrepared = ({ picked, file, list }: PreparedFile): void => {
+    if (picked.size > MAX_FILE_BYTES) { push({ kind: 'system', text: `Not sent: ${picked.name} is ${formatSize(picked.size)}.`, at: Date.now() }); return; }
+    if (stopped) return;
+    const id = Array.from(crypto.getRandomValues(new Uint8Array(12)), (x) => x.toString(16).padStart(2, '0')).join('');
+    const at = Date.now();
+    const { hash } = file;
+    holdSent(hash, picked);
+    if (list) holdSentList(hash, list);
+    else void keepFile(hash, picked);
+    announced.add(hash);
+    hold(file, opts.identity.publicKey);
+    if (attachmentNow.get(hash)?.status !== 'ready') show(file, picked);
+    setPendingFiles((p) => [...p, { id, file, at }]);
+    sealing = sealing.then(async () => {
+      const sealed = await sealFile({ key: opts.textKey, privateKey: opts.identity.keys.privateKey, roomId: opts.roomId, id, from: opts.identity.publicKey, file });
+      // Kept for the next socket, which sends it again; friends show an id they have shown already no more.
+      setPendingFiles((p) => p.map((f) => (f.id === id ? { ...f, sealed } : f)));
+      send({ t: 'file', sealed, id });
+    }).catch((e: unknown) => console.error('sealing a file failed', e));
+    posthog.capture('file_sent', { bytes: file.size, inline: inlineKind(file.type) ?? 'none', preview: !!file.preview });
   };
   /** Friends' texts are opened in the order the Room sent them, so they show in that order too. */
   let opening: Promise<void> = Promise.resolve();
@@ -786,8 +824,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       const { name, picture } = carried(latest);
       const me: Identity = you() ?? { publicKey: opts.identity.publicKey, fingerprint: opts.identity.fingerprint, name, ...(picture ? { picture } : {}) };
       const mine = [
-        ...waiting.map((u): ChatLine => ({ kind: 'text', id: `pending:${u.id}`, from: me, text: u.text, at: u.at, pending: true })),
+        // Files first: one sent with a text in the same millisecond was handed over first, and stays first (a stable sort).
         ...files.map((f): ChatLine => ({ kind: 'file', id: `pending:${f.id}`, from: me, file: f.file, at: f.at, pending: true })),
+        ...waiting.map((u): ChatLine => ({ kind: 'text', id: `pending:${u.id}`, from: me, text: u.text, at: u.at, pending: true })),
       ].sort((a, b) => a.at - b.at);
       return [...lines(), ...mine];
     }),
@@ -844,36 +883,12 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       posthog.capture('message_sent');
     },
     /**
-     * Sends a file (ADR 0006): it is kept here, and its announcement goes sealed, with a preview for a picture or a video.
-     * Friends pull the bytes from this browser. Like a text, it waits for a socket, and goes again on the next one if the
-     * last took it without bringing it back; unlike a text, a reload forgets it.
+     * Sends a file (ADR 0006), prepared beforehand (`prepareFile`): it is kept here, and its announcement goes sealed, with
+     * a preview for a picture or a video. Friends pull the bytes from this browser. Like a text, it waits for a socket, and
+     * goes again on the next one if the last took it without bringing it back; unlike a text, a reload forgets it. It goes
+     * at once: after what was sent before it and before what is sent after it, a text among them.
      */
-    sendFile: async (picked: File): Promise<void> => {
-      if (picked.size > MAX_FILE_BYTES) { push({ kind: 'system', text: `Not sent: ${picked.name} is ${formatSize(picked.size)}.`, at: Date.now() }); return; }
-      const id = Array.from(crypto.getRandomValues(new Uint8Array(12)), (x) => x.toString(16).padStart(2, '0')).join('');
-      const at = Date.now();
-      // A large file is hashed a piece at a time, which takes a while, and is served from the file picked: never copied,
-      // so it can be pulled while this tab stays open, and from friends who pulled it after that (ticket 03).
-      const pieced = picked.size > PIECED_FROM;
-      if (pieced) push({ kind: 'system', text: `Preparing ${picked.name} (${formatSize(picked.size)}) to send…`, at });
-      const [{ hash, list }, look] = await Promise.all([pieced ? piecesOf(picked) : hashOf(picked).then((h) => ({ hash: h, list: null })), makePreview(picked)]);
-      const file: FileMeta = { name: picked.name.slice(0, MAX_FILE_NAME).trim() || 'file', type: picked.type.slice(0, 100), size: picked.size, hash, ...look, ...(pieced ? { piece: PIECE_BYTES } : {}) };
-      if (stopped) return;
-      holdSent(hash, picked);
-      if (list) holdSentList(hash, list);
-      else void keepFile(hash, picked);
-      announced.add(hash);
-      hold(file, opts.identity.publicKey);
-      if (attachmentNow.get(hash)?.status !== 'ready') show(file, picked);
-      setPendingFiles((p) => [...p, { id, file, at }]);
-      sealing = sealing.then(async () => {
-        const sealed = await sealFile({ key: opts.textKey, privateKey: opts.identity.keys.privateKey, roomId: opts.roomId, id, from: opts.identity.publicKey, file });
-        // Kept for the next socket, which sends it again; friends show an id they have shown already no more.
-        setPendingFiles((p) => p.map((f) => (f.id === id ? { ...f, sealed } : f)));
-        send({ t: 'file', sealed, id });
-      }).catch((e: unknown) => console.error('sealing a file failed', e));
-      posthog.capture('file_sent', { bytes: file.size, inline: inlineKind(file.type) ?? 'none', preview: !!file.preview });
-    },
+    sendPrepared: (prepared: PreparedFile): void => sendPrepared(prepared),
     /** Empties the local history; the server never had it. */
     clearHistory: async () => { await clearHistory(opts.roomId); setLines([]); },
     /** Dev aid for scripts/drive.mjs: drops the socket so the reconnect path runs. */

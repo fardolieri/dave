@@ -1,6 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
-import { expect, needHooks, newSecret, test, type Friend } from './fixtures';
+import type { Route } from '@playwright/test';
+import { expect, needHooks, test, type Friend } from './fixtures';
 
 // Attachments (ADR 0006): the announcement goes sealed through the Room, the bytes from friend to friend over a file
 // link. Bob stays a visitor throughout: file links do not need the call.
@@ -37,7 +40,7 @@ test('a picture reaches a friend who is not in the call, inline, with the same b
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   const picture = png(640, 480);
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'stripes.png', mimeType: 'image/png', buffer: picture });
+  await alice.attach({ name: 'stripes.png', mimeType: 'image/png', buffer: picture });
 
   // Alice sees her own at once; Bob pulls it from her by himself.
   for (const f of [alice, bob]) {
@@ -63,7 +66,7 @@ test('regression: a line under a name shows its time over the text or the pictur
   await alice.say('one');
   await alice.say('two');
   await expect.poll(() => bob.chatTexts()).toEqual(['one', 'two']);
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'stripes.png', mimeType: 'image/png', buffer: png(64, 48) });
+  await alice.attach({ name: 'stripes.png', mimeType: 'image/png', buffer: png(64, 48) });
   await expect(bob.page.locator('.chat-log .att-media img:not(.att-preview)')).toHaveCount(1, { timeout: 30_000 });
 
   const rows = bob.page.locator('.chat-log .msg-cont');
@@ -114,7 +117,7 @@ function gif(side: number): Buffer {
 test('a GIF holds still while the window is not focused, and moves again when it is', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'blink.gif', mimeType: 'image/gif', buffer: gif(32) });
+  await alice.attach({ name: 'blink.gif', mimeType: 'image/gif', buffer: gif(32) });
   const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
   await expect.poll(() => shown.evaluate((img: HTMLImageElement) => img.naturalWidth), { timeout: 30_000 }).toBe(32);
   const still = bob.page.locator('.chat-log .att-media canvas.still');
@@ -145,7 +148,7 @@ test('a GIF holds still while the window is not focused, and moves again when it
   // A picture that cannot move gets no still. The window is tall enough for both on screen, so the GIF's still showing
   // again says the blur has been seen.
   await bob.page.setViewportSize({ width: 1280, height: 1600 });
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'stripes.png', mimeType: 'image/png', buffer: png(64, 48) });
+  await alice.attach({ name: 'stripes.png', mimeType: 'image/png', buffer: png(64, 48) });
   const stripes = bob.page.locator('.chat-log .att-media').filter({ has: bob.page.locator('img[alt="stripes.png"]') });
   await expect.poll(() => stripes.locator('img').evaluate((img: HTMLImageElement) => img.naturalWidth), { timeout: 30_000 }).toBe(64);
   await focus(false);
@@ -162,7 +165,7 @@ test('a GIF that arrives in a window never focused shows held still, a whole fra
   await bob.page.addInitScript(() => { document.hasFocus = () => false; });
   await bob.page.reload();
   await bob.connected();
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'blink.gif', mimeType: 'image/gif', buffer: gif(32) });
+  await alice.attach({ name: 'blink.gif', mimeType: 'image/gif', buffer: gif(32) });
   const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
   await expect.poll(() => shown.evaluate((img: HTMLImageElement) => img.naturalWidth), { timeout: 30_000 }).toBe(32);
   const still = bob.page.locator('.chat-log .att-media canvas.still');
@@ -181,7 +184,7 @@ test('while the window is not focused only a GIF on screen is held still, and on
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   await bob.page.setViewportSize({ width: 1200, height: 500 });
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'blink.gif', mimeType: 'image/gif', buffer: gif(32) });
+  await alice.attach({ name: 'blink.gif', mimeType: 'image/gif', buffer: gif(32) });
   const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
   await expect.poll(() => shown.evaluate((img: HTMLImageElement) => img.naturalWidth), { timeout: 30_000 }).toBe(32);
   // Lines until the GIF has left the log: how many that takes is the layout's business, not this test's.
@@ -210,7 +213,10 @@ test('while the window is not focused only a GIF on screen is held still, and on
 /** What a site serves behind a picture a browser copies as a still PNG: a GIF that moves. */
 const served = gif(8);
 
-/** Pastes into the composer what a browser puts on the clipboard for a copied picture: a PNG, and HTML pointing at its source. */
+/**
+ * Pastes into the composer what a browser puts on the clipboard for a copied picture: a PNG, and HTML pointing at its
+ * source. The PNG is the picture as the browser decoded it, so it has the original's size (`still` here must too).
+ */
 const pastePicture = (f: Friend, still: Buffer, html: string) => f.composer.evaluate((input, [b64, html]) => {
   const clipboardData = new DataTransfer();
   clipboardData.items.add(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], 'image.png', { type: 'image/png' }));
@@ -221,41 +227,71 @@ const pastePicture = (f: Friend, still: Buffer, html: string) => f.composer.eval
   input.dispatchEvent(paste);
 }, [still.toString('base64'), html] as const);
 
-test('a GIF pasted from a browser goes as the GIF its site serves, not the still picture the browser copied', async ({ crowd }) => {
-  const alice = await crowd.open('Alice');
-  const bob = await crowd.open('Bob');
-  await alice.context.route('https://gifs.example/**', (r) => r.fulfill({ status: 200, contentType: 'image/gif', headers: { 'access-control-allow-origin': '*' }, body: served }));
-  await pastePicture(alice, png(640, 480), '<meta charset="utf-8"><img src="https://gifs.example/media/dancing%20cat.gif?w=1&amp;h=1" alt="cat">');
-
-  for (const f of [alice, bob]) {
-    const shown = f.page.locator('.chat-log .att-media img:not(.att-preview)');
-    await expect(shown).toHaveCount(1, { timeout: 30_000 });
-    const url = (await shown.getAttribute('src'))!;
-    expect(await f.page.evaluate(pageHash(url), url)).toBe(sha256(served));
-  }
-  await expect(alice.page.locator('.chat-log .att-media img:not(.att-preview)')).toHaveAttribute('alt', /dancing cat\.gif/);
-});
-
-test('a GIF still coming from its site when its sender opens another room goes to the room it was pasted in', async ({ crowd }) => {
-  const other = { secret: newSecret(), name: 'Other' };
-  const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
-  const bob = await crowd.open('Bob');
-  await alice.selectRoom(crowd.room.name);
-  let release!: () => void;
-  const held = new Promise<void>((r) => { release = r; });
-  await alice.context.route('https://gifs.example/**', async (r) => { await held; await r.fulfill({ status: 200, contentType: 'image/gif', headers: { 'access-control-allow-origin': '*' }, body: served }); });
-  await pastePicture(alice, png(640, 480), '<img src="https://gifs.example/media/cat.gif">');
-  await alice.selectRoom('Other');
-  release();
-
-  const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
+/** The picture a friend's log shows, by the SHA-256 of its bytes, once it is there. */
+async function shownHash(f: Friend): Promise<string> {
+  const shown = f.page.locator('.chat-log .att-media img:not(.att-preview)');
   await expect(shown).toHaveCount(1, { timeout: 30_000 });
   const url = (await shown.getAttribute('src'))!;
-  expect(await bob.page.evaluate(pageHash(url), url)).toBe(sha256(served));
-  await expect(alice.page.locator('.chat-log .att-media')).toHaveCount(0); // Other, still open, never had it
+  return f.page.evaluate(pageHash(url), url);
+}
+
+/** What a friend's log shows, top to bottom: the name of each picture, the words of each text. */
+const order = (f: Friend) => f.page.locator('.chat-log .att-media img:not(.att-preview), .chat-log .msg-text')
+  .evaluateAll((els) => els.map((el) => (el instanceof HTMLImageElement ? el.alt : el.textContent)));
+
+const serveGif = (r: Route) => r.fulfill({ status: 200, contentType: 'image/gif', headers: { 'access-control-allow-origin': '*' }, body: served });
+
+test('a GIF pasted from a browser waits above the composer as the GIF its site serves, and goes with Enter', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.context.route('https://gifs.example/**', serveGif);
+  await pastePicture(alice, png(8, 8), '<meta charset="utf-8"><img src="https://gifs.example/media/dancing%20cat.gif?w=1&amp;h=1" alt="cat">');
+
+  // Shown before it goes: the GIF's own name and size, and the GIF itself as the thumbnail.
+  await expect(alice.staged).toHaveCount(1);
+  await expect(alice.staged.locator('.name')).toHaveText('dancing cat.gif');
+  await expect(alice.staged.locator('.size')).toHaveText(`${served.length} B`);
+  const thumb = (await alice.staged.locator('.thumb img').getAttribute('src'))!;
+  expect(await alice.page.evaluate(pageHash(thumb), thumb)).toBe(sha256(served));
+  await expect(bob.page.locator('.chat-log .att-media')).toHaveCount(0); // nothing sent yet
+
+  await alice.composer.fill('look');
+  await alice.composer.press('Enter');
+  await expect(alice.staged).toHaveCount(0);
+  for (const f of [alice, bob]) expect(await shownHash(f)).toBe(sha256(served));
+  await expect(bob.page.locator('.chat-log .msg-text')).toContainText(['look']);
 });
 
-test('a picture pasted from a site that does not let the page read it goes as the still picture the browser copied', async ({ crowd }) => {
+test('Send waits for a picture whose original is still coming; then the pictures go in the order shown, and the text after them', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  let release!: () => void;
+  const held = new Promise<void>((r) => { release = r; });
+  const second = gif(12); // other bytes, so another file
+  await alice.context.route('https://gifs.example/first.gif', async (r) => { await held; await serveGif(r); });
+  await alice.context.route('https://gifs.example/second.gif', (r) => r.fulfill({ status: 200, contentType: 'image/gif', headers: { 'access-control-allow-origin': '*' }, body: second }));
+  await pastePicture(alice, png(8, 8), '<img src="https://gifs.example/first.gif">');
+  await pastePicture(alice, png(12, 12), '<img src="https://gifs.example/second.gif">');
+  await expect(alice.staged.locator('.name')).toHaveText(['image.png', 'second.gif']);
+  await alice.composer.fill('look at these');
+  await expect(alice.staged.nth(1)).not.toHaveClass(/pending/);
+  await alice.composer.press('Enter');
+  // Nothing went: the first picture is still coming, and the text stays where it was written.
+  await expect(alice.staged.nth(0)).toHaveClass(/pending/);
+  await expect(alice.staged.nth(0).locator('.size')).toHaveText('Getting the original…');
+  await expect(alice.sendButton).toBeDisabled();
+  await expect(alice.composer).toHaveValue('look at these');
+  expect(alice.wire.frames('up', 'file')).toEqual([]);
+  release();
+  await expect(alice.staged.locator('.name')).toHaveText(['first.gif', 'second.gif']);
+  await expect(alice.sendButton).toBeEnabled(); // the original in, and made ready to send
+  await alice.composer.press('Enter');
+  await expect(alice.staged).toHaveCount(0);
+
+  for (const f of [alice, bob]) await expect.poll(() => order(f), { timeout: 30_000 }).toEqual(['first.gif', 'second.gif', 'look at these']);
+});
+
+test('a picture pasted from a site that does not let the page read it waits as the still picture the browser copied', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   // How a fetch the site's CORS refuses ends for the page: a network error, as here.
@@ -264,17 +300,71 @@ test('a picture pasted from a site that does not let the page read it goes as th
   const still = png(640, 480);
   await pastePicture(alice, still, '<img src="https://gifs.example/media/cat.gif">');
 
-  const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
-  await expect(shown).toHaveCount(1, { timeout: 30_000 });
-  const url = (await shown.getAttribute('src'))!;
-  expect(await bob.page.evaluate(pageHash(url), url)).toBe(sha256(still));
+  await expect(alice.staged.locator('.name')).toHaveText('image.png');
+  await alice.sendButton.click();
+  expect(await shownHash(bob)).toBe(sha256(still));
+});
+
+test('a photo copied from a page whose img src is a placeholder goes as the photo the browser copied', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  // A page that loads pictures late: its src a 1-pixel GIF of its own, the photo shown from srcset. The browser copies the photo.
+  await alice.context.route('https://news.example/spacer.gif', (r) => r.fulfill({ status: 200, contentType: 'image/gif', headers: { 'access-control-allow-origin': '*' }, body: gif(1) }));
+  const still = png(640, 480);
+  await pastePicture(alice, still, '<img src="https://news.example/spacer.gif" srcset="https://news.example/photo-1280.jpg 2x" alt="">');
+  await expect(alice.staged).not.toHaveClass(/pending/);
+  await expect(alice.staged.locator('.name')).toHaveText('image.png');
+  await alice.sendButton.click();
+  expect(await shownHash(bob)).toBe(sha256(still));
+});
+
+test('a file removed from above the composer is not sent, and one picked with the attach button waits for Send', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.page.getByTestId('attach').setInputFiles([
+    { name: 'stripes.png', mimeType: 'image/png', buffer: png(64, 48) },
+    { name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('zip') },
+  ]);
+  await expect(alice.staged.locator('.name')).toHaveText(['stripes.png', 'notes.zip']);
+  await expect(alice.staged.nth(1).locator('.thumb')).toHaveText('ZIP'); // no picture of a file that is not one
+  await expect(alice.sendButton).toBeEnabled(); // with no text
+  await alice.staged.nth(0).getByRole('button', { name: 'Remove stripes.png' }).click();
+  await expect(alice.staged.locator('.name')).toHaveText(['notes.zip']);
+  await alice.sendButton.click();
+
+  await expect(bob.page.locator('.chat-log .att-card .att-name')).toHaveText(['notes.zip']);
+  await expect(bob.page.locator('.chat-log .att-media')).toHaveCount(0);
+});
+
+test('files waiting for Send, photographed on a phone and a desktop for the owner to look at', async ({ crowd }, testInfo) => {
+  // Into the folder e2e.yml keeps from Chromium on every run (as themes.spec.ts does), so the look can be judged from CI.
+  const dir = join('e2e-themes', testInfo.project.name);
+  mkdirSync(dir, { recursive: true });
+  const phone = await crowd.open('Alice', { viewport: { width: 390, height: 780 }, deviceScaleFactor: 3 });
+  const desktop = await crowd.open('Carol', { viewport: { width: 1200, height: 800 }, deviceScaleFactor: 2 });
+  for (const f of [phone, desktop]) {
+    await f.context.route('https://gifs.example/**', () => new Promise(() => {})); // still coming, for the whole test
+    f.expectWarning(/gifs\.example|Failed to load resource/); // given up on after 10 s, should the test take that long
+    await f.page.getByTestId('attach').setInputFiles([
+      { name: 'holiday-photo-from-the-beach-at-sunset-2026.png', mimeType: 'image/png', buffer: png(640, 480) },
+      { name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('zip') },
+    ]);
+    await pastePicture(f, png(64, 48), '<img src="https://gifs.example/media/cat.gif">');
+    await expect(f.staged).toHaveCount(3);
+    await f.composer.fill('the beach!');
+    const name = f === phone ? 'staged-phone' : 'staged-desktop';
+    const body = await f.page.screenshot({ path: join(dir, `${name}.png`), animations: 'disabled' });
+    await testInfo.attach(name, { body, contentType: 'image/png' });
+    // Nothing of the composer runs off a phone's screen.
+    expect(await f.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
 });
 
 test('a file that does not show inline waits for a click, then saves under its own name', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   const notes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="window.pwned=1"/>');
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'notes.svg', mimeType: 'image/svg+xml', buffer: notes });
+  await alice.attach({ name: 'notes.svg', mimeType: 'image/svg+xml', buffer: notes });
 
   const card = bob.page.locator('.chat-log .att-card');
   await expect(card.locator('.att-name')).toHaveText('notes.svg');
@@ -317,7 +407,7 @@ test('a pull outlives a blip of the puller\'s socket, and the picture still show
     };
   });
   const picture = heavy(png(640, 480), 2 * 1024 * 1024);
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'big.png', mimeType: 'image/png', buffer: picture });
+  await alice.attach({ name: 'big.png', mimeType: 'image/png', buffer: picture });
   await expect(bob.page.locator('.chat-log .att-media figcaption')).toHaveText(/\b[1-9]\d?% of/, { timeout: 30_000 });
 
   // Bob's socket drops and comes back, as on a Wi-Fi to mobile handover; the file link between them is not the socket.
@@ -341,7 +431,7 @@ test('a picture that could not be pulled while its sender was frozen is pulled o
   // Alice's tab is in the background: her socket is still there, but nothing she is sent is answered.
   alice.wire.down = (frame) => (frame.includes('"t":"link"') ? null : frame);
   const picture = png(640, 480);
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'stripes.png', mimeType: 'image/png', buffer: picture });
+  await alice.attach({ name: 'stripes.png', mimeType: 'image/png', buffer: picture });
   await expect(bob.page.locator('.chat-log .att-media figcaption')).toContainText("Couldn't reach Alice", { timeout: 45_000 });
 
   // She opens the tab again: the phone had dropped her socket, and she comes back online.
@@ -364,13 +454,13 @@ test('a file sent again by a second friend comes from her while the first is awa
   const bob = await crowd.open('Bob');
   const carol = await crowd.open('Carol');
   const meme = randomBytes(50_000);
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'meme.zip', mimeType: 'application/zip', buffer: meme });
+  await alice.attach({ name: 'meme.zip', mimeType: 'application/zip', buffer: meme });
   const cards = bob.page.locator('.chat-log .att-card');
   await expect(cards).toHaveCount(1);
 
   await alice.close();
   await expect.poll(() => bob.online()).not.toContain('Alice');
-  await carol.page.getByTestId('attach').setInputFiles({ name: 'meme.zip', mimeType: 'application/zip', buffer: meme });
+  await carol.attach({ name: 'meme.zip', mimeType: 'application/zip', buffer: meme });
   await expect(cards).toHaveCount(2);
 
   // Bob asks for Carol's copy: Carol is online and has it.
@@ -393,7 +483,7 @@ test('regression: a pull tried again after its friend could not be reached is an
   // Alice's answers never reach Bob: his pulls do not connect, and give up.
   alice.wire.up = (frame) => (frame.startsWith('{"t":"link"') ? null : frame);
   for (const [i, name] of ['one.png', 'two.png'].entries()) {
-    await alice.page.getByTestId('attach').setInputFiles({ name, mimeType: 'image/png', buffer: png(64 + i, 48) });
+    await alice.attach({ name, mimeType: 'image/png', buffer: png(64 + i, 48) });
   }
   const failed = bob.page.locator('.chat-log .att-media figcaption', { hasText: "Couldn't reach Alice" });
   await expect(failed).toHaveCount(2, { timeout: 60_000 });
@@ -423,7 +513,7 @@ test('regression: pictures asked again after the puller\'s tab died mid-pull com
   const bob = await crowd.open('Bob');
   await alice.page.evaluate(slowUplink);
   for (const [i, buffer] of [heavy(png(640, 480), 2 * 1024 * 1024), heavy(png(480, 640), 2 * 1024 * 1024)].entries()) {
-    await alice.page.getByTestId('attach').setInputFiles({ name: `big-${i}.png`, mimeType: 'image/png', buffer });
+    await alice.attach({ name: `big-${i}.png`, mimeType: 'image/png', buffer });
   }
   // Both under way, and kept: the reopened tab finds them in its history and pulls them by itself.
   await expect(bob.page.locator('.chat-log .att-media figcaption', { hasText: /\b[1-9]\d?% of/ })).toHaveCount(2, { timeout: 30_000 });
@@ -456,7 +546,7 @@ test('a pull shown under way with none running is reported (file_pulling_stuck)'
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   await needHooks(bob);
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'stripes.png', mimeType: 'image/png', buffer: png(64, 48) });
+  await alice.attach({ name: 'stripes.png', mimeType: 'image/png', buffer: png(64, 48) });
   await expect(bob.page.locator('.chat-log .att-media img:not(.att-preview)')).toHaveCount(1, { timeout: 30_000 });
   const [hash] = Object.keys(await files(bob).call<Record<string, string>>('attachments'));
   bob.expectInvariant('file_pulling_stuck');
@@ -472,7 +562,7 @@ test('waiting for a friend to come online while one who has it is online is repo
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   await needHooks(bob);
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('zip') });
+  await alice.attach({ name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('zip') });
   await expect(bob.page.locator('.chat-log .att-card')).toHaveCount(1);
   const [hash] = Object.keys(await files(bob).call<Record<string, string>>('attachments'));
   bob.expectInvariant('file_waiting_online');
@@ -491,7 +581,7 @@ test('regression: a picture cancelled and asked again while its first pull waite
   await alice.page.evaluate(slowUplink);
   // The Room's ICE servers for links never reach Bob: each pull of his waits its 5 s for them (client/links.ts).
   bob.wire.down = (frame) => (frame.includes('"t":"linkice"') ? null : frame);
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'big.png', mimeType: 'image/png', buffer: heavy(png(640, 480), 2 * 1024 * 1024) });
+  await alice.attach({ name: 'big.png', mimeType: 'image/png', buffer: heavy(png(640, 480), 2 * 1024 * 1024) });
   const media = bob.page.locator('.chat-log .att-media');
   await media.getByRole('button', { name: 'Cancel' }).click({ timeout: 30_000 });
   await media.locator('button.att-get').click(); // both within the first pull's 5 s wait
@@ -513,7 +603,7 @@ test('a picture that could not be pulled while its sender was briefly away comes
   const held: string[] = [];
   alice.wire.down = (frame) => { if (!frame.includes('"t":"link"')) return frame; held.push(frame); return null; };
   const picture = png(640, 480);
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'stripes.png', mimeType: 'image/png', buffer: picture });
+  await alice.attach({ name: 'stripes.png', mimeType: 'image/png', buffer: picture });
   await expect(bob.page.locator('.chat-log .att-media figcaption')).toContainText("Couldn't reach Alice. Trying again soon.", { timeout: 45_000 });
 
   // She is back: what was sent meanwhile reaches her at once, and she answers it. Nobody left the room or came back.
@@ -536,7 +626,7 @@ test('every friend gets the pictures of a busy holder by itself, once her places
   for (const name of ['Bob', 'Carol', 'Dave', 'Erin', 'Frank']) pullers.push(await crowd.open(name));
   await alice.page.evaluate(slowUplink);
   for (const [i, buffer] of [heavy(png(640, 480), 1024 * 1024), heavy(png(480, 640), 1024 * 1024)].entries()) {
-    await alice.page.getByTestId('attach').setInputFiles({ name: `big-${i}.png`, mimeType: 'image/png', buffer });
+    await alice.attach({ name: `big-${i}.png`, mimeType: 'image/png', buffer });
   }
   for (const f of pullers) {
     await expect(f.page.locator('.chat-log .att-media img:not(.att-preview)'), `${f.name} has both`).toHaveCount(2, { timeout: 180_000 });
@@ -549,7 +639,7 @@ test('regression: a pull asked while the socket is being replaced is not left wa
   test.slow();
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('zip, zip') });
+  await alice.attach({ name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('zip, zip') });
   const card = bob.page.locator('.chat-log .att-card');
   await expect(card).toHaveCount(1);
   // His socket is gone and not back yet: he asks all the same.
@@ -571,7 +661,7 @@ test('a file comes from a friend who pulled it once its sender is gone, past one
   const carol = await crowd.open('Carol');
   const dave = await crowd.open('Dave');
   const notes = randomBytes(40_000);
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'notes.zip', mimeType: 'application/zip', buffer: notes });
+  await alice.attach({ name: 'notes.zip', mimeType: 'application/zip', buffer: notes });
   const bobs = bob.page.locator('.chat-log .att-card');
   await bobs.getByRole('button', { name: /⬇/ }).click();
   await expect(bobs.locator('a.att-save')).toHaveAttribute('download', 'notes.zip', { timeout: 30_000 });
@@ -610,7 +700,7 @@ test('a large file stopped part way goes on from there, and arrives whole', asyn
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   const picture = heavy(png(640, 480), 20 * 1024 * 1024); // over 16 MB: in pieces, and pulled on a click
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'big.png', mimeType: 'image/png', buffer: picture });
+  await alice.attach({ name: 'big.png', mimeType: 'image/png', buffer: picture });
   const media = bob.page.locator('.chat-log .att-media');
   await expect(media.locator('button.att-get')).toBeVisible({ timeout: 60_000 });
   // Once it is announced, Alice's uplink stalls after 272 slices of 64 KB (17 MB, past the first segment), until let go.
@@ -648,7 +738,7 @@ test('a large file cut off by a reload before 16 MB goes on from what it checked
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   const picture = heavy(png(640, 480), 20 * 1024 * 1024);
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'big.png', mimeType: 'image/png', buffer: picture });
+  await alice.attach({ name: 'big.png', mimeType: 'image/png', buffer: picture });
   const media = bob.page.locator('.chat-log .att-media');
   await expect(media.locator('button.att-get')).toBeVisible({ timeout: 60_000 });
   // Alice's uplink stalls after 160 slices of 64 KB (10 MB, inside the first segment), until let go.
@@ -700,7 +790,7 @@ test('a large file that comes faster than the disk takes it is not called a drop
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   const picture = heavy(png(640, 480), 20 * 1024 * 1024);
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'big.png', mimeType: 'image/png', buffer: picture });
+  await alice.attach({ name: 'big.png', mimeType: 'image/png', buffer: picture });
   const media = bob.page.locator('.chat-log .att-media');
   await expect(media.locator('button.att-get')).toBeVisible({ timeout: 60_000 });
   // Bob's disk takes 1.5 s a piece: some 30 s of writing after Alice's last byte, past the 20 s wait.
@@ -731,7 +821,7 @@ test('a large file part pulled by the app before 2026-10-17 goes on from its seg
   const bob = await crowd.open('Bob');
   await needHooks(bob);
   const picture = heavy(png(640, 480), 20 * 1024 * 1024);
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'big.png', mimeType: 'image/png', buffer: picture });
+  await alice.attach({ name: 'big.png', mimeType: 'image/png', buffer: picture });
   const media = bob.page.locator('.chat-log .att-media');
   await expect(media.locator('button.att-get')).toBeVisible({ timeout: 60_000 });
   // Alice's uplink stalls after 272 slices of 64 KB (17 MB), until let go.
@@ -789,7 +879,7 @@ test('a browser out of room for a large file says so, and does not call it a dro
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   const picture = heavy(png(640, 480), 20 * 1024 * 1024);
-  await alice.page.getByTestId('attach').setInputFiles({ name: 'big.png', mimeType: 'image/png', buffer: picture });
+  await alice.attach({ name: 'big.png', mimeType: 'image/png', buffer: picture });
   const media = bob.page.locator('.chat-log .att-media');
   await expect(media.locator('button.att-get')).toBeVisible({ timeout: 60_000 });
   // Bob's disk is full after 3 pieces: his file writer (client/filewriter.ts) answers the fourth with the browser's error.

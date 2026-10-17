@@ -289,6 +289,9 @@ export class Friend {
 
   // --- the page, as a friend sees it ---
   get composer(): Locator { return this.page.locator('.chat-field > input'); }
+  get sendButton(): Locator { return this.page.locator('form.chat-input').getByRole('button', { name: 'Send', exact: true }); }
+  /** Files staged above the composer, waiting for Send. */
+  get staged(): Locator { return this.page.locator('.staged > li'); }
   get banner(): Locator { return this.page.locator('.banner'); }
   /** The banner while the room's socket is away or not let in yet. */
   get away(): Locator { return this.banner.filter({ hasText: /Connecting|Reconnecting|Server unavailable/ }); }
@@ -367,6 +370,13 @@ export class Friend {
       return value;
     }, { message: `${this.name}'s composer empties` }).toBe('');
     await expect.poll(copies, { message: `${this.name}'s "${text}" comes back from the server` }).toBeGreaterThan(before);
+  }
+
+  /** Picks files with the attach button and sends them, as a person does: they wait above the composer for Send. */
+  async attach(files: Parameters<Locator['setInputFiles']>[0]): Promise<void> {
+    await this.page.getByTestId('attach').setInputFiles(files);
+    await this.sendButton.click();
+    await expect(this.staged).toHaveCount(0);
   }
 
   async selectRoom(name: string): Promise<void> {
