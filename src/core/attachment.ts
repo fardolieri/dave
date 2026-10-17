@@ -62,6 +62,21 @@ const INLINE: Record<string, 'image' | 'video'> = {
   'video/mp4': 'video', 'video/webm': 'video', 'video/quicktime': 'video',
 };
 export const inlineKind = (type: string): 'image' | 'video' | null => INLINE[type.toLowerCase()] ?? null;
+/**
+ * Where a picture copied in a browser came from: the http(s) `src` of the first `<img>` in the clipboard's HTML. A browser
+ * puts a copied GIF on the clipboard as a still PNG of its first frame, next to this HTML; the original is the animation.
+ */
+export function pastedImageUrl(html: string): string | null {
+  const m = /<img\b[^>]*?\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(html);
+  if (!m) return null;
+  const src = (m[1] ?? m[2] ?? m[3] ?? '').replace(/&(?:amp|#38|#x26);/gi, '&').trim();
+  try {
+    const url = new URL(src);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
 /** Pulled as it arrives, without a click. */
 export const pullsByItself = (f: FileMeta): boolean => inlineKind(f.type) !== null && f.size <= AUTO_PULL_BYTES;
 

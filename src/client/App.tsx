@@ -8,7 +8,7 @@ import { addRoom, forgetRoom, getSelectedRoom, loadRooms, setSelectedRoom, type 
 import { newRoomSecret, normaliseRoomName, parseInviteText, type InviteLink } from '../core/rooms';
 import { encodeQr, qrPath } from '../core/qr';
 import { createRoom, type Attachment, type ChatLine, type ServerStatus } from './room';
-import { formatSize, inlineKind, type FileMeta } from '../core/attachment';
+import { formatSize, inlineKind, pastedImageUrl, type FileMeta } from '../core/attachment';
 import type { PullError } from './links';
 import { MIC_TEST_RECORD_MS, createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
 import { createAttention, type RoomLink } from './attention';
@@ -497,7 +497,7 @@ function Workspace(props: WorkspaceProps) {
                    onFiles={writable() ? (files) => { for (const f of files) void cur().room.sendFile(f); setJumpToken((n) => n + 1); } : undefined} />
         </div>
         <Composer connected={connected()} writable={writable()} roomName={cur().saved.name} onSend={(text) => { cur().room.sendText(text); setJumpToken((n) => n + 1); }}
-                  onFiles={(files) => { for (const f of files) void cur().room.sendFile(f); setJumpToken((n) => n + 1); }}>
+                  onFiles={(files) => { const room = cur().room; void Promise.resolve(files).then((fs) => { for (const f of fs) void room.sendFile(f); setJumpToken((n) => n + 1); }); }}>
           {/* Anchored to the composer's top edge, whatever its height on this device (ticket 32) */}
           <Show when={consent() === null || askingConsent()}><TelemetryNotice onAnswer={(c) => { setConsent(c); setAskingConsent(false); }} /></Show>
         </Composer>
@@ -1271,21 +1271,46 @@ const OVERLAY_HIDE_MS = 2500;
 /** Clock time on a 24-hour clock; older than a day also says which day. */
 const when = (at: number): string => new Date(at).toLocaleString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(Date.now() - at > 20 * 3600 * 1000 ? { day: '2-digit', month: 'short' } : {}) });
 
+/** How long a paste waits for the original of a picture copied in a browser before it sends the clipboard's copy. */
+const ORIGINAL_WAIT_MS = 10_000;
+
+/**
+ * The picture at `url` as a file, or null: its site does not let other pages read it (CORS), it is not a picture shown
+ * inline, or it took longer than ORIGINAL_WAIT_MS.
+ */
+async function originalPicture(url: string): Promise<File | null> {
+  try {
+    const res = await fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(ORIGINAL_WAIT_MS) });
+    const type = (res.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+    if (!res.ok || inlineKind(type) !== 'image') return null;
+    const last = new URL(res.url || url).pathname.split('/').pop() ?? '';
+    let name = last;
+    try { name = decodeURIComponent(last); } catch { /* the name as the URL has it */ }
+    return new File([await res.blob()], name || 'image', { type });
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The message input. A separate grid item from the log so phones can keep it as the bottom row of the screen.
  * The emoji button opens the picker (issue #3); a pick lands at the caret and the picker stays for the next one.
  */
-function Composer(props: { connected: boolean; writable: boolean; roomName: string; onSend: (text: string) => void; onFiles: (files: File[]) => void; children?: any }) {
+function Composer(props: { connected: boolean; writable: boolean; roomName: string; onSend: (text: string) => void; onFiles: (files: File[] | Promise<File[]>) => void; children?: any }) {
   const [draft, setDraft] = createSignal('');
   let input: HTMLInputElement | undefined;
   let emojiButton: HTMLButtonElement | undefined;
   let picker: HTMLInputElement | undefined;
-  // A picture pasted from the clipboard (a screenshot) is sent as a file; pasted text stays text.
+  // A picture pasted from the clipboard (a screenshot) is sent as a file; pasted text stays text. A picture copied in a
+  // browser comes as a still PNG; the original it points at goes instead when the page can read it, so a GIF moves. It
+  // goes to the room of the paste, chosen now, though the original may take a while.
   const onPaste = (e: ClipboardEvent) => {
     const files = [...(e.clipboardData?.files ?? [])];
     if (!files.length || !props.writable) return;
     e.preventDefault();
-    props.onFiles(files);
+    const url = files.length === 1 && files[0]!.type.startsWith('image/') ? pastedImageUrl(e.clipboardData?.getData('text/html') ?? '') : null;
+    if (!url) return props.onFiles(files);
+    props.onFiles(originalPicture(url).then((original) => [original ?? files[0]!]));
   };
   const submit = (e: Event) => {
     e.preventDefault();

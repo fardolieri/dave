@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AUTO_PULL_BYTES, MAX_FILE_BYTES, MAX_PREVIEW_LENGTH, WHOLE_FILE_MAX, listHash, parsePartialPull, formatSize, inlineKind, keepWithin, parseFileIndex, parseFileMeta, parsePullFrame, pullsByItself,
+  AUTO_PULL_BYTES, MAX_FILE_BYTES, MAX_PREVIEW_LENGTH, WHOLE_FILE_MAX, listHash, parsePartialPull, formatSize, inlineKind, keepWithin, parseFileIndex, parseFileMeta, parsePullFrame, pastedImageUrl, pullsByItself,
   type FileMeta,
 } from '../src/core/attachment';
 import { MAX_SEALED_FILE_LENGTH, parseClientMessage, type Person } from '../src/core/protocol';
@@ -45,6 +45,16 @@ describe('attachments (ADR 0006)', () => {
     expect(inlineKind('image/GIF')).toBe('image');
     expect(inlineKind('video/mp4')).toBe('video');
     for (const type of ['image/svg+xml', 'text/html', 'application/xhtml+xml', 'application/pdf', '']) expect(inlineKind(type), type).toBeNull();
+  });
+
+  it('finds where a picture copied in a browser came from, in the HTML the browser put next to it', () => {
+    // As Chrome writes it on Linux, and with the quoting and escaping other pages use.
+    expect(pastedImageUrl('<meta charset=\'utf-8\'><img src="https://media.tenor.com/abc/cat.gif" alt="cat">')).toBe('https://media.tenor.com/abc/cat.gif');
+    expect(pastedImageUrl("<IMG class=x SRC='http://example.com/a.gif?w=1&amp;h=2'>")).toBe('http://example.com/a.gif?w=1&h=2');
+    expect(pastedImageUrl('<img data-src="https://x.com/no.gif" src=https://x.com/yes.gif>')).toBe('https://x.com/yes.gif');
+    for (const html of ['', 'just text', '<img alt="none">', '<img src="data:image/gif;base64,R0lGOD">', '<img src="blob:https://x.com/1">', '<img src="/relative.gif">', '<img src="javascript:alert(1)">']) {
+      expect(pastedImageUrl(html), html).toBeNull();
+    }
   });
 
   it('pulls pictures and videos up to 16 MB by themselves, anything else on a click', () => {

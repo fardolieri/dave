@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { crc32, deflateSync } from 'node:zlib';
-import { expect, needHooks, test, type Friend } from './fixtures';
+import { expect, needHooks, newSecret, test, type Friend } from './fixtures';
 
 // Attachments (ADR 0006): the announcement goes sealed through the Room, the bytes from friend to friend over a file
 // link. Bob stays a visitor throughout: file links do not need the call.
@@ -205,6 +205,69 @@ test('while the window is not focused only a GIF on screen is held still, and on
   expect([[255, 0, 0, 255], [0, 0, 255, 255]]).toContainEqual(middle);
   await bob.page.mouse.wheel(0, 10_000);
   await expect(still).toHaveCount(0);
+});
+
+/** What a site serves behind a picture a browser copies as a still PNG: a GIF that moves. */
+const served = gif(8);
+
+/** Pastes into the composer what a browser puts on the clipboard for a copied picture: a PNG, and HTML pointing at its source. */
+const pastePicture = (f: Friend, still: Buffer, html: string) => f.composer.evaluate((input, [b64, html]) => {
+  const clipboardData = new DataTransfer();
+  clipboardData.items.add(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], 'image.png', { type: 'image/png' }));
+  clipboardData.setData('text/html', html);
+  // Set on the event itself: Firefox's constructor ignores `clipboardData` and makes an empty one of its own.
+  const paste = new ClipboardEvent('paste', { bubbles: true, cancelable: true });
+  Object.defineProperty(paste, 'clipboardData', { value: clipboardData });
+  input.dispatchEvent(paste);
+}, [still.toString('base64'), html] as const);
+
+test('a GIF pasted from a browser goes as the GIF its site serves, not the still picture the browser copied', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.context.route('https://gifs.example/**', (r) => r.fulfill({ status: 200, contentType: 'image/gif', headers: { 'access-control-allow-origin': '*' }, body: served }));
+  await pastePicture(alice, png(640, 480), '<meta charset="utf-8"><img src="https://gifs.example/media/dancing%20cat.gif?w=1&amp;h=1" alt="cat">');
+
+  for (const f of [alice, bob]) {
+    const shown = f.page.locator('.chat-log .att-media img:not(.att-preview)');
+    await expect(shown).toHaveCount(1, { timeout: 30_000 });
+    const url = (await shown.getAttribute('src'))!;
+    expect(await f.page.evaluate(pageHash(url), url)).toBe(sha256(served));
+  }
+  await expect(alice.page.locator('.chat-log .att-media img:not(.att-preview)')).toHaveAttribute('alt', /dancing cat\.gif/);
+});
+
+test('a GIF still coming from its site when its sender opens another room goes to the room it was pasted in', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
+  const bob = await crowd.open('Bob');
+  await alice.selectRoom(crowd.room.name);
+  let release!: () => void;
+  const held = new Promise<void>((r) => { release = r; });
+  await alice.context.route('https://gifs.example/**', async (r) => { await held; await r.fulfill({ status: 200, contentType: 'image/gif', headers: { 'access-control-allow-origin': '*' }, body: served }); });
+  await pastePicture(alice, png(640, 480), '<img src="https://gifs.example/media/cat.gif">');
+  await alice.selectRoom('Other');
+  release();
+
+  const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
+  await expect(shown).toHaveCount(1, { timeout: 30_000 });
+  const url = (await shown.getAttribute('src'))!;
+  expect(await bob.page.evaluate(pageHash(url), url)).toBe(sha256(served));
+  await expect(alice.page.locator('.chat-log .att-media')).toHaveCount(0); // Other, still open, never had it
+});
+
+test('a picture pasted from a site that does not let the page read it goes as the still picture the browser copied', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  // How a fetch the site's CORS refuses ends for the page: a network error, as here.
+  await alice.context.route('https://gifs.example/**', (r) => r.abort('failed'));
+  alice.expectWarning(/gifs\.example|Failed to load resource/);
+  const still = png(640, 480);
+  await pastePicture(alice, still, '<img src="https://gifs.example/media/cat.gif">');
+
+  const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
+  await expect(shown).toHaveCount(1, { timeout: 30_000 });
+  const url = (await shown.getAttribute('src'))!;
+  expect(await bob.page.evaluate(pageHash(url), url)).toBe(sha256(still));
 });
 
 test('a file that does not show inline waits for a click, then saves under its own name', async ({ crowd }) => {
