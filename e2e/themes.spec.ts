@@ -65,6 +65,27 @@ function sideways(page: Page): Promise<string[]> {
   });
 }
 
+/**
+ * The endless CSS animations on the page whose style says they run, by name, without the app's own cues of something
+ * going on (a dot pulsing while it connects, a spinner, a speaking ring): a theme's moving background must not be among
+ * them while the page is still (theme.ts, data-still). Read from the style, not from each animation's play state: a
+ * screenshot with animations disabled restarts them by script, after which the style no longer pauses them.
+ */
+async function endless(page: Page): Promise<string[]> {
+  const cues = ['pulse', 'spin', 'fd-lounge-glow'];
+  await page.evaluate(() => { document.documentElement.dataset['still'] = ''; });
+  const running = await page.evaluate((cues) => document.getAnimations().flatMap((a) => {
+    const effect = a.effect as KeyframeEffect | null;
+    if (!(a instanceof CSSAnimation) || cues.includes(a.animationName) || !effect?.target || effect.getComputedTiming().iterations !== Infinity) return [];
+    const style = getComputedStyle(effect.target, effect.pseudoElement);
+    const states = style.animationPlayState.split(',').map((s) => s.trim());
+    const at = style.animationName.split(',').map((s) => s.trim()).indexOf(a.animationName);
+    return states[at % states.length] === 'paused' ? [] : [a.animationName];
+  }), cues);
+  await page.evaluate(() => { delete document.documentElement.dataset['still']; });
+  return running;
+}
+
 test('every theme applies, loads its fonts and keeps the console quiet, at desktop and phone width; the pick survives a reload', async ({ crowd }, testInfo) => {
   const room = { secret: newSecret(), name: 'Friday night' };
   const other = { secret: newSecret(), name: 'Board games' };
@@ -113,6 +134,8 @@ test('every theme applies, loads its fonts and keeps the console quiet, at deskt
     if (value) await expect(page.locator('html')).toHaveAttribute('data-theme', value);
     else await expect(page.locator('html')).not.toHaveAttribute('data-theme');
     await expect.poll(() => fontTrouble(page), { message: `${name}: every font on screen loaded` }).toEqual({ failed: [], notLoaded: [] });
+    // Nobody has used the page for a while: whatever the theme moves stands still, so an app left open costs nothing.
+    expect(await endless(page), `${name}: nothing moves on its own while the page is still`).toEqual([]);
     await toTop();
     await shoot(`${name}-desktop`);
 
@@ -123,6 +146,7 @@ test('every theme applies, loads its fonts and keeps the console quiet, at deskt
     await shoot(`${name}-phone`);
     await page.locator('.scroll').evaluate((el) => { el.scrollTop = el.scrollHeight; });
     await shoot(`${name}-phone-chat`);
+    expect(await endless(page), `${name}: nothing moves on its own while the page is still, at phone width`).toEqual([]);
     await expect.poll(() => sideways(page), { message: `${name}: nothing scrolls sideways at phone width` }).toEqual([]);
 
     // Dark mode: the themes that follow the system's (prefers-color-scheme) have a palette nobody sees otherwise.
@@ -130,6 +154,7 @@ test('every theme applies, loads its fonts and keeps the console quiet, at deskt
     await expect.poll(() => fontTrouble(page), { message: `${name}: every font on screen loaded in dark mode` }).toEqual({ failed: [], notLoaded: [] });
     await toTop();
     await shoot(`${name}-phone-dark`);
+    expect(await endless(page), `${name}: nothing moves on its own while the page is still, in dark mode`).toEqual([]);
     await expect.poll(() => sideways(page), { message: `${name}: nothing scrolls sideways at phone width in dark mode` }).toEqual([]);
     await page.emulateMedia({ colorScheme: 'light' }); // the context's own
     expect(badFonts, `${name}: no font request failed`).toEqual([]);
@@ -203,4 +228,23 @@ test('a theme\'s own fonts load with the server gone, from the service worker', 
   alice.wire.restore();
   await alice.connected();
   await expect.poll(fonts, { message: `${theme}: its fonts still loaded once the server is back` }).toEqual(loaded);
+});
+
+test('a theme\'s background stands still two minutes after the last input, and moves again with the next', async ({ page }) => {
+  // The page without rooms: nothing in it runs a timer of its own while the clock is pushed forward.
+  await page.clock.install();
+  await page.goto('/');
+  // Time moves only when the test says so, however long the page takes.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  const root = page.locator('html');
+  await expect(root).not.toHaveAttribute('data-still');
+  await page.clock.fastForward('01:50');
+  await expect(root).not.toHaveAttribute('data-still');
+  await page.mouse.move(10, 10);
+  await page.clock.fastForward('01:50');
+  await expect(root, 'the input reset the two minutes').not.toHaveAttribute('data-still');
+  await page.clock.fastForward('00:20');
+  await expect(root).toHaveAttribute('data-still', '');
+  await page.mouse.move(20, 20);
+  await expect(root).not.toHaveAttribute('data-still');
 });
