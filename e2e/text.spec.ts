@@ -52,6 +52,29 @@ test('text is plain: markup arrives as text and links are clickable', async ({ c
   expect(await bob.page.evaluate(() => (window as unknown as { pwned?: number }).pwned)).toBeUndefined();
 });
 
+test('a long link with no spaces wraps inside the chat at phone width, under a name and as a follow-on line', async ({ crowd }) => {
+  // Each line is only as wide as its words (so its time shows over them only), which must still be no wider than the log.
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob', { viewport: { width: 360, height: 740 } });
+  const link = `https://example.com/${'a1b2c3d4'.repeat(40)}`;
+  await alice.say(link);
+  await alice.say(`see ${link}?utm_source=x`);
+  await expect.poll(() => bob.chatTexts()).toEqual([link, `see ${link}?utm_source=x`]);
+  await expect(bob.page.locator('.chat-log .msg-cont')).toHaveCount(1);
+  const wide = await bob.page.evaluate(() => {
+    const out: string[] = [];
+    const root = document.documentElement;
+    if (root.scrollWidth > root.clientWidth) out.push(`page: ${root.scrollWidth} > ${root.clientWidth}`);
+    for (const el of document.querySelectorAll('.scroll, .chat-log')) if (el.scrollWidth > el.clientWidth + 1) out.push(`.${el.className}: ${el.scrollWidth} > ${el.clientWidth}`);
+    for (const el of document.querySelectorAll('.chat-log .msg-text')) {
+      const t = el.getBoundingClientRect(), log = el.closest('.chat-log')!.getBoundingClientRect();
+      if (t.right > log.right + 1) out.push(`.msg-text: ${t.right} > ${log.right}`);
+    }
+    return out;
+  });
+  expect(wide).toEqual([]);
+});
+
 test('received history survives a reload, and "Clear chat history" empties it', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
