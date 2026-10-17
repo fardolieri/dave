@@ -79,6 +79,42 @@
 }
 @keyframes fd-nightbus-sign { from { color: var(--led-off); text-shadow: none; opacity: .4; } }
 
+/* the view from the window: the city goes by out of focus, a dozen soft lights (sodium lamps, lit windows, a cool shop
+   sign) sliding right to left, the far ones small and slow, the near ones big, faint and quicker, and gone behind the
+   sidebar as behind the window frame. Now and then a streetlamp's band of light sweeps the cabin. The lights keep to the
+   upper part of the window, above where the chat's lines gather. */
+:root[data-theme="fd-nightbus"] body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(104deg, transparent 40%, rgba(255,158,27,.075) 50%, transparent 60%);
+  transform: translateX(100%); animation: fd-nightbus-lamp 26s ease-in-out -4s infinite; animation-play-state: var(--ambient-play); }
+@keyframes fd-nightbus-lamp { 0% { transform: translateX(100%); } 32%, 100% { transform: translateX(-100%); } }
+
+:root[data-theme="fd-nightbus"] .ambient { display: block; }
+:root[data-theme="fd-nightbus"] .ambient > i { left: 0; top: var(--y); width: clamp(14px, var(--s), 170px); aspect-ratio: 1; border-radius: 50%;
+  background: radial-gradient(circle, rgb(var(--c) / var(--a)) 0 24%, rgb(var(--c) / calc(var(--a) * .45)) 50%, transparent 70%);
+  transform: translateX(100vw); animation: fd-nightbus-pass var(--t) linear var(--o) infinite; animation-play-state: var(--ambient-play); }
+@keyframes fd-nightbus-pass { from { transform: translateX(100vw); } to { transform: translateX(-100%); } }
+/* far: small, bright-ish, slow */
+:root[data-theme="fd-nightbus"] .ambient > i:nth-child(1) { --y: 14%; --s: 1.6vw; --c: 255 158 27; --a: .30; --t: 110s; --o: -18s; }
+:root[data-theme="fd-nightbus"] .ambient > i:nth-child(2) { --y: 23%; --s: 1.2vw; --c: 255 194 120; --a: .26; --t: 120s; --o: -74s; }
+:root[data-theme="fd-nightbus"] .ambient > i:nth-child(3) { --y: 9%; --s: 1.4vw; --c: 92 200 255; --a: .22; --t: 100s; --o: -47s; }
+:root[data-theme="fd-nightbus"] .ambient > i:nth-child(4) { --y: 33%; --s: 1.1vw; --c: 255 158 27; --a: .26; --t: 115s; --o: -96s; }
+:root[data-theme="fd-nightbus"] .ambient > i:nth-child(5) { --y: 44%; --s: 1.3vw; --c: 255 158 27; --a: .24; --t: 105s; --o: -62s; }
+/* middle distance */
+:root[data-theme="fd-nightbus"] .ambient > i:nth-child(6) { --y: 39%; --s: 2.8vw; --c: 255 158 27; --a: .20; --t: 72s; --o: -22s; }
+:root[data-theme="fd-nightbus"] .ambient > i:nth-child(7) { --y: 17%; --s: 2.4vw; --c: 255 194 120; --a: .17; --t: 76s; --o: -55s; }
+:root[data-theme="fd-nightbus"] .ambient > i:nth-child(8) { --y: 50%; --s: 2.2vw; --c: 92 200 255; --a: .14; --t: 80s; --o: -8s; }
+:root[data-theme="fd-nightbus"] .ambient > i:nth-child(9) { --y: 27%; --s: 3vw; --c: 255 158 27; --a: .18; --t: 66s; --o: -40s; }
+/* near: big, faint, quicker */
+:root[data-theme="fd-nightbus"] .ambient > i:nth-child(10) { --y: 30%; --s: 6vw; --c: 255 158 27; --a: .11; --t: 46s; --o: -14s; }
+:root[data-theme="fd-nightbus"] .ambient > i:nth-child(11) { --y: 52%; --s: 7vw; --c: 255 194 120; --a: .08; --t: 52s; --o: -36s; }
+:root[data-theme="fd-nightbus"] .ambient > i:nth-child(12) { --y: 8%; --s: 5vw; --c: 92 200 255; --a: .08; --t: 50s; --o: -27s; }
+
 @media (max-width: 700px) {
   :root[data-theme="fd-nightbus"] .side { border-right: 0; border-bottom: 1px solid var(--line); }
+  /* on a phone the sign and buttons fill the top half: four lights, none of them the cyan of a badge, pass in the strip of window below them */
+  :root[data-theme="fd-nightbus"] .ambient > i:nth-child(n+5) { display: none; }
+  :root[data-theme="fd-nightbus"] .ambient > i:nth-child(1) { --y: 52%; --s: 7vw; --t: 80s; }
+  :root[data-theme="fd-nightbus"] .ambient > i:nth-child(2) { --y: 57%; --s: 6vw; --t: 90s; }
+  :root[data-theme="fd-nightbus"] .ambient > i:nth-child(3) { --y: 49%; --s: 6.5vw; --c: 255 158 27; --t: 85s; }
+  :root[data-theme="fd-nightbus"] .ambient > i:nth-child(4) { --y: 61%; --s: 12vw; --a: .12; --t: 50s; }
 }

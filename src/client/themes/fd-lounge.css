@@ -50,6 +50,48 @@
 }
 @keyframes fd-lounge-glow { from { box-shadow: 0 0 0 2px var(--lamp), 0 0 8px 1px rgba(255,208,138,.3); } }
 
+/* dust in the lamplight: a lamp somewhere off the top right corner pools warm light over the room, and a dozen
+   motes of dust drift through it on the room's air, each on its own slow path, catching the light and losing it as
+   they turn. Three are out of focus, soft discs nearer the eye. All of it stays in the empty upper corner, away from
+   the lines people read; a faint grain keeps the light's falloff from banding. On a phone a few float over the chat. */
+:root[data-theme="fd-lounge"] body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 .85 0 0 0 0 .6 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(62vmax 48vmax at 97% 2%, rgba(255,208,138,.10), rgba(255,208,138,.035) 45%, transparent 72%); }
+:root[data-theme="fd-lounge"] .ambient { display: block; }
+:root[data-theme="fd-lounge"] .ambient > i { --s: clamp(3px, .42vmin, 7px); width: var(--s); height: var(--s); border-radius: 50%;
+  background: radial-gradient(circle, #FFE6BC 0 34%, rgba(255,208,138,.45) 56%, transparent 72%); opacity: 0;
+  animation: fd-lounge-mote var(--t) linear var(--d) infinite; animation-play-state: var(--ambient-play); }
+/* the out-of-focus motes: bigger, softer, slower */
+:root[data-theme="fd-lounge"] .ambient > i:nth-child(6), :root[data-theme="fd-lounge"] .ambient > i:nth-child(9),
+:root[data-theme="fd-lounge"] .ambient > i:nth-child(12) { --s: clamp(10px, 2.4vmin, 36px);
+  background: radial-gradient(circle, rgba(255,200,128,.30) 0 40%, rgba(255,196,120,.13) 60%, transparent 71%); }
+:root[data-theme="fd-lounge"] .ambient > i:nth-child(1)  { right: 6%;  top: 10%; --dx: -9vmin;  --dy: 7vmin;  --t: 34s; --d: -5s;  --o: .8; }
+:root[data-theme="fd-lounge"] .ambient > i:nth-child(2)  { right: 14%; top: 22%; --dx: -7vmin;  --dy: -6vmin; --t: 41s; --d: -19s; --o: .7; }
+:root[data-theme="fd-lounge"] .ambient > i:nth-child(3)  { right: 22%; top: 8%;  --dx: -10vmin; --dy: 9vmin;  --t: 47s; --d: -30s; --o: .6; }
+:root[data-theme="fd-lounge"] .ambient > i:nth-child(4)  { right: 9%;  top: 34%; --dx: -6vmin;  --dy: 8vmin;  --t: 38s; --d: -12s; --o: .75; }
+:root[data-theme="fd-lounge"] .ambient > i:nth-child(5)  { right: 30%; top: 28%; --dx: 8vmin;   --dy: -7vmin; --t: 52s; --d: -40s; --o: .55; }
+:root[data-theme="fd-lounge"] .ambient > i:nth-child(6)  { right: 12%; top: 16%; --dx: -6vmin;  --dy: 5vmin;  --t: 66s; --d: -20s; --o: .9; }
+:root[data-theme="fd-lounge"] .ambient > i:nth-child(7)  { right: 3%;  top: 58%; --dx: -8vmin;  --dy: -9vmin; --t: 44s; --d: -8s;  --o: .65; }
+:root[data-theme="fd-lounge"] .ambient > i:nth-child(8)  { right: 18%; top: 40%; --dx: -11vmin; --dy: 4vmin;  --t: 57s; --d: -27s; --o: .5; }
+:root[data-theme="fd-lounge"] .ambient > i:nth-child(9)  { right: 26%; top: 4%;  --dx: -5vmin;  --dy: 8vmin;  --t: 78s; --d: -51s; --o: .75; }
+:root[data-theme="fd-lounge"] .ambient > i:nth-child(10) { right: 36%; top: 14%; --dx: -7vmin;  --dy: 10vmin; --t: 49s; --d: -3s;  --o: .45; }
+:root[data-theme="fd-lounge"] .ambient > i:nth-child(11) { right: 4%;  top: 24%; --dx: -5vmin;  --dy: 6vmin;  --t: 31s; --d: -22s; --o: .85; }
+:root[data-theme="fd-lounge"] .ambient > i:nth-child(12) { right: 20%; top: 64%; --dx: 6vmin;   --dy: -6vmin; --t: 70s; --d: -35s; --o: .6; }
+/* a mote comes into the light, turns (dimmer, then bright again) and drifts out of it, so the loop never jumps */
+@keyframes fd-lounge-mote {
+  0% { transform: translate(0, 0); opacity: 0; }
+  20% { opacity: var(--o); }
+  42% { transform: translate(calc(var(--dx) * .4 + 1.2vmin), calc(var(--dy) * .45)); opacity: calc(var(--o) * .4); }
+  62% { opacity: var(--o); }
+  80% { opacity: calc(var(--o) * .75); }
+  100% { transform: translate(var(--dx), var(--dy)); opacity: 0; } }
+@media (max-width: 700px) {
+  /* the sidebar covers the top of a phone: the lamp and its dust sit over the right of the chat instead */
+  :root[data-theme="fd-lounge"] body::before { background: radial-gradient(90vmax 50vmax at 100% 62%, rgba(255,208,138,.07), transparent 65%); }
+  :root[data-theme="fd-lounge"] .ambient { top: 55%; }
+  :root[data-theme="fd-lounge"] .ambient > i:nth-child(n+5):not(:nth-child(6)) { display: none; }
+}
+
 :root[data-theme="fd-lounge"] .plist em { border: 0; background: var(--panel2); border-radius: 999px; padding: 1px 8px; }
 :root[data-theme="fd-lounge"] .new { background: var(--warn); color: #2B1B00; border-radius: 999px; padding: 0 6px; }
 :root[data-theme="fd-lounge"] .warn { background: #3E2F18; color: #FFD27A; border-radius: 14px; padding: 10px 12px; }

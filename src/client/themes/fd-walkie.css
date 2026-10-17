@@ -74,6 +74,42 @@
 :root[data-theme="fd-walkie"] .chat-input > button:not(.emoji-open) { background: var(--chassis); border-color: var(--chassis-dk); color: var(--rubber); }
 :root[data-theme="fd-walkie"] .chat-input .emoji-open { color: var(--rubber-fg); }
 
+/* the LCD, like any real one, shows its unlit segments: a big "88" channel readout, nearly invisible, low on the right
+   of the window where the chat rarely reaches. A few segments half-switch and fade back as the crystal catches the light,
+   each on its own slow clock so it never spells a number, and the room's glare drifts across the glass over half a minute.
+   Only a faint darkening (about 6 to 13 % ink), so the chat ink keeps its contrast; the yellow body covers it. */
+:root[data-theme="fd-walkie"] .ambient { display: block; --h: clamp(110px, 38vmin, 600px); }
+:root[data-theme="fd-walkie"] .ambient::before, :root[data-theme="fd-walkie"] .ambient > i { position: absolute; right: 6vw; bottom: 16vh;
+  height: var(--h); width: calc(var(--h) * 1.2); transform: skewX(-7deg); transform-origin: 0 100%; }
+:root[data-theme="fd-walkie"] .ambient::before { content: ''; opacity: .06;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 132 110'%3E%3Cpath fill='%231C261A' d='M6.5 5L11.5 0L48.5 0L53.5 5L48.5 10L11.5 10ZM6.5 55L11.5 50L48.5 50L53.5 55L48.5 60L11.5 60ZM6.5 105L11.5 100L48.5 100L53.5 105L48.5 110L11.5 110ZM5 6.5L10 11.5L10 48.5L5 53.5L0 48.5L0 11.5ZM55 6.5L60 11.5L60 48.5L55 53.5L50 48.5L50 11.5ZM5 56.5L10 61.5L10 98.5L5 103.5L0 98.5L0 61.5ZM55 56.5L60 61.5L60 98.5L55 103.5L50 98.5L50 61.5ZM78.5 5L83.5 0L120.5 0L125.5 5L120.5 10L83.5 10ZM78.5 55L83.5 50L120.5 50L125.5 55L120.5 60L83.5 60ZM78.5 105L83.5 100L120.5 100L125.5 105L120.5 110L83.5 110ZM77 6.5L82 11.5L82 48.5L77 53.5L72 48.5L72 11.5ZM127 6.5L132 11.5L132 48.5L127 53.5L122 48.5L122 11.5ZM77 56.5L82 61.5L82 98.5L77 103.5L72 98.5L72 61.5ZM127 56.5L132 61.5L132 98.5L127 103.5L122 98.5L122 61.5Z'/%3E%3C/svg%3E") center / 100% 100% no-repeat; }
+:root[data-theme="fd-walkie"] .ambient > i { background: var(--lcd-ink); opacity: 0; }
+:root[data-theme="fd-walkie"] .ambient > i:nth-child(1) { clip-path: polygon(4.92% 4.55%, 8.71% 0%, 36.74% 0%, 40.53% 4.55%, 36.74% 9.09%, 8.71% 9.09%);
+  animation: fd-walkie-ghost 13s ease-in-out -2s infinite; animation-play-state: var(--ambient-play); }
+:root[data-theme="fd-walkie"] .ambient > i:nth-child(2) { clip-path: polygon(96.21% 5.91%, 100% 10.45%, 100% 44.09%, 96.21% 48.64%, 92.42% 44.09%, 92.42% 10.45%);
+  animation: fd-walkie-ghost 11s ease-in-out -7s infinite; animation-play-state: var(--ambient-play); }
+:root[data-theme="fd-walkie"] .ambient > i:nth-child(3) { clip-path: polygon(3.79% 51.36%, 7.58% 55.91%, 7.58% 89.55%, 3.79% 94.09%, 0% 89.55%, 0% 55.91%);
+  animation: fd-walkie-ghost 17s ease-in-out -12s infinite; animation-play-state: var(--ambient-play); }
+:root[data-theme="fd-walkie"] .ambient > i:nth-child(4) { clip-path: polygon(59.47% 50%, 63.26% 45.45%, 91.29% 45.45%, 95.08% 50%, 91.29% 54.55%, 63.26% 54.55%);
+  animation: fd-walkie-ghost 15s ease-in-out -4s infinite; animation-play-state: var(--ambient-play); }
+:root[data-theme="fd-walkie"] .ambient > i:nth-child(5) { clip-path: polygon(41.67% 51.36%, 45.45% 55.91%, 45.45% 89.55%, 41.67% 94.09%, 37.88% 89.55%, 37.88% 55.91%);
+  animation: fd-walkie-ghost 19s ease-in-out -15s infinite; animation-play-state: var(--ambient-play); }
+:root[data-theme="fd-walkie"] .ambient > i:nth-child(6) { clip-path: polygon(59.47% 95.45%, 63.26% 90.91%, 91.29% 90.91%, 95.08% 95.45%, 91.29% 100%, 63.26% 100%);
+  animation: fd-walkie-ghost 12s ease-in-out -9s infinite; animation-play-state: var(--ambient-play); }
+:root[data-theme="fd-walkie"] .ambient > i:nth-child(n+7) { display: none; }
+@keyframes fd-walkie-ghost { 0%, 30%, 100% { opacity: 0; } 60% { opacity: .07; } }
+:root[data-theme="fd-walkie"] .ambient::after { content: ''; position: absolute; inset: 0 -14% 0 0;
+  background: linear-gradient(118deg, transparent 34%, rgba(255,255,255,.07) 41%, rgba(255,255,255,.2) 46%,
+    rgba(255,255,255,.05) 49%, rgba(255,255,255,.1) 52%, transparent 58%);
+  animation: fd-walkie-glare 30s ease-in-out -9s infinite alternate; animation-play-state: var(--ambient-play); }
+@keyframes fd-walkie-glare { to { transform: translateX(-12%); } }
+@media (max-width: 700px) {
+  :root[data-theme="fd-walkie"] .ambient { --h: 26vmin; }
+  :root[data-theme="fd-walkie"] .ambient::before { opacity: .05; }
+  :root[data-theme="fd-walkie"] .ambient::before, :root[data-theme="fd-walkie"] .ambient > i { right: 5vw; bottom: 13vh; }
+  :root[data-theme="fd-walkie"] .ambient > i:nth-child(n+4) { display: none; }
+}
+
 /* shares sit in black rubber frames */
 :root[data-theme="fd-walkie"] .share { background: var(--rubber); border: 3px solid var(--rubber); border-radius: 12px; color: var(--rubber-fg); }
 :root[data-theme="fd-walkie"] .share-live { border-color: var(--chassis); }
