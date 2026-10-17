@@ -1343,8 +1343,9 @@ function ChatLog(props: {
   const view = (url: string, name: string, type: string) => { setViewing({ url, name, type }); if (viewer && !viewer.open) viewer.showModal(); };
   // A file dragged in is never left to the browser, which would open it in place of the app; sent only when it can be.
   const hasFiles = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].includes('Files');
-  const file = (m: Extract<ChatLine, { kind: 'file' }>) => (
-    <FileView file={m.file} attachment={props.attachment(m.file.hash)} holder={props.label(m.from).shown}
+  // The tooltip (the time, or that it is not sent yet) is on the text or the attachment, not on the whole row.
+  const file = (m: Extract<ChatLine, { kind: 'file' }>, title: string | undefined) => (
+    <FileView file={m.file} title={title} attachment={props.attachment(m.file.hash)} holder={props.label(m.from).shown}
               onPull={() => props.onPull(m.file.hash)} onCancel={() => props.onCancel(m.file.hash)} onView={view} />
   );
   const [unfoldedFor, setUnfoldedFor] = createSignal<number | null>(null); // the opening the reader unfolded the older lines in
@@ -1394,23 +1395,23 @@ function ChatLog(props: {
               <Match when={l.kind === 'text' && l}>
                 {(m) => (
                   <Show when={!continues(lines(), i())} fallback={
-                    <div class={m().pending ? 'msg msg-cont msg-pending' : 'msg msg-cont'} title={m().pending ? 'Not sent yet' : when(m().at)}><div class="msg-text"><Linkified text={m().text} /></div></div>
+                    <div class={m().pending ? 'msg msg-cont msg-pending' : 'msg msg-cont'}><div class="msg-text" title={m().pending ? 'Not sent yet' : when(m().at)}><Linkified text={m().text} /></div></div>
                   }>
-                    <div class={m().pending ? 'msg msg-pending' : 'msg'} title={m().pending ? 'Not sent yet' : undefined}>
+                    <div class={m().pending ? 'msg msg-pending' : 'msg'}>
                       <span class="msg-from" title={props.label(m().from).title}>{props.label(m().from).shown}</span>
                       <span class="msg-at">{when(m().at)}</span>
-                      <div class="msg-text"><Linkified text={m().text} /></div>
+                      <div class="msg-text" title={m().pending ? 'Not sent yet' : undefined}><Linkified text={m().text} /></div>
                     </div>
                   </Show>
                 )}
               </Match>
               <Match when={l.kind === 'file' && l}>
                 {(m) => (
-                  <Show when={!continues(lines(), i())} fallback={<div class={m().pending ? 'msg msg-cont msg-pending' : 'msg msg-cont'} title={m().pending ? 'Not sent yet' : when(m().at)}>{file(m())}</div>}>
-                    <div class={m().pending ? 'msg msg-pending' : 'msg'} title={m().pending ? 'Not sent yet' : undefined}>
+                  <Show when={!continues(lines(), i())} fallback={<div class={m().pending ? 'msg msg-cont msg-pending' : 'msg msg-cont'}>{file(m(), m().pending ? 'Not sent yet' : when(m().at))}</div>}>
+                    <div class={m().pending ? 'msg msg-pending' : 'msg'}>
                       <span class="msg-from" title={props.label(m().from).title}>{props.label(m().from).shown}</span>
                       <span class="msg-at">{when(m().at)}</span>
-                      {file(m())}
+                      {file(m(), m().pending ? 'Not sent yet' : undefined)}
                     </div>
                   </Show>
                 )}
@@ -1443,10 +1444,12 @@ const PULL_FAILED: Record<PullError, (holder: string) => string> = {
  * An attachment in the chat (ADR 0006): a picture or a video inline once its bytes are here, its preview until then,
  * with what is happening over it; anything else a card with its name, size and a button. A picture opens full size.
  */
-function FileView(props: { file: FileMeta; attachment: Attachment | undefined; holder: string; onPull: () => void; onCancel: () => void; onView: (url: string, name: string, type: string) => void }) {
+function FileView(props: { file: FileMeta; title: string | undefined; attachment: Attachment | undefined; holder: string; onPull: () => void; onCancel: () => void; onView: (url: string, name: string, type: string) => void }) {
   const kind = () => inlineKind(props.file.type);
   const a = () => props.attachment ?? { status: 'idle' as const };
   const url = () => { const now = a(); return now.status === 'ready' ? now.url : null; };
+  // One tooltip over all of a picture or a video, whatever shows in its box (the preview, the picture, its still).
+  const tip = () => (props.title ? `${props.file.name}, ${props.title}` : props.file.name);
   // The box keeps the picture's shape, so the log does not jump when the bytes replace the preview.
   const box = () => {
     const { width: w, height: h } = props.file;
@@ -1477,7 +1480,7 @@ function FileView(props: { file: FileMeta; attachment: Attachment | undefined; h
   };
   return (
     <Switch fallback={
-      <div class="att att-card" data-status={a().status}>
+      <div class="att att-card" data-status={a().status} title={props.title}>
         <span class="att-icon" aria-hidden="true">📄</span>
         <span class="att-name" title={props.file.name}>{props.file.name}</span>
         <span class="att-size">{formatSize(props.file.size)}</span>
@@ -1485,17 +1488,17 @@ function FileView(props: { file: FileMeta; attachment: Attachment | undefined; h
       </div>
     }>
       <Match when={kind() === 'image'}>
-        <figure class="att att-media" data-status={a().status} style={box()}>
+        <figure class="att att-media" data-status={a().status} style={box()} title={tip()}>
           <Show when={url()} fallback={<Show when={props.file.preview}>{(p) => <img class="att-preview" src={p()} alt="" />}</Show>}>
-            {(u) => <Picture src={u()} type={props.file.type} alt={props.file.name} title={props.file.name} onClick={() => props.onView(u(), props.file.name, props.file.type)} />}
+            {(u) => <Picture src={u()} type={props.file.type} alt={props.file.name} onClick={() => props.onView(u(), props.file.name, props.file.type)} />}
           </Show>
           <Show when={!url()}><figcaption>{state()}</figcaption></Show>
         </figure>
       </Match>
       <Match when={kind() === 'video'}>
-        <figure class="att att-media" data-status={a().status} style={box()}>
+        <figure class="att att-media" data-status={a().status} style={box()} title={tip()}>
           <Show when={url()} fallback={<Show when={props.file.preview}>{(p) => <img class="att-preview" src={p()} alt="" />}</Show>}>
-            {(u) => <video src={u()} controls playsinline preload="metadata" title={props.file.name} />}
+            {(u) => <video src={u()} controls playsinline preload="metadata" />}
           </Show>
           <Show when={!url()}><figcaption>{state()}</figcaption></Show>
         </figure>
@@ -1513,7 +1516,7 @@ const MAY_MOVE = new Set(['image/gif', 'image/webp']);
  * canvas as the focus goes (the frame showing then in Chromium, the first frame in Firefox), covers it until the focus
  * comes back, and the picture goes on underneath. Only a picture on screen gets one, so a long log of GIFs costs a few.
  */
-function Picture(props: { src: string; type: string; alt: string; title?: string; onClick?: () => void }) {
+function Picture(props: { src: string; type: string; alt: string; onClick?: () => void }) {
   const moves = untrack(() => MAY_MOVE.has(props.type.toLowerCase())); // a picture keeps its type
   const [loaded, setLoaded] = createSignal(false);
   const [onScreen, setOnScreen] = createSignal(false);
@@ -1538,8 +1541,8 @@ function Picture(props: { src: string; type: string; alt: string; title?: string
   };
   return (
     <>
-      {/* Kept in place under its still, see-through, so it still takes the click and the hover title */}
-      <img ref={watch} src={props.src} alt={props.alt} title={props.title} onClick={props.onClick} onLoad={() => setLoaded(true)} style={{ opacity: still() ? 0 : undefined }} />
+      {/* Kept in place under its still, see-through, so it still takes the click and lets the hover reach its box */}
+      <img ref={watch} src={props.src} alt={props.alt} onClick={props.onClick} onLoad={() => setLoaded(true)} style={{ opacity: still() ? 0 : undefined }} />
       <Show when={still()}><canvas class="still" ref={draw} aria-hidden="true" /></Show>
     </>
   );
