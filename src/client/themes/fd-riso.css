@@ -61,7 +61,7 @@
 :root[data-theme="fd-riso"] .share-note { color: #C7D3E8; }
 :root[data-theme="fd-riso"] .share-head { background: var(--blue); }
 :root[data-theme="fd-riso"] .share-bar { background: var(--blue); color: #DCE6F5; font-family: inherit; }
-:root[data-theme="fd-riso"] .share-head .stop, :root[data-theme="fd-riso"] .share-bar .fs { background: #fff; color: var(--ink); border-color: #fff; box-shadow: 2px 2px 0 var(--pink); }
+:root[data-theme="fd-riso"] .share-head .stop, :root[data-theme="fd-riso"] .share-bar :is(.fs, .share-vol-btn) { background: #fff; color: var(--ink); border-color: #fff; box-shadow: 2px 2px 0 var(--pink); }
 :root[data-theme="fd-riso"] .share .conn-direct { color: #7CF0BE; }
 :root[data-theme="fd-riso"] .share .conn-relayed, :root[data-theme="fd-riso"] .share .conn-reconnecting { color: #FFD27A; }
 :root[data-theme="fd-riso"] .share .conn-unreachable { color: #FFB3BF; }

@@ -200,8 +200,13 @@ button.unblock { background: #4a3a12; color: var(--warn); border-color: transpar
 .share-bar { display: flex; align-items: center; gap: 10px; padding: 3px 8px; font-family: monospace; font-size: 11px; color: var(--dim); background: rgba(0,0,0,.35); cursor: default; }
 .share-bar .share-stats { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .share-bar .fs { padding: 0 6px; line-height: 1.4; font-family: system-ui, sans-serif; }
-.share-vol { display: flex; align-items: center; gap: 6px; font-family: system-ui, sans-serif; }
-.share-vol input[type=range] { width: 120px; accent-color: var(--acc); }
+/* the share's own sound: in the small tile a short slider opened by its button, which carries the icon and percentage */
+.share-vol { display: flex; flex-shrink: 0; align-items: center; gap: 6px; font-family: system-ui, sans-serif; }
+.share-vol input[type=range] { width: 72px; accent-color: var(--acc); }
+.share-vol .share-vol-icon { display: none; }
+.share-bar .share-vol-btn { flex-shrink: 0; padding: 0 6px; line-height: 1.4; font-family: system-ui, sans-serif; }
+.share.share-fs .share-vol input[type=range] { width: 120px; }
+.share.share-fs .share-vol .share-vol-icon { display: inline; }
 /* the tile itself is the fullscreen element: black stage, header and bar as translucent overlays */
 .share.share-fs { border: 0; border-radius: 0; background: #000; cursor: pointer; }
 .share.share-fs .share-head { position: absolute; top: 0; left: 0; right: 0; z-index: 1; background: rgba(0,0,0,.55); }

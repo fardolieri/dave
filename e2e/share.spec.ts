@@ -75,6 +75,25 @@ test('fullscreen: a click on a running tile enters it, another leaves it, the sh
   await expect.poll(fullscreen).toBe(false);
 });
 
+test('a watched share\'s sound is set from its tile without going fullscreen, and leaves the voice alone', async ({ crowd }) => {
+  const [alice, bob] = await callOf(crowd, ['Alice', 'Bob']);
+  await alice.startShare();
+  await bob.watchShare('Alice');
+  await needHooks(bob);
+  const ofAlice = async () => (await bob.hook<{ peers: Array<{ name: string; view: number; shareView: number }> }>('volumes')).peers.find((p) => p.name === 'Alice');
+
+  // The slider opens from its button, so a stray tap on the tile's bar cannot set it.
+  await expect(bob.tile('Alice').locator('.share-vol')).toHaveCount(0);
+  await bob.tile('Alice').locator('button.share-vol-btn').click();
+  await bob.tile('Alice').locator('.share-vol input[type=range]').fill('40');
+  await expect.poll(async () => (await ofAlice())?.shareView).toBeCloseTo(0.4);
+  await expect(bob.tile('Alice').locator('button.share-vol-btn')).toContainText('40%');
+  expect((await ofAlice())?.view).toBe(1);
+  expect(await bob.page.evaluate(() => document.fullscreenElement)).toBeNull();
+  await expect(bob.tile('Alice')).toHaveClass(/share-live/);
+  await expect(alice.page.locator('.share :is(.share-vol, .share-vol-btn)')).toHaveCount(0); // my own share plays nothing for me
+});
+
 test('regression: presence changes neither recreate a watched tile nor end its fullscreen', async ({ crowd, browserName }) => {
   // Sep 2026, production: someone leaving, joining or muting recreated every share tile and threw the viewer out of fullscreen.
   test.skip(browserName !== 'chromium', 'headless Firefox does not grant fullscreen');

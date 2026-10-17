@@ -1077,6 +1077,9 @@ function ShareTile(props: ShareTileProps) {
   };
   const stopWatching = (e: MouseEvent) => { e.stopPropagation(); props.onWatch(false); };
   const percent = () => Math.round((props.view?.shareVolume ?? 1) * 100);
+  // In the small tile the slider opens from a button, as on a friend's row, so a stray tap on a phone cannot set it;
+  // fullscreen shows it outright, as before.
+  const [volOpen, setVolOpen] = createSignal(false);
   const stats = () => {
     if (props.isMe) {
       const o = props.outgoing;
@@ -1108,12 +1111,19 @@ function ShareTile(props: ShareTileProps) {
       <Show when={running()}>
         <div class="share-bar" onClick={(e) => e.stopPropagation()} onPointerEnter={() => setOnControls(true)} onPointerLeave={() => setOnControls(false)}>
           <span class="share-stats">{stats()}</span>
-          <Show when={fullscreen() && props.onVolume}>
-            <label class="share-vol" title="This share's sound for you, their voice stays as it is. Double-click to reset.">
-              <span>{percent() === 0 ? '🔇' : '🔊'}</span>
-              <input type="range" min="0" max={MAX_VOLUME * 100} step="5" value={percent()} onInput={(e) => props.onVolume?.(Number(e.currentTarget.value) / 100)} onDblClick={() => props.onVolume?.(1)} />
-              <span>{percent()}%</span>
-            </label>
+          <Show when={!props.isMe && props.onVolume}>
+            <Show when={fullscreen() || volOpen()}>
+              <label class="share-vol" title={`This share's sound for you: ${percent()}%. Their voice stays as it is. Double-click to reset.`}>
+                <span class="share-vol-icon">{percent() === 0 ? '🔇' : '🔊'}</span>
+                <input type="range" min="0" max={MAX_VOLUME * 100} step="5" value={percent()} onInput={(e) => props.onVolume?.(Number(e.currentTarget.value) / 100)} onDblClick={() => props.onVolume?.(1)} />
+                <span class="share-vol-icon">{percent()}%</span>
+              </label>
+            </Show>
+            <Show when={!fullscreen()}>
+              <button class={`vol share-vol-btn ${percent() !== 100 ? 'on' : ''}`} title={`This share's sound for you: ${percent()}%`} onClick={() => setVolOpen(!volOpen())}>
+                {percent() === 0 ? '🔇' : '🔊'}<Show when={percent() !== 100}><small>{percent()}%</small></Show>
+              </button>
+            </Show>
           </Show>
           <button class="fs" title={fullscreen() ? 'Leave fullscreen' : 'Fullscreen'} onClick={(e) => { e.stopPropagation(); if (fullscreen()) exitFullscreenSafely(); else enterFullscreen(); }}>{fullscreen() ? '⤡' : '⛶'}</button>
         </div>
