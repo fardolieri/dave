@@ -29,8 +29,10 @@ describe('invariant rules', () => {
   });
 
   it('a gain that differs from the controls, voice and share apart', () => {
-    expect(breaches(call([peer({ volume: 0.5, voiceGain: 0.25, shareGain: 0.25 })], { master: 0.5 }))).toEqual([]);
-    expect(breaches(call([peer({ volume: 0.5, voiceGain: 0.5, shareGain: 0.25 })], { master: 0.5 }))).toEqual([{ kind: 'voice_gain', key: 'bob' }]);
+    expect(breaches(call([peer({ volume: 0.5, voiceGain: 0.25, shareGain: 0.5 })], { master: 0.5 }))).toEqual([]);
+    expect(breaches(call([peer({ volume: 0.5, voiceGain: 0.5, shareGain: 0.5 })], { master: 0.5 }))).toEqual([{ kind: 'voice_gain', key: 'bob' }]);
+    // A friend turned down leaves their share alone too (Oct 17): a share following the friend's volume is a breach.
+    expect(breaches(call([peer({ volume: 0.05, voiceGain: 0.05, shareGain: 0.05 })]))).toEqual([{ kind: 'share_gain', key: 'bob' }]);
     // The share muted on its own tile leaves the voice alone (problem report of Oct 3): the other way round is a breach.
     expect(breaches(call([peer({ shareVolume: 0, voiceGain: 1, shareGain: 0 })]))).toEqual([]);
     expect(breaches(call([peer({ shareVolume: 0, voiceGain: 0, shareGain: 0 })]))).toEqual([{ kind: 'voice_gain', key: 'bob' }]);
@@ -42,7 +44,7 @@ describe('invariant rules', () => {
   });
 
   it('reads gains as the 32-bit floats a gain node holds', () => {
-    expect(breaches(call([peer({ volume: 0.35, voiceGain: Math.fround(0.35), shareGain: Math.fround(0.35) })]))).toEqual([]);
+    expect(breaches(call([peer({ volume: 0.35, shareVolume: 0.35, voiceGain: Math.fround(0.35), shareGain: Math.fround(0.35) })]))).toEqual([]);
   });
 
   it('a badge saying connected over a failed or closed transport', () => {
@@ -60,7 +62,8 @@ describe('invariant rules', () => {
     expect(shareTileState(false, true, undefined)).toBe('closed');
     expect(shareTileState(false, true, view)).toBe('opening');
     expect(shareTileState(false, true, { ...view, shareLive: true })).toBe('live');
-    expect(gainFor('share', { master: 0.5, volume: 0.5, shareVolume: 0.5, micTest: false })).toBe(0.125);
+    expect(gainFor('share', { master: 0.5, volume: 0.5, shareVolume: 0.5, micTest: false })).toBe(0.25); // the friend's own volume is for their voice only
+    expect(gainFor('voice', { master: 0.5, volume: 0.5, shareVolume: 0.5, micTest: false })).toBe(0.25);
   });
 });
 

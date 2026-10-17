@@ -94,6 +94,26 @@ test('a watched share\'s sound is set from its tile without going fullscreen, an
   await expect(alice.page.locator('.share :is(.share-vol, .share-vol-btn)')).toHaveCount(0); // my own share plays nothing for me
 });
 
+test('regression: a friend\'s voice volume and their share\'s volume are set apart, neither scales the other', async ({ crowd }) => {
+  // Oct 2026, Daniel: a friend turned down to 5 % made their share play at 5 % too, while its slider said 100 %.
+  const [alice, bob] = await callOf(crowd, ['Alice', 'Bob']);
+  await alice.startShare();
+  await bob.watchShare('Alice');
+  await needHooks(bob);
+  const round = (g: number | null | undefined) => (g == null ? null : Math.round(g * 1000) / 1000);
+  const gains = async () => {
+    const p = (await bob.hook<{ peers: Array<{ name: string; voiceGain: number | null; shareGain: number | null }> }>('volumes')).peers.find((x) => x.name === 'Alice');
+    return { voice: round(p?.voiceGain), share: round(p?.shareGain) };
+  };
+
+  await bob.selectedRoom.locator('li.prow', { hasText: 'Alice' }).locator('button.vol').click();
+  await bob.selectedRoom.locator('.volrow input[type=range]').fill('5');
+  await expect.poll(gains).toEqual({ voice: 0.05, share: 1 });
+  await bob.tile('Alice').locator('button.share-vol-btn').click();
+  await bob.tile('Alice').locator('.share-vol input[type=range]').fill('150');
+  await expect.poll(gains).toEqual({ voice: 0.05, share: 1.5 });
+});
+
 test('regression: presence changes neither recreate a watched tile nor end its fullscreen', async ({ crowd, browserName }) => {
   // Sep 2026, production: someone leaving, joining or muting recreated every share tile and threw the viewer out of fullscreen.
   test.skip(browserName !== 'chromium', 'headless Firefox does not grant fullscreen');
