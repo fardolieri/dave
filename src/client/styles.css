@@ -105,6 +105,9 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .att-media > img, .att-media > video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
 .att-media > img:not(.att-preview) { cursor: zoom-in; }
 .att-media > .att-preview { object-fit: cover; filter: blur(8px) saturate(1.1); transform: scale(1.08); }
+/* A moving picture held still while the window is not focused (Picture in App.tsx): over it, the same box, the clicks its own */
+.still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.att-media > .still { background: #000; }
 .att-media figcaption { position: absolute; inset: auto 8px 8px; display: flex; justify-content: center; }
 .att-state { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg); background: rgba(17,19,24,.8); border-radius: 999px; padding: 4px 10px; }
 .att-bar { position: relative; width: 80px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.18); overflow: hidden; }

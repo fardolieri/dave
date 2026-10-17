@@ -12,6 +12,7 @@ import { formatSize, inlineKind, type FileMeta } from '../core/attachment';
 import type { PullError } from './links';
 import { MIC_TEST_RECORD_MS, createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
 import { createAttention, type RoomLink } from './attention';
+import { windowFocused } from './focus';
 import { contactOf, isKnown, markKnown, setNickname } from './contacts';
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, normaliseName, type Identity, type Person } from '../core/protocol';
 import { displayName, formatAgo, knownAgo } from '../core/names';
@@ -1335,11 +1336,11 @@ function ChatLog(props: {
 }) {
   let log: HTMLDivElement | undefined;
   let viewer: HTMLDialogElement | undefined;
-  const [viewing, setViewing] = createSignal<{ url: string; name: string } | null>(null);
+  const [viewing, setViewing] = createSignal<{ url: string; name: string; type: string } | null>(null);
   const [dragging, setDragging] = createSignal(false);
   /** Enters minus leaves: a drag over the lines enters and leaves each, and Safari gives no relatedTarget to tell them apart. */
   let depth = 0;
-  const view = (url: string, name: string) => { setViewing({ url, name }); if (viewer && !viewer.open) viewer.showModal(); };
+  const view = (url: string, name: string, type: string) => { setViewing({ url, name, type }); if (viewer && !viewer.open) viewer.showModal(); };
   // A file dragged in is never left to the browser, which would open it in place of the app; sent only when it can be.
   const hasFiles = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].includes('Files');
   const file = (m: Extract<ChatLine, { kind: 'file' }>) => (
@@ -1421,7 +1422,7 @@ function ChatLog(props: {
       <Show when={unseen()}><button class="chat-new" onClick={jump} title="Scroll to the newest message">new messages ↓</button></Show>
       <Show when={dragging()}><div class="drop-hint">Drop to send</div></Show>
       <dialog class="viewer" ref={viewer} onClick={() => viewer?.close()} onClose={() => setViewing(null)}>
-        <Show when={viewing()}>{(v) => <img src={v().url} alt={v().name} />}</Show>
+        <Show when={viewing()} keyed>{(v) => <Picture src={v.url} type={v.type} alt={v.name} />}</Show>
       </dialog>
     </div>
   );
@@ -1442,7 +1443,7 @@ const PULL_FAILED: Record<PullError, (holder: string) => string> = {
  * An attachment in the chat (ADR 0006): a picture or a video inline once its bytes are here, its preview until then,
  * with what is happening over it; anything else a card with its name, size and a button. A picture opens full size.
  */
-function FileView(props: { file: FileMeta; attachment: Attachment | undefined; holder: string; onPull: () => void; onCancel: () => void; onView: (url: string, name: string) => void }) {
+function FileView(props: { file: FileMeta; attachment: Attachment | undefined; holder: string; onPull: () => void; onCancel: () => void; onView: (url: string, name: string, type: string) => void }) {
   const kind = () => inlineKind(props.file.type);
   const a = () => props.attachment ?? { status: 'idle' as const };
   const url = () => { const now = a(); return now.status === 'ready' ? now.url : null; };
@@ -1486,7 +1487,7 @@ function FileView(props: { file: FileMeta; attachment: Attachment | undefined; h
       <Match when={kind() === 'image'}>
         <figure class="att att-media" data-status={a().status} style={box()}>
           <Show when={url()} fallback={<Show when={props.file.preview}>{(p) => <img class="att-preview" src={p()} alt="" />}</Show>}>
-            {(u) => <img src={u()} alt={props.file.name} title={props.file.name} onClick={() => props.onView(u(), props.file.name)} />}
+            {(u) => <Picture src={u()} type={props.file.type} alt={props.file.name} title={props.file.name} onClick={() => props.onView(u(), props.file.name, props.file.type)} />}
           </Show>
           <Show when={!url()}><figcaption>{state()}</figcaption></Show>
         </figure>
@@ -1500,6 +1501,47 @@ function FileView(props: { file: FileMeta; attachment: Attachment | undefined; h
         </figure>
       </Match>
     </Switch>
+  );
+}
+
+/** Picture types that can move: a GIF, or a WebP, which friends' stickers often are. An APNG or an AVIF could, rarely. */
+const MAY_MOVE = new Set(['image/gif', 'image/webp']);
+
+/**
+ * A picture in the chat or the viewer. One that can move is held still while this window is not focused, so a room left
+ * open on a second screen does not flicker at the edge of the eye. An <img> has no pause: a still of it, drawn on a
+ * canvas as the focus goes (the frame showing then in Chromium, the first frame in Firefox), covers it until the focus
+ * comes back, and the picture goes on underneath. Only a picture on screen gets one, so a long log of GIFs costs a few.
+ */
+function Picture(props: { src: string; type: string; alt: string; title?: string; onClick?: () => void }) {
+  const moves = untrack(() => MAY_MOVE.has(props.type.toLowerCase())); // a picture keeps its type
+  const [loaded, setLoaded] = createSignal(false);
+  const [onScreen, setOnScreen] = createSignal(false);
+  let img: HTMLImageElement | undefined;
+  let seen: IntersectionObserver | undefined;
+  onCleanup(() => seen?.disconnect());
+  const watch = (el: HTMLImageElement) => {
+    img = el;
+    if (!moves) return;
+    seen = new IntersectionObserver((entries) => { for (const e of entries) setOnScreen(e.isIntersecting); });
+    seen.observe(el);
+  };
+  const still = () => moves && loaded() && onScreen() && !windowFocused();
+  // Drawn no larger than the picture shows, in device pixels: a big GIF is not copied whole.
+  const draw = (canvas: HTMLCanvasElement) => {
+    if (!img?.naturalWidth || !img.naturalHeight) return;
+    const shown = img.getBoundingClientRect();
+    const scale = Math.min(1, (Math.max(shown.width, shown.height) * devicePixelRatio) / Math.max(img.naturalWidth, img.naturalHeight));
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
+  };
+  return (
+    <>
+      {/* Kept in place under its still, see-through, so it still takes the click and the hover title */}
+      <img ref={watch} src={props.src} alt={props.alt} title={props.title} onClick={props.onClick} onLoad={() => setLoaded(true)} style={{ opacity: still() ? 0 : undefined }} />
+      <Show when={still()}><canvas class="still" ref={draw} aria-hidden="true" /></Show>
+    </>
   );
 }
 

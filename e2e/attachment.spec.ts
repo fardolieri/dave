@@ -56,6 +56,77 @@ test('a picture reaches a friend who is not in the call, inline, with the same b
   await expect(bob.page.locator('dialog.viewer')).not.toBeVisible();
 });
 
+/**
+ * A real GIF, `side` pixels square, that loops through two frames: red, then blue, a tenth of a second each. Each frame is
+ * one colour in 3-bit LZW codes, a clear code before every two pixels, so the code size never grows.
+ */
+function gif(side: number): Buffer {
+  const screen = Buffer.alloc(7);
+  screen.writeUInt16LE(side, 0);
+  screen.writeUInt16LE(side, 2);
+  screen[4] = 0x80; // a global colour table of two colours
+  const loop = Buffer.from([0x21, 0xff, 0x0b, ...Buffer.from('NETSCAPE2.0', 'ascii'), 0x03, 0x01, 0x00, 0x00, 0x00]);
+  const frame = (colour: number) => {
+    const codes: number[] = [];
+    for (let i = 0; i < side * side; i++) { if (i % 2 === 0) codes.push(4); codes.push(colour); }
+    codes.push(5);
+    const packed: number[] = [];
+    codes.forEach((c, i) => { for (let b = 0; b < 3; b++) { const bit = i * 3 + b; packed[bit >> 3] = (packed[bit >> 3] ?? 0) | (((c >> b) & 1) << (bit & 7)); } });
+    const blocks: number[] = [];
+    for (let i = 0; i < packed.length; i += 255) { const part = packed.slice(i, i + 255); blocks.push(part.length, ...part); }
+    const place = Buffer.alloc(10);
+    place[0] = 0x2c;
+    place.writeUInt16LE(side, 5);
+    place.writeUInt16LE(side, 7);
+    return Buffer.from([0x21, 0xf9, 0x04, 0x00, 0x0a, 0x00, 0x00, 0x00, ...place, 0x02, ...blocks, 0x00]);
+  };
+  return Buffer.concat([Buffer.from('GIF89a', 'ascii'), screen, Buffer.from([255, 0, 0, 0, 0, 255]), loop, frame(0), frame(1), Buffer.from([0x3b])]);
+}
+
+test('a GIF holds still while the window is not focused, and moves again when it is', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'blink.gif', mimeType: 'image/gif', buffer: gif(32) });
+  const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
+  await expect.poll(() => shown.evaluate((img: HTMLImageElement) => img.naturalWidth), { timeout: 30_000 }).toBe(32);
+  const still = bob.page.locator('.chat-log .att-media canvas.still');
+  // What the app reads for focus (hasFocus, the focus and blur events); the window itself is not moved.
+  const focus = (on: boolean) => bob.page.evaluate((on) => {
+    document.hasFocus = () => on;
+    window.dispatchEvent(new Event(on ? 'focus' : 'blur'));
+  }, on);
+  await focus(true);
+  await expect(still).toHaveCount(0);
+  await expect(shown).toHaveCSS('opacity', '1');
+
+  await focus(false);
+  await expect(still).toBeVisible();
+  await expect(shown).toHaveCSS('opacity', '0');
+  // The still is a frame of the GIF, not an empty box: red or blue, whole.
+  const middle = await still.evaluate((c: HTMLCanvasElement) => Array.from(c.getContext('2d')!.getImageData(c.width >> 1, c.height >> 1, 1, 1).data));
+  expect([[255, 0, 0, 255], [0, 0, 255, 255]]).toContainEqual(middle);
+  // The picture under it still takes the click, and opens full size.
+  await shown.click();
+  await expect(bob.page.locator('dialog.viewer img')).toBeVisible();
+  await expect(bob.page.locator('dialog.viewer canvas.still')).toBeVisible();
+  await bob.page.locator('dialog.viewer').click();
+
+  await focus(true);
+  await expect(still).toHaveCount(0);
+  await expect(shown).toHaveCSS('opacity', '1');
+  // A picture that cannot move gets no still. The window is tall enough for both on screen, so the GIF's still showing
+  // again says the blur has been seen.
+  await bob.page.setViewportSize({ width: 1280, height: 1600 });
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'stripes.png', mimeType: 'image/png', buffer: png(64, 48) });
+  const stripes = bob.page.locator('.chat-log .att-media').filter({ has: bob.page.locator('img[alt="stripes.png"]') });
+  await expect.poll(() => stripes.locator('img').evaluate((img: HTMLImageElement) => img.naturalWidth), { timeout: 30_000 }).toBe(64);
+  await focus(false);
+  await expect(still).toBeVisible();
+  await expect(stripes.locator('img')).toBeInViewport();
+  await expect(stripes.locator('img')).toHaveCSS('opacity', '1');
+  await expect(stripes.locator('canvas')).toHaveCount(0);
+});
+
 test('a file that does not show inline waits for a click, then saves under its own name', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');

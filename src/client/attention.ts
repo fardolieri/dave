@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
+import { createEffect, onCleanup, untrack } from 'solid-js';
 import { callDiff, sharesStarted, titleFor } from '../core/attention';
 import { MESSAGE_CUE, joinCue, leaveCue, shareCue, type Cue } from '../core/cue';
 import { armSound, playCue } from './sound';
@@ -6,6 +6,7 @@ import { getPicture } from './invite';
 import type { createRoom } from './room';
 import type { createCall } from './call';
 import { exposeHooks } from './hooks';
+import { windowFocused } from './focus';
 
 /** One room this browser is connected to, with its call. The list changes as rooms are added and left. */
 export type RoomLink = { room: ReturnType<typeof createRoom>; call: ReturnType<typeof createCall> };
@@ -17,11 +18,7 @@ export type RoomLink = { room: ReturnType<typeof createRoom>; call: ReturnType<t
  * visibility) is mirrored into a signal once; everything else derives from room and call signals.
  */
 export function createAttention(links: () => RoomLink[], myKey: string): void {
-  const [unfocused, setUnfocused] = createSignal(document.hidden || !document.hasFocus());
-  const syncFocus = () => setUnfocused(document.hidden || !document.hasFocus());
-  document.addEventListener('visibilitychange', syncFocus);
-  window.addEventListener('focus', syncFocus);
-  window.addEventListener('blur', syncFocus);
+  const unfocused = () => !windowFocused();
 
   // Participants are keyed per room, so a friend in two calls at once counts twice: two things are happening.
   const tag = (roomId: string, publicKey: string) => `${roomId} ${publicKey}`;
@@ -119,9 +116,6 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
   document.addEventListener('visibilitychange', syncWakeLock);
 
   onCleanup(() => {
-    document.removeEventListener('visibilitychange', syncFocus);
-    window.removeEventListener('focus', syncFocus);
-    window.removeEventListener('blur', syncFocus);
     disarm();
     document.removeEventListener('visibilitychange', syncWakeLock);
     void sentinel?.release();
