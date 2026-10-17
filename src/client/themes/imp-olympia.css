@@ -24,6 +24,35 @@
 :where(:root[data-theme="imp-olympia"]) .side { --dim: #1f4766; --acc: #0b3f7a; --ok: #004d2f; --warn: #5c2f00; --bad: #7d0b1e; --line: #6fb2dc; --field: #1f5f8f; border-right: 0; }
 :where(:root[data-theme="imp-olympia"]) .room-title { color: var(--dim); }
 
+/* The extra: at the foot of the blue field hangs a faint white cable net, bay after bay, the roof Frei Otto drew over
+   the same Games. Static, so it costs nothing; it sits where the sidebar is emptiest and only lightens what is behind text. */
+:where(:root[data-theme="imp-olympia"]) .side { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='120' fill='none' stroke='%23fff'%3E%3CclipPath id='c'%3E%3Cpath d='M0 6Q80 66 160 6V120H0z'/%3E%3C/clipPath%3E%3Cpath d='M0 22Q80 74 160 22M0 38Q80 82 160 38M0 54Q80 90 160 54M0 70Q80 98 160 70M0 86Q80 106 160 86M0 102Q80 114 160 102' stroke-opacity='.25'/%3E%3Cpath d='M8 0V120M24 0V120M40 0V120M56 0V120M72 0V120M88 0V120M104 0V120M120 0V120M136 0V120M152 0V120' stroke-opacity='.25' clip-path='url(%23c)'/%3E%3Cpath d='M0 6Q80 66 160 6' stroke-opacity='.45' stroke-width='1.5'/%3E%3C/svg%3E"); background-repeat: repeat-x; background-position: left bottom; background-size: clamp(160px, 9vw, 240px) auto; }
+
+/* And across the top of the white column hang seven of the Games' tall banners, in the field's pale blues and silver. Their
+   tails sag in the curve of the same roof, and each sways and turns a little in its own slow wind (9 to 14 s a swing).
+   They stay pale enough that even the dim timestamps read on them, and the shares and panels cover them. */
+:root[data-theme="imp-olympia"] .ambient { display: block; }
+:root[data-theme="imp-olympia"] .ambient > i { --w: clamp(14px, 1.5vw, 40px); top: -2vh; right: var(--x); width: var(--w); height: var(--h); transform-origin: 50% 0;
+  background: linear-gradient(var(--c) 0 74%, var(--b) 74% 87%, var(--c) 87%); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - var(--w) * .8), 0 100%);
+  animation: imp-olympia-banner var(--t) ease-in-out var(--d) infinite; animation-play-state: var(--ambient-play); }
+:root[data-theme="imp-olympia"] .ambient > i:nth-child(n+8) { display: none; }
+/* a share takes the top of the column, and the banners would only peek out above it */
+:root[data-theme="imp-olympia"]:has(.app.split) .ambient { display: none; }
+:root[data-theme="imp-olympia"] .ambient > i:nth-child(3n+1) { --c: #d6ecf9; --b: #b3dbf3; }
+:root[data-theme="imp-olympia"] .ambient > i:nth-child(3n+2) { --c: #e1e6ea; --b: #c4e3f6; }
+:root[data-theme="imp-olympia"] .ambient > i:nth-child(3n) { --c: #c4e3f6; --b: #e1e6ea; }
+:root[data-theme="imp-olympia"] .ambient > i:nth-child(1) { --x: 3vw; --h: 46vh; --t: 11.3s; --d: -2.1s; }
+:root[data-theme="imp-olympia"] .ambient > i:nth-child(2) { --x: 5.9vw; --h: 41.5vh; --t: 9.7s; --d: -7.4s; }
+:root[data-theme="imp-olympia"] .ambient > i:nth-child(3) { --x: 8.8vw; --h: 38.5vh; --t: 12.9s; --d: -4.6s; }
+:root[data-theme="imp-olympia"] .ambient > i:nth-child(4) { --x: 11.7vw; --h: 37.5vh; --t: 10.4s; --d: -9.8s; }
+:root[data-theme="imp-olympia"] .ambient > i:nth-child(5) { --x: 14.6vw; --h: 38.5vh; --t: 13.7s; --d: -1.3s; }
+:root[data-theme="imp-olympia"] .ambient > i:nth-child(6) { --x: 17.5vw; --h: 41.5vh; --t: 9.1s; --d: -5.9s; }
+:root[data-theme="imp-olympia"] .ambient > i:nth-child(7) { --x: 20.4vw; --h: 46vh; --t: 12.1s; --d: -10.2s; }
+@keyframes imp-olympia-banner {
+  0%, 100% { transform: rotate(-.9deg) scaleX(1); }
+  50% { transform: rotate(.9deg) scaleX(.82); }
+}
+
 /* controls: flat fields with square corners */
 :where(:root[data-theme="imp-olympia"]) button { border-radius: 2px; border-color: var(--field); font: inherit; font-weight: 600; transition: background-color .15s ease-out; }
 :where(:root[data-theme="imp-olympia"]) button:where(:hover:not(:disabled)) { background-color: #e6f3fb; }
@@ -94,8 +123,10 @@
 :where(:root[data-theme="imp-olympia"]) .consent .bubble { box-shadow: 0 8px 22px rgba(11,35,56,.3); }
 
 @media (max-width: 700px) {
-  :where(:root[data-theme="imp-olympia"]) .side { border-bottom: 0; }
+  :where(:root[data-theme="imp-olympia"]) .side { border-bottom: 0; background-size: 128px 96px; }
   :where(:root[data-theme="imp-olympia"]) .chat-input { background: #fff; border-top: 2px solid var(--panel); }
+  /* the banners would hang behind the sidebar here and show only their tails, which looks broken: the net is enough */
+  :root[data-theme="imp-olympia"] .ambient { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   :where(:root[data-theme="imp-olympia"]) :is(button, .room) { transition: none; }
