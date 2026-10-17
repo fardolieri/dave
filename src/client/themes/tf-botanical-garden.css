@@ -58,3 +58,48 @@
 :root[data-theme="tf-botanical-garden"] .chat-field > input { border-radius: 999px; padding-left: 14px; background: #fffdf8; }
 :root[data-theme="tf-botanical-garden"] .share-live { border-color: #f9a620; box-shadow: 0 0 0 1px #f9a620; }
 :root[data-theme="tf-botanical-garden"] .side { box-shadow: inset -1px 0 0 var(--line); }
+
+/* a fern frond leans into the chat from its top corner, faint as a shadow on the greenhouse glass, and stirs in a slow draft;
+   it grows with the screen so a wide one is not left with a sprig, but is never taller than the chat, which on a phone can
+   be short, so it does not lengthen the page */
+:root[data-theme="tf-botanical-garden"] .chat::before { content: ''; position: absolute; top: 0; right: 0; z-index: -1; width: min(clamp(150px, 22vmin, 330px), 34%); aspect-ratio: 170 / 250; pointer-events: none; opacity: .1;
+  background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 170 250' fill='%234a7c59'><path d='M178,-6Q150,150 34,244' fill='none' stroke='%234a7c59' stroke-width='2'/><path d='M175 9q5 11 17 14q-5-11-17-14M175 9q-12-1-21 6q12 1 21-6M170 29q6 13 19 18q-6-13-19-18M170 29q-14-2-25 6q14 2 25-6M165 49q6 15 20 21q-6-15-20-21M165 49q-15-3-28 6q15 3 28-6M159 67q5 16 21 24q-5-16-21-24M159 67q-17-4-31 5q17 4 31-5M152 86q5 18 21 26q-5-18-21-26M152 86q-17-5-33 4q17 5 33-4M144 103q4 18 21 28q-4-18-21-28M144 103q-18-6-35 2q18 6 35-2M136 120q3 19 19 29q-3-19-19-29M136 120q-18-7-35 1q18 7 35-1M127 137q2 19 18 30q-2-19-18-30M127 137q-17-8-34-1q17 8 34 1M117 153q1 18 16 29q-1-18-16-29M117 153q-16-9-33-3q16 9 33 3M106 169q0 17 13 28q0-17-13-28M106 169q-15-9-31-4q15 9 31 4M94 184q0 15 11 26q0-15-11-26M94 184q-13-9-28-5q13 9 28 5M82 198q-1 14 8 23q1-14-8-23M82 198q-11-8-24-6q11 8 24 6M69 212q-1 11 6 20q1-11-6-20M69 212q-9-7-20-6q9 7 20 6M55 225q-1 9 4 16q1-9-4-16M55 225q-7-6-16-5q7 6 16 5M41 238q-1 6 2 12q1-6-2-12M41 238q-5-5-11-4q5 5 11 4'/></svg>") no-repeat top right / contain;
+  max-height: 100%; transform-origin: 100% 0; animation: tf-botanical-garden-fern 13s ease-in-out infinite alternate; animation-play-state: var(--ambient-play); }
+@keyframes tf-botanical-garden-fern { to { transform: rotate(2deg); } }
+
+/* the same draft carries a few marigold petals, fern leaflets and one terracotta petal down past the glass, slowly and
+   sideways, each on its own long cycle; four of the eight on a phone */
+:root[data-theme="tf-botanical-garden"] .ambient { display: block; }
+:root[data-theme="tf-botanical-garden"] .ambient > i { top: 0; width: clamp(7px, .9vmin, 14px); aspect-ratio: 1 / 1.7; border-radius: 0 100% 0 100%; background: #f9a620; opacity: 0;
+  animation: tf-botanical-garden-drift 64s linear infinite; animation-play-state: var(--ambient-play); }
+:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(n+9) { display: none; }
+:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(1) { left: 31%; animation-duration: 58s; animation-delay: -7s; }
+:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(2) { left: 47%; background: #4a7c59; animation-name: tf-botanical-garden-drift-b; animation-duration: 71s; animation-delay: -40s; }
+:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(3) { left: 62%; animation-duration: 66s; animation-delay: -25s; }
+:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(4) { left: 84%; background: #4a7c59; animation-duration: 77s; animation-delay: -60s; }
+:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(5) { left: 39%; background: #b7472a; animation-name: tf-botanical-garden-drift-b; animation-duration: 82s; animation-delay: -66s; }
+:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(6) { left: 73%; animation-name: tf-botanical-garden-drift-b; animation-duration: 61s; animation-delay: -15s; }
+:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(7) { left: 55%; background: #4a7c59; animation-duration: 69s; animation-delay: -52s; }
+:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(8) { left: 92%; animation-name: tf-botanical-garden-drift-b; animation-duration: 74s; animation-delay: -33s; }
+@media (max-width: 700px) {
+  :root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(n+5) { display: none; }
+  :root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(1) { left: 12%; }
+  :root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(2) { left: 38%; }
+}
+@keyframes tf-botanical-garden-drift {
+  0% { transform: translate(0, -5vh) rotate(0deg); opacity: 0; }
+  8% { opacity: .42; }
+  30% { transform: translate(-4vw, 28vh) rotate(70deg); }
+  55% { transform: translate(1vw, 55vh) rotate(150deg); }
+  80% { transform: translate(-5vw, 82vh) rotate(230deg); }
+  92% { opacity: .42; }
+  100% { transform: translate(-2vw, 105vh) rotate(290deg); opacity: 0; }
+}
+@keyframes tf-botanical-garden-drift-b {
+  0% { transform: translate(0, -5vh) rotate(20deg) scaleX(-1); opacity: 0; }
+  8% { opacity: .38; }
+  35% { transform: translate(-6vw, 33vh) rotate(-50deg) scaleX(-1); }
+  65% { transform: translate(-2vw, 64vh) rotate(-120deg) scaleX(-1); }
+  92% { opacity: .38; }
+  100% { transform: translate(-8vw, 105vh) rotate(-200deg) scaleX(-1); opacity: 0; }
+}

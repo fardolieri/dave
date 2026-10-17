@@ -60,3 +60,45 @@
 :root[data-theme="tf-midnight-galaxy"] .avatar.speaking { box-shadow: 0 0 0 2px var(--ok), 0 0 12px rgba(95,214,164,.55); }
 :root[data-theme="tf-midnight-galaxy"] button.on:not(.link) { background: linear-gradient(135deg, #b8a6d6, #a490c2); }
 :root[data-theme="tf-midnight-galaxy"] .unread { background: var(--tf-link); }
+
+/* the extra: a night sky in three depths. A dense, dim field of stars sits still in the nebula's corner; a sparser,
+   nearer field drifts 200 px up and to the left over four minutes and back (transform only; two tiles of unrelated sizes,
+   so it shows no grid); and a dozen single stars, three with a faint four-point glint, each fade slowly in and out on a
+   cycle of its own (opacity and a slight scale, 6 to 12 s, never a flash). Paused, it is a still sky; behind the chat
+   the stars stay small and dim */
+:root[data-theme="tf-midnight-galaxy"] body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .65;
+  -webkit-mask-image: radial-gradient(ellipse 75% 65% at 85% 0%, #000, transparent 80%), radial-gradient(ellipse 60% 45% at 25% 105%, rgba(0,0,0,.6), transparent 80%), linear-gradient(rgba(0,0,0,.3), rgba(0,0,0,.3));
+  mask-image: radial-gradient(ellipse 75% 65% at 85% 0%, #000, transparent 80%), radial-gradient(ellipse 60% 45% at 25% 105%, rgba(0,0,0,.6), transparent 80%), linear-gradient(rgba(0,0,0,.3), rgba(0,0,0,.3));
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='470' height='410' fill='%23e6e6fa'%3E%3Ccircle cx='18' cy='30' r='0.8' opacity='0.7'/%3E%3Ccircle cx='77' cy='142' r='0.6' opacity='0.5'/%3E%3Ccircle cx='131' cy='61' r='1' opacity='0.8'/%3E%3Ccircle cx='203' cy='18' r='0.7' opacity='0.5'/%3E%3Ccircle cx='236' cy='171' r='0.8' opacity='0.6'/%3E%3Ccircle cx='52' cy='201' r='0.6' opacity='0.45'/%3E%3Ccircle cx='168' cy='118' r='0.6' opacity='0.4'/%3E%3Ccircle cx='110' cy='190' r='1.1' opacity='0.55' fill='%23a490c2'/%3E%3Ccircle cx='301' cy='52' r='0.7' opacity='0.6'/%3E%3Ccircle cx='352' cy='233' r='0.9' opacity='0.65'/%3E%3Ccircle cx='428' cy='97' r='0.6' opacity='0.5'/%3E%3Ccircle cx='279' cy='331' r='0.7' opacity='0.55'/%3E%3Ccircle cx='391' cy='372' r='1' opacity='0.6' fill='%23c4b4e4'/%3E%3Ccircle cx='147' cy='298' r='0.7' opacity='0.5'/%3E%3Ccircle cx='33' cy='356' r='0.6' opacity='0.45'/%3E%3Ccircle cx='446' cy='281' r='0.7' opacity='0.5'/%3E%3C/svg%3E"); }
+:root[data-theme="tf-midnight-galaxy"] .ambient { display: block; }
+:root[data-theme="tf-midnight-galaxy"] .ambient::before { content: ''; position: absolute; top: 0; left: 0; right: -200px; bottom: -100px; opacity: .65;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='610' height='470' fill='%23e6e6fa'%3E%3Ccircle cx='37' cy='52' r='1.1' opacity='0.9'/%3E%3Ccircle cx='151' cy='214' r='0.8' opacity='0.7'/%3E%3Ccircle cx='233' cy='97' r='1.3' opacity='0.85' fill='%23c4b4e4'/%3E%3Ccircle cx='318' cy='388' r='0.9' opacity='0.6'/%3E%3Ccircle cx='402' cy='33' r='1' opacity='0.8'/%3E%3Ccircle cx='471' cy='272' r='0.8' opacity='0.65'/%3E%3Ccircle cx='566' cy='121' r='1.2' opacity='0.9'/%3E%3Ccircle cx='88' cy='440' r='0.7' opacity='0.55'/%3E%3Ccircle cx='276' cy='182' r='0.7' opacity='0.5'/%3E%3C/svg%3E"), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='830' height='390' fill='%23e6e6fa'%3E%3Ccircle cx='61' cy='311' r='1' opacity='0.8'/%3E%3Ccircle cx='198' cy='47' r='0.8' opacity='0.6'/%3E%3Ccircle cx='347' cy='233' r='1.2' opacity='0.85'/%3E%3Ccircle cx='512' cy='128' r='0.9' opacity='0.7' fill='%23a490c2'/%3E%3Ccircle cx='633' cy='356' r='0.8' opacity='0.6'/%3E%3Ccircle cx='749' cy='82' r='1.1' opacity='0.8'/%3E%3Ccircle cx='421' cy='18' r='0.7' opacity='0.5'/%3E%3Ccircle cx='784' cy='247' r='0.7' opacity='0.55' fill='%23c4b4e4'/%3E%3C/svg%3E");
+  -webkit-mask-image: radial-gradient(ellipse 90% 80% at 75% 10%, #000, transparent 85%), linear-gradient(rgba(0,0,0,.45), rgba(0,0,0,.45));
+  mask-image: radial-gradient(ellipse 90% 80% at 75% 10%, #000, transparent 85%), linear-gradient(rgba(0,0,0,.45), rgba(0,0,0,.45));
+  animation: tf-midnight-galaxy-drift 240s ease-in-out infinite alternate; animation-play-state: var(--ambient-play); }
+@keyframes tf-midnight-galaxy-drift { to { transform: translate(-200px, -100px); } }
+:root[data-theme="tf-midnight-galaxy"] .ambient > i { width: clamp(5px, .5vmin, 8px); aspect-ratio: 1;
+  background: radial-gradient(closest-side, #f4f2ff 0 28%, rgba(230,230,250,.35) 45%, transparent);
+  animation: tf-midnight-galaxy-twinkle 8s ease-in-out infinite; animation-play-state: var(--ambient-play); }
+:root[data-theme="tf-midnight-galaxy"] .ambient > i:is(:nth-child(3), :nth-child(5), :nth-child(9)) { background: radial-gradient(closest-side, #e2d6ff 0 28%, rgba(164,144,194,.4) 45%, transparent); }
+:root[data-theme="tf-midnight-galaxy"] .ambient > i:is(:nth-child(2), :nth-child(7), :nth-child(10)) { width: clamp(11px, 1.1vmin, 17px);
+  background: radial-gradient(closest-side, #f4f2ff 0 14%, rgba(230,230,250,.35) 26%, transparent 55%),
+    linear-gradient(90deg, transparent, rgba(230,230,250,.55), transparent) center / 100% 1px no-repeat,
+    linear-gradient(transparent, rgba(230,230,250,.55), transparent) center / 1px 100% no-repeat; }
+:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(1) { top: 7%; left: 61%; animation-duration: 7s; animation-delay: -2s; }
+:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(2) { top: 13%; left: 84%; animation-duration: 9s; animation-delay: -5s; }
+:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(3) { top: 5%; left: 93%; animation-duration: 6s; animation-delay: -1s; }
+:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(4) { top: 24%; left: 72%; animation-duration: 8s; animation-delay: -6s; }
+:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(5) { top: 19%; left: 42%; animation-duration: 10s; animation-delay: -3s; }
+:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(6) { top: 35%; left: 91%; animation-duration: 7.5s; animation-delay: -4s; }
+:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(7) { top: 31%; left: 55%; animation-duration: 11s; animation-delay: -8s; }
+:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(8) { top: 47%; left: 80%; animation-duration: 6.5s; animation-delay: -2.5s; }
+:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(9) { top: 56%; left: 47%; animation-duration: 9.5s; animation-delay: -7s; }
+:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(10) { top: 64%; left: 94%; animation-duration: 8.5s; animation-delay: -1.5s; }
+:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(11) { top: 12%; left: 27%; animation-duration: 7s; animation-delay: -5.5s; }
+:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(12) { top: 41%; left: 24%; animation-duration: 12s; animation-delay: -9s; }
+@keyframes tf-midnight-galaxy-twinkle { 0%, 100% { opacity: .12; transform: scale(.7); } 50% { opacity: .7; transform: scale(1); } }
+/* on a phone the room list covers the top of the sky: only the stars that can be seen stay */
+@media (max-width: 700px) {
+  :root[data-theme="tf-midnight-galaxy"] .ambient > i:is(:nth-child(1), :nth-child(3), :nth-child(4), :nth-child(5), :nth-child(11), :nth-child(12)) { display: none; }
+}
