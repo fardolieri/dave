@@ -56,6 +56,34 @@ test('a picture reaches a friend who is not in the call, inline, with the same b
   await expect(bob.page.locator('dialog.viewer')).not.toBeVisible();
 });
 
+test('regression: a line under a name shows its time over the text or the picture, not over the empty space beside it', async ({ crowd }) => {
+  // Oct 2026: the time was the title of the whole row, so it came up anywhere to the right of a short line or a picture.
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.say('one');
+  await alice.say('two');
+  await expect.poll(() => bob.chatTexts()).toEqual(['one', 'two']);
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'stripes.png', mimeType: 'image/png', buffer: png(64, 48) });
+  await expect(bob.page.locator('.chat-log .att-media img:not(.att-preview)')).toHaveCount(1, { timeout: 30_000 });
+
+  const rows = bob.page.locator('.chat-log .msg-cont');
+  await expect(rows).toHaveCount(2); // "two" and the picture, both under Alice's name
+  // The tooltip the browser would show at a point: the title of the nearest element there that has one.
+  const tips = (row: number) => rows.nth(row).evaluate((el) => {
+    const tip = (x: number, y: number) => document.elementFromPoint(x, y)?.closest('[title]')?.getAttribute('title') ?? null;
+    const r = el.getBoundingClientRect();
+    const c = el.firstElementChild!.getBoundingClientRect();
+    return { over: tip(c.left + 2, c.top + c.height / 2), beside: tip(r.right - 4, c.top + c.height / 2) };
+  });
+  await rows.nth(1).scrollIntoViewIfNeeded();
+  const text = await tips(0);
+  expect(text.over).toMatch(/\d/);
+  expect(text.beside).toBeNull();
+  const picture = await tips(1);
+  expect(picture.over).toMatch(/^stripes\.png, .*\d/); // its name, and its time
+  expect(picture.beside).toBeNull();
+});
+
 /**
  * A real GIF, `side` pixels square, that loops through two frames: red, then blue, a tenth of a second each. Each frame is
  * one colour in 3-bit LZW codes, a clear code before every two pixels, so the code size never grows.
