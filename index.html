@@ -30,6 +30,9 @@
     </script>
   </head>
   <body>
+    <!-- Spare elements a theme may move behind the page (sparks, stars): hidden unless the theme on screen shows them
+         (styles.css, themes/). Static, so they cost nothing in the default look. -->
+    <div class="ambient" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
     <div id="app"></div>
     <script type="module" src="/src/client/index.tsx"></script>
   </body>

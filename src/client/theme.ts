@@ -50,3 +50,42 @@ export function setTheme(name: string): void {
   if (name) local.set('theme', name);
   else local.remove('theme');
 }
+
+// A theme's background may move a little (its "ambient" layer), but an app left open for hours must cost what an idle
+// page costs. So the motion runs only while someone is using the page: two minutes after the last input, as soon as the
+// tab is hidden, and while a share is in fullscreen, `data-still` goes on the root and every ambient animation pauses
+// where it is (styles.css turns it into `--ambient-play: paused`, which the themes put on their animations). Input
+// wakes it where it stopped. The timer is armed only while the motion runs, so a still page has no timer either; it
+// counts on the monotonic clock, which a phone setting its time does not move.
+const STILL_AFTER_MS = 2 * 60_000;
+/** Nothing of the page is seen: the tab is hidden, or a share is in fullscreen over it. iPhone Safari has no
+ * fullscreenElement at all (a share goes into its native player there, which the two minutes cover); older Safari has
+ * only the webkit one. */
+const unseen = (): boolean => {
+  const d = document as Document & { webkitFullscreenElement?: Element | null };
+  return document.visibilityState === 'hidden' || (d.fullscreenElement ?? d.webkitFullscreenElement ?? null) !== null;
+};
+let lastInput = performance.now();
+let stillTimer: ReturnType<typeof setTimeout> | undefined;
+const still = (): void => {
+  clearTimeout(stillTimer);
+  stillTimer = undefined;
+  document.documentElement.dataset['still'] = '';
+};
+const settle = (): void => {
+  const left = lastInput + STILL_AFTER_MS - performance.now();
+  if (left > 0) stillTimer = setTimeout(settle, left);
+  else still();
+};
+const wake = (): void => {
+  lastInput = performance.now();
+  if (unseen()) return;
+  delete document.documentElement.dataset['still'];
+  stillTimer ??= setTimeout(settle, STILL_AFTER_MS);
+};
+const look = (): void => (unseen() ? still() : wake());
+for (const type of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']) addEventListener(type, wake, { passive: true, capture: true });
+document.addEventListener('visibilitychange', look);
+document.addEventListener('fullscreenchange', look);
+document.addEventListener('webkitfullscreenchange', look);
+look();
