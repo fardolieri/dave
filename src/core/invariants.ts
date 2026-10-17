@@ -53,9 +53,9 @@ export function shareTileState(isMe: boolean, inCall: boolean, view: { conn: str
   return view.shareLive ? 'live' : 'opening';
 }
 
-/** What a friend's voice or share gain node is set to: master times their volume, for the share also its own volume; nothing during a mic test. */
+/** What a friend's voice or share gain node is set to: master times the volume of that sound, their voice's or their share's; nothing during a mic test. */
 export function gainFor(kind: 'voice' | 'share', c: { master: number; volume: number; shareVolume: number; micTest: boolean }): number {
-  return c.micTest ? 0 : c.master * c.volume * (kind === 'share' ? c.shareVolume : 1);
+  return c.micTest ? 0 : c.master * (kind === 'share' ? c.shareVolume : c.volume);
 }
 
 /** One friend in the call as the UI shows them and as the browser has them. No names: `key` only identifies them within this tab. */

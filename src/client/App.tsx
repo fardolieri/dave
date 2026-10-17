@@ -917,7 +917,7 @@ function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: 
         <Show when={props.view}>{(v) => <span class={`conn conn-${v().conn}`} title={CONN_LABEL[v().conn]}><i /><span class="conn-label">{CONN_LABEL[v().conn]}</span></span>}</Show>
         <Show when={props.view && props.view.rttMs !== null}><Lag ms={props.view!.rttMs!} /></Show>
         <Show when={props.onVolume && props.view}>
-          <button class={`vol ${percent() !== 100 ? 'on' : ''}`} title={`Volume for you: ${percent()}%`} onClick={() => setSliderOpen(!sliderOpen())}>
+          <button class={`vol ${percent() !== 100 ? 'on' : ''}`} title={`Their voice for you: ${percent()}%`} onClick={() => setSliderOpen(!sliderOpen())}>
             {percent() === 0 ? '🔇' : '🔊'}<Show when={percent() !== 100}><small>{percent()}%</small></Show>
           </button>
         </Show>

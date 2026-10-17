@@ -789,7 +789,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
   const changeShare = (change: Partial<ShareSettings>) => setShareSettings(withChange(shareSettings(), change));
 
-  /** Set how loud one participant is for me: their voice and share audio, nothing sent anywhere (ticket 08). */
+  /** Set how loud one participant is for me: their voice, not their share, nothing sent anywhere (ticket 08). */
   function setVolume(key: string, value: number): void {
     const v = clampVolume(value);
     const peer = peers.get(key);
@@ -923,7 +923,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   /**
-   * Remote audio path (ticket 08): raw track -> gain (master times per-participant volume, local only) -> a MediaStream that a
+   * Remote audio path (ticket 08): raw track -> gain (master times the participant's voice or share volume, local only) -> a MediaStream that a
    * normal audio element plays, so speaker selection via setSinkId keeps working. The raw track also stays
    * attached to a muted element, which Chrome requires before it feeds remote audio into WebAudio at all.
    */
