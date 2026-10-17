@@ -76,7 +76,7 @@ test('received history survives a reload, and "Clear chat history" empties it', 
   expect(await alice.chatTexts()).toEqual(['one', 'two']);
 });
 
-test('leaving a room forgets its history: the link brings the room back, not the lines', async ({ crowd }) => {
+test('forgetting a room forgets its history: the link brings the room back, not the lines', async ({ crowd }) => {
   const other = { secret: newSecret(), name: 'Other' };
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob', { rooms: [crowd.room, other] });
@@ -85,7 +85,7 @@ test('leaving a room forgets its history: the link brings the room back, not the
   // Written first, so that the empty history waited for below is the delete's and not the write's still to come.
   await expect.poll(() => bob.storedTexts()).toEqual(['before']);
   bob.page.once('dialog', (d) => void d.accept());
-  await bob.page.getByRole('button', { name: `Leave ${crowd.room.name}` }).click();
+  await bob.button(`Forget ${crowd.room.name}`).click();
   await expect(bob.page.locator('button.room-name', { hasText: crowd.room.name })).toHaveCount(0);
   // The room goes from the list at once, its history a moment later; the room the link brings back loads its history
   // without waiting for that delete (ticket 43).

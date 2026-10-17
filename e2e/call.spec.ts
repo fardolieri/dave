@@ -1,4 +1,4 @@
-import { expect, needHooks, test } from './fixtures';
+import { expect, needHooks, newSecret, test } from './fixtures';
 
 test('two friends join the call, connect directly and hear each other', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
@@ -86,6 +86,24 @@ test('a participant who rejoins is connected again', async ({ crowd }) => {
   await bob.join();
   await alice.connectedTo('Bob');
   await bob.connectedTo('Alice');
+});
+
+test('forgetting the room on screen, next to its name, keeps the call in another room', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob', { rooms: [crowd.room, other] });
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await bob.selectRoom(other.name);
+  const asked = new Promise<string>((resolve) => bob.page.once('dialog', (d) => { resolve(d.message()); void d.accept(); }));
+  await bob.selectedRoom.locator('.room-head').getByRole('button', { name: `Forget ${other.name}`, exact: true }).click();
+  expect(await asked).toContain('This browser forgets the room and its chat history');
+  await expect(bob.page.locator('button.room-name', { hasText: other.name })).toHaveCount(0);
+  await expect(bob.selectedRoom.locator('.room-title')).toHaveText(crowd.room.name);
+  await expect(bob.button('Leave')).toBeVisible();
+  await bob.connectedTo('Alice');
+  await expect.poll(() => alice.inCall()).toEqual(['Alice', 'Bob']);
 });
 
 test('Chromium and Firefox in one call connect and hear each other', async ({ crowd, browserName }) => {

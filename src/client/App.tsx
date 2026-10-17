@@ -379,8 +379,9 @@ function Workspace(props: WorkspaceProps) {
     if (!n) return;
     void props.onCreate(n).then((room) => { setCreating(false); setRoomDraft(''); setInviteFor(room.secret); }); // the new room needs its link sent around
   };
-  const leaveRoom = (l: Link) => {
-    if (!confirm(`Leave ${l.saved.name}? This browser forgets the room and its chat history. The invite link gets you back in.`)) return;
+  // Next to the room's name, not among the sidebar's other buttons: a friend looking for it looks there. Not "Leave", the call's word.
+  const forgetHere = (l: Link) => {
+    if (!confirm(`Forget ${l.saved.name}? This browser forgets the room and its chat history. The invite link gets you back in.`)) return;
     if (untrack(active) === l) l.call.leave(); // say goodbye while the socket is still open, so nobody waits out the grace period
     props.onForget(l.saved.secret); // disposing the room closes its socket
   };
@@ -424,6 +425,7 @@ function Workspace(props: WorkspaceProps) {
                       <Show when={l.room.unread() > 0}><b class="unread" title="new messages">{l.room.unread()}</b></Show>
                     </button>
                     <Show when={selected()}><button class={`link ${inviteOpen() ? 'on' : ''}`} title="The link that gets a friend into this room" onClick={() => toggleInvite(l)}>invite</button></Show>
+                    <Show when={selected()}><button class="link" aria-label={`Forget ${l.saved.name}`} title="Forget this room in this browser, with its chat history" onClick={() => forgetHere(l)}>forget</button></Show>
                   </div>
                   <Show when={selected() && inviteOpen()}><InvitePanel link={inviteLinkFor(l.saved)} name={l.saved.name} /></Show>
                   <ul class="plist">
@@ -455,7 +457,6 @@ function Workspace(props: WorkspaceProps) {
               <Show when={joining()} fallback={<button class="link" title="Enter a room from a pasted invite link" onClick={() => setJoining(true)}>Join by link</button>}>
                 <JoinLinkForm autofocus onJoin={(link) => { setJoining(false); props.onJoin(link); }} onCancel={() => setJoining(false)} />
               </Show>
-              <button class="link" title="Forget this room in this browser" onClick={() => leaveRoom(cur())}>Leave {cur().saved.name}</button>
               <button class={`link ${askingConsent() ? 'on' : ''}`} title={telemetryOn() ? 'This browser sends usage events, errors and a masked screen recording to PostHog. Click to read what is sent, or to stop.' : 'Send usage events, errors and a masked screen recording to PostHog, so bugs can be found. Click to read what is sent.'} onClick={() => setAskingConsent((a) => !a)}>{telemetryOn() ? 'Stop helping find bugs' : 'Help find bugs'}</button>
               <ReportDialog collect={() => collectReport({ status: () => cur().room.status().kind, people: everyone, me: () => me, call: (active() ?? cur()).call.diagnostics })} />
               <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { if (confirm(`Clear this browser's chat history of ${cur().saved.name}? Nothing is stored on the server, so this cannot be undone.`)) void cur().room.clearHistory(); }}>Clear chat history</button>
