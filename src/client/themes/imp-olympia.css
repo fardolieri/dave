@@ -29,12 +29,12 @@
 :where(:root[data-theme="imp-olympia"]) .side { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='120' fill='none' stroke='%23fff'%3E%3CclipPath id='c'%3E%3Cpath d='M0 6Q80 66 160 6V120H0z'/%3E%3C/clipPath%3E%3Cpath d='M0 22Q80 74 160 22M0 38Q80 82 160 38M0 54Q80 90 160 54M0 70Q80 98 160 70M0 86Q80 106 160 86M0 102Q80 114 160 102' stroke-opacity='.25'/%3E%3Cpath d='M8 0V120M24 0V120M40 0V120M56 0V120M72 0V120M88 0V120M104 0V120M120 0V120M136 0V120M152 0V120' stroke-opacity='.25' clip-path='url(%23c)'/%3E%3Cpath d='M0 6Q80 66 160 6' stroke-opacity='.45' stroke-width='1.5'/%3E%3C/svg%3E"); background-repeat: repeat-x; background-position: left bottom; background-size: clamp(160px, 9vw, 240px) auto; }
 
 /* And across the top of the white column hang seven of the Games' tall banners, in the field's pale blues and silver. Their
-   tails sag in the curve of the same roof, and each sways and turns a little in its own slow wind (9 to 14 s a swing).
+   tails sag in the curve of the same roof, and each sways and turns a little in its own slow wind (23 to 34 s a swing).
    They stay pale enough that even the dim timestamps read on them, and the shares and panels cover them. */
 :root[data-theme="imp-olympia"] .ambient { display: block; }
 :root[data-theme="imp-olympia"] .ambient > i { --w: clamp(14px, 1.5vw, 40px); top: -2vh; right: var(--x); width: var(--w); height: var(--h); transform-origin: 50% 0;
   background: linear-gradient(var(--c) 0 74%, var(--b) 74% 87%, var(--c) 87%); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - var(--w) * .8), 0 100%);
-  animation: imp-olympia-banner var(--t) ease-in-out var(--d) infinite; animation-play-state: var(--ambient-play); }
+  animation: imp-olympia-banner calc(var(--t) * 2.5) ease-in-out calc(var(--d) * 2.5) infinite; animation-play-state: var(--ambient-play); }
 :root[data-theme="imp-olympia"] .ambient > i:nth-child(n+8) { display: none; }
 /* a share takes the top of the column, and the banners would only peek out above it */
 :root[data-theme="imp-olympia"]:has(.app.split) .ambient { display: none; }
@@ -49,8 +49,8 @@
 :root[data-theme="imp-olympia"] .ambient > i:nth-child(6) { --x: 17.5vw; --h: 41.5vh; --t: 9.1s; --d: -5.9s; }
 :root[data-theme="imp-olympia"] .ambient > i:nth-child(7) { --x: 20.4vw; --h: 46vh; --t: 12.1s; --d: -10.2s; }
 @keyframes imp-olympia-banner {
-  0%, 100% { transform: rotate(-.9deg) scaleX(1); }
-  50% { transform: rotate(.9deg) scaleX(.82); }
+  0%, 100% { transform: rotate(-.6deg) scaleX(1); }
+  50% { transform: rotate(.6deg) scaleX(.92); }
 }
 
 /* controls: flat fields with square corners */

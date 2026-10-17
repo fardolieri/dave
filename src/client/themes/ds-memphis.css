@@ -164,14 +164,14 @@
 }
 /* the flyer's confetti: a dozen Memphis shapes (squiggles, a zigzag, rings, a triangle, a half-moon, a plus, a stick,
    dots and a dot patch) scattered over the empty right of the chat, clear of the reading column. Each one drifts and
-   tilts on its own slow path and the triangle and the plus turn, so the flyer feels like a party in a draught; flat
-   colour, thinner in the dark palette, fewer on a laptop and only four at the edge of a phone, still when nobody is there */
+   tilts on its own slow path (half a minute and more) and the triangle and the plus turn, so the flyer feels like a party
+   in a draught; flat colour washed out to a print's back side, thinner in the dark palette, fewer on a laptop and only four at the edge of a phone, still when nobody is there */
 :root[data-theme="ds-memphis"] .ambient { display: block; --safe: 1060px; }
 :where(:root[data-theme="ds-memphis"]) .ambient > i { --c: var(--color-pop-pink); --r0: -8deg; --r1: 10deg; --dx: 2vw; --dy: -2.8vh; --t: 13s; --d: -4s;
   left: calc(var(--safe) + (100% - var(--safe) - var(--s)) * var(--x)); top: var(--y); width: var(--s); height: var(--s);
-  background: var(--c); opacity: .62; transform: rotate(var(--r0));
-  animation: ds-memphis-float var(--t) ease-in-out var(--d) infinite alternate; animation-play-state: var(--ambient-play); }
-@media (prefers-color-scheme: dark) { :where(:root[data-theme="ds-memphis"]) .ambient > i { opacity: .46; } }
+  background: var(--c); opacity: .36; transform: rotate(var(--r0));
+  animation: ds-memphis-float calc(var(--t) * 2.2) ease-in-out calc(var(--d) * 2.2) infinite alternate; animation-play-state: var(--ambient-play); }
+@media (prefers-color-scheme: dark) { :where(:root[data-theme="ds-memphis"]) .ambient > i { opacity: .28; } }
 @keyframes ds-memphis-float { to { transform: translate(var(--dx), var(--dy)) rotate(var(--r1)); } }
 @keyframes ds-memphis-turn { to { transform: rotate(calc(var(--r0) + 360deg)); } }
 /* shapes: masks keep the stroke shapes in the palette's own colours, light and dark */
@@ -188,8 +188,8 @@
 :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(6) { height: calc(var(--s) / 2); border-radius: var(--s) var(--s) 0 0; box-shadow: calc(var(--s) * .07) calc(var(--s) * .07) 0 var(--line); }
 :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(8) { width: calc(var(--s) * .28); border-radius: var(--border-radius-full); box-shadow: calc(var(--s) * .07) calc(var(--s) * .07) 0 var(--line); }
 /* the ink dot patch is the darkest piece, so it is fainter than the colours */
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(9) { background: radial-gradient(var(--line) 28%, transparent 31%) 0 0 / 25% 25%; opacity: .36; }
-@media (prefers-color-scheme: dark) { :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(9) { opacity: .28; } }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(9) { background: radial-gradient(var(--line) 28%, transparent 31%) 0 0 / 25% 25%; opacity: .2; }
+@media (prefers-color-scheme: dark) { :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(9) { opacity: .16; } }
 /* places, sizes, colours and paths: dense at the top right, a gap in the middle, a few low down */
 :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(1) { --s: clamp(54px, 5.4vw, 150px); --x: .1; --y: 10%; --r0: -12deg; --r1: 8deg; --t: 12s; --d: -2s; }
 :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(2) { --s: clamp(30px, 2.8vw, 80px); --x: .52; --y: 15%; --c: var(--color-pop-teal); --r0: 12deg; --t: 52s; --d: -19s;
@@ -209,11 +209,11 @@
 @media (max-width: 1500px) { :where(:root[data-theme="ds-memphis"]) .ambient > i:is(:nth-child(4), :nth-child(5), :nth-child(10), :nth-child(12)) { display: none; } }
 /* a phone has no margin: four shapes tucked at the right edge, half off the page, low behind the chat */
 @media (max-width: 700px) {
-  :where(:root[data-theme="ds-memphis"]) .ambient > i { left: auto; opacity: .42; }
+  :where(:root[data-theme="ds-memphis"]) .ambient > i { left: auto; opacity: .28; }
   :where(:root[data-theme="ds-memphis"]) .ambient > i:not(:nth-child(1), :nth-child(2), :nth-child(3), :nth-child(8)) { display: none; }
   :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(1) { --s: 64px; right: -18px; top: 58%; }
   :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(2) { --s: 30px; right: 14px; top: 66%; }
   :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(3) { --s: 44px; right: -16px; top: 74%; }
   :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(8) { --s: 40px; right: 20px; top: 81%; --dx: -2vw; }
 }
-@media (prefers-color-scheme: dark) and (max-width: 700px) { :where(:root[data-theme="ds-memphis"]) .ambient > i { opacity: .34; } }
+@media (prefers-color-scheme: dark) and (max-width: 700px) { :where(:root[data-theme="ds-memphis"]) .ambient > i { opacity: .22; } }

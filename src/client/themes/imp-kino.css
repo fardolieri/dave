@@ -89,53 +89,6 @@
       radial-gradient(calc(var(--wx) * .6) calc(var(--wy) * .4) at 66.667% calc(var(--y) + var(--wy) * .2), var(--down), transparent);
   }
 }
-/* The closed curtain: while nothing is on screen, a velvet valance with a gold trim hangs across the top of the room,
-   its swags stirring in the air of the hall, one after the other. It hangs over the chat column only (the sidebar's
-   300px are its own), is gone the moment someone shares (the screen is lit, the curtain is open), and stays off on a
-   phone, where the sidebar takes the top of the screen. Each swag only turns and sways a few pixels, over 7 s. */
-:root[data-theme="imp-kino"]:has(.app:not(.split)) .ambient { display: block; }
-:where(:root[data-theme="imp-kino"]) .ambient { --n: 6; --w: calc((100vw - 300px) / var(--n)); }
-:where(:root[data-theme="imp-kino"]) .ambient::after {
-  content: ''; position: absolute; left: 300px; right: 0; top: 0; height: clamp(8px, 1.3vh, 18px);
-  background: linear-gradient(#2b1216, #43191f); box-shadow: 0 1px 0 rgba(214,164,98,.38), 0 2px 6px rgba(0,0,0,.4);
-}
-:where(:root[data-theme="imp-kino"]) .ambient > i {
-  --k: 0; left: calc(300px + var(--w) * (var(--k) - .07)); width: calc(var(--w) * 1.14);
-  top: calc(-1 * clamp(10px, 2vh, 30px)); height: clamp(44px, 8.4vh, 120px);
-  border-radius: 0 0 50% 50% / 0 0 100% 100%; transform-origin: 50% 0;
-  background:
-    radial-gradient(70% 60% at 50% 0, rgba(255,190,160,.07), transparent),
-    repeating-linear-gradient(90deg, rgba(0,0,0,.26), rgba(255,170,160,.05) 9%, rgba(0,0,0,.26) 18%),
-    #3a161c;
-  box-shadow: 0 clamp(1px, .14vh, 2px) 0 rgba(214,164,98,.42), 0 .5vh 1.4vh rgba(0,0,0,.35);
-  animation: imp-kino-sway 7s ease-in-out calc(var(--k) * -1.3s) infinite alternate;
-  animation-play-state: var(--ambient-play);
-}
-:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(2) { --k: 1; }
-:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(3) { --k: 2; }
-:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(4) { --k: 3; }
-:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(5) { --k: 4; }
-:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(6) { --k: 5; }
-:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(7) { --k: 6; }
-:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(8) { --k: 7; }
-:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(9) { --k: 8; }
-:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(10) { --k: 9; }
-:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(n+7) { display: none; }
-@media (min-width: 1500px) {
-  :where(:root[data-theme="imp-kino"]) .ambient { --n: 8; }
-  :where(:root[data-theme="imp-kino"]) .ambient > i:is(:nth-child(7), :nth-child(8)) { display: block; }
-}
-@media (min-width: 2200px) {
-  :where(:root[data-theme="imp-kino"]) .ambient { --n: 10; }
-  :where(:root[data-theme="imp-kino"]) .ambient > i:is(:nth-child(9), :nth-child(10)) { display: block; }
-}
-@media (max-width: 700px) {
-  :root[data-theme="imp-kino"]:has(.app:not(.split)) .ambient { display: none; }
-}
-@keyframes imp-kino-sway {
-  from { transform: translateX(calc(var(--w) * -.018)) rotate(-.9deg); }
-  to { transform: translateX(calc(var(--w) * .018)) rotate(.9deg) scaleY(1.035); }
-}
 :where(:root[data-theme="imp-kino"]) .share { background: #1a1110; border-color: #3a2226; border-radius: 14px; }
 :where(:root[data-theme="imp-kino"]) .share-head { background: rgba(43,18,22,.85); }
 :where(:root[data-theme="imp-kino"]) .share-bar { background: rgba(0,0,0,.5); color: var(--dim); font-family: inherit; font-variant-numeric: tabular-nums; }

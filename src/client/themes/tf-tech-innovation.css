@@ -63,8 +63,9 @@
 @media (max-width: 700px) { :root[data-theme="tf-tech-innovation"] .side { border-bottom-color: #0066ff55; } }
 
 /* ambient extra: a lit circuit board. A faint neon-cyan dot grid spreads in from the bottom-right corner under an
-   electric-blue glow that swells and settles once every 40 s. On the grid, a few blue nodes light up and dim again slowly,
-   and five cyan signals run along its rows and columns, turn one corner and go dark, then rest a while. Transform and
+   electric-blue glow that reaches most of the way across the screen and swells and settles once every 40 s. On the grid,
+   a few blue nodes light up and dim again slowly, and five cyan signals run straight along its rows and columns, tail
+   behind, and go dark, then rest a while. Transform and
    opacity only, paused with the rest; the grid grows with the screen so a 1440p page is not left empty. It sits behind
    everything; the opaque sidebar hides it, so it shows round the chat and the composer. */
 :root[data-theme="tf-tech-innovation"] { --tf-g: clamp(20px, 1.25vw, 36px); }
@@ -72,11 +73,11 @@
 :root[data-theme="tf-tech-innovation"] body::after { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; }
 :root[data-theme="tf-tech-innovation"] body::before {
   background: radial-gradient(circle, rgba(0,255,255,.2) 1.1px, transparent 1.6px) 0 0 / var(--tf-g) var(--tf-g);
-  -webkit-mask-image: radial-gradient(75vw 110vh at 100% 100%, #000 20%, transparent);
-  mask-image: radial-gradient(75vw 110vh at 100% 100%, #000 20%, transparent);
+  -webkit-mask-image: radial-gradient(100vw 140vh at 100% 100%, #000 25%, transparent);
+  mask-image: radial-gradient(100vw 140vh at 100% 100%, #000 25%, transparent);
 }
 :root[data-theme="tf-tech-innovation"] body::after {
-  background: radial-gradient(circle at 100% 100%, rgba(0,102,255,.16), rgba(0,102,255,.05) 30vmax, transparent 60vmax);
+  background: radial-gradient(110vw 130vh at 100% 100%, rgba(0,102,255,.32), rgba(0,102,255,.13) 40%, rgba(0,102,255,.04) 70%, transparent);
   transform-origin: 100% 100%; /* it grows up and to the left only, off the page's unscrollable side */
   animation: tf-tech-innovation-glow 20s ease-in-out infinite alternate;
   animation-play-state: var(--ambient-play);
@@ -100,7 +101,7 @@
   animation-play-state: var(--ambient-play);
 }
 :root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(n+8) {
-  /* a short streak whose head (its right end) sits on the dot; it turns round its head at the corner */
+  /* a short streak whose head (its right end) sits on the dot, turned once to point where it runs */
   --s: calc(var(--tf-g) * .2); --l: calc(var(--tf-g) * 2.4);
   width: var(--l); margin-left: calc(var(--s) / 2 - var(--l)); border-radius: var(--s);
   background: radial-gradient(circle at calc(100% - var(--s) / 2) 50%, #00ffff calc(var(--s) / 2), transparent calc(var(--s) / 2 + 1px)),
@@ -116,22 +117,22 @@
 :root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(5) { --x: 80vw; --y: 17vh; --t: 12s; --d: -1s; }
 :root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(6) { --x: 52vw; --y: 70vh; --t: 10s; --d: -7s; }
 :root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(7) { --x: 91vw; --y: 87vh; --t: 15s; --d: -4s; }
-/* signals: first leg (--ax, --ay) heading --r1, then the corner and the second leg to (--bx, --by) heading --r2, in grid steps */
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(8)  { --x: 93vw; --y: 95vh; --ax: 0; --ay: -10; --bx: -8; --by: -10; --r1: -90deg; --r2: -180deg; --t: 22s; --d: -3s; }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(9)  { --x: 70vw; --y: 66vh; --ax: 0; --ay: -9; --bx: 6; --by: -9; --r1: -90deg; --r2: 0deg; --t: 26s; --d: -15s; }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(10) { --x: 56vw; --y: 88vh; --ax: 10; --ay: 0; --bx: 10; --by: -6; --r1: 0deg; --r2: -90deg; --t: 24s; --d: -9s; }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(11) { --x: 85vw; --y: 44vh; --ax: 0; --ay: -8; --bx: -10; --by: -8; --r1: -90deg; --r2: -180deg; --t: 28s; --d: -21s; }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(12) { --x: 98vw; --y: 72vh; --ax: -12; --ay: 0; --bx: -12; --by: -5; --r1: -180deg; --r2: -90deg; --t: 20s; --d: -12s; }
+/* signals: a run of (--ax, --ay) grid steps, heading --r */
+:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(8)  { --x: 93vw; --y: 95vh; --ax: 0; --ay: -16; --r: -90deg; --t: 22s; --d: -3s; }
+:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(9)  { --x: 62vw; --y: 34vh; --ax: 14; --ay: 0; --r: 0deg; --t: 26s; --d: -15s; }
+:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(10) { --x: 56vw; --y: 88vh; --ax: 16; --ay: 0; --r: 0deg; --t: 24s; --d: -9s; }
+:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(11) { --x: 78vw; --y: 72vh; --ax: 0; --ay: -14; --r: -90deg; --t: 28s; --d: -21s; }
+:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(12) { --x: 98vw; --y: 58vh; --ax: -18; --ay: 0; --r: -180deg; --t: 20s; --d: -12s; }
 @keyframes tf-tech-innovation-node { 0%, 62%, 100% { opacity: 0; transform: scale(.6); } 31% { opacity: .6; transform: none; } }
 @keyframes tf-tech-innovation-signal {
-  0% { opacity: 0; transform: translate(0, 0) rotate(var(--r1)); }
-  6% { opacity: .8; }
-  30% { transform: translate(calc(var(--ax) * var(--tf-g)), calc(var(--ay) * var(--tf-g))) rotate(var(--r1)); }
-  32% { transform: translate(calc((var(--ax) + (var(--bx) - var(--ax)) * .07) * var(--tf-g)), calc((var(--ay) + (var(--by) - var(--ay)) * .07) * var(--tf-g))) rotate(var(--r2)); }
-  52% { opacity: .8; }
-  58%, 100% { opacity: 0; transform: translate(calc(var(--bx) * var(--tf-g)), calc(var(--by) * var(--tf-g))) rotate(var(--r2)); }
+  0% { opacity: 0; transform: translate(0, 0) rotate(var(--r)); }
+  6%, 46% { opacity: .8; }
+  52%, 100% { opacity: 0; transform: translate(calc(var(--ax) * var(--tf-g)), calc(var(--ay) * var(--tf-g))) rotate(var(--r)); }
 }
-/* the phone keeps two nodes and two signals */
+/* the phone keeps two nodes and two signals, both running across */
 @media (max-width: 700px) {
   :root[data-theme="tf-tech-innovation"] .ambient > i:is(:nth-child(n+3):nth-child(-n+7), :nth-child(n+10)) { display: none; }
+  /* none runs up the right edge, where it would pass for a scrollbar */
+  :root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(8) { --x: 40vw; --y: 58vh; --ax: 12; --ay: 0; --r: 0deg; }
+  :root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(9) { --x: 10vw; --y: 70vh; }
 }
