@@ -7,6 +7,8 @@ body { background: var(--bg); color: var(--fg); font-size: 14px; }
    anyone who asked for less motion. (The browser draws no frames for a hidden tab by itself.) */
 :root { --ambient-play: running; }
 @media (prefers-reduced-motion: reduce) { :root { --ambient-play: paused; } }
+/* A theme's checkboxes and radio buttons in its own accent, not the browser's blue; a theme that sets its own keeps it. */
+:where(:root[data-theme]) { accent-color: var(--acc); }
 /* Those backgrounds sit on `z-index: -1`. The body paints its own background (index.html gives the html one too, so
    it is not handed to the page), so the body is where their stacking starts: above its background, below the rest. */
 body { isolation: isolate; }
