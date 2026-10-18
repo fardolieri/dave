@@ -15,7 +15,7 @@
 :root[data-theme="imp-freibad"] {
   --bg: #f2f8f9; --panel: #ffffff; --panel2: #e3f0f2; --fg: #0d2b33; --dim: #45656d; --line: #c3dade;
   --ok: #157a40; --warn: #8a5a00; --bad: #b3202f; --acc: #006d86;
-  --edge: #5f8d97; --sign: #ffd23f; --rope: #e63946;
+  --edge: #5f8d97; --sign: #ffd23f; --rope: #e63946; --water: #0a6578;
   font-family: "imp-Barlow", "Segoe UI", system-ui, sans-serif; color-scheme: light;
   accent-color: var(--acc); scrollbar-color: #9cc3cb transparent;
 }
@@ -29,7 +29,7 @@
 :where(:root[data-theme="imp-freibad"]) .room-title { font-size: 14px; letter-spacing: .07em; }
 
 /* the water: the sidebar is pool blue and everything on it reads in white; the signs stay yellow */
-:where(:root[data-theme="imp-freibad"]) .side { --panel: #0a6578; --panel2: #08525f; --fg: #ffffff; --dim: #c4e9f0; --line: #2f8396; --edge: #8fd0dd;
+:where(:root[data-theme="imp-freibad"]) .side { --panel: var(--water); --panel2: #08525f; --fg: #ffffff; --dim: #c4e9f0; --line: #2f8396; --edge: #8fd0dd;
   --acc: #ffffff; --ok: #9df5bf; --warn: #ffd3a1; --bad: #ffd0d0; color: var(--fg); border-right: 0;
   color-scheme: dark; accent-color: var(--acc); }
 
@@ -109,3 +109,47 @@
 /* a share in fullscreen sits on black whatever the page: its overlays read in white */
 :where(:root[data-theme="imp-freibad"]) .share.share-fs { --panel2: #2a2f3a; --line: #4a5160; --edge: #8a93a6; --acc: #ffffff; --fg: #ffffff; --dim: #c4e9f0; --ok: #9df5bf; --warn: #ffd3a1; --bad: #ffd0d0; color: var(--fg); }
 :where(:root[data-theme="imp-freibad"] .share.share-fs) button:where(:hover:not(:disabled)) { background-color: #3a404c; }
+
+/* The light net on the pool floor: caustics in the lower part of the water. Still on a phone, and wherever the sidebar
+   scrolls with the page; on a desktop they ripple (below). */
+:root[data-theme="imp-freibad"] { --caustics: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' fill='none' stroke='%23fff' stroke-opacity='.06' stroke-width='1.6'%3E%3Cpath d='M0 40C25 25 60 70 95 55S155 55 180 40M0 130C30 145 55 105 90 118S150 115 180 130M50 0C35 30 80 60 62 95S65 150 50 180M135 0C155 35 110 70 125 100S115 145 135 180'/%3E%3C/svg%3E");
+  --ripple: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' fill='none' stroke='%23fff' stroke-opacity='.2' stroke-width='2'%3E%3Cpath d='M0 40C25 25 60 70 95 55S155 55 180 40M0 130C30 145 55 105 90 118S150 115 180 130M50 0C35 30 80 60 62 95S65 150 50 180M135 0C155 35 110 70 125 100S115 145 135 180'/%3E%3C/svg%3E");
+  --leaves: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300' fill='%230d2b33'><filter id='b'><feGaussianBlur stdDeviation='2.5'/></filter><g filter='url(%23b)'><defs><path id='l' d='M0 0C8-11 26-11 38 0C26 11 8 11 0 0z'/></defs><path d='M400 0C330 60 250 90 130 170M300 72C280 120 250 160 215 230M380 20C370 70 350 110 330 190M200 125C170 120 120 110 70 120' fill='none' stroke='%230d2b33' stroke-width='3'/><use href='%23l' transform='translate(381 15)rotate(201)scale(0.86)'/><use href='%23l' transform='translate(362 29)rotate(105)scale(1.05)'/><use href='%23l' transform='translate(342 43)rotate(196)scale(1.32)'/><use href='%23l' transform='translate(321 56)rotate(95)scale(1.07)'/><use href='%23l' transform='translate(299 69)rotate(199)scale(1.34)'/><use href='%23l' transform='translate(276 82)rotate(99)scale(1.30)'/><use href='%23l' transform='translate(251 96)rotate(191)scale(1.38)'/><use href='%23l' transform='translate(226 111)rotate(97)scale(1.10)'/><use href='%23l' transform='translate(199 127)rotate(185)scale(1.30)'/><use href='%23l' transform='translate(170 144)rotate(101)scale(1.30)'/><use href='%23l' transform='translate(139 164)rotate(202)scale(1.45)'/><use href='%23l' transform='translate(130 170)rotate(146)'/><use href='%23l' transform='translate(290 94)rotate(164)scale(0.78)'/><use href='%23l' transform='translate(278 117)rotate(67)scale(1.19)'/><use href='%23l' transform='translate(265 139)rotate(170)scale(1.05)'/><use href='%23l' transform='translate(251 163)rotate(62)scale(1.19)'/><use href='%23l' transform='translate(236 190)rotate(162)scale(0.91)'/><use href='%23l' transform='translate(220 220)rotate(74)scale(1.15)'/><use href='%23l' transform='translate(215 230)rotate(117)'/><use href='%23l' transform='translate(375 43)rotate(148)scale(0.79)'/><use href='%23l' transform='translate(368 66)rotate(65)scale(0.94)'/><use href='%23l' transform='translate(360 90)rotate(157)scale(1.20)'/><use href='%23l' transform='translate(351 116)rotate(51)scale(1.09)'/><use href='%23l' transform='translate(342 145)rotate(148)scale(0.74)'/><use href='%23l' transform='translate(333 179)rotate(57)scale(1.01)'/><use href='%23l' transform='translate(330 190)rotate(104)'/><use href='%23l' transform='translate(184 122)rotate(-131)scale(0.93)'/><use href='%23l' transform='translate(166 120)rotate(-209)scale(1.19)'/><use href='%23l' transform='translate(146 117)rotate(-131)scale(0.90)'/><use href='%23l' transform='translate(124 116)rotate(-237)scale(1.06)'/><use href='%23l' transform='translate(101 116)rotate(216)scale(0.98)'/><use href='%23l' transform='translate(77 119)rotate(128)scale(0.92)'/><use href='%23l' transform='translate(70 120)rotate(169)'/></g></svg>"); }
+:root[data-theme="imp-freibad"] .side { background: linear-gradient(var(--water) 25%, transparent 75%), var(--caustics) 0 0 / 180px, var(--water); }
+
+/* A summer afternoon at the pool, on the spare layer behind the page. On a desktop the water moves: the sidebar turns
+   see-through and the layer paints the pool under it, where two nets of caustics drift across each other and swell
+   and fade, as sunlight does through a slow swell. Across the deck, the shadow of a tree's branches sways in the top
+   corner, far from where the chat's lines are. A phone keeps one small branch and the still water. */
+@supports selector(:has(a)) {
+  :root[data-theme="imp-freibad"]:has(.side) .ambient { display: block; }
+  :root[data-theme="imp-freibad"] .ambient > i { display: none; }
+  @media (min-width: 701px) {
+    :root[data-theme="imp-freibad"] .side { background: transparent; }
+    :root[data-theme="imp-freibad"] .ambient > i { display: block; }
+    /* the pool under the sidebar, the nets in it, the water above them fading the nets out towards the room list,
+       and the deck covering what of the nets runs past the edge */
+    :root[data-theme="imp-freibad"] .ambient > i:nth-child(1) { inset: 0 auto 0 0; width: 300px; background: var(--water); }
+    :root[data-theme="imp-freibad"] .ambient > i:nth-child(2),
+    :root[data-theme="imp-freibad"] .ambient > i:nth-child(3) { top: -400px; left: -400px; width: 1100px; height: calc(100% + 800px); }
+    :root[data-theme="imp-freibad"] .ambient > i:nth-child(2) { background: var(--ripple) 0 0 / 180px;
+      animation: imp-freibad-net-a 26s linear -9s infinite; animation-play-state: var(--ambient-play); }
+    :root[data-theme="imp-freibad"] .ambient > i:nth-child(3) { background: var(--ripple) 40px 90px / 250px;
+      animation: imp-freibad-net-b 37s linear -23s infinite; animation-play-state: var(--ambient-play); }
+    :root[data-theme="imp-freibad"] .ambient > i:nth-child(4) { inset: 0 auto 0 0; width: 300px; background: linear-gradient(var(--water) 280px, transparent 62%); }
+    :root[data-theme="imp-freibad"] .ambient > i:nth-child(5) { inset: 0 0 0 300px; background: var(--bg); }
+    :root[data-theme="imp-freibad"] .ambient > i:nth-child(7) { top: calc(-1vw - 30px); right: 27vw; width: clamp(220px, 20vw, 540px); aspect-ratio: 4 / 3;
+      background: var(--leaves) center / contain no-repeat; opacity: .055; transform-origin: 50% 0;
+      animation: imp-freibad-sway-b 8.5s ease-in-out -3s infinite alternate; animation-play-state: var(--ambient-play); }
+  }
+  :root[data-theme="imp-freibad"] .ambient > i:nth-child(6) { display: block; top: calc(-3vw - 20px); right: calc(-2vw - 20px); width: clamp(200px, 36vw, 960px); aspect-ratio: 4 / 3;
+    background: var(--leaves) center / contain no-repeat; opacity: .08; transform-origin: 100% 0;
+    animation: imp-freibad-sway-a 11s ease-in-out -4s infinite alternate; animation-play-state: var(--ambient-play); }
+  @media (max-width: 700px) {
+    :root[data-theme="imp-freibad"] .ambient > i:nth-child(6) { top: auto; bottom: calc(60px + env(safe-area-inset-bottom)); right: -40px; width: 190px; opacity: .06; }
+  }
+}
+@keyframes imp-freibad-net-a { 0% { transform: translate(0, 0); opacity: .35; } 50% { opacity: .8; } 100% { transform: translate(180px, 180px); opacity: .35; } }
+@keyframes imp-freibad-net-b { 0% { transform: translate(0, 0); opacity: .7; } 50% { opacity: .25; } 100% { transform: translate(-250px, 250px); opacity: .7; } }
+@keyframes imp-freibad-sway-a { from { transform: rotate(-1.6deg); } to { transform: rotate(2.2deg) translate(-6px, 4px); } }
+@keyframes imp-freibad-sway-b { from { transform: scale(-1, 1) rotate(-2deg); } to { transform: scale(-1, 1) rotate(1.4deg) translate(6px, 3px); } }
