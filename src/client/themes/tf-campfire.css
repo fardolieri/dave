@@ -52,73 +52,43 @@
   border: 0; background: #000; color: var(--fg); box-shadow: none; }
 :root[data-theme="tf-campfire"] .share.share-fs :is(.share-head, .share-bar) { background: rgba(0,0,0,.55); }
 
-/* the fire is below the chat: a warm glow rising from the composer, deep red at its rim and orange towards the flames,
-   with the night closing in at the top corners. It lives like a fire: the wide glow and a smaller ember core breathe on
-   two unrelated cycles (7.3 s, 11.9 s), and right above the flames a hot spot flickers, never in step with either, so
-   the light never settles into a regular pulse. Only opacity and transform move; the paused frame is a quiet fire. */
-:root[data-theme="tf-campfire"] body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background: radial-gradient(ellipse 70% 50% at 60% 112%, rgba(255,138,61,.3), transparent 70%),
-    radial-gradient(ellipse 120% 75% at 60% 118%, rgba(214,72,28,.22), transparent 72%); transform-origin: 60% 100%;
-  animation: tf-campfire-glow 7.3s ease-in-out infinite; animation-play-state: var(--ambient-play); }
-:root[data-theme="tf-campfire"] body::after { content: ''; position: fixed; left: 25%; right: 5%; bottom: 0; height: 50%; z-index: -1; pointer-events: none;
-  background: radial-gradient(ellipse 45% 70% at 50% 112%, rgba(255,180,110,.2), transparent 70%); transform-origin: 50% 100%;
-  animation: tf-campfire-ember 11.9s ease-in-out infinite; animation-play-state: var(--ambient-play); }
-@keyframes tf-campfire-glow {
-  0%, 100% { opacity: 1; transform: none; }
-  23% { opacity: .86; transform: scaleY(.97); }
-  41% { opacity: .95; transform: scaleY(1.03); }
-  58% { opacity: .84; transform: scaleY(.98); }
-  79% { opacity: .97; transform: scaleY(1.04); }
-}
-@keyframes tf-campfire-ember {
-  0%, 100% { opacity: 1; transform: none; }
-  17% { opacity: .55; transform: translateX(-5px) scaleY(.95); }
-  44% { opacity: .9; transform: translateX(4px) scaleY(1.06); }
-  63% { opacity: .6; transform: translateX(-2px) scaleY(.97); }
-  86% { opacity: .85; transform: translateX(6px) scaleY(1.04); }
-}
-/* sparks: a dozen embers leave the fire and drift up, wavering, shrinking and going out halfway up the room, each on
-   its own slow cycle (10 to 17 s) and resting dark between flights, so they come one or two at a time. Dim embers, not
-   white-hot ones: firelight and ember from the palette at half strength, each in a soft halo of its own, so they glow on
-   the dark rather than flash; only transform and opacity move. Five on a phone. */
+/* embers in the dark: five big, dim glows of the fire's colours lie about the room behind the chat, each drifting a few
+   centimetres over minutes, and now and then each throws a small spark, which flies off in some direction and goes out
+   (every spark has two flights a cycle, in different directions, so over time they go every way). Dim on purpose: the
+   glows are at most 13 % ember and the sparks under half strength, so the page around them keeps its own colours.
+   Only transform and opacity move; the sparks are the glows' own ::before and ::after, so they go where the glow goes. */
 :root[data-theme="tf-campfire"] .ambient { display: block; }
-:root[data-theme="tf-campfire"] .ambient::before { content: ''; position: absolute; inset: 0;
-  background: radial-gradient(ellipse 130% 110% at 60% 100%, transparent 55%, rgba(8,5,3,.4)); }
-:root[data-theme="tf-campfire"] .ambient::after { content: ''; position: absolute; left: 40%; width: 40%; bottom: 0; height: 30%;
-  background: radial-gradient(ellipse 50% 60% at 50% 115%, rgba(255,190,120,.16), rgba(255,138,61,.06) 55%, transparent 75%);
-  animation: tf-campfire-flicker 3.7s linear infinite; animation-play-state: var(--ambient-play); }
-@keyframes tf-campfire-flicker {
-  0%, 100% { opacity: .8; } 9% { opacity: 1; } 17% { opacity: .65; } 26% { opacity: .9; } 38% { opacity: .7; }
-  47% { opacity: 1; } 58% { opacity: .75; } 66% { opacity: .95; } 79% { opacity: .6; } 88% { opacity: .9; } }
-:root[data-theme="tf-campfire"] .ambient > i { --s: 1; --o: .55; --rise: 45vh; --sway: 1.5vw; --drift: -1vw;
-  width: calc(var(--s) * clamp(2px, .4vmin, 7px)); aspect-ratio: 1; border-radius: 50%; opacity: 0;
-  background: radial-gradient(circle, #ffb57a 0 35%, #ff8a3d 70%, #e0562a);
-  box-shadow: 0 0 calc(var(--s) * clamp(5px, 1.3vmin, 20px)) calc(var(--s) * clamp(1px, .25vmin, 4px)) rgba(255,110,40,.4);
-  animation: tf-campfire-spark 13s ease-in-out infinite; animation-play-state: var(--ambient-play); }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(1)  { left: 58%; bottom: 4vh; --rise: 52vh; --sway: 1.2vw; --drift: -2vw; animation-duration: 12.3s; animation-delay: -1.1s; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(2)  { left: 63%; bottom: 6vh; --s: .8; --rise: 38vh; --sway: -1.4vw; --drift: 1.5vw; animation-duration: 14.7s; animation-delay: -9.4s; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(3)  { left: 52%; bottom: 3vh; --s: 1.2; --rise: 58vh; --sway: 2vw; --drift: .5vw; animation-duration: 16.9s; animation-delay: -4.6s; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(4)  { left: 69%; bottom: 5vh; --rise: 44vh; --sway: -.8vw; --drift: -2.5vw; animation-duration: 11.1s; animation-delay: -6.8s; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(5)  { left: 46%; bottom: 7vh; --s: .7; --o: .32; --rise: 34vh; --sway: 1vw; --drift: 2vw; animation-duration: 13.6s; animation-delay: -12.2s; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(6)  { left: 61%; bottom: 2vh; --s: 1.1; --rise: 62vh; --sway: -1.8vw; --drift: -.5vw; animation-duration: 15.8s; animation-delay: -2.9s; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(7)  { left: 74%; bottom: 4vh; --s: .8; --rise: 40vh; --sway: 1.3vw; --drift: -1.5vw; animation-duration: 12.9s; animation-delay: -8.1s; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(8)  { left: 55%; bottom: 8vh; --s: .9; --rise: 48vh; --sway: -1vw; --drift: 2.5vw; animation-duration: 14.1s; animation-delay: -13.5s; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(9)  { left: 66%; bottom: 3vh; --s: 1.3; --rise: 55vh; --sway: 1.6vw; --drift: 1vw; animation-duration: 17.3s; animation-delay: -10.7s; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(10) { left: 50%; bottom: 5vh; --s: .8; --rise: 42vh; --sway: -1.5vw; --drift: -1vw; animation-duration: 10.4s; animation-delay: -3.7s; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(11) { left: 79%; bottom: 6vh; --s: .7; --o: .32; --rise: 30vh; --sway: -.6vw; --drift: -2vw; animation-duration: 13.2s; animation-delay: -5.5s; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(12) { left: 57%; bottom: 5vh; --rise: 50vh; --sway: .9vw; --drift: -3vw; animation-duration: 15.2s; animation-delay: -14.4s; }
+:root[data-theme="tf-campfire"] .ambient > i { width: var(--s); aspect-ratio: 1; margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+  background: radial-gradient(circle closest-side, rgba(255,138,61,.13), rgba(255,138,61,.05) 35%, rgba(255,138,61,.015) 60%, rgba(255,138,61,0) 85%);
+  animation: tf-campfire-drift var(--t) ease-in-out var(--d) infinite alternate; animation-play-state: var(--ambient-play); }
+:root[data-theme="tf-campfire"] .ambient > i:nth-child(n+6) { display: none; }
+:root[data-theme="tf-campfire"] .ambient > i::before,
+:root[data-theme="tf-campfire"] .ambient > i::after { content: ''; position: absolute; left: 50%; top: 50%; --w: clamp(2px, .3vmin, 5px);
+  width: var(--w); aspect-ratio: 1; margin: calc(var(--w) / -2) 0 0 calc(var(--w) / -2); border-radius: 50%; opacity: 0;
+  background: #ffa463; box-shadow: 0 0 clamp(4px, .9vmin, 14px) rgba(255,120,40,.35);
+  animation: tf-campfire-spark var(--st) ease-out var(--sd) infinite; animation-play-state: var(--ambient-play); }
+:root[data-theme="tf-campfire"] .ambient > i::before { --a: var(--a1); --b: var(--a2); --st: 9.7s; }
+:root[data-theme="tf-campfire"] .ambient > i::after { --a: var(--a3); --b: var(--a4); --st: 12.3s; --sd: calc(var(--d) * .37); }
+:root[data-theme="tf-campfire"] .ambient > i:nth-child(1) { left: 58%; top: 26%; --s: 34vmin; --dx: 4vmin; --dy: 3vmin; --t: 190s; --d: -70s; --sd: -2s; --a1: -60deg; --a2: 110deg; --a3: 200deg; --a4: 15deg; }
+:root[data-theme="tf-campfire"] .ambient > i:nth-child(2) { left: 84%; top: 58%; --s: 40vmin; --dx: -5vmin; --dy: -3vmin; --t: 230s; --d: -150s; --sd: -7s; --a1: 160deg; --a2: -20deg; --a3: 80deg; --a4: 250deg; }
+:root[data-theme="tf-campfire"] .ambient > i:nth-child(3) { left: 40%; top: 72%; --s: 28vmin; --dx: 3vmin; --dy: -4vmin; --t: 170s; --d: -40s; --sd: -4.5s; --a1: -100deg; --a2: 40deg; --a3: 140deg; --a4: -150deg; }
+:root[data-theme="tf-campfire"] .ambient > i:nth-child(4) { left: 76%; top: 14%; --s: 24vmin; --dx: -3vmin; --dy: 4vmin; --t: 210s; --d: -110s; --sd: -8.5s; --a1: 30deg; --a2: -130deg; --a3: -40deg; --a4: 120deg; }
+:root[data-theme="tf-campfire"] .ambient > i:nth-child(5) { left: 66%; top: 88%; --s: 30vmin; --dx: 4vmin; --dy: -2vmin; --t: 250s; --d: -20s; --sd: -1s; --a1: -140deg; --a2: 60deg; --a3: -75deg; --a4: 180deg; }
+@keyframes tf-campfire-drift { to { transform: translate(var(--dx), var(--dy)); } }
 @keyframes tf-campfire-spark {
-  0% { opacity: 0; transform: none; }
-  6% { opacity: var(--o); }
-  22% { transform: translate(var(--sway), calc(var(--rise) * -.3)); }
-  40% { opacity: calc(var(--o) * .8); transform: translate(calc(var(--sway) * -.5), calc(var(--rise) * -.62)) scale(.8); }
-  58%, 100% { opacity: 0; transform: translate(var(--drift), calc(var(--rise) * -1)) scale(.4); }
+  0% { opacity: 0; transform: rotate(var(--a)) translateX(0); }
+  3% { opacity: .45; }
+  22% { opacity: 0; transform: rotate(var(--a)) translateX(calc(var(--s) * .32)) scale(.5); }
+  50% { opacity: 0; transform: rotate(var(--b)) translateX(0); }
+  53% { opacity: .45; }
+  72%, 100% { opacity: 0; transform: rotate(var(--b)) translateX(calc(var(--s) * .32)) scale(.5); }
 }
+/* a phone's chat is the lower half: three glows there */
 @media (max-width: 700px) {
-  :root[data-theme="tf-campfire"] .ambient > i:nth-child(n+6) { display: none; }
-  :root[data-theme="tf-campfire"] .ambient > i { --o: .4; }
-  :root[data-theme="tf-campfire"] .ambient > i:nth-child(1) { left: 54%; }
-  :root[data-theme="tf-campfire"] .ambient > i:nth-child(5) { left: 38%; --o: .4; }
+  :root[data-theme="tf-campfire"] .ambient > i:is(:nth-child(1), :nth-child(4)) { display: none; }
+  :root[data-theme="tf-campfire"] .ambient > i:nth-child(2) { left: 82%; top: 62%; --s: 56vmin; }
+  :root[data-theme="tf-campfire"] .ambient > i:nth-child(3) { left: 22%; top: 76%; --s: 46vmin; }
+  :root[data-theme="tf-campfire"] .ambient > i:nth-child(5) { left: 62%; top: 90%; --s: 50vmin; }
 }
 :root[data-theme="tf-campfire"] :is(.msg-from, .profile-name strong) { font-family: var(--tf-head); font-size: 1.07em; }
 :root[data-theme="tf-campfire"] .room.selected .room-title { color: var(--tf-link); }

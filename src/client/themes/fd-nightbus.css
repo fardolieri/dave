@@ -80,18 +80,19 @@
 @keyframes fd-nightbus-sign { from { color: var(--led-off); text-shadow: none; opacity: .4; } }
 
 /* the view from the window: the city goes by out of focus, a dozen soft lights (sodium lamps, lit windows, a cool shop
-   sign) sliding right to left, the far ones small and slow, the near ones big, faint and a little quicker, all at a crawl, minutes from edge to edge, and gone behind the
-   sidebar as behind the window frame. Every two minutes a streetlamp's faint band of light sweeps slowly through the cabin. The lights keep to the
+   sign) sliding right to left, the far ones small and slow, the near ones big, faint and a little quicker, so slowly that you look twice to be sure they move at all (a pixel or two a second, ten minutes and more from edge
+   to edge), and gone behind the
+   sidebar as behind the window frame. Every eight minutes a streetlamp's faint band of light creeps through the cabin over four of them. The lights keep to the
    upper part of the window, above where the chat's lines gather. */
 :root[data-theme="fd-nightbus"] body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background: linear-gradient(104deg, transparent 40%, rgba(255,158,27,.045) 50%, transparent 60%);
-  transform: translateX(100%); animation: fd-nightbus-lamp 120s ease-in-out -20s infinite; animation-play-state: var(--ambient-play); }
-@keyframes fd-nightbus-lamp { 0% { transform: translateX(100%); } 22%, 100% { transform: translateX(-100%); } }
+  transform: translateX(100%); animation: fd-nightbus-lamp 480s ease-in-out -80s infinite; animation-play-state: var(--ambient-play); }
+@keyframes fd-nightbus-lamp { 0% { transform: translateX(100%); } 50%, 100% { transform: translateX(-100%); } }
 
 :root[data-theme="fd-nightbus"] .ambient { display: block; }
 :root[data-theme="fd-nightbus"] .ambient > i { left: 0; top: var(--y); width: clamp(14px, var(--s), 170px); aspect-ratio: 1; border-radius: 50%;
   background: radial-gradient(circle, rgb(var(--c) / var(--a)) 0 24%, rgb(var(--c) / calc(var(--a) * .45)) 50%, transparent 70%);
-  transform: translateX(100vw); animation: fd-nightbus-pass calc(var(--t) * 4) linear calc(var(--o) * 4) infinite; animation-play-state: var(--ambient-play); }
+  transform: translateX(100vw); animation: fd-nightbus-pass calc(var(--t) * 15) linear calc(var(--o) * 15) infinite; animation-play-state: var(--ambient-play); }
 @keyframes fd-nightbus-pass { from { transform: translateX(100vw); } to { transform: translateX(-100%); } }
 /* far: small, bright-ish, slow */
 :root[data-theme="fd-nightbus"] .ambient > i:nth-child(1) { --y: 14%; --s: 1.6vw; --c: 255 158 27; --a: .30; --t: 110s; --o: -18s; }
