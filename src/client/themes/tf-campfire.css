@@ -52,36 +52,39 @@
   border: 0; background: #000; color: var(--fg); box-shadow: none; }
 :root[data-theme="tf-campfire"] .share.share-fs :is(.share-head, .share-bar) { background: rgba(0,0,0,.55); }
 
-/* embers in the dark: five big, dim glows of the fire's colours lie about the room behind the chat, each drifting a few
-   centimetres over minutes, and now and then each throws a small spark, which flies off in some direction and goes out
-   (every spark has two flights a cycle, in different directions, so over time they go every way). Dim on purpose: the
-   glows are at most 13 % ember and the sparks under half strength, so the page around them keeps its own colours.
-   Only transform and opacity move; the sparks are the glows' own ::before and ::after, so they go where the glow goes. */
-:root[data-theme="tf-campfire"] .ambient { display: block; }
-:root[data-theme="tf-campfire"] .ambient > i { width: var(--s); aspect-ratio: 1; margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
-  background: radial-gradient(circle closest-side, rgba(255,138,61,.13), rgba(255,138,61,.05) 35%, rgba(255,138,61,.015) 60%, rgba(255,138,61,0) 85%);
+/* embers in the dark: five big, dim glows of the fire's colours, a little redder or more amber each, lie about the room
+   behind the chat and wander slowly (about two pixels a second), and now and then one of them bursts: a handful of
+   small sparks flies out every way at once, slowing as it goes and drifting up, and goes out; a smaller echo follows.
+   Each glow bursts about every half minute to minute, on its own clock, so the room has a burst every few seconds at most.
+   Dim on purpose: the glows are at most 13 % of their colour and the sparks under half strength, so the page keeps its
+   own colours. Only transform and opacity move. A burst is one pseudo-element whose box-shadows are its sparks,
+   scaled out from the glow's centre; they go where the glow goes. Big screens get bigger glows. */
+:root[data-theme="tf-campfire"] .ambient { display: block; --m: 1; }
+@media (min-width: 1500px) { :root[data-theme="tf-campfire"] .ambient { --m: 1.45; } }
+:root[data-theme="tf-campfire"] .ambient > i { --c: 255 138 61; --w: calc(var(--s) * var(--m)); --r: calc(var(--w) * .34);
+  width: var(--w); aspect-ratio: 1; margin: calc(var(--w) / -2) 0 0 calc(var(--w) / -2);
+  background: radial-gradient(circle closest-side, rgb(var(--c) / .13), rgb(var(--c) / .05) 35%, rgb(var(--c) / .015) 60%, rgb(var(--c) / 0) 85%);
   animation: tf-campfire-drift var(--t) ease-in-out var(--d) infinite alternate; animation-play-state: var(--ambient-play); }
 :root[data-theme="tf-campfire"] .ambient > i:nth-child(n+6) { display: none; }
 :root[data-theme="tf-campfire"] .ambient > i::before,
-:root[data-theme="tf-campfire"] .ambient > i::after { content: ''; position: absolute; left: 50%; top: 50%; --w: clamp(2px, .3vmin, 5px);
-  width: var(--w); aspect-ratio: 1; margin: calc(var(--w) / -2) 0 0 calc(var(--w) / -2); border-radius: 50%; opacity: 0;
-  background: #ffa463; box-shadow: 0 0 clamp(4px, .9vmin, 14px) rgba(255,120,40,.35);
-  animation: tf-campfire-spark var(--st) ease-out var(--sd) infinite; animation-play-state: var(--ambient-play); }
-:root[data-theme="tf-campfire"] .ambient > i::before { --a: var(--a1); --b: var(--a2); --st: 9.7s; }
-:root[data-theme="tf-campfire"] .ambient > i::after { --a: var(--a3); --b: var(--a4); --st: 12.3s; --sd: calc(var(--d) * .37); }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(1) { left: 58%; top: 26%; --s: 34vmin; --dx: 4vmin; --dy: 3vmin; --t: 190s; --d: -70s; --sd: -2s; --a1: -60deg; --a2: 110deg; --a3: 200deg; --a4: 15deg; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(2) { left: 84%; top: 58%; --s: 40vmin; --dx: -5vmin; --dy: -3vmin; --t: 230s; --d: -150s; --sd: -7s; --a1: 160deg; --a2: -20deg; --a3: 80deg; --a4: 250deg; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(3) { left: 40%; top: 72%; --s: 28vmin; --dx: 3vmin; --dy: -4vmin; --t: 170s; --d: -40s; --sd: -4.5s; --a1: -100deg; --a2: 40deg; --a3: 140deg; --a4: -150deg; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(4) { left: 76%; top: 14%; --s: 24vmin; --dx: -3vmin; --dy: 4vmin; --t: 210s; --d: -110s; --sd: -8.5s; --a1: 30deg; --a2: -130deg; --a3: -40deg; --a4: 120deg; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(5) { left: 66%; top: 88%; --s: 30vmin; --dx: 4vmin; --dy: -2vmin; --t: 250s; --d: -20s; --sd: -1s; --a1: -140deg; --a2: 60deg; --a3: -75deg; --a4: 180deg; }
+:root[data-theme="tf-campfire"] .ambient > i::after { content: ''; position: absolute; left: 50%; top: 50%; --p: clamp(2px, .22vmin, 4px);
+  width: var(--p); aspect-ratio: 1; margin: calc(var(--p) / -2) 0 0 calc(var(--p) / -2); border-radius: 50%; opacity: 0; color: #ffa463;
+  animation: tf-campfire-burst var(--bt) linear var(--bd) infinite; animation-play-state: var(--ambient-play); }
+:root[data-theme="tf-campfire"] .ambient > i::before { box-shadow: calc(var(--r) * 0.62) calc(var(--r) * 0.0) 1px currentColor, calc(var(--r) * 0.43) calc(var(--r) * 0.39) 1px currentColor, calc(var(--r) * 0.23) calc(var(--r) * 0.68) 1px currentColor, calc(var(--r) * -0.01) calc(var(--r) * 0.78) 1px currentColor, calc(var(--r) * -0.41) calc(var(--r) * 0.63) 1px currentColor, calc(var(--r) * -0.54) calc(var(--r) * 0.23) 1px currentColor, calc(var(--r) * -0.87) calc(var(--r) * -0.3) 1px currentColor, calc(var(--r) * -0.47) calc(var(--r) * -0.45) 1px currentColor, calc(var(--r) * 0.01) calc(var(--r) * -0.98) 1px currentColor, calc(var(--r) * 0.38) calc(var(--r) * -0.62) 1px currentColor, calc(var(--r) * 0.55) calc(var(--r) * -0.14) 1px currentColor; }
+:root[data-theme="tf-campfire"] .ambient > i::after { --r: calc(var(--w) * .22); box-shadow: calc(var(--r) * 0.52) calc(var(--r) * 0.44) 1px currentColor, calc(var(--r) * 0.19) calc(var(--r) * 0.57) 1px currentColor, calc(var(--r) * -0.56) calc(var(--r) * 0.73) 1px currentColor, calc(var(--r) * -0.81) calc(var(--r) * 0.07) 1px currentColor, calc(var(--r) * -0.36) calc(var(--r) * -0.62) 1px currentColor, calc(var(--r) * 0.18) calc(var(--r) * -0.55) 1px currentColor, calc(var(--r) * 0.53) calc(var(--r) * -0.36) 1px currentColor;
+  animation-delay: calc(var(--bd) + .5s); }
+:root[data-theme="tf-campfire"] .ambient > i:nth-child(1) { left: 58%; top: 26%; --s: 34vmin; --dx: 14vmin; --dy: 8vmin; --t: 120s; --d: -50s; --bt: 37s; --bd: -9s; }
+:root[data-theme="tf-campfire"] .ambient > i:nth-child(2) { left: 84%; top: 58%; --s: 40vmin; --c: 232 96 52; --dx: -16vmin; --dy: -9vmin; --t: 140s; --d: -95s; --bt: 53s; --bd: -30s; }
+:root[data-theme="tf-campfire"] .ambient > i:nth-child(3) { left: 40%; top: 72%; --s: 28vmin; --c: 255 164 90; --dx: 12vmin; --dy: -12vmin; --t: 110s; --d: -20s; --bt: 43s; --bd: -21s; }
+:root[data-theme="tf-campfire"] .ambient > i:nth-child(4) { left: 76%; top: 14%; --s: 24vmin; --c: 214 78 52; --dx: -10vmin; --dy: 12vmin; --t: 130s; --d: -70s; --bt: 61s; --bd: -44s; }
+:root[data-theme="tf-campfire"] .ambient > i:nth-child(5) { left: 66%; top: 88%; --s: 30vmin; --c: 245 116 58; --dx: 14vmin; --dy: -6vmin; --t: 150s; --d: -10s; --bt: 47s; --bd: -2s; }
 @keyframes tf-campfire-drift { to { transform: translate(var(--dx), var(--dy)); } }
-@keyframes tf-campfire-spark {
-  0% { opacity: 0; transform: rotate(var(--a)) translateX(0); }
-  3% { opacity: .45; }
-  22% { opacity: 0; transform: rotate(var(--a)) translateX(calc(var(--s) * .32)) scale(.5); }
-  50% { opacity: 0; transform: rotate(var(--b)) translateX(0); }
-  53% { opacity: .45; }
-  72%, 100% { opacity: 0; transform: rotate(var(--b)) translateX(calc(var(--s) * .32)) scale(.5); }
+/* a burst: out fast and slowing, rising a little as it cools; four to six seconds, then dark for the rest of the cycle */
+@keyframes tf-campfire-burst {
+  0% { opacity: 0; transform: translateY(0) scale(.08); animation-timing-function: cubic-bezier(.2, .7, .35, 1); }
+  .8% { opacity: .5; }
+  5% { opacity: .35; }
+  10%, 100% { opacity: 0; transform: translateY(calc(var(--r) * -.3)) scale(1); }
 }
 /* a phone's chat is the lower half: three glows there */
 @media (max-width: 700px) {

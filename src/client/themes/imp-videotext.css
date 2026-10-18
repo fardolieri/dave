@@ -113,8 +113,8 @@
    flash in the header's yellow and cyan (the flash attribute, slowed into a fade of several seconds, half a minute
    apart), and eight loose mosaic characters on the right of the chat climb the page now and then, a row at a time:
    each holds still on its row, then fades into the row above, so no block ever slides between pixels, as on a real
-   teletext page. Six rows in a quarter minute and more, then a long rest. Opacity, and transform in whole rows only,
-   spread by negative delays so the paused frame is a page in mid-broadcast. */
+   teletext page. Each fade takes about three seconds, six rows half a minute or so, then a long rest. Opacity, and
+   transform in whole rows only, spread by negative delays so the paused frame is a page in mid-broadcast. */
 :root[data-theme="imp-videotext"] .ambient { display: block; --vt-w: clamp(174px, 15vw, 400px); --vt-u: calc(var(--vt-w) / 109);
   --vt-t: clamp(14px, 1.4vw, 36px); --vt-r: clamp(30px, 2.4vw, 64px);
   background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 109 35' shape-rendering='crispEdges'><path fill='%230000c8' fill-opacity='.8' d='M15 0h4v3h-4zM15 4h4v3h-4zM15 8h4v3h-4zM5 12h4v3h-4zM10 12h4v3h-4zM15 12h4v3h-4zM0 16h4v3h-4zM15 16h4v3h-4zM0 20h4v3h-4zM15 20h4v3h-4zM0 24h4v3h-4zM15 24h4v3h-4zM0 28h4v3h-4zM15 28h4v3h-4zM5 32h4v3h-4zM10 32h4v3h-4zM15 32h4v3h-4zM35 12h4v3h-4zM40 12h4v3h-4zM45 16h4v3h-4zM35 20h4v3h-4zM40 20h4v3h-4zM45 20h4v3h-4zM30 24h4v3h-4zM45 24h4v3h-4zM30 28h4v3h-4zM45 28h4v3h-4zM35 32h4v3h-4zM40 32h4v3h-4zM45 32h4v3h-4zM60 12h4v3h-4zM75 12h4v3h-4zM60 16h4v3h-4zM75 16h4v3h-4zM60 20h4v3h-4zM75 20h4v3h-4zM60 24h4v3h-4zM75 24h4v3h-4zM65 28h4v3h-4zM70 28h4v3h-4zM65 32h4v3h-4zM70 32h4v3h-4zM95 12h4v3h-4zM100 12h4v3h-4zM90 16h4v3h-4zM105 16h4v3h-4zM90 20h4v3h-4zM95 20h4v3h-4zM100 20h4v3h-4zM105 20h4v3h-4zM90 24h4v3h-4zM90 28h4v3h-4zM95 32h4v3h-4zM100 32h4v3h-4zM105 32h4v3h-4z'/></svg>") no-repeat right var(--vt-r) top var(--vt-t) / var(--vt-w) auto; }
@@ -145,16 +145,16 @@
 :root[data-theme="imp-videotext"] .ambient > i:nth-child(n+5)::after { top: calc(-4 * var(--vt-u)); animation-name: imp-videotext-take; }
 @keyframes imp-videotext-rise { 0% { transform: none; animation-timing-function: steps(6, end); } 40%, 100% { transform: translateY(calc(-24 * var(--vt-u))); } }
 @keyframes imp-videotext-in { 0%, 100% { opacity: 0; } 4%, 34% { opacity: var(--o); } 40% { opacity: 0; } }
-@keyframes imp-videotext-hold { 0%, 55% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes imp-videotext-take { 0%, 55% { opacity: 0; } 100% { opacity: 1; } }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(5) { --x: calc(var(--vt-r) + 8 * var(--vt-u)); --y: 64%; --sh: var(--vt-a) var(--vt-b), 0 var(--vt-c); --s: 2.6s; --d: -20s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(6) { --x: calc(var(--vt-r) + 41 * var(--vt-u)); --y: 58%; --fill: none; --sh: var(--vt-a) 0, 0 var(--vt-b), var(--vt-a) var(--vt-c); --s: 2.3s; --d: -3s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(7) { --x: calc(var(--vt-r) + 73 * var(--vt-u)); --y: 52%; --sh: var(--vt-a) 0, var(--vt-a) var(--vt-b); --s: 2.8s; --d: -31s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(8) { --x: calc(var(--vt-r) + 104 * var(--vt-u)); --y: 56%; --o: .4; --fill: none; --sh: 0 var(--vt-b), var(--vt-a) var(--vt-b), var(--vt-a) var(--vt-c); --s: 2.5s; --d: -14s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(9) { --x: calc(var(--vt-r) + 22 * var(--vt-u)); --y: 50%; --sh: var(--vt-a) var(--vt-b); --s: 2.4s; --d: -27s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(10) { --x: calc(var(--vt-r) + 58 * var(--vt-u)); --y: 72%; --fill: none; --sh: var(--vt-a) 0, 0 var(--vt-b), var(--vt-a) var(--vt-b), 0 var(--vt-c); --s: 2.7s; --d: -8s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(11) { --x: calc(var(--vt-r) + 124 * var(--vt-u)); --y: 68%; --o: .35; --sh: 0 var(--vt-b), var(--vt-a) var(--vt-c); --s: 2.9s; --d: -38s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(12) { --x: calc(var(--vt-r) + 90 * var(--vt-u)); --y: 46%; --fill: none; --sh: var(--vt-a) 0, var(--vt-a) var(--vt-c); --s: 2.2s; --d: -17s; }
+@keyframes imp-videotext-hold { 0%, 20% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes imp-videotext-take { 0%, 20% { opacity: 0; } 100% { opacity: 1; } }
+:root[data-theme="imp-videotext"] .ambient > i:nth-child(5) { --x: calc(var(--vt-r) + 8 * var(--vt-u)); --y: 64%; --sh: var(--vt-a) var(--vt-b), 0 var(--vt-c); --s: 4.2s; --d: -32s; }
+:root[data-theme="imp-videotext"] .ambient > i:nth-child(6) { --x: calc(var(--vt-r) + 41 * var(--vt-u)); --y: 58%; --fill: none; --sh: var(--vt-a) 0, 0 var(--vt-b), var(--vt-a) var(--vt-c); --s: 3.7s; --d: -5s; }
+:root[data-theme="imp-videotext"] .ambient > i:nth-child(7) { --x: calc(var(--vt-r) + 73 * var(--vt-u)); --y: 52%; --sh: var(--vt-a) 0, var(--vt-a) var(--vt-b); --s: 4.5s; --d: -50s; }
+:root[data-theme="imp-videotext"] .ambient > i:nth-child(8) { --x: calc(var(--vt-r) + 104 * var(--vt-u)); --y: 56%; --o: .4; --fill: none; --sh: 0 var(--vt-b), var(--vt-a) var(--vt-b), var(--vt-a) var(--vt-c); --s: 4s; --d: -22s; }
+:root[data-theme="imp-videotext"] .ambient > i:nth-child(9) { --x: calc(var(--vt-r) + 22 * var(--vt-u)); --y: 50%; --sh: var(--vt-a) var(--vt-b); --s: 3.8s; --d: -43s; }
+:root[data-theme="imp-videotext"] .ambient > i:nth-child(10) { --x: calc(var(--vt-r) + 58 * var(--vt-u)); --y: 72%; --fill: none; --sh: var(--vt-a) 0, 0 var(--vt-b), var(--vt-a) var(--vt-b), 0 var(--vt-c); --s: 4.3s; --d: -13s; }
+:root[data-theme="imp-videotext"] .ambient > i:nth-child(11) { --x: calc(var(--vt-r) + 124 * var(--vt-u)); --y: 68%; --o: .35; --sh: 0 var(--vt-b), var(--vt-a) var(--vt-c); --s: 4.6s; --d: -61s; }
+:root[data-theme="imp-videotext"] .ambient > i:nth-child(12) { --x: calc(var(--vt-r) + 90 * var(--vt-u)); --y: 46%; --fill: none; --sh: var(--vt-a) 0, var(--vt-a) var(--vt-c); --s: 3.5s; --d: -27s; }
 
 /* on a phone the name sits under the sidebar: three characters climb low in the chat */
 @media (max-width: 700px) {
