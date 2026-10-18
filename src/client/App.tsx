@@ -389,10 +389,10 @@ function Workspace(props: WorkspaceProps) {
   const hasFiles = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].includes('Files');
   // A leave can go missing: an element taken away under the pointer (a friend's row as they go offline) gets its
   // dragleave while detached, and it never reaches the page. A drag over the page brings a dragover every 350 ms or
-  // so, even standing still, so none for a second means it has gone.
+  // so, even standing still (the HTML spec; maybe not every engine), so none for 3 s means it has gone.
   let lapse: ReturnType<typeof setTimeout> | undefined;
   const endDrag = () => { clearTimeout(lapse); depth = 0; setDragging(false); };
-  const overPage = () => { clearTimeout(lapse); lapse = setTimeout(endDrag, 1000); setDragging(writable()); };
+  const overPage = () => { clearTimeout(lapse); lapse = setTimeout(endDrag, 3000); setDragging(writable()); };
   onCleanup(() => clearTimeout(lapse));
   // The files in the order shown, then the text, as a message with pictures reads: handed to the room together, which
   // sends them in that order. One that could not be read is dropped; its chip said so.

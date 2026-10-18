@@ -339,9 +339,9 @@ test('a file removed from above the composer is not sent, and one picked with th
 /**
  * Drags a file from the desktop onto an element and drops it there, as the browser does: enter and over, then (once
  * the page has said what a drop does) the drop. Returns whether the page kept the drop from the browser, which would
- * open the file in place of the app.
+ * open the file in place of the app. With `drop` false the drag stops there, with no leave and no drop.
  */
-async function dropFile(target: Locator, hint: string, name: string, bytes: Buffer, type: string): Promise<boolean> {
+async function dropFile(target: Locator, hint: string, name: string, bytes: Buffer, type: string, drop = true): Promise<boolean> {
   const dataTransfer = await target.page().evaluateHandle(([name, b64, type]) => {
     const d = new DataTransfer();
     d.items.add(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], name, { type }));
@@ -353,12 +353,12 @@ async function dropFile(target: Locator, hint: string, name: string, bytes: Buff
     return e.defaultPrevented;
   }, [kind, dataTransfer] as const);
   await fire('dragenter');
-  // Over and over while it waits, as a browser fires it: one dragover keeps the frame up for a second only.
+  // Over and over while it waits, as a browser fires it: one dragover keeps the frame up for a few seconds only.
   await expect(async () => {
     expect(await fire('dragover')).toBe(true); // a page that does not take dragover gets no drop at all
     await expect(target.page().locator('.drop-hint')).toHaveText(hint, { timeout: 250 });
   }).toPass();
-  return fire('drop');
+  return drop && fire('drop');
 }
 
 test('a file dropped on the text field or the sidebar waits above the composer, as one dropped on the log does', async ({ crowd }) => {
@@ -373,12 +373,7 @@ test('a file dropped on the text field or the sidebar waits above the composer, 
   await expect(alice.composer).toHaveValue(''); // not the file's name typed into the field
   // A drag whose leave never reaches the page (the element under it was taken away) stops sending dragover: the
   // frame goes by itself.
-  await alice.page.locator('aside.side h2').first().evaluate((el) => {
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(new File(['x'], 'gone.txt', { type: 'text/plain' }));
-    for (const kind of ['dragenter', 'dragover']) el.dispatchEvent(new DragEvent(kind, { bubbles: true, cancelable: true, dataTransfer }));
-  });
-  await expect(alice.page.locator('.drop-hint')).toBeVisible();
+  await dropFile(alice.page.locator('aside.side h2').first(), hint, 'gone.png', png(16, 12), 'image/png', false);
   await expect(alice.page.locator('.drop-hint')).toHaveCount(0);
   await expect(alice.staged).toHaveCount(3);
   await alice.sendButton.click();
