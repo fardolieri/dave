@@ -48,3 +48,13 @@ deployed one after another; whether those minutes match a deploy was not checked
 - Watch whether any `server_upgrade_failed` with attempt 2 shows up on live. If it does, or if previews keep seeing it,
   ask Cloudflare support with the reference ids above.
 
+## Seen 2026-10-18, not at a deploy
+The preview run of PR #78 (39080940242, head 25dadeb, against `dave-pr-78`) had two tests fail only on Alice's console
+line "Error during WebSocket handshake: Unexpected response code: 500", both passed on the retry: Chromium shard 3,
+`privacy.spec.ts:10` (at 00:00:14), and Chromium shard 2, `attachment.spec.ts:424` (at 00:00:21).
+PostHog has three `server_upgrade_failed` from `dave-worker-preview`, all "internal error; reference = …":
+- 00:00:06.351 attempt 1, `overloaded` true (the first sighting with it set);
+- 00:00:08.540 attempt 1, and 00:00:12.237 attempt 2: both asks failed, the friend got the 500.
+The preview's deploy had finished at 23:57:23, almost three minutes before, so this one was not a Room reset by a deploy.
+It came while the run's 16 shards were all opening rooms on the same preview Worker at once. Two friends got a 500, yet
+only one attempt 2 was reported: an event was lost on the way, or a 500 came from somewhere the catch does not reach.
