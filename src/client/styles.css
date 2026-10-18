@@ -135,9 +135,10 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .att-card .att-size { color: var(--dim); font-size: 12px; white-space: nowrap; }
 .att-card .att-state { background: none; padding: 0; }
 .att-save { font-size: 12px; font-weight: 600; text-decoration: none; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; }
-/* Over the whole chat while a file is dragged in: a frame and a veil above the lines, so none of them sits on the frame */
-.chat.dropping::after { content: ''; position: absolute; inset: 6px; z-index: 2; pointer-events: none; border: 2px dashed var(--acc); border-radius: 12px; background: color-mix(in srgb, var(--bg) 75%, transparent); }
-.drop-hint { position: absolute; z-index: 3; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; padding: 8px 16px; border-radius: 999px; background: var(--acc); color: #fff; font-weight: 600; }
+/* Over the whole page while a file is dragged in, since it can be dropped anywhere: a frame and a veil above the sidebar,
+   the shares, the log and the composer (above the banner and the composer's notices too), so none of them sits on the frame */
+.app.dropping::after { content: ''; position: absolute; inset: 6px; z-index: 40; pointer-events: none; border: 2px dashed var(--acc); border-radius: 12px; background: color-mix(in srgb, var(--bg) 75%, transparent); }
+.drop-hint { position: absolute; z-index: 41; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; max-width: calc(100% - 48px); text-align: center; overflow-wrap: anywhere; padding: 8px 16px; border-radius: 999px; background: var(--acc); color: #fff; font-weight: 600; }
 dialog.viewer { padding: 0; border: 0; background: none; max-width: 96vw; max-height: 96dvh; cursor: zoom-out; }
 dialog.viewer::backdrop { background: rgba(0,0,0,.85); }
 dialog.viewer img { display: block; max-width: 96vw; max-height: 96dvh; object-fit: contain; }

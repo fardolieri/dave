@@ -380,6 +380,13 @@ function Workspace(props: WorkspaceProps) {
     if (gone?.url) URL.revokeObjectURL(gone.url);
     setStaged((all) => all.filter((x) => x.id !== id));
   };
+  // A file dropped anywhere on the page waits above the composer, as a picked one does: friends drop it on the text
+  // field or the sidebar as often as on the log. It is never left to the browser, which would open it in place of the
+  // app; it is staged only while something can be sent.
+  const [dragging, setDragging] = createSignal(false);
+  /** Enters minus leaves: a drag across the page enters and leaves every element, and Safari gives no relatedTarget to tell them apart. */
+  let depth = 0;
+  const hasFiles = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].includes('Files');
   // The files in the order shown, then the text, as a message with pictures reads: handed to the room together, which
   // sends them in that order. One that could not be read is dropped; its chip said so.
   const send = (text: string) => {
@@ -430,7 +437,11 @@ function Workspace(props: WorkspaceProps) {
 
   return (
     <Show when={current()}>{(cur) => (
-      <div class={`app ${sharers().length > 0 ? 'split' : ''}`}>
+      <div class={`app ${sharers().length > 0 ? 'split' : ''} ${dragging() ? 'dropping' : ''}`}
+           onDragEnter={(e) => { if (hasFiles(e)) { depth++; setDragging(writable()); } }}
+           onDragOver={(e) => { if (!hasFiles(e)) return; e.preventDefault(); setDragging(writable()); }}
+           onDragLeave={(e) => { if (hasFiles(e) && --depth <= 0) { depth = 0; setDragging(false); } }}
+           onDrop={(e) => { depth = 0; setDragging(false); if (!hasFiles(e)) return; e.preventDefault(); if (writable()) for (const f of e.dataTransfer?.files ?? []) stageFile(f); }}>
         <div class="scroll">
           <aside class="side">
             <h2>Online</h2>
@@ -535,14 +546,14 @@ function Workspace(props: WorkspaceProps) {
             </section>
           )}</Show>
           <ChatLog lines={cur().room.lines()} openedAt={openedAt()} jumpToken={jumpToken()} label={labelOf}
-                   attachment={(hash) => cur().room.attachment(hash)} onPull={(hash) => cur().room.pull(hash)} onCancel={(hash) => cur().room.cancelPull(hash)}
-                   onFiles={writable() ? (files) => { for (const f of files) stageFile(f); } : undefined} />
+                   attachment={(hash) => cur().room.attachment(hash)} onPull={(hash) => cur().room.pull(hash)} onCancel={(hash) => cur().room.cancelPull(hash)} />
         </div>
         <Composer connected={connected()} writable={writable()} roomName={cur().saved.name} onSend={send}
                   staged={staged()} onStage={stageFile} onUnstage={unstageFile}>
           {/* Anchored to the composer's top edge, whatever its height on this device (ticket 32) */}
           <Show when={consent() === null || askingConsent()}><TelemetryNotice onAnswer={(c) => { setConsent(c); setAskingConsent(false); }} /></Show>
         </Composer>
+        <Show when={dragging()}><div class="drop-hint">Drop to send to {cur().saved.name}</div></Show>
       </div>
     )}</Show>
   );
@@ -1442,18 +1453,11 @@ function Composer(props: {
 function ChatLog(props: {
   lines: ChatLine[]; openedAt: number; jumpToken: number; label: (id: Identity) => Label;
   attachment: (hash: string) => Attachment | undefined; onPull: (hash: string) => void; onCancel: (hash: string) => void;
-  /** Files dropped on the log; none while nothing can be sent. */
-  onFiles?: (files: File[]) => void;
 }) {
   let log: HTMLDivElement | undefined;
   let viewer: HTMLDialogElement | undefined;
   const [viewing, setViewing] = createSignal<{ url: string; name: string; type: string } | null>(null);
-  const [dragging, setDragging] = createSignal(false);
-  /** Enters minus leaves: a drag over the lines enters and leaves each, and Safari gives no relatedTarget to tell them apart. */
-  let depth = 0;
   const view = (url: string, name: string, type: string) => { setViewing({ url, name, type }); if (viewer && !viewer.open) viewer.showModal(); };
-  // A file dragged in is never left to the browser, which would open it in place of the app; sent only when it can be.
-  const hasFiles = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].includes('Files');
   // The tooltip (the time, or that it is not sent yet) is on the text or the attachment, not on the whole row.
   const file = (m: Extract<ChatLine, { kind: 'file' }>, title: string | undefined) => (
     <FileView file={m.file} title={title} attachment={props.attachment(m.file.hash)} holder={props.label(m.from).shown}
@@ -1488,11 +1492,7 @@ function ChatLog(props: {
   });
   createEffect(() => props.jumpToken, (t, prev) => { if (prev !== undefined && t !== prev) jump(); });
   return (
-    <div class={dragging() ? 'chat dropping' : 'chat'}
-         onDragEnter={(e) => { if (hasFiles(e)) { depth++; setDragging(!!props.onFiles); } }}
-         onDragOver={(e) => { if (!hasFiles(e)) return; e.preventDefault(); setDragging(!!props.onFiles); }}
-         onDragLeave={(e) => { if (hasFiles(e) && --depth <= 0) { depth = 0; setDragging(false); } }}
-         onDrop={(e) => { depth = 0; setDragging(false); if (!hasFiles(e)) return; e.preventDefault(); props.onFiles?.([...(e.dataTransfer?.files ?? [])]); }}>
+    <div class="chat">
       <div class="chat-log" ref={log} onScroll={onScroll}>
         <Show when={folded() > 0}>
           <button class="chat-older" onClick={() => setUnfoldedFor(props.openedAt)} title="Messages from more than 18 hours before you opened this room">
@@ -1532,7 +1532,6 @@ function ChatLog(props: {
         </For>
       </div>
       <Show when={unseen()}><button class="chat-new" onClick={jump} title="Scroll to the newest message">new messages ↓</button></Show>
-      <Show when={dragging()}><div class="drop-hint">Drop to send</div></Show>
       <dialog class="viewer" ref={viewer} onClick={() => viewer?.close()} onClose={() => setViewing(null)}>
         <Show when={viewing()} keyed>{(v) => <Picture src={v.url} type={v.type} alt={v.name} />}</Show>
       </dialog>
