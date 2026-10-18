@@ -165,7 +165,8 @@
 /* the flyer's confetti: a dozen Memphis shapes (squiggles, a zigzag, rings, a triangle, a half-moon, a plus, a stick,
    dots and a dot patch) scattered over the empty right of the chat, clear of the reading column. Each one drifts and
    tilts on its own slow path (half a minute and more) and the triangle and the plus turn, so the flyer feels like a party
-   in a draught; flat colour washed out to a print's back side, thinner in the dark palette, fewer on a laptop and only four at the edge of a phone, still when nobody is there */
+   in a draught; flat colour washed out to a print's back side, thinner in the dark palette, fewer on a laptop and only
+   four at the edge of a phone */
 :root[data-theme="ds-memphis"] .ambient { display: block; --safe: 1060px; }
 :where(:root[data-theme="ds-memphis"]) .ambient > i { --c: var(--color-pop-pink); --r0: -8deg; --r1: 10deg; --dx: 2vw; --dy: -2.8vh; --t: 13s; --d: -4s;
   left: calc(var(--safe) + (100% - var(--safe) - var(--s)) * var(--x)); top: var(--y); width: var(--s); height: var(--s);

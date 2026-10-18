@@ -66,7 +66,7 @@
    electric-blue glow that reaches most of the way across the screen and swells and settles once every 40 s. On the grid,
    a few blue nodes light up and dim again slowly, and five cyan signals run straight along its rows and columns, tail
    behind, and go dark, then rest a while. Transform and
-   opacity only, paused with the rest; the grid grows with the screen so a 1440p page is not left empty. It sits behind
+   opacity only; the grid grows with the screen so a 1440p page is not left empty. It sits behind
    everything; the opaque sidebar hides it, so it shows round the chat and the composer. */
 :root[data-theme="tf-tech-innovation"] { --tf-g: clamp(20px, 1.25vw, 36px); }
 :root[data-theme="tf-tech-innovation"] body::before,

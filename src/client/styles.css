@@ -3,10 +3,9 @@
 * { box-sizing: border-box; }
 html, body, #app { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--fg); font-size: 14px; }
-/* A theme's moving background puts `animation-play-state: var(--ambient-play)` on its animations, so they pause when
-   nobody is using the page (theme.ts sets data-still) and for anyone who asked for less motion. */
+/* A theme's moving background puts `animation-play-state: var(--ambient-play)` on its animations, so they stand still for
+   anyone who asked for less motion. (The browser draws no frames for a hidden tab by itself.) */
 :root { --ambient-play: running; }
-:root[data-still] { --ambient-play: paused; }
 @media (prefers-reduced-motion: reduce) { :root { --ambient-play: paused; } }
 /* Those backgrounds sit on `z-index: -1`. The body paints its own background (index.html gives the html one too, so
    it is not handed to the page), so the body is where their stacking starts: above its background, below the rest. */
