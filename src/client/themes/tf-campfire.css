@@ -52,14 +52,16 @@
   border: 0; background: #000; color: var(--fg); box-shadow: none; }
 :root[data-theme="tf-campfire"] .share.share-fs :is(.share-head, .share-bar) { background: rgba(0,0,0,.55); }
 
-/* the fire is below the chat: a warm glow rising from the composer. It lives slowly, like a fire: the wide glow and a
-   smaller ember core breathe on two unrelated cycles (7.3 s, 11.9 s), so the light never settles into a regular pulse.
-   Only opacity and transform move; time 0 and the paused frame are the glow as it always was. */
+/* the fire is below the chat: a warm glow rising from the composer, deep red at its rim and orange towards the flames,
+   with the night closing in at the top corners. It lives like a fire: the wide glow and a smaller ember core breathe on
+   two unrelated cycles (7.3 s, 11.9 s), and right above the flames a hot spot flickers, never in step with either, so
+   the light never settles into a regular pulse. Only opacity and transform move; the paused frame is a quiet fire. */
 :root[data-theme="tf-campfire"] body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background: radial-gradient(ellipse 80% 55% at 60% 115%, rgba(255,138,61,.2), transparent 70%); transform-origin: 60% 100%;
+  background: radial-gradient(ellipse 70% 50% at 60% 112%, rgba(255,138,61,.3), transparent 70%),
+    radial-gradient(ellipse 120% 75% at 60% 118%, rgba(214,72,28,.22), transparent 72%); transform-origin: 60% 100%;
   animation: tf-campfire-glow 7.3s ease-in-out infinite; animation-play-state: var(--ambient-play); }
-:root[data-theme="tf-campfire"] body::after { content: ''; position: fixed; left: 25%; right: 5%; bottom: 0; height: 40%; z-index: -1; pointer-events: none;
-  background: radial-gradient(ellipse 45% 70% at 50% 112%, rgba(255,164,99,.1), transparent 70%); transform-origin: 50% 100%;
+:root[data-theme="tf-campfire"] body::after { content: ''; position: fixed; left: 25%; right: 5%; bottom: 0; height: 50%; z-index: -1; pointer-events: none;
+  background: radial-gradient(ellipse 45% 70% at 50% 112%, rgba(255,180,110,.2), transparent 70%); transform-origin: 50% 100%;
   animation: tf-campfire-ember 11.9s ease-in-out infinite; animation-play-state: var(--ambient-play); }
 @keyframes tf-campfire-glow {
   0%, 100% { opacity: 1; transform: none; }
@@ -77,13 +79,21 @@
 }
 /* sparks: a dozen embers leave the fire and drift up, wavering, shrinking and going out halfway up the room, each on
    its own slow cycle (10 to 17 s) and resting dark between flights, so they come one or two at a time. Dim embers, not
-   white-hot ones: firelight and ember from the palette at under half strength, so they glow on the dark rather than
-   flash; only transform and opacity move. Five on a phone. */
+   white-hot ones: firelight and ember from the palette at half strength, each in a soft halo of its own, so they glow on
+   the dark rather than flash; only transform and opacity move. Five on a phone. */
 :root[data-theme="tf-campfire"] .ambient { display: block; }
-:root[data-theme="tf-campfire"] .ambient > i { --s: 1; --o: .42; --rise: 45vh; --sway: 1.5vw; --drift: -1vw;
+:root[data-theme="tf-campfire"] .ambient::before { content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse 130% 110% at 60% 100%, transparent 55%, rgba(8,5,3,.4)); }
+:root[data-theme="tf-campfire"] .ambient::after { content: ''; position: absolute; left: 40%; width: 40%; bottom: 0; height: 30%;
+  background: radial-gradient(ellipse 50% 60% at 50% 115%, rgba(255,190,120,.16), rgba(255,138,61,.06) 55%, transparent 75%);
+  animation: tf-campfire-flicker 3.7s linear infinite; animation-play-state: var(--ambient-play); }
+@keyframes tf-campfire-flicker {
+  0%, 100% { opacity: .8; } 9% { opacity: 1; } 17% { opacity: .65; } 26% { opacity: .9; } 38% { opacity: .7; }
+  47% { opacity: 1; } 58% { opacity: .75; } 66% { opacity: .95; } 79% { opacity: .6; } 88% { opacity: .9; } }
+:root[data-theme="tf-campfire"] .ambient > i { --s: 1; --o: .55; --rise: 45vh; --sway: 1.5vw; --drift: -1vw;
   width: calc(var(--s) * clamp(2px, .4vmin, 7px)); aspect-ratio: 1; border-radius: 50%; opacity: 0;
-  background: radial-gradient(circle, #ffa463 0 40%, #ff8a3d 75%);
-  box-shadow: 0 0 calc(var(--s) * clamp(3px, .7vmin, 11px)) rgba(255,138,61,.3);
+  background: radial-gradient(circle, #ffb57a 0 35%, #ff8a3d 70%, #e0562a);
+  box-shadow: 0 0 calc(var(--s) * clamp(5px, 1.3vmin, 20px)) calc(var(--s) * clamp(1px, .25vmin, 4px)) rgba(255,110,40,.4);
   animation: tf-campfire-spark 13s ease-in-out infinite; animation-play-state: var(--ambient-play); }
 :root[data-theme="tf-campfire"] .ambient > i:nth-child(1)  { left: 58%; bottom: 4vh; --rise: 52vh; --sway: 1.2vw; --drift: -2vw; animation-duration: 12.3s; animation-delay: -1.1s; }
 :root[data-theme="tf-campfire"] .ambient > i:nth-child(2)  { left: 63%; bottom: 6vh; --s: .8; --rise: 38vh; --sway: -1.4vw; --drift: 1.5vw; animation-duration: 14.7s; animation-delay: -9.4s; }
@@ -106,9 +116,9 @@
 }
 @media (max-width: 700px) {
   :root[data-theme="tf-campfire"] .ambient > i:nth-child(n+6) { display: none; }
-  :root[data-theme="tf-campfire"] .ambient > i { --o: .3; }
+  :root[data-theme="tf-campfire"] .ambient > i { --o: .4; }
   :root[data-theme="tf-campfire"] .ambient > i:nth-child(1) { left: 54%; }
-  :root[data-theme="tf-campfire"] .ambient > i:nth-child(5) { left: 38%; --o: .3; }
+  :root[data-theme="tf-campfire"] .ambient > i:nth-child(5) { left: 38%; --o: .4; }
 }
 :root[data-theme="tf-campfire"] :is(.msg-from, .profile-name strong) { font-family: var(--tf-head); font-size: 1.07em; }
 :root[data-theme="tf-campfire"] .room.selected .room-title { color: var(--tf-link); }

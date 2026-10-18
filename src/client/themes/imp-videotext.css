@@ -111,9 +111,10 @@
 /* The service name in the top corner, the way a teletext page carries its own: "dave" in separated mosaic blocks in the
    header blue, sized to the screen so a wide one still sees it. Two touches of teletext keep it alive: four of its blocks
    flash in the header's yellow and cyan (the flash attribute, slowed into a fade of several seconds, half a minute
-   apart), and eight loose mosaic characters on the right of the chat come and go where they stand, as a page being
-   rebuilt from the broadcast does: they never move, they only appear and fade, each for a while of its own minute.
-   Opacity only, spread by negative delays so the paused frame is a page in mid-broadcast. */
+   apart), and now and then a light climbs one of two columns of block pixels on the right of the chat: a pixel lights
+   as the one below it goes dark, eight cells up, then the column rests for twenty seconds and more. Nothing moves:
+   pixels only light and dim where they stand, as on a real teletext page. Opacity only, spread by negative delays so
+   the paused frame is a page in mid-broadcast. */
 :root[data-theme="imp-videotext"] .ambient { display: block; --vt-w: clamp(174px, 15vw, 400px); --vt-u: calc(var(--vt-w) / 109);
   --vt-t: clamp(14px, 1.4vw, 36px); --vt-r: clamp(30px, 2.4vw, 64px);
   background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 109 35' shape-rendering='crispEdges'><path fill='%230000c8' fill-opacity='.8' d='M15 0h4v3h-4zM15 4h4v3h-4zM15 8h4v3h-4zM5 12h4v3h-4zM10 12h4v3h-4zM15 12h4v3h-4zM0 16h4v3h-4zM15 16h4v3h-4zM0 20h4v3h-4zM15 20h4v3h-4zM0 24h4v3h-4zM15 24h4v3h-4zM0 28h4v3h-4zM15 28h4v3h-4zM5 32h4v3h-4zM10 32h4v3h-4zM15 32h4v3h-4zM35 12h4v3h-4zM40 12h4v3h-4zM45 16h4v3h-4zM35 20h4v3h-4zM40 20h4v3h-4zM45 20h4v3h-4zM30 24h4v3h-4zM45 24h4v3h-4zM30 28h4v3h-4zM45 28h4v3h-4zM35 32h4v3h-4zM40 32h4v3h-4zM45 32h4v3h-4zM60 12h4v3h-4zM75 12h4v3h-4zM60 16h4v3h-4zM75 16h4v3h-4zM60 20h4v3h-4zM75 20h4v3h-4zM60 24h4v3h-4zM75 24h4v3h-4zM65 28h4v3h-4zM70 28h4v3h-4zM65 32h4v3h-4zM70 32h4v3h-4zM95 12h4v3h-4zM100 12h4v3h-4zM90 16h4v3h-4zM105 16h4v3h-4zM90 20h4v3h-4zM95 20h4v3h-4zM100 20h4v3h-4zM105 20h4v3h-4zM90 24h4v3h-4zM90 28h4v3h-4zM95 32h4v3h-4zM100 32h4v3h-4zM105 32h4v3h-4z'/></svg>") no-repeat right var(--vt-r) top var(--vt-t) / var(--vt-w) auto; }
@@ -128,26 +129,25 @@
 :root[data-theme="imp-videotext"] .ambient > i:nth-child(4) { right: var(--vt-r); top: calc(var(--vt-t) + 16 * var(--vt-u)); animation-duration: 32s; animation-delay: -2s; }
 @keyframes imp-videotext-flash { 0%, 45%, 100% { opacity: 0; } 68%, 80% { opacity: .7; } }
 
-/* loose mosaic characters: one block of a 2x3 cell drawn by the element, the others by its shadows */
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(n+5) { --o: .5; --vt-a: calc(5 * var(--vt-u)); --vt-b: calc(4 * var(--vt-u)); --vt-c: calc(8 * var(--vt-u));
-  opacity: 0; color: var(--edge); background: currentColor;
-  animation: imp-videotext-show 60s ease-in-out infinite; animation-play-state: var(--ambient-play); }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(5) { right: calc(var(--vt-r) + 8 * var(--vt-u)); top: 58%; box-shadow: var(--vt-a) var(--vt-b), 0 var(--vt-c); animation-duration: 72s; animation-delay: -20s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(6) { right: calc(var(--vt-r) + 41 * var(--vt-u)); top: 54%; background: none; box-shadow: var(--vt-a) 0, 0 var(--vt-b), var(--vt-a) var(--vt-c); animation-duration: 58s; animation-delay: -41s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(7) { right: calc(var(--vt-r) + 73 * var(--vt-u)); top: 46%; box-shadow: var(--vt-a) 0, var(--vt-a) var(--vt-b); animation-duration: 66s; animation-delay: -9s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(8) { right: calc(var(--vt-r) + 104 * var(--vt-u)); top: 49%; --o: .4; background: none; box-shadow: 0 var(--vt-b), var(--vt-a) var(--vt-b), var(--vt-a) var(--vt-c); animation-duration: 54s; animation-delay: -30s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(9) { right: calc(var(--vt-r) + 22 * var(--vt-u)); top: 48%; box-shadow: var(--vt-a) var(--vt-b); animation-duration: 50s; animation-delay: -6s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(10) { right: calc(var(--vt-r) + 58 * var(--vt-u)); top: 67%; background: none; box-shadow: var(--vt-a) 0, 0 var(--vt-b), var(--vt-a) var(--vt-b), 0 var(--vt-c); animation-duration: 80s; animation-delay: -62s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(11) { right: calc(var(--vt-r) + 124 * var(--vt-u)); top: 63%; --o: .35; box-shadow: 0 var(--vt-b), var(--vt-a) var(--vt-c); animation-duration: 68s; animation-delay: -47s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(12) { right: calc(var(--vt-r) + 90 * var(--vt-u)); top: 43%; background: none; box-shadow: var(--vt-a) 0, var(--vt-a) var(--vt-c); animation-duration: 46s; animation-delay: -15s; }
-@keyframes imp-videotext-show { 0%, 52%, 100% { opacity: 0; } 8%, 40% { opacity: var(--o); } }
+/* the climbing columns: each spare element is two cells of a column, its ::before the lower and its ::after the upper,
+   so the element itself stays clear and each cell has its own clock; cell n lights --step (2.7 % of the column's cycle) after cell n - 1 */
+:root[data-theme="imp-videotext"] .ambient > i:nth-child(n+5) { --k: 0; right: var(--x); top: calc(var(--y) - var(--k) * 8 * var(--vt-u)); height: calc(7 * var(--vt-u)); }
+:root[data-theme="imp-videotext"] .ambient > i:nth-child(n+5)::before,
+:root[data-theme="imp-videotext"] .ambient > i:nth-child(n+5)::after { content: ''; position: absolute; left: 0; width: 100%; height: calc(3 * var(--vt-u));
+  background: var(--edge); opacity: 0; animation: imp-videotext-climb var(--t) linear infinite; animation-play-state: var(--ambient-play); }
+:root[data-theme="imp-videotext"] .ambient > i:nth-child(n+5)::before { top: calc(4 * var(--vt-u)); animation-delay: calc(var(--d) + var(--k) * 2 * var(--step)); }
+:root[data-theme="imp-videotext"] .ambient > i:nth-child(n+5)::after { top: 0; animation-delay: calc(var(--d) + (var(--k) * 2 + 1) * var(--step)); }
+:root[data-theme="imp-videotext"] .ambient > i:is(:nth-child(5), :nth-child(6), :nth-child(7), :nth-child(8)) { --x: calc(var(--vt-r) + 22 * var(--vt-u)); --y: 62%; --t: 26s; --step: .7s; --d: -4s; }
+:root[data-theme="imp-videotext"] .ambient > i:is(:nth-child(9), :nth-child(10), :nth-child(11), :nth-child(12)) { --x: calc(var(--vt-r) + 73 * var(--vt-u)); --y: 72%; --t: 33s; --step: .89s; --d: -19s; }
+:root[data-theme="imp-videotext"] .ambient > i:is(:nth-child(6), :nth-child(10)) { --k: 1; }
+:root[data-theme="imp-videotext"] .ambient > i:is(:nth-child(7), :nth-child(11)) { --k: 2; }
+:root[data-theme="imp-videotext"] .ambient > i:is(:nth-child(8), :nth-child(12)) { --k: 3; }
+/* a cell's light: up over one step while the cell below dims, down over the next while the cell above lights */
+@keyframes imp-videotext-climb { 0%, 100% { opacity: 0; } 2.7% { opacity: .5; } 5.4% { opacity: 0; } }
 
-/* on a phone the name sits under the sidebar: three loose characters come and go low in the chat */
+/* on a phone the name sits under the sidebar: one column climbs low in the chat */
 @media (max-width: 700px) {
   :root[data-theme="imp-videotext"] .ambient { --vt-w: 280px; }
-  :root[data-theme="imp-videotext"] .ambient > i:is(:nth-child(-n+4), :nth-child(6), :nth-child(8), :nth-child(10), :nth-child(11), :nth-child(12)) { display: none; }
-  :root[data-theme="imp-videotext"] .ambient > i:nth-child(n+5) { --o: .55; }
-  :root[data-theme="imp-videotext"] .ambient > i:nth-child(5) { top: 70%; }
-  :root[data-theme="imp-videotext"] .ambient > i:nth-child(7) { top: 64%; }
-  :root[data-theme="imp-videotext"] .ambient > i:nth-child(9) { top: 78%; }
+  :root[data-theme="imp-videotext"] .ambient > i:is(:nth-child(-n+4), :nth-child(n+9)) { display: none; }
+  :root[data-theme="imp-videotext"] .ambient > i:nth-child(n+5) { --y: 80%; }
 }

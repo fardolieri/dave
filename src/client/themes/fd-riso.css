@@ -17,14 +17,14 @@
 }
 :root[data-theme="fd-riso"] body { font-size: 15px; }
 /* the paper behind the chat is a riso poster: halftone suns in the two inks, each screen at its own angle, drifting past
-   each other (15 to 32 s a way, slow enough to rest the eye on, quick enough to notice) so the inks overprint purple
+   each other (half a minute to a minute a way, slow enough to rest the eye on, quick enough to notice) so the inks overprint purple
    where they meet and the dots slip in and out of a moire. Only the paper shows
    them, never a panel; the dots stay light enough that ink text reads over them as it does on bare paper. */
 :root[data-theme="fd-riso"] .ambient { display: block; --dot: clamp(6px, .6vmin, 10px); }
 :root[data-theme="fd-riso"] .ambient > i { --ink-c: var(--pink); --o: .4; width: var(--s); height: var(--s); border-radius: 50%; mix-blend-mode: multiply;
   background: radial-gradient(circle closest-side, var(--ink-c) 46%, transparent 58%) 0 0 / var(--dot) var(--dot); opacity: var(--o);
   -webkit-mask-image: radial-gradient(circle at 36% 34%, #000 16%, transparent 72%); mask-image: radial-gradient(circle at 36% 34%, #000 16%, transparent 72%);
-  animation: fd-riso-drift calc(var(--t) / 2) ease-in-out calc(var(--d) / 2) infinite alternate; animation-play-state: var(--ambient-play); }
+  animation: fd-riso-drift var(--t) ease-in-out var(--d) infinite alternate; animation-play-state: var(--ambient-play); }
 :root[data-theme="fd-riso"] .ambient > i:nth-child(even) { --ink-c: var(--blue); --o: .34; }
 :root[data-theme="fd-riso"] .ambient > i:nth-child(n+9) { display: none; }
 :root[data-theme="fd-riso"] .ambient > i:nth-child(1) { --s: 46vmin; top: -10vmin; right: -6vmin; --t: 52s; --d: -20s; --x: -6vmin; --y: 5vmin; --r0: 15deg; --r1: 24deg; }

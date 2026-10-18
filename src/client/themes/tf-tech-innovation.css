@@ -77,7 +77,7 @@
   mask-image: radial-gradient(100vw 140vh at 100% 100%, #000 25%, transparent);
 }
 :root[data-theme="tf-tech-innovation"] body::after {
-  background: radial-gradient(110vw 130vh at 100% 100%, rgba(0,102,255,.32), rgba(0,102,255,.13) 40%, rgba(0,102,255,.04) 70%, transparent);
+  background: radial-gradient(110vw 130vh at 100% 100%, rgba(0,102,255,.22), rgba(0,102,255,.11) 40%, rgba(0,102,255,.04) 70%, transparent);
   transform-origin: 100% 100%; /* it grows up and to the left only, off the page's unscrollable side */
   animation: tf-tech-innovation-glow 20s ease-in-out infinite alternate;
   animation-play-state: var(--ambient-play);
@@ -96,7 +96,7 @@
   :root[data-theme="tf-tech-innovation"] .ambient > i { left: calc(round(down, var(--x), var(--tf-g)) + var(--tf-g) / 2); top: calc(round(down, var(--y), var(--tf-g)) + var(--tf-g) / 2); }
 }
 :root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(-n+7) {
-  background: #0066ff; box-shadow: 0 0 calc(var(--s) * 1.6) calc(var(--s) * .4) rgba(0,102,255,.55);
+  background: #0066ff; box-shadow: 0 0 calc(var(--s) * 1.6) calc(var(--s) * .4) rgba(0,102,255,.35);
   animation: tf-tech-innovation-node var(--t) ease-in-out var(--d) infinite;
   animation-play-state: var(--ambient-play);
 }
@@ -123,10 +123,10 @@
 :root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(10) { --x: 56vw; --y: 88vh; --ax: 16; --ay: 0; --r: 0deg; --t: 24s; --d: -9s; }
 :root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(11) { --x: 78vw; --y: 72vh; --ax: 0; --ay: -14; --r: -90deg; --t: 28s; --d: -21s; }
 :root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(12) { --x: 98vw; --y: 58vh; --ax: -18; --ay: 0; --r: -180deg; --t: 20s; --d: -12s; }
-@keyframes tf-tech-innovation-node { 0%, 62%, 100% { opacity: 0; transform: scale(.6); } 31% { opacity: .6; transform: none; } }
+@keyframes tf-tech-innovation-node { 0%, 62%, 100% { opacity: 0; transform: scale(.6); } 31% { opacity: .4; transform: none; } }
 @keyframes tf-tech-innovation-signal {
   0% { opacity: 0; transform: translate(0, 0) rotate(var(--r)); }
-  6%, 46% { opacity: .8; }
+  6%, 46% { opacity: .5; }
   52%, 100% { opacity: 0; transform: translate(calc(var(--ax) * var(--tf-g)), calc(var(--ay) * var(--tf-g))) rotate(var(--r)); }
 }
 /* the phone keeps two nodes and two signals, both running across */
