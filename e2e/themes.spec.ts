@@ -65,6 +65,27 @@ function sideways(page: Page): Promise<string[]> {
   });
 }
 
+/**
+ * The endless CSS animations on the page whose style says they run, by name, without the app's own cues of something
+ * going on (a dot pulsing while it connects, a spinner, a speaking ring): a theme's moving background must not be among
+ * them for someone who asked for less motion (styles.css, --ambient-play). Read from the style, not from each animation's
+ * play state: a screenshot with animations disabled restarts them by script, after which the style no longer pauses them.
+ */
+async function endless(page: Page): Promise<string[]> {
+  const cues = ['pulse', 'spin', 'fd-lounge-glow'];
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const running = await page.evaluate((cues) => document.getAnimations().flatMap((a) => {
+    const effect = a.effect as KeyframeEffect | null;
+    if (!(a instanceof CSSAnimation) || cues.includes(a.animationName) || !effect?.target || effect.getComputedTiming().iterations !== Infinity) return [];
+    const style = getComputedStyle(effect.target, effect.pseudoElement);
+    const states = style.animationPlayState.split(',').map((s) => s.trim());
+    const at = style.animationName.split(',').map((s) => s.trim()).indexOf(a.animationName);
+    return states[at % states.length] === 'paused' ? [] : [a.animationName];
+  }), cues);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  return running;
+}
+
 test('every theme applies, loads its fonts and keeps the console quiet, at desktop and phone width; the pick survives a reload', async ({ crowd }, testInfo) => {
   const room = { secret: newSecret(), name: 'Friday night' };
   const other = { secret: newSecret(), name: 'Board games' };
@@ -113,6 +134,8 @@ test('every theme applies, loads its fonts and keeps the console quiet, at deskt
     if (value) await expect(page.locator('html')).toHaveAttribute('data-theme', value);
     else await expect(page.locator('html')).not.toHaveAttribute('data-theme');
     await expect.poll(() => fontTrouble(page), { message: `${name}: every font on screen loaded` }).toEqual({ failed: [], notLoaded: [] });
+    // Someone who asked for less motion: whatever the theme moves stands still.
+    expect(await endless(page), `${name}: nothing moves on its own with reduced motion`).toEqual([]);
     await toTop();
     await shoot(`${name}-desktop`);
 
@@ -123,6 +146,7 @@ test('every theme applies, loads its fonts and keeps the console quiet, at deskt
     await shoot(`${name}-phone`);
     await page.locator('.scroll').evaluate((el) => { el.scrollTop = el.scrollHeight; });
     await shoot(`${name}-phone-chat`);
+    expect(await endless(page), `${name}: nothing moves on its own with reduced motion, at phone width`).toEqual([]);
     await expect.poll(() => sideways(page), { message: `${name}: nothing scrolls sideways at phone width` }).toEqual([]);
 
     // Dark mode: the themes that follow the system's (prefers-color-scheme) have a palette nobody sees otherwise.
@@ -130,6 +154,7 @@ test('every theme applies, loads its fonts and keeps the console quiet, at deskt
     await expect.poll(() => fontTrouble(page), { message: `${name}: every font on screen loaded in dark mode` }).toEqual({ failed: [], notLoaded: [] });
     await toTop();
     await shoot(`${name}-phone-dark`);
+    expect(await endless(page), `${name}: nothing moves on its own with reduced motion, in dark mode`).toEqual([]);
     await expect.poll(() => sideways(page), { message: `${name}: nothing scrolls sideways at phone width in dark mode` }).toEqual([]);
     await page.emulateMedia({ colorScheme: 'light' }); // the context's own
     expect(badFonts, `${name}: no font request failed`).toEqual([]);
