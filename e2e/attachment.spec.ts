@@ -381,6 +381,27 @@ test('a file dropped on the text field or the sidebar waits above the composer, 
   await expect(bob.page.locator('.chat-log .att-media img:not(.att-preview)')).toHaveCount(3, { timeout: 30_000 });
 });
 
+test('a file dropped on the Report a problem dialog is not staged, unseen, for the room behind it', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  await alice.page.getByRole('button', { name: 'Report a problem' }).click();
+  const field = alice.page.locator('dialog.report textarea');
+  await expect(field).toBeVisible();
+  // Not dropFile: no hint shows over a dialog, which sits above the frame.
+  const kept = await field.evaluate((el, b64) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], 'screenshot.png', { type: 'image/png' }));
+    const fire = (kind: string) => { const e = new DragEvent(kind, { bubbles: true, cancelable: true, dataTransfer }); el.dispatchEvent(e); return e.defaultPrevented; };
+    fire('dragenter');
+    const over = fire('dragover');
+    fire('drop');
+    return over;
+  }, png(16, 12).toString('base64'));
+  expect(kept).toBe(true); // still never opened by the browser in place of the app
+  await alice.page.locator('dialog.report').getByRole('button', { name: 'Close' }).click();
+  await expect(alice.page.locator('.drop-hint')).toHaveCount(0);
+  await expect(alice.staged).toHaveCount(0);
+});
+
 test('files waiting for Send, photographed on a phone and a desktop for the owner to look at', async ({ crowd }, testInfo) => {
   // Into the folder e2e.yml keeps from Chromium on every run (as themes.spec.ts does), so the look can be judged from CI.
   const dir = join('e2e-themes', testInfo.project.name);

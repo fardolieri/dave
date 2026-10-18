@@ -394,6 +394,9 @@ function Workspace(props: WorkspaceProps) {
   const endDrag = () => { clearTimeout(lapse); depth = 0; setDragging(false); };
   const overPage = () => { clearTimeout(lapse); lapse = setTimeout(endDrag, 3000); setDragging(writable()); };
   onCleanup(() => clearTimeout(lapse));
+  // Not over an open dialog or popover (Report a problem, a profile card) or a share in fullscreen: those sit above the
+  // frame, so a file staged from there would be staged unseen, to go with the next Enter. The cursor says no instead.
+  const onTop = (t: EventTarget | null) => t instanceof Element && !!(t.closest('dialog[open], [popover]') || document.fullscreenElement?.contains(t));
   // The files in the order shown, then the text, as a message with pictures reads: handed to the room together, which
   // sends them in that order. One that could not be read is dropped; its chip said so.
   const send = (text: string) => {
@@ -445,10 +448,15 @@ function Workspace(props: WorkspaceProps) {
   return (
     <Show when={current()}>{(cur) => (
       <div class={`app ${sharers().length > 0 ? 'split' : ''} ${dragging() ? 'dropping' : ''}`}
-           onDragEnter={(e) => { if (hasFiles(e)) { depth++; overPage(); } }}
-           onDragOver={(e) => { if (!hasFiles(e)) return; e.preventDefault(); overPage(); }}
+           onDragEnter={(e) => { if (hasFiles(e)) { depth++; if (!onTop(e.target)) overPage(); } }}
+           onDragOver={(e) => {
+             if (!hasFiles(e)) return;
+             e.preventDefault();
+             if (!onTop(e.target)) overPage();
+             else { e.dataTransfer!.dropEffect = 'none'; clearTimeout(lapse); setDragging(false); }
+           }}
            onDragLeave={(e) => { if (hasFiles(e) && --depth <= 0) endDrag(); }}
-           onDrop={(e) => { endDrag(); if (!hasFiles(e)) return; e.preventDefault(); if (writable()) for (const f of e.dataTransfer?.files ?? []) stageFile(f); }}>
+           onDrop={(e) => { endDrag(); if (!hasFiles(e)) return; e.preventDefault(); if (writable() && !onTop(e.target)) for (const f of e.dataTransfer?.files ?? []) stageFile(f); }}>
         <div class="scroll">
           <aside class="side">
             <h2>Online</h2>
