@@ -209,6 +209,11 @@
 @media (max-width: 1600px) {
   :where(:root[data-theme="ds-brutalist"]) .ambient > i:is(:nth-child(2), :nth-child(7), :nth-child(8)) { display: none; }
 }
+/* a narrow window, or a phone held sideways: the chat column is narrower than the boxes' margin, so the filled ones go,
+   which would sit behind lines of text and read as highlights */
+@media (min-width: 701px) and (max-width: 1100px) {
+  :where(:root[data-theme="ds-brutalist"]) .ambient > i:is(:nth-child(1), :nth-child(3), :nth-child(4), :nth-child(6)) { display: none; }
+}
 /* phones: the chat is the lower half under the opaque sidebar, and its lines run the full width */
 @media (max-width: 700px) {
   :where(:root[data-theme="ds-brutalist"]) .ambient > i:is(:nth-child(1), :nth-child(3), :nth-child(4), :nth-child(6)) { display: none; }

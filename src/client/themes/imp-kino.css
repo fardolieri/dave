@@ -66,6 +66,8 @@
    Only transform moves, on round gradients that fade to nothing, so nothing has an edge. The stage black of
    .app.split covers them: when someone shares, the house goes dark. */
 :root[data-theme="imp-kino"] .ambient { display: block; }
+/* nobody can see them under the stage, so they do not move there either */
+:root[data-theme="imp-kino"]:has(.app.split) .ambient { display: none; }
 :where(:root[data-theme="imp-kino"]) .ambient > i { width: var(--s); aspect-ratio: 1; margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
   background: radial-gradient(circle closest-side, var(--c), transparent);
   animation: imp-kino-drift var(--t) ease-in-out var(--d) infinite alternate; animation-play-state: var(--ambient-play); }
