@@ -228,13 +228,19 @@ button.unblock { background: #4a3a12; color: var(--warn); border-color: transpar
 .share-bar { display: flex; align-items: center; gap: 10px; padding: 3px 8px; font-family: monospace; font-size: 11px; color: var(--dim); background: rgba(0,0,0,.35); cursor: default; }
 .share-bar .share-stats { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .share-bar .fs { padding: 0 6px; line-height: 1.4; font-family: system-ui, sans-serif; }
-/* the share's own sound: in the small tile a short slider opened by its button, which carries the icon and percentage */
-.share-vol { display: flex; flex-shrink: 0; align-items: center; gap: 6px; font-family: system-ui, sans-serif; }
-.share-vol input[type=range] { width: 72px; accent-color: var(--acc); }
-.share-vol .share-vol-icon { display: none; }
-.share-bar .share-vol-btn { flex-shrink: 0; padding: 0 6px; line-height: 1.4; font-family: system-ui, sans-serif; }
-.share.share-fs .share-vol input[type=range] { width: 120px; }
-.share.share-fs .share-vol .share-vol-icon { display: inline; }
+/* the share's own sound: always a short slider, no taller than the bar's text, so the bar keeps its height; the percentage only in
+   fullscreen. The speaker before it mutes, a bare icon like the chat's emoji button, without the frame a theme gives buttons. */
+.share-vol { display: flex; flex-shrink: 0; align-items: center; gap: 4px; font-family: system-ui, sans-serif; line-height: 1; }
+.share-vol .share-mute, .share-vol .share-mute:hover { padding: 0 2px; font-size: 12px; line-height: 1; background: none !important; border-color: transparent !important; box-shadow: none !important; transform: none !important; filter: grayscale(1); opacity: .7; }
+.share-vol .share-mute:hover:not(:disabled) { filter: none; opacity: 1; }
+.share-vol.share-vol-none { opacity: .45; }
+.share-vol.share-vol-none .share-mute { opacity: 1; }
+.share-vol input[type=range] { width: 72px; height: 12px; margin: 0; padding: 0; accent-color: var(--acc); }
+.share-vol .share-vol-pct { display: none; }
+.share.share-fs .share-vol { gap: 6px; }
+.share.share-fs .share-vol .share-mute { font-size: 15px; }
+.share.share-fs .share-vol input[type=range] { width: 120px; height: auto; }
+.share.share-fs .share-vol .share-vol-pct { display: inline; }
 /* the tile itself is the fullscreen element: black stage, header and bar as translucent overlays */
 .share.share-fs { border: 0; border-radius: 0; background: #000; cursor: pointer; }
 .share.share-fs .share-head { position: absolute; top: 0; left: 0; right: 0; z-index: 1; background: rgba(0,0,0,.55); }

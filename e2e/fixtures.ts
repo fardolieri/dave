@@ -416,6 +416,22 @@ export class Friend {
   /** The share tile for one sharer, as this friend sees it. */
   tile(of: string): Locator { return this.page.locator('.share', { has: this.page.locator('.share-head', { hasText: of }) }); }
   button(name: string | RegExp): Locator { return this.selectedRoom.getByRole('button', { name, exact: typeof name === 'string' }); }
+  /**
+   * What this friend's next shares carry for sound, whatever the browser's fake capture gives: the fake microphone's beep
+   * (as a shared tab with sound), or nothing (as a shared window).
+   */
+  async shareSound(on: boolean): Promise<void> {
+    await this.page.evaluate((on) => {
+      const media = navigator.mediaDevices;
+      const capture = media.getDisplayMedia.bind(media);
+      media.getDisplayMedia = async (options) => {
+        const stream = await capture(options);
+        for (const t of stream.getAudioTracks()) { stream.removeTrack(t); t.stop(); }
+        if (on) stream.addTrack((await media.getUserMedia({ audio: true })).getAudioTracks()[0]!);
+        return stream;
+      };
+    }, on);
+  }
   async startShare(): Promise<void> { await this.button('Share screen').click(); await expect(this.button('Stop sharing')).toBeVisible(); }
   async stopShare(): Promise<void> { await this.button('Stop sharing').click(); await expect(this.button('Share screen')).toBeVisible(); }
   /** Clicks a share tile to watch it and waits for the picture. */

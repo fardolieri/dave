@@ -107,7 +107,7 @@
 :root[data-theme="fd-walkie"] .share .conn-unreachable { color: #FF8A80; }
 :root[data-theme="fd-walkie"] .share .conn-connecting { color: #C9C6B4; }
 :root[data-theme="fd-walkie"] .share-head .stop { background: #3B3E3A; color: var(--rubber-fg); border-color: #555; }
-:root[data-theme="fd-walkie"] .share-bar :is(.fs, .share-vol-btn) { background: #3B3E3A; color: var(--rubber-fg); border-color: #555; }
+:root[data-theme="fd-walkie"] .share-bar .fs { background: #3B3E3A; color: var(--rubber-fg); border-color: #555; }
 :root[data-theme="fd-walkie"] .share-vol input[type=range] { accent-color: var(--chassis); }
 :root[data-theme="fd-walkie"] .share.share-fs { border: 0; border-radius: 0; background: #000; }
 :root[data-theme="fd-walkie"] .share.share-fs .share-head, :root[data-theme="fd-walkie"] .share.share-fs .share-bar { background: rgba(30,31,29,.8); }

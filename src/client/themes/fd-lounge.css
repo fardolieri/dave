@@ -110,7 +110,7 @@
 :root[data-theme="fd-lounge"] .share-head { background: var(--panel); padding: 8px 14px; }
 :root[data-theme="fd-lounge"] .share-bar { background: var(--panel); font-family: inherit; padding: 4px 14px; }
 :root[data-theme="fd-lounge"] .share-head .stop { padding: 3px 12px; }
-:root[data-theme="fd-lounge"] .share-bar :is(.fs, .share-vol-btn) { padding: 0 10px; }
+:root[data-theme="fd-lounge"] .share-bar .fs { padding: 0 10px; }
 :root[data-theme="fd-lounge"] .share.share-fs { border-radius: 0; box-shadow: none; background: #000; }
 :root[data-theme="fd-lounge"] .share.share-fs .share-head, :root[data-theme="fd-lounge"] .share.share-fs .share-bar { background: rgba(34,22,42,.75); }
 

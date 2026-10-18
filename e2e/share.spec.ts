@@ -77,26 +77,93 @@ test('fullscreen: a click on a running tile enters it, another leaves it, the sh
 
 test('a watched share\'s sound is set from its tile without going fullscreen, and leaves the voice alone', async ({ crowd }) => {
   const [alice, bob] = await callOf(crowd, ['Alice', 'Bob']);
+  await alice.shareSound(true);
   await alice.startShare();
   await bob.watchShare('Alice');
   await needHooks(bob);
   const ofAlice = async () => (await bob.hook<{ peers: Array<{ name: string; view: number; shareView: number }> }>('volumes')).peers.find((p) => p.name === 'Alice');
 
-  // The slider opens from its button, so a stray tap on the tile's bar cannot set it.
-  await expect(bob.tile('Alice').locator('.share-vol')).toHaveCount(0);
-  await bob.tile('Alice').locator('button.share-vol-btn').click();
-  await bob.tile('Alice').locator('.share-vol input[type=range]').fill('40');
+  // The slider is on the tile's bar without a click, takes hold once sound has arrived, and leaves the bar as high as it was.
+  const bar = bob.tile('Alice').locator('.share-bar');
+  const slider = bar.locator('.share-vol input[type=range]');
+  await expect(slider).toBeEnabled();
+  const barHeight = async () => (await bar.boundingBox())?.height ?? 0;
+  const statsHeight = (await bar.locator('.share-stats').boundingBox())?.height ?? 0;
+  const fsHeight = (await bar.locator('button.fs').boundingBox())?.height ?? 0;
+  expect(await barHeight()).toBeLessThanOrEqual(Math.max(statsHeight, fsHeight) + 8); // the bar's own padding, 3 px each side
+  await slider.fill('40');
   await expect.poll(async () => (await ofAlice())?.shareView).toBeCloseTo(0.4);
-  await expect(bob.tile('Alice').locator('button.share-vol-btn')).toContainText('40%');
+  await expect(bar.locator('.share-vol')).toHaveAttribute('title', /40%/);
   expect((await ofAlice())?.view).toBe(1);
   expect(await bob.page.evaluate(() => document.fullscreenElement)).toBeNull();
   await expect(bob.tile('Alice')).toHaveClass(/share-live/);
-  await expect(alice.page.locator('.share :is(.share-vol, .share-vol-btn)')).toHaveCount(0); // my own share plays nothing for me
+
+  // The speaker mutes, and gives the 40 % back.
+  await bar.locator('button.share-mute').click();
+  await expect.poll(async () => (await ofAlice())?.shareView).toBe(0);
+  await expect(bar.locator('button.share-mute')).toHaveText('🔇');
+  await bar.locator('button.share-mute').click();
+  await expect.poll(async () => (await ofAlice())?.shareView).toBeCloseTo(0.4);
+  await expect(bar.locator('button.share-mute')).toHaveText('🔊');
+  await expect(alice.page.locator('.share .share-vol')).toHaveCount(0); // my own share plays nothing for me
+});
+
+test('a share without sound keeps its volume slider disabled, not even enabled for a moment after one with sound', async ({ crowd }) => {
+  const [alice, bob] = await callOf(crowd, ['Alice', 'Bob']);
+  await alice.shareSound(true);
+  await alice.startShare();
+  await bob.watchShare('Alice');
+  await expect(bob.tile('Alice').locator('.share-vol input[type=range]')).toBeEnabled();
+  await alice.stopShare();
+  await expect(bob.page.locator('.share .share-vol')).toHaveCount(0);
+
+  // Alice shares a window now, without sound. Bob notes every slider that takes hold, however briefly.
+  await bob.page.evaluate(() => {
+    const w = window as Window & { sliderEnabled?: boolean };
+    w.sliderEnabled = false;
+    new MutationObserver(() => { if (document.querySelector('.share .share-vol input:enabled, .share .share-mute:enabled')) w.sliderEnabled = true; })
+      .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
+  });
+  await alice.shareSound(false);
+  await alice.startShare();
+  await bob.watchShare('Alice');
+  const slider = bob.tile('Alice').locator('.share-vol input[type=range]');
+  await expect(slider).toBeVisible();
+  // Two stats windows that could have enabled it, each against a count read after Bob started watching.
+  await needHooks(bob);
+  const checks = async () => (await bob.hook<{ peers: Array<{ name: string; shareSoundChecks: number }> }>('volumes')).peers.find((p) => p.name === 'Alice')?.shareSoundChecks ?? 0;
+  await expect.poll(checks).toBeGreaterThanOrEqual(2);
+  expect(await bob.page.evaluate(() => (window as Window & { sliderEnabled?: boolean }).sliderEnabled)).toBe(false);
+  await expect(slider).toBeDisabled();
+  await expect(slider).toHaveAttribute('title', 'This video has no audio');
+  await expect(bob.tile('Alice').locator('button.share-mute')).toBeDisabled();
+});
+
+test('the speaker gives back the volume it took, also after the share started again', async ({ crowd }) => {
+  const [alice, bob] = await callOf(crowd, ['Alice', 'Bob']);
+  await alice.shareSound(true);
+  await alice.startShare();
+  await bob.watchShare('Alice');
+  await needHooks(bob);
+  const shareView = async () => (await bob.hook<{ peers: Array<{ name: string; shareView: number }> }>('volumes')).peers.find((p) => p.name === 'Alice')?.shareView;
+  const bar = bob.tile('Alice').locator('.share-bar');
+  await bar.locator('.share-vol input[type=range]').fill('40');
+  await bar.locator('button.share-mute').click();
+  await expect.poll(shareView).toBe(0);
+
+  // Alice switches what she shares: Bob gets a new tile, as after a reload.
+  await alice.stopShare();
+  await expect(bob.tile('Alice')).toHaveCount(0);
+  await alice.startShare();
+  await bob.watchShare('Alice');
+  await bar.locator('button.share-mute').click();
+  await expect.poll(shareView).toBeCloseTo(0.4);
 });
 
 test('regression: a friend\'s voice volume and their share\'s volume are set apart, neither scales the other', async ({ crowd }) => {
   // Oct 2026, Daniel: a friend turned down to 5 % made their share play at 5 % too, while its slider said 100 %.
   const [alice, bob] = await callOf(crowd, ['Alice', 'Bob']);
+  await alice.shareSound(true);
   await alice.startShare();
   await bob.watchShare('Alice');
   await needHooks(bob);
@@ -109,7 +176,6 @@ test('regression: a friend\'s voice volume and their share\'s volume are set apa
   await bob.selectedRoom.locator('li.prow', { hasText: 'Alice' }).locator('button.vol').click();
   await bob.selectedRoom.locator('.volrow input[type=range]').fill('5');
   await expect.poll(gains).toEqual({ voice: 0.05, share: 1 });
-  await bob.tile('Alice').locator('button.share-vol-btn').click();
   await bob.tile('Alice').locator('.share-vol input[type=range]').fill('150');
   await expect.poll(gains).toEqual({ voice: 0.05, share: 1.5 });
 });

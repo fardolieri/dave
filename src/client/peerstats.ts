@@ -57,6 +57,15 @@ export function summarise(st: RTCStatsReport): StatsSummary {
   return { audioBytesIn, videoBytesIn, videoBytesOut, inFormat, outFormat, framesDecoded, rttMs, relayed };
 }
 
+/** Bytes one receiver got so far (the share's sound, say); 0 before any arrive or once the connection is closed. */
+export async function bytesIn(receiver: RTCRtpReceiver): Promise<number> {
+  let bytes = 0;
+  try {
+    (await receiver.getStats()).forEach((r) => { if (r.type === 'inbound-rtp') bytes += (r as RTCInboundRtpStreamStats).bytesReceived ?? 0; });
+  } catch { /* closed meanwhile */ }
+  return bytes;
+}
+
 /** The counters a problem report keeps (ticket 12): decoder and encoder, the selected pair, the voice both ways (ticket 27). */
 export async function reportStats(pc: RTCPeerConnection, voiceTx: RTCRtpTransceiver | undefined): Promise<Pick<PeerDiagnostics, 'inboundVideo' | 'outboundVideo' | 'inboundVoice' | 'outboundVoice' | 'pair'>> {
   let inboundVideo: Record<string, unknown> | null = null;

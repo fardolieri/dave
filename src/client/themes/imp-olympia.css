@@ -103,7 +103,7 @@
 :where(:root[data-theme="imp-olympia"]) .share-head .stop { background: #fff; color: #0b2338; border-color: #fff; }
 :where(:root[data-theme="imp-olympia"]) .share-note { color: var(--dim); }
 :where(:root[data-theme="imp-olympia"]) .share-bar { background: #0b2338; color: #c1d6e8; font-family: inherit; font-variant-numeric: tabular-nums; }
-:where(:root[data-theme="imp-olympia"]) .share-bar :is(.fs, .share-vol-btn) { background: #fff; color: #0b2338; }
+:where(:root[data-theme="imp-olympia"]) .share-bar .fs { background: #fff; color: #0b2338; }
 
 /* popovers and dialogs: white sheets */
 :where(:root[data-theme="imp-olympia"]) .profile[popover],

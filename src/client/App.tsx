@@ -999,6 +999,11 @@ type ShareTileProps = {
   onBlack?: (element: Record<string, unknown>) => void;
 };
 
+/** The share volume's tooltip while nothing confirms the share carries sound; on its container too, as Firefox shows none on a disabled control. */
+const NO_SHARE_SOUND = 'This video has no audio';
+/** The volume each friend's share had when its speaker muted it, for the speaker to give back; until a reload. */
+const unmutedShares = new Map<string, number>();
+
 /** A live tile must have shown a frame this long after going live, or it is reported as black. */
 const BLACK_CHECK_MS = 4000;
 
@@ -1120,9 +1125,11 @@ function ShareTile(props: ShareTileProps) {
   };
   const stopWatching = (e: MouseEvent) => { e.stopPropagation(); props.onWatch(false); };
   const percent = () => Math.round((props.view?.shareVolume ?? 1) * 100);
-  // In the small tile the slider opens from a button, as on a friend's row, so a stray tap on a phone cannot set it;
-  // fullscreen shows it outright, as before.
-  const [volOpen, setVolOpen] = createSignal(false);
+  // The speaker mutes (0 %) and gives back the volume it took, also to a tile made anew when the share started again.
+  const toggleMute = () => {
+    const v = props.view?.shareVolume ?? 1;
+    if (v > 0) { unmutedShares.set(props.p.publicKey, v); props.onVolume?.(0); } else props.onVolume?.(unmutedShares.get(props.p.publicKey) ?? 1);
+  };
   const stats = () => {
     if (props.isMe) {
       const o = props.outgoing;
@@ -1154,19 +1161,14 @@ function ShareTile(props: ShareTileProps) {
       <Show when={running()}>
         <div class="share-bar" onClick={(e) => e.stopPropagation()} onPointerEnter={() => setOnControls(true)} onPointerLeave={() => setOnControls(false)}>
           <span class="share-stats">{stats()}</span>
+          {/* Disabled until sound has arrived: a window, or anything shared from Firefox, has none to set. Always there, so
+              the bar does not jump when it comes. */}
           <Show when={!props.isMe && props.onVolume}>
-            <Show when={fullscreen() || volOpen()}>
-              <label class="share-vol" title={`This share's sound for you: ${percent()}%. Their voice stays as it is. Double-click to reset.`}>
-                <span class="share-vol-icon">{percent() === 0 ? '🔇' : '🔊'}</span>
-                <input type="range" min="0" max={MAX_VOLUME * 100} step="5" value={percent()} onInput={(e) => props.onVolume?.(Number(e.currentTarget.value) / 100)} onDblClick={() => props.onVolume?.(1)} />
-                <span class="share-vol-icon">{percent()}%</span>
-              </label>
-            </Show>
-            <Show when={!fullscreen()}>
-              <button class={`vol share-vol-btn ${percent() !== 100 ? 'on' : ''}`} title={`This share's sound for you: ${percent()}%`} onClick={() => setVolOpen(!volOpen())}>
-                {percent() === 0 ? '🔇' : '🔊'}<Show when={percent() !== 100}><small>{percent()}%</small></Show>
-              </button>
-            </Show>
+            <div class={`share-vol ${props.view?.shareSound ? '' : 'share-vol-none'}`} title={props.view?.shareSound ? `${percent()}%. Double-click the slider to reset.` : NO_SHARE_SOUND}>
+              <button class="share-mute" disabled={!props.view?.shareSound} onClick={toggleMute} aria-label={percent() === 0 ? "Unmute this share's sound" : "Mute this share's sound"}>{percent() === 0 ? '🔇' : '🔊'}</button>
+              <input type="range" min="0" max={MAX_VOLUME * 100} step="5" value={percent()} disabled={!props.view?.shareSound} aria-label="This share's sound" title={props.view?.shareSound ? undefined : NO_SHARE_SOUND} onInput={(e) => props.onVolume?.(Number(e.currentTarget.value) / 100)} onDblClick={() => props.onVolume?.(1)} />
+              <span class="share-vol-pct">{percent()}%</span>
+            </div>
           </Show>
           <button class="fs" title={fullscreen() ? 'Leave fullscreen' : 'Fullscreen'} onClick={(e) => { e.stopPropagation(); if (fullscreen()) exitFullscreenSafely(); else enterFullscreen(); }}>{fullscreen() ? '⤡' : '⛶'}</button>
         </div>

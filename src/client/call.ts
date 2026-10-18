@@ -9,7 +9,7 @@ import { LOW_VOICE_BUFFER_MS, asksLowVoice, lowVoiceSdp } from '../core/lowvoice
 import { asksFec, sendsRed, voiceRepairSdp, type VoiceRepair } from '../core/voicerepair';
 import { INITIAL_BUFFER, VOICE_REPORT_EVERY, VOICE_SAMPLE_MS, bufferMs, nextBuffer, voiceWindow, type BufferState, type VoiceCounters, type VoiceWindow } from '../core/voicequality';
 import type { LocalIdentity } from './identity';
-import { candidateCounts, reportStats, summarise, voiceCounters, windowProps } from './peerstats';
+import { bytesIn, candidateCounts, reportStats, summarise, voiceCounters, windowProps } from './peerstats';
 import { createInvariantWatchdog } from './invariants';
 import { gainFor, type CallFacts } from '../core/invariants';
 import {
@@ -81,6 +81,11 @@ export type PeerView = {
   volume: number;
   /** How loud their share's sound is for me, on top of their volume. Local only. */
   shareVolume: number;
+  /**
+   * Sound of the share I watch has arrived: a share without sound (a window, Firefox) sends none. False until a stats window
+   * confirms it, then true until I stop watching or the share ends, so the slider it enables does not flicker.
+   */
+  shareSound: boolean;
   /** Round trip to them in ms, the larger of ICE's and RTCP's latest measurement; null until one exists (ticket 27). */
   rttMs: number | null;
 };
@@ -137,6 +142,13 @@ type Peer = {
   remoteShare: MediaStream;
   shareAudio: HTMLAudioElement;
   videoBytesIn: number;
+  /** Bytes of their share's sound received so far, as refreshStats last read them, and when that read began. */
+  shareSoundBytesIn: number;
+  shareSoundReadAt: number;
+  /** When I last started or stopped watching their share: only a sound count read after it may enable the slider. */
+  watchedAt: number;
+  /** Stats windows that could have enabled the slider since then, for the dev hook (e2e: a share without sound stays so). */
+  shareSoundChecks: number;
   videoBytesAt: number;
   /** The share video's frames decoded at the last stats read, and when that count last grew (the invariant watchdog). */
   framesDecoded: number | null;
@@ -881,8 +893,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const peer: Peer = {
       key, name, pc, closed, markClosed, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, joinSeq: untrack(room.people).find((p) => p.publicKey === key && p.role === 'participant')?.joinSeq ?? null,
       returns: 0, id: crypto.randomUUID().replaceAll('-', ''), remoteId: null, offerN: 0, answerN: undefined, offerSent: null, audio, keepAlive, audioNodes: [], restarts: 0, relayOnly, generation: ++generation,
-      view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1, shareVolume: untrack(shareVolumes)[key] ?? 1, rttMs: null },
-      viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, sendsRed: false, sendsFec: true, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, videoBytesAt: 0, framesDecoded: null, framesGrewAt: null, holdOpening: false, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
+      view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1, shareVolume: untrack(shareVolumes)[key] ?? 1, shareSound: false, rttMs: null },
+      viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, sendsRed: false, sendsFec: true, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, shareSoundBytesIn: 0, shareSoundReadAt: 0, watchedAt: 0, shareSoundChecks: 0, videoBytesAt: 0, framesDecoded: null, framesGrewAt: null, holdOpening: false, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
     };
     earlyViewers.delete(key);
@@ -918,7 +930,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         applyJitterTarget(transceiver.receiver);
         if (slot === SLOT_INDEX.shareVideo) {
           track.onunmute = () => setView(peer, { shareLive: true });
-          track.onmute = () => setView(peer, { shareLive: false, shareKbps: 0, shareFormat: null });
+          track.onmute = () => setView(peer, { shareLive: false, shareKbps: 0, shareFormat: null, shareSound: false });
         } else {
           // The tile's video element is muted (autoplay), so share audio plays through its own element, gain-adjusted.
           wireRemoteAudio(peer, 'share', new MediaStream([track]));
@@ -1260,7 +1272,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     // Ask again now the link is up. The ask sent when this connection was built can reach the sharer while they still
     // hold the old one, which their fresh-offer path then closes along with the subscription (a Rejoin, a rebuild).
     // A repeated subscribe is harmless on the sharer's side.
-    if (watchIntent.has(peer.key) && sendSubscribe(peer.key, true) && !peer.view.watching) setView(peer, { watching: true });
+    if (watchIntent.has(peer.key) && sendSubscribe(peer.key, true) && !peer.view.watching) { peer.watchedAt = Date.now(); peer.shareSoundChecks = 0; setView(peer, { watching: true }); }
     void refreshStats(peer);
   }
 
@@ -1440,7 +1452,12 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
   async function refreshStats(peer: Peer): Promise<void> {
     if (peer.pc.connectionState === 'closed') return;
-    const { audioBytesIn, videoBytesIn, videoBytesOut, inFormat, outFormat, framesDecoded, rttMs, relayed } = summarise(await peer.pc.getStats());
+    // Read whether I watch or not, and compared only against a count read since I started watching: sound that arrived as
+    // the last share ended would otherwise count for the next one, a share without sound.
+    const readAt = Date.now();
+    const soundRx = peer.tx[SLOT_INDEX.shareAudio]?.receiver;
+    const [stats, shareSoundIn] = await Promise.all([peer.pc.getStats(), soundRx ? bytesIn(soundRx) : 0]);
+    const { audioBytesIn, videoBytesIn, videoBytesOut, inFormat, outFormat, framesDecoded, rttMs, relayed } = summarise(stats);
     if (audioBytesIn !== peer.view.audioBytesIn) peer.view.audioBytesIn = audioBytesIn;
     const now = Date.now();
     if (framesDecoded !== null && peer.framesDecoded !== null && framesDecoded > peer.framesDecoded) peer.framesGrewAt = now;
@@ -1452,6 +1469,14 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       // unmute: video arriving on an unmuted track marks a watched share live as well (problem report of Oct 3).
       if (peer.view.watching && !peer.view.shareLive && kbps > 0 && peer.remoteShare.getVideoTracks()[0]?.muted === false) setView(peer, { shareLive: true, shareKbps: kbps, shareFormat: inFormat });
       else if (peer.view.shareLive && (kbps !== peer.view.shareKbps || !sameFormat(inFormat, peer.view.shareFormat))) setView(peer, { shareKbps: kbps, shareFormat: inFormat });
+      // The share's sound slot carries packets only when the sharer captured sound, and then without pause, silence too
+      // (no DTX there): bytes that grew over the window enable the tile's volume slider.
+      if (peer.view.watching && peer.shareSoundReadAt >= peer.watchedAt) {
+        peer.shareSoundChecks++;
+        if (!peer.view.shareSound && shareSoundIn > peer.shareSoundBytesIn) setView(peer, { shareSound: true });
+      }
+      peer.shareSoundBytesIn = shareSoundIn;
+      peer.shareSoundReadAt = readAt;
       peer.outKbps = Math.max(0, Math.round(((videoBytesOut - peer.videoBytesOut) * 8) / (now - peer.videoBytesAt)));
       peer.outFormat = outFormat;
       peer.videoBytesIn = videoBytesIn;
@@ -1460,6 +1485,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       updateOutgoing();
     } else if (!peer.videoBytesAt) {
       peer.videoBytesIn = videoBytesIn;
+      peer.shareSoundBytesIn = shareSoundIn;
+      peer.shareSoundReadAt = readAt;
       peer.videoBytesOut = videoBytesOut;
       peer.videoBytesAt = now;
     }
@@ -1526,7 +1553,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         existing.joinSeq = p.joinSeq;
         if (back) { existing.returns++; resendOffer(existing, 'their_return'); }
         // Their share ended: my subscription is void, the tile goes back to "click to watch" (spec §6.5).
-        if (!p.sharing) { watchIntent.delete(p.publicKey); if (existing.view.watching) setView(existing, { watching: false, shareLive: false, shareKbps: 0, shareFormat: null }); }
+        if (!p.sharing) { watchIntent.delete(p.publicKey); if (existing.view.watching) setView(existing, { watching: false, shareLive: false, shareKbps: 0, shareFormat: null, shareSound: false }); }
         continue;
       }
       if (initiatesTo({ ...self, joinSeq: myJoinSeq }, p)) createPeer(p.publicKey, p.name, true);
@@ -1675,7 +1702,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
    * (spec §6.5, §8.1). A peer already marked watching keeps a live subscription and is left untouched.
    */
   function assertWatch(peer: Peer): void {
-    if (watchIntent.has(peer.key) && !peer.view.watching && sendSubscribe(peer.key, true)) setView(peer, { watching: true });
+    if (watchIntent.has(peer.key) && !peer.view.watching && sendSubscribe(peer.key, true)) { peer.watchedAt = Date.now(); peer.shareSoundChecks = 0; setView(peer, { watching: true }); }
   }
 
   /** Re-ask for every share I still intend to watch, e.g. after a reconnect, so a picture live before does not stay dark. */
@@ -1695,7 +1722,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     // the intent and re-asserts on reconnect; until then the tile stays "click to watch" rather than promise a
     // picture nobody was asked for (spec §6.5). Stopping always takes effect at once.
     if (on && !asked) return;
-    setView(peer, { watching: on, shareKbps: 0, shareFormat: null });
+    peer.watchedAt = Date.now(); peer.shareSoundChecks = 0;
+    setView(peer, { watching: on, shareKbps: 0, shareFormat: null, shareSound: false });
   }
 
   /** Fullscreen on one share unsubscribes every other (spec §6.5); leaving fullscreen does nothing. */
@@ -1891,7 +1919,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         return { seconds: buf.duration, peak };
       },
       playback: () => untrack(() => ({ context: audioCtx?.state ?? null, clock: audioCtx?.currentTime ?? null, cues: cueContext()?.state ?? null, blocked: audioBlocked(), paused: [...peers.values()].map((p) => ({ name: p.name, voice: p.audio.paused, keepAlive: p.keepAlive.paused })) })),
-      volumes: () => ({ master: untrack(audioSettings).masterVolume, peers: [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, shareView: p.view.shareVolume, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })) }),
+      volumes: () => ({ master: untrack(audioSettings).masterVolume, peers: [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, shareView: p.view.shareVolume, shareSoundChecks: p.shareSoundChecks, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })) }),
       dropSocket: () => room.dropSocket(),
       /** Fails the call's AudioContext ('call') or the cues' ('cues') as Chromium does when the audio device errs; `stuck`, as after a start that failed again (hooks.ts). */
       failAudio: async (which: 'call' | 'cues', stuck = false) => {
