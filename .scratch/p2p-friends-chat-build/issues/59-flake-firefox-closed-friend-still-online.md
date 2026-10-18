@@ -6,6 +6,11 @@ the retry: `attachment.spec.ts:452` "a file sent again by a second friend comes 
 `alice.close()`, `bob.online()` still listed Alice 20 s later (`["Carol", "Alice", "Bob"]`). The retry saw her go within
 6.5 s. The branch changed only theme CSS and the theme test; nothing on the socket or presence path.
 
+Seen again 2026-10-18: the nightly e2e of ff55f56 (run 39171574137, job 117805554468, against `dave-nightly`), Firefox,
+shard 2, the same test (now `attachment.spec.ts:518`), the same `["Carol", "Alice", "Bob"]` after 20 s, passed on the
+retry in 6.6 s. It failed the release gate of that commit; a rerun of the failed jobs passed clean. Again a change of
+theme CSS only (Kino's glows): the flake is reachable against real Cloudflare on nightly too, not only on a preview.
+
 ## What the trace shows
 Every page's socket goes through the fixture's `routeWebSocket` (`e2e/fixtures.ts`, `Wire.attach`): the connection to
 the server is opened by Playwright for the page, and `route.onClose` forwards a close to it. `alice.close()` closes her
