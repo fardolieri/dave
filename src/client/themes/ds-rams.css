@@ -128,7 +128,7 @@
 :root[data-theme="ds-rams"] .ambient { display: block; --r: clamp(168px, 24vmin, 360px); --g: clamp(8px, .7vmin, 10px); }
 :where(:root[data-theme="ds-rams"]) .ambient > i:nth-child(1) { top: calc(var(--r) * -.45); right: calc(var(--r) * -.45); width: calc(var(--r) * 2); height: calc(var(--r) * 2);
   background: radial-gradient(circle, var(--color-grille) calc(var(--g) * .2), transparent calc(var(--g) * .2 + .5px)) center / var(--g) var(--g);
-  mask: radial-gradient(closest-side, #000 calc(100% - var(--g)), transparent); }
+  -webkit-mask: radial-gradient(closest-side, #000 calc(100% - var(--g)), transparent); mask: radial-gradient(closest-side, #000 calc(100% - var(--g)), transparent); }
 :where(:root[data-theme="ds-rams"]) .ambient > i:nth-child(2) { --d: calc(var(--r) * .44); top: calc(var(--r) * .55 - var(--d) / 2); right: calc(var(--r) * 1.75); width: var(--d); height: var(--d);
   border-radius: 50%; box-shadow: inset 0 0 0 1px var(--color-dial);
   background: linear-gradient(var(--color-dial), var(--color-dial)) 50% 12% / 1px 22% no-repeat; }

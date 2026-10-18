@@ -11,7 +11,7 @@
     "build": "vite build",
     "preview": "pnpm build && vite preview",
     "deploy": "pnpm build && wrangler deploy",
-    "test": "node scripts/check-core-isolation.mjs && node scripts/check-theme-fonts.mjs && vitest run",
+    "test": "node scripts/check-core-isolation.mjs && node scripts/check-theme-fonts.mjs && node scripts/check-theme-masks.mjs && vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.e2e.json --noEmit",
     "types": "wrangler types",
     "proto:room-ui": "cd prototypes/room-ui && pnpm install && pnpm dev",
