@@ -17,6 +17,7 @@
   --color-warning-bg: #f4e4bf; --color-warning-fg: #5f3d00; --color-error-bg: #f5d8d3; --color-error-fg: #8c1d16;
   --color-bubble: #fbfaf7; --color-bubble-fg: #1c1c1a; --color-bubble-dim: #575550; --color-bubble-link: #a33b08;
   --color-surface-overlay: rgba(28, 28, 26, .35);
+  --color-grille: #d6d4cd; --color-dial: #cdcac2; --color-key: #efcdb5;
   --fs-stage: #000000; --fs-fg: #ecebe7; --fs-dim: #b4b1aa; --fs-ok: #74c278; --fs-warn: #eab53e; --fs-bad: #ff7466;
   --fs-button: #2d2d2b; --fs-line: #4a4945; --fs-acc: #f26b1d;
   --font-family-body: "ds-Hanken Grotesk", "Helvetica Neue", Arial, sans-serif;
@@ -36,6 +37,7 @@
     --color-warning-bg: #3a2e12; --color-warning-fg: #f0c35c; --color-error-bg: #3d1b18; --color-error-fg: #ff8a7e;
     --color-bubble: #33332f; --color-bubble-fg: #e9e7e2; --color-bubble-dim: #b3b0a8; --color-bubble-link: #ff8a47;
     --color-surface-overlay: rgba(0, 0, 0, .6);
+    --color-grille: #0e0e0d; --color-dial: #34332f; --color-key: #4a2e1d;
     --shadow-sm: 0 1px 0 rgba(0, 0, 0, .3); --shadow-md: 0 2px 8px rgba(0, 0, 0, .45); --shadow-lg: 0 8px 24px rgba(0, 0, 0, .55);
   }
 }
@@ -117,6 +119,38 @@
 :where(:root[data-theme="ds-rams"]) .chat-input { gap: 8px; }
 :where(:root[data-theme="ds-rams"]) .banner { border-radius: 0 0 var(--border-radius-lg) var(--border-radius-lg); }
 :where(:root[data-theme="ds-rams"]) .consent .bubble { border-radius: var(--border-radius-lg); border: 1px solid var(--line); }
+/* the extra: the front of a T3 pocket radio in the page's top-right corner, behind the chat. The round speaker grille,
+   holes a shade darker than the housing on the 8px grid (10px on a big screen), and beside it on the same axis the
+   tuning wheel, a hairline circle with one index line. A big screen has room for more of the family: under the grille
+   the T1000's volume slider, and low on the right the ET66 calculator's keys, hairline rings with the one coloured
+   "=" key. All scale with the screen, so a 1440p page shows the objects and not specks; still (Rams: no decorative
+   motion). On a phone only the grille, covered by the sidebar until you scroll. */
+:root[data-theme="ds-rams"] .ambient { display: block; --r: clamp(168px, 24vmin, 360px); --g: clamp(8px, .7vmin, 10px); }
+:where(:root[data-theme="ds-rams"]) .ambient > i:nth-child(1) { top: calc(var(--r) * -.45); right: calc(var(--r) * -.45); width: calc(var(--r) * 2); height: calc(var(--r) * 2);
+  background: radial-gradient(circle, var(--color-grille) calc(var(--g) * .2), transparent calc(var(--g) * .2 + .5px)) center / var(--g) var(--g);
+  mask: radial-gradient(closest-side, #000 calc(100% - var(--g)), transparent); }
+:where(:root[data-theme="ds-rams"]) .ambient > i:nth-child(2) { --d: calc(var(--r) * .44); top: calc(var(--r) * .55 - var(--d) / 2); right: calc(var(--r) * 1.75); width: var(--d); height: var(--d);
+  border-radius: 50%; box-shadow: inset 0 0 0 1px var(--color-dial);
+  background: linear-gradient(var(--color-dial), var(--color-dial)) 50% 12% / 1px 22% no-repeat; }
+:where(:root[data-theme="ds-rams"]) .ambient > i:is(:nth-child(3), :nth-child(4)) { display: none; }
+@media (min-width: 1500px) {
+  :where(:root[data-theme="ds-rams"]) .ambient > i:is(:nth-child(3), :nth-child(4)) { display: block; }
+}
+/* the slider: a hairline track and its square knob, two-thirds up */
+:where(:root[data-theme="ds-rams"]) .ambient > i:nth-child(3) { top: calc(var(--r) * 1.75); right: calc(var(--r) * .3); width: var(--r); height: calc(var(--r) * .12);
+  background: linear-gradient(var(--color-dial), var(--color-dial)) center / 100% 1px no-repeat; }
+:where(:root[data-theme="ds-rams"]) .ambient > i:nth-child(3)::before { content: ''; position: absolute; left: 62%; width: 9%; height: 100%;
+  border-radius: 2px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--color-dial); }
+/* the keys: four rows of three on one module, the bottom right one filled */
+:where(:root[data-theme="ds-rams"]) .ambient > i:nth-child(4) { --k: calc(var(--r) * .17); bottom: 9vh; right: 5vw; width: calc(var(--k) * 3); height: calc(var(--k) * 4);
+  background:
+    radial-gradient(circle, var(--color-key) calc(var(--k) * .32), transparent calc(var(--k) * .32 + .5px)) right bottom / var(--k) var(--k) no-repeat,
+    radial-gradient(circle, transparent calc(var(--k) * .32 - 1px), var(--color-dial) calc(var(--k) * .32 - 1px) calc(var(--k) * .32), transparent calc(var(--k) * .32 + .5px)) 0 0 / var(--k) var(--k); }
+@media (max-width: 700px) {
+  :root[data-theme="ds-rams"] .ambient { --r: 120px; --g: 8px; }
+  :root[data-theme="ds-rams"] .ambient > i:nth-child(1) { top: calc(var(--r) * -1); right: calc(var(--r) * -1); }
+  :root[data-theme="ds-rams"] .ambient > i:nth-child(2) { display: none; }
+}
 @media (prefers-reduced-motion: reduce) {
   :where(:root[data-theme="ds-rams"]) button { transition: none; }
 }

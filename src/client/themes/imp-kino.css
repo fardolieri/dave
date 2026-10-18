@@ -60,6 +60,27 @@
 :where(:root[data-theme="imp-kino"]) .app { transition: background-color .25s ease-out; }
 :where(:root[data-theme="imp-kino"]) .app.split { background: var(--stage); }
 :where(:root[data-theme="imp-kino"]) .app.split .side { background: #1e0c10; }
+/* The house before the film: a few big, soft glows of the velvet's own reds, dimmed and greyed towards the dark of the hall, and one of
+   warm amber, as if the light in
+   the hall fell on folds of curtain, drifting and swelling very slowly behind the chat (a minute and more each way).
+   Only transform moves, on round gradients that fade to nothing, so nothing has an edge. The stage black of
+   .app.split covers them: when someone shares, the house goes dark. */
+:root[data-theme="imp-kino"] .ambient { display: block; }
+:where(:root[data-theme="imp-kino"]) .ambient > i { width: var(--s); aspect-ratio: 1; margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+  background: radial-gradient(circle closest-side, var(--c), transparent);
+  animation: imp-kino-drift var(--t) ease-in-out var(--d) infinite alternate; animation-play-state: var(--ambient-play); }
+:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(n+6) { display: none; }
+:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(1) { left: 78%; top: 12%; --s: 70vmax; --c: rgba(112,44,50,.17); --dx: -6vmax; --dy: 5vmax; --t: 83s; --d: -30s; }
+:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(2) { left: 42%; top: 88%; --s: 62vmax; --c: rgba(96,38,46,.18); --dx: 7vmax; --dy: -4vmax; --t: 97s; --d: -61s; }
+:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(3) { left: 96%; top: 82%; --s: 44vmax; --c: rgba(170,112,72,.07); --dx: -5vmax; --dy: -6vmax; --t: 71s; --d: -12s; }
+:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(4) { left: 48%; top: 6%; --s: 46vmax; --c: rgba(84,36,52,.18); --dx: 5vmax; --dy: 4vmax; --t: 109s; --d: -77s; }
+:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(5) { left: 66%; top: 52%; --s: 34vmax; --c: rgba(130,60,62,.08); --dx: -4vmax; --dy: -3vmax; --t: 89s; --d: -44s; }
+@keyframes imp-kino-drift { from { transform: translate(0, 0) scale(1); } to { transform: translate(var(--dx), var(--dy)) scale(1.15); } }
+/* a phone's chat is the lower half of the screen: the glows gather there */
+@media (max-width: 700px) {
+  :where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(1) { top: 62%; }
+  :where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(4) { top: 70%; left: 10%; }
+}
 :where(:root[data-theme="imp-kino"]) .share { background: #1a1110; border-color: #3a2226; border-radius: 14px; }
 :where(:root[data-theme="imp-kino"]) .share-head { background: rgba(43,18,22,.85); }
 :where(:root[data-theme="imp-kino"]) .share-bar { background: rgba(0,0,0,.5); color: var(--dim); font-family: inherit; font-variant-numeric: tabular-nums; }

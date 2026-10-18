@@ -16,6 +16,27 @@
   font-family: 'Bricolage Grotesque', system-ui, sans-serif; color-scheme: light;
 }
 :root[data-theme="fd-riso"] body { font-size: 15px; }
+/* the paper behind the chat is a riso poster: halftone suns in the two inks, each screen at its own angle, drifting past
+   each other (half a minute to a minute a way, slow enough to rest the eye on, quick enough to notice) so the inks overprint purple
+   where they meet and the dots slip in and out of a moire. Only the paper shows
+   them, never a panel; the dots stay light enough that ink text reads over them as it does on bare paper. */
+:root[data-theme="fd-riso"] .ambient { display: block; --dot: clamp(6px, .6vmin, 10px); }
+:root[data-theme="fd-riso"] .ambient > i { --ink-c: var(--pink); --o: .4; width: var(--s); height: var(--s); border-radius: 50%; mix-blend-mode: multiply;
+  background: radial-gradient(circle closest-side, var(--ink-c) 46%, transparent 58%) 0 0 / var(--dot) var(--dot); opacity: var(--o);
+  -webkit-mask-image: radial-gradient(circle at 36% 34%, #000 16%, transparent 72%); mask-image: radial-gradient(circle at 36% 34%, #000 16%, transparent 72%);
+  animation: fd-riso-drift var(--t) ease-in-out var(--d) infinite alternate; animation-play-state: var(--ambient-play); }
+:root[data-theme="fd-riso"] .ambient > i:nth-child(even) { --ink-c: var(--blue); --o: .34; }
+:root[data-theme="fd-riso"] .ambient > i:nth-child(n+9) { display: none; }
+:root[data-theme="fd-riso"] .ambient > i:nth-child(1) { --s: 46vmin; top: -10vmin; right: -6vmin; --t: 52s; --d: -20s; --x: -6vmin; --y: 5vmin; --r0: 15deg; --r1: 24deg; }
+:root[data-theme="fd-riso"] .ambient > i:nth-child(2) { --s: 30vmin; top: 18vh; right: 22vw; --t: 64s; --d: -41s; --x: 7vmin; --y: -5vmin; --r0: -15deg; --r1: -4deg; }
+:root[data-theme="fd-riso"] .ambient > i:nth-child(3) { --s: 22vmin; top: 47vh; left: calc(300px + 12vw); --t: 46s; --d: -9s; --x: 5vmin; --y: -6vmin; --r0: 15deg; --r1: 6deg; }
+:root[data-theme="fd-riso"] .ambient > i:nth-child(4) { --s: 13vmin; top: 7vh; left: calc(300px + 20vw); --t: 38s; --d: -30s; --x: -4vmin; --y: 6vmin; --r0: -15deg; --r1: -26deg; }
+:root[data-theme="fd-riso"] .ambient > i:nth-child(5) { --s: 40vmin; bottom: -16vmin; right: -10vmin; --t: 58s; --d: -12s; --x: -4vmin; --y: -5vmin; --r0: 15deg; --r1: 22deg; }
+:root[data-theme="fd-riso"] .ambient > i:nth-child(6) { --s: 9vmin; top: 60vh; right: 33vw; --t: 34s; --d: -6s; --x: 6vmin; --y: 4vmin; --r0: -15deg; --r1: -5deg; }
+:root[data-theme="fd-riso"] .ambient > i:nth-child(7) { --s: 7vmin; top: 31vh; left: calc(300px + 38vw); --t: 30s; --d: -22s; --x: -5vmin; --y: -4vmin; --r0: 15deg; --r1: 28deg; }
+:root[data-theme="fd-riso"] .ambient > i:nth-child(8) { --s: 15vmin; bottom: 20vh; right: 9vw; --t: 42s; --d: -35s; --x: -3vmin; --y: 6vmin; --r0: -15deg; --r1: -24deg; }
+@keyframes fd-riso-drift { from { transform: translate(0, 0) rotate(var(--r0)); }
+  to { transform: translate(calc(var(--x) * 1.6), calc(var(--y) * 1.6)) rotate(calc(var(--r1) * 1.5 - var(--r0) * .5)); opacity: calc(var(--o) * .75); } }
 :where(:root[data-theme="fd-riso"]) h1 { font-weight: 800; font-size: 30px; letter-spacing: -.01em; }
 :where(:root[data-theme="fd-riso"]) h2 { text-transform: none; letter-spacing: 0; font-size: 17px; font-weight: 800; color: var(--ink); }
 :where(:root[data-theme="fd-riso"]) button { background: var(--panel2); color: var(--ink); border: 2px solid var(--blue); border-radius: 4px; font: inherit; font-weight: 700; box-shadow: var(--slip); }
@@ -88,5 +109,13 @@
 :root[data-theme="fd-riso"] .consent .bubble { box-shadow: 4px 4px 0 var(--blue); }
 
 @media (max-width: 700px) {
+  /* the phone shows only the chat's own strip of paper, under the room's panel, and every line of it crosses a sun:
+     three of them, low down and a shade lighter */
+  :root[data-theme="fd-riso"] .ambient > i { --o: .28; }
+  :root[data-theme="fd-riso"] .ambient > i:nth-child(even) { --o: .26; }
+  :root[data-theme="fd-riso"] .ambient > i:is(:nth-child(1), :nth-child(4), :nth-child(6), :nth-child(7), :nth-child(8)) { display: none; }
+  :root[data-theme="fd-riso"] .ambient > i:nth-child(2) { --s: 44vmin; top: 56vh; right: -10vw; }
+  :root[data-theme="fd-riso"] .ambient > i:nth-child(3) { --s: 30vmin; top: 64vh; left: 6vw; }
+  :root[data-theme="fd-riso"] .ambient > i:nth-child(5) { --s: 56vmin; bottom: -22vmin; right: -14vmin; }
   :root[data-theme="fd-riso"] .side { border-right: 0; border-bottom: 2px solid var(--blue); box-shadow: 0 4px 0 var(--pink); }
 }
