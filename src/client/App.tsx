@@ -387,6 +387,13 @@ function Workspace(props: WorkspaceProps) {
   /** Enters minus leaves: a drag across the page enters and leaves every element, and Safari gives no relatedTarget to tell them apart. */
   let depth = 0;
   const hasFiles = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].includes('Files');
+  // A leave can go missing: an element taken away under the pointer (a friend's row as they go offline) gets its
+  // dragleave while detached, and it never reaches the page. A drag over the page brings a dragover every 350 ms or
+  // so, even standing still, so none for a second means it has gone.
+  let lapse: ReturnType<typeof setTimeout> | undefined;
+  const endDrag = () => { clearTimeout(lapse); depth = 0; setDragging(false); };
+  const overPage = () => { clearTimeout(lapse); lapse = setTimeout(endDrag, 1000); setDragging(writable()); };
+  onCleanup(() => clearTimeout(lapse));
   // The files in the order shown, then the text, as a message with pictures reads: handed to the room together, which
   // sends them in that order. One that could not be read is dropped; its chip said so.
   const send = (text: string) => {
@@ -438,10 +445,10 @@ function Workspace(props: WorkspaceProps) {
   return (
     <Show when={current()}>{(cur) => (
       <div class={`app ${sharers().length > 0 ? 'split' : ''} ${dragging() ? 'dropping' : ''}`}
-           onDragEnter={(e) => { if (hasFiles(e)) { depth++; setDragging(writable()); } }}
-           onDragOver={(e) => { if (!hasFiles(e)) return; e.preventDefault(); setDragging(writable()); }}
-           onDragLeave={(e) => { if (hasFiles(e) && --depth <= 0) { depth = 0; setDragging(false); } }}
-           onDrop={(e) => { depth = 0; setDragging(false); if (!hasFiles(e)) return; e.preventDefault(); if (writable()) for (const f of e.dataTransfer?.files ?? []) stageFile(f); }}>
+           onDragEnter={(e) => { if (hasFiles(e)) { depth++; overPage(); } }}
+           onDragOver={(e) => { if (!hasFiles(e)) return; e.preventDefault(); overPage(); }}
+           onDragLeave={(e) => { if (hasFiles(e) && --depth <= 0) endDrag(); }}
+           onDrop={(e) => { endDrag(); if (!hasFiles(e)) return; e.preventDefault(); if (writable()) for (const f of e.dataTransfer?.files ?? []) stageFile(f); }}>
         <div class="scroll">
           <aside class="side">
             <h2>Online</h2>

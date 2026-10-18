@@ -353,8 +353,11 @@ async function dropFile(target: Locator, hint: string, name: string, bytes: Buff
     return e.defaultPrevented;
   }, [kind, dataTransfer] as const);
   await fire('dragenter');
-  expect(await fire('dragover')).toBe(true); // a page that does not take dragover gets no drop at all
-  await expect(target.page().locator('.drop-hint')).toHaveText(hint);
+  // Over and over while it waits, as a browser fires it: one dragover keeps the frame up for a second only.
+  await expect(async () => {
+    expect(await fire('dragover')).toBe(true); // a page that does not take dragover gets no drop at all
+    await expect(target.page().locator('.drop-hint')).toHaveText(hint, { timeout: 250 });
+  }).toPass();
   return fire('drop');
 }
 
@@ -368,6 +371,16 @@ test('a file dropped on the text field or the sidebar waits above the composer, 
   }
   await expect(alice.staged.locator('.name')).toHaveText(['field.png', 'side.png', 'log.png']);
   await expect(alice.composer).toHaveValue(''); // not the file's name typed into the field
+  // A drag whose leave never reaches the page (the element under it was taken away) stops sending dragover: the
+  // frame goes by itself.
+  await alice.page.locator('aside.side h2').first().evaluate((el) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File(['x'], 'gone.txt', { type: 'text/plain' }));
+    for (const kind of ['dragenter', 'dragover']) el.dispatchEvent(new DragEvent(kind, { bubbles: true, cancelable: true, dataTransfer }));
+  });
+  await expect(alice.page.locator('.drop-hint')).toBeVisible();
+  await expect(alice.page.locator('.drop-hint')).toHaveCount(0);
+  await expect(alice.staged).toHaveCount(3);
   await alice.sendButton.click();
 
   await expect(bob.page.locator('.chat-log .att-media img:not(.att-preview)')).toHaveCount(3, { timeout: 30_000 });
