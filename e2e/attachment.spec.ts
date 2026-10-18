@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
-import type { Route } from '@playwright/test';
+import type { Locator, Route } from '@playwright/test';
 import { expect, needHooks, test, type Friend } from './fixtures';
 
 // Attachments (ADR 0006): the announcement goes sealed through the Room, the bytes from friend to friend over a file
@@ -334,6 +334,72 @@ test('a file removed from above the composer is not sent, and one picked with th
 
   await expect(bob.page.locator('.chat-log .att-card .att-name')).toHaveText(['notes.zip']);
   await expect(bob.page.locator('.chat-log .att-media')).toHaveCount(0);
+});
+
+/**
+ * Drags a file from the desktop onto an element and drops it there, as the browser does: enter and over, then (once
+ * the page has said what a drop does) the drop. Returns whether the page kept the drop from the browser, which would
+ * open the file in place of the app. With `drop` false the drag stops there, with no leave and no drop.
+ */
+async function dropFile(target: Locator, hint: string, name: string, bytes: Buffer, type: string, drop = true): Promise<boolean> {
+  const dataTransfer = await target.page().evaluateHandle(([name, b64, type]) => {
+    const d = new DataTransfer();
+    d.items.add(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], name, { type }));
+    return d;
+  }, [name, bytes.toString('base64'), type] as const);
+  const fire = (kind: string) => target.evaluate((el, [kind, dataTransfer]) => {
+    const e = new DragEvent(kind, { bubbles: true, cancelable: true, dataTransfer });
+    el.dispatchEvent(e);
+    return e.defaultPrevented;
+  }, [kind, dataTransfer] as const);
+  await fire('dragenter');
+  // Over and over while it waits, as a browser fires it: one dragover keeps the frame up for a few seconds only.
+  await expect(async () => {
+    expect(await fire('dragover')).toBe(true); // a page that does not take dragover gets no drop at all
+    await expect(target.page().locator('.drop-hint')).toHaveText(hint, { timeout: 250 });
+  }).toPass();
+  return drop && fire('drop');
+}
+
+test('a file dropped on the text field or the sidebar waits above the composer, as one dropped on the log does', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  const hint = `Drop to send to ${await alice.page.locator('.room.selected .room-title').textContent()}`;
+  for (const [where, name] of [[alice.composer, 'field.png'], [alice.page.locator('aside.side h2').first(), 'side.png'], [alice.page.locator('.chat-log'), 'log.png']] as const) {
+    expect(await dropFile(where, hint, name, png(16, 12), 'image/png')).toBe(true);
+    await expect(alice.page.locator('.drop-hint')).toHaveCount(0); // gone once dropped
+  }
+  await expect(alice.staged.locator('.name')).toHaveText(['field.png', 'side.png', 'log.png']);
+  await expect(alice.composer).toHaveValue(''); // not the file's name typed into the field
+  // A drag whose leave never reaches the page (the element under it was taken away) stops sending dragover: the
+  // frame goes by itself.
+  await dropFile(alice.page.locator('aside.side h2').first(), hint, 'gone.png', png(16, 12), 'image/png', false);
+  await expect(alice.page.locator('.drop-hint')).toHaveCount(0);
+  await expect(alice.staged).toHaveCount(3);
+  await alice.sendButton.click();
+
+  await expect(bob.page.locator('.chat-log .att-media img:not(.att-preview)')).toHaveCount(3, { timeout: 30_000 });
+});
+
+test('a file dropped on the Report a problem dialog is not staged, unseen, for the room behind it', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  await alice.page.getByRole('button', { name: 'Report a problem' }).click();
+  const field = alice.page.locator('dialog.report textarea');
+  await expect(field).toBeVisible();
+  // Not dropFile: no hint shows over a dialog, which sits above the frame.
+  const kept = await field.evaluate((el, b64) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], 'screenshot.png', { type: 'image/png' }));
+    const fire = (kind: string) => { const e = new DragEvent(kind, { bubbles: true, cancelable: true, dataTransfer }); el.dispatchEvent(e); return e.defaultPrevented; };
+    fire('dragenter');
+    const over = fire('dragover');
+    fire('drop');
+    return over;
+  }, png(16, 12).toString('base64'));
+  expect(kept).toBe(true); // still never opened by the browser in place of the app
+  await alice.page.locator('dialog.report').getByRole('button', { name: 'Close' }).click();
+  await expect(alice.page.locator('.drop-hint')).toHaveCount(0);
+  await expect(alice.staged).toHaveCount(0);
 });
 
 test('files waiting for Send, photographed on a phone and a desktop for the owner to look at', async ({ crowd }, testInfo) => {
