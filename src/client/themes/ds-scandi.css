@@ -133,3 +133,50 @@
   :where(:root[data-theme="ds-scandi"]) .share { transition: box-shadow var(--duration-normal) var(--easing-out); }
   :where(:root[data-theme="ds-scandi"]) .share:hover { box-shadow: var(--shadow-lg); }
 }
+
+/* ── Ambient: light through a curtain ─────────────────────────────────────────────────────────────────────────────── */
+/* Low Nordic sun through the linen curtain of a cabin window, cast soft and golden on the wall beside the chat: no
+   window bars, only the curtain's soft folds, a little brighter and dimmer by turns; in the dark palette it is
+   moonlight, cool on the warm charcoal. Every minute or so a cloud's soft shadow drifts across the light,
+   and a few specks of dust float slowly through the light, glinting in and out. The patch is sized to the screen so a
+   wide monitor gets a real window, a phone a small one low above the composer with half the dust. Light makes the wall
+   paler and moonlight barely lifts it, so text keeps its contrast; the sidebar's panel covers it. Moving: the cloud
+   (transform, 64 s) and eight motes (transform and opacity, 17 to 29 s). */
+:root[data-theme="ds-scandi"] { --scandi-window: rgba(255, 238, 200, .8); --scandi-mote: rgba(222, 172, 84, .75); --scandi-mote-glow: rgba(240, 204, 140, .3); }
+@media (prefers-color-scheme: dark) { :root[data-theme="ds-scandi"] { --scandi-window: rgba(143, 185, 216, .085); --scandi-mote: rgba(214, 230, 242, .65); --scandi-mote-glow: rgba(143, 185, 216, .2); } }
+:root[data-theme="ds-scandi"] .ambient { display: block;
+  --pw: clamp(240px, 27vw, 760px); --ph: calc(var(--pw) * .833); --pr: 5vw; --pt: 24vh; }
+/* the light on the wall, and the cloud's shadow inside it (the mask cuts both to the curtain's folds) */
+:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(1) { top: var(--pt); right: var(--pr); width: var(--pw); height: var(--ph);
+  background: var(--scandi-window); overflow: hidden;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 360 300'%3E%3Cfilter id='b'%3E%3CfeGaussianBlur stdDeviation='8'/%3E%3C/filter%3E%3Cg filter='url(%23b)' transform='translate(118 34) skewX(-22)'%3E%3Crect x='0' width='36' height='234' fill-opacity='1'/%3E%3Crect x='36' width='36' height='234' fill-opacity='.7'/%3E%3Crect x='72' width='36' height='234' fill-opacity='.9'/%3E%3Crect x='108' width='36' height='234' fill-opacity='.62'/%3E%3Crect x='144' width='36' height='234' fill-opacity='.94'/%3E%3Crect x='180' width='36' height='234' fill-opacity='.74'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat; }
+:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(1)::before { content: ''; position: absolute; top: -15%; bottom: -15%; left: 0; width: 70%;
+  background: radial-gradient(closest-side, var(--color-bg-primary) 25%, transparent); opacity: .8;
+  animation: ds-scandi-cloud 64s linear -20s infinite; animation-play-state: var(--ambient-play); }
+@keyframes ds-scandi-cloud { 0% { transform: translateX(-110%); } 50%, 100% { transform: translateX(150%); } }
+/* dust in the light: each speck rises or sinks a few millimetres while it glints in and out */
+:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(n+2):nth-child(-n+9) { width: clamp(6px, .8vmin, 13px); aspect-ratio: 1; border-radius: 50%; opacity: 0;
+  left: calc(100% - var(--pr) - var(--pw) * (1 - var(--mx))); top: calc(var(--pt) + var(--ph) * var(--my));
+  background: radial-gradient(circle, var(--scandi-mote) 0 28%, var(--scandi-mote-glow) 45%, transparent 70%);
+  animation: ds-scandi-mote var(--md) ease-in-out var(--mdelay) infinite; animation-play-state: var(--ambient-play); }
+@keyframes ds-scandi-mote {
+  0% { opacity: 0; transform: translate(0, 0); }
+  25% { opacity: .9; }
+  50% { transform: translate(var(--dx), var(--dy)); }
+  75% { opacity: .8; }
+  100% { opacity: 0; transform: translate(calc(var(--dx) * 1.7), calc(var(--dy) * .5)); }
+}
+:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(2) { --mx: .42; --my: .22; --dx: 3vmin; --dy: -4vmin; --md: 23s; --mdelay: -4s; }
+:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(3) { --mx: .66; --my: .58; --dx: -2.5vmin; --dy: 3vmin; --md: 19s; --mdelay: -11s; }
+:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(4) { --mx: .30; --my: .74; --dx: 4vmin; --dy: -2vmin; --md: 27s; --mdelay: -17s; }
+:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(5) { --mx: .78; --my: .30; --dx: -3vmin; --dy: -3vmin; --md: 21s; --mdelay: -7s; }
+:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(6) { --mx: .52; --my: .44; --dx: 2vmin; --dy: 4vmin; --md: 29s; --mdelay: -22s; }
+:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(7) { --mx: .20; --my: .40; --dx: 3.5vmin; --dy: 2.5vmin; --md: 17s; --mdelay: -2s; }
+:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(8) { --mx: .88; --my: .70; --dx: -4vmin; --dy: -1.5vmin; --md: 25s; --mdelay: -15s; }
+:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(9) { --mx: .60; --my: .12; --dx: -1.5vmin; --dy: 3.5vmin; --md: 22s; --mdelay: -9s; }
+@media (max-width: 700px) {
+  :root[data-theme="ds-scandi"] .ambient { --pw: clamp(200px, 60vw, 280px); --pr: 2vw; --pt: calc(100% - 96px - env(safe-area-inset-bottom) - var(--ph)); }
+  :where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(n+6):nth-child(-n+9) { display: none; }
+}
+/* on a phone the light falls behind the chat lines, so by day it is softer there */
+@media (max-width: 700px) and (prefers-color-scheme: light) { :root[data-theme="ds-scandi"] { --scandi-window: rgba(255, 238, 200, .5); } }

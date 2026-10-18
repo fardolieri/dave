@@ -162,3 +162,59 @@
   :where(:root[data-theme="ds-memphis"]) button:where(:not(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open, :disabled)):active { transform: translate(0, 2px); box-shadow: 0 0 0 var(--line); }
   :where(:root[data-theme="ds-memphis"]) :is(.emoji-tabs, .emoji-grid) button:hover { transform: scale(1.08) rotate(-6deg); box-shadow: none; }
 }
+/* the flyer's confetti: a dozen Memphis shapes (squiggles, a zigzag, rings, a triangle, a half-moon, a plus, a stick,
+   dots and a dot patch) scattered over the empty right of the chat, clear of the reading column. Each one drifts and
+   tilts on its own slow path (half a minute and more) and the triangle and the plus turn, so the flyer feels like a party
+   in a draught; flat colour washed out to a print's back side, thinner in the dark palette, fewer on a laptop and only
+   four at the edge of a phone */
+:root[data-theme="ds-memphis"] .ambient { display: block; --safe: 1060px; }
+:where(:root[data-theme="ds-memphis"]) .ambient > i { --c: var(--color-pop-pink); --r0: -8deg; --r1: 10deg; --dx: 2vw; --dy: -2.8vh; --t: 13s; --d: -4s;
+  left: calc(var(--safe) + (100% - var(--safe) - var(--s)) * var(--x)); top: var(--y); width: var(--s); height: var(--s);
+  background: var(--c); opacity: .36; transform: rotate(var(--r0));
+  animation: ds-memphis-float calc(var(--t) * 2.2) ease-in-out calc(var(--d) * 2.2) infinite alternate; animation-play-state: var(--ambient-play); }
+@media (prefers-color-scheme: dark) { :where(:root[data-theme="ds-memphis"]) .ambient > i { opacity: .28; } }
+@keyframes ds-memphis-float { to { transform: translate(var(--dx), var(--dy)) rotate(var(--r1)); } }
+@keyframes ds-memphis-turn { to { transform: rotate(calc(var(--r0) + 360deg)); } }
+/* shapes: masks keep the stroke shapes in the palette's own colours, light and dark */
+:where(:root[data-theme="ds-memphis"]) .ambient > i:is(:nth-child(1), :nth-child(12)) { height: calc(var(--s) * .34);
+  mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 34'><path d='M6 17q11-16 22 0t22 0t22 0t22 0' fill='none' stroke='black' stroke-width='9' stroke-linecap='round'/></svg>") center / 100% 100% no-repeat; }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(5) { height: calc(var(--s) * .3);
+  mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 30'><path d='M5 24l15-18l15 18l15-18l15 18l15-18l15 18' fill='none' stroke='black' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/></svg>") center / 100% 100% no-repeat; }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(7) {
+  mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M3.5 0h3v3.5h3.5v3h-3.5v3.5h-3v-3.5h-3.5v-3h3.5z'/></svg>") center / contain no-repeat; }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(2) { clip-path: polygon(50% 0, 100% 87%, 0 87%); }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:is(:nth-child(4), :nth-child(10)) { border-radius: 50%; }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:is(:nth-child(3), :nth-child(11)) { border-radius: 50%; background: none; border: calc(var(--s) * .2) solid var(--c);
+  box-shadow: calc(var(--s) * .07) calc(var(--s) * .07) 0 var(--line); }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(6) { height: calc(var(--s) / 2); border-radius: var(--s) var(--s) 0 0; box-shadow: calc(var(--s) * .07) calc(var(--s) * .07) 0 var(--line); }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(8) { width: calc(var(--s) * .28); border-radius: var(--border-radius-full); box-shadow: calc(var(--s) * .07) calc(var(--s) * .07) 0 var(--line); }
+/* the ink dot patch is the darkest piece, so it is fainter than the colours */
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(9) { background: radial-gradient(var(--line) 28%, transparent 31%) 0 0 / 25% 25%; opacity: .2; }
+@media (prefers-color-scheme: dark) { :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(9) { opacity: .16; } }
+/* places, sizes, colours and paths: dense at the top right, a gap in the middle, a few low down */
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(1) { --s: clamp(54px, 5.4vw, 150px); --x: .1; --y: 10%; --r0: -12deg; --r1: 8deg; --t: 12s; --d: -2s; }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(2) { --s: clamp(30px, 2.8vw, 80px); --x: .52; --y: 15%; --c: var(--color-pop-teal); --r0: 12deg; --t: 52s; --d: -19s;
+  animation-name: ds-memphis-turn; animation-timing-function: linear; animation-direction: normal; }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(3) { --s: clamp(36px, 3.6vw, 104px); --x: .88; --y: 7%; --c: var(--color-pop-yellow); --dx: -1.8vw; --dy: 3.4vh; --t: 15s; --d: -9s; }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(4) { --s: clamp(12px, 1.1vw, 32px); --x: .34; --y: 27%; --c: var(--acc); --dx: 2.8vw; --dy: 2.4vh; --t: 10s; --d: -6s; }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(5) { --s: clamp(52px, 5vw, 144px); --x: .72; --y: 34%; --c: var(--color-pop-lilac); --r0: 9deg; --r1: -9deg; --t: 14s; --d: -3s; }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(6) { --s: clamp(34px, 3.4vw, 98px); --x: .2; --y: 47%; --r0: 20deg; --r1: -14deg; --dy: 3.2vh; --t: 17s; --d: -12s; }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(7) { --s: clamp(24px, 2.2vw, 64px); --x: .95; --y: 53%; --c: var(--color-pop-yellow); --r0: 20deg; --t: 64s; --d: -40s;
+  animation-name: ds-memphis-turn; animation-timing-function: linear; animation-direction: normal; }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(8) { --s: clamp(34px, 3.2vw, 92px); --x: .5; --y: 63%; --c: var(--color-pop-teal); --r0: 26deg; --r1: 60deg; --dx: -2.2vw; --t: 12s; --d: -7s; }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(9) { --s: clamp(40px, 3.6vw, 104px); --x: .8; --y: 72%; --r0: 0deg; --r1: 12deg; --dx: -1.4vw; --dy: -1.8vh; --t: 19s; --d: -5s; }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(10) { --s: clamp(10px, .9vw, 26px); --x: .63; --y: 81%; --dx: -2.6vw; --dy: -3.2vh; --t: 11s; --d: -1s; }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(11) { --s: clamp(22px, 2vw, 58px); --x: .12; --y: 75%; --c: var(--color-pop-lilac); --dx: 2.2vw; --dy: 2.2vh; --t: 16s; --d: -10s; }
+:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(12) { --s: clamp(36px, 3.4vw, 96px); --x: .36; --y: 86%; --c: var(--color-pop-teal); --r0: 8deg; --r1: -12deg; --dy: -2.2vh; --t: 13s; --d: -8s; }
+/* a laptop has a narrow margin: half the confetti */
+@media (max-width: 1500px) { :where(:root[data-theme="ds-memphis"]) .ambient > i:is(:nth-child(4), :nth-child(5), :nth-child(10), :nth-child(12)) { display: none; } }
+/* a phone has no margin: four shapes tucked at the right edge, half off the page, low behind the chat */
+@media (max-width: 700px) {
+  :where(:root[data-theme="ds-memphis"]) .ambient > i { left: auto; opacity: .28; }
+  :where(:root[data-theme="ds-memphis"]) .ambient > i:not(:nth-child(1), :nth-child(2), :nth-child(3), :nth-child(8)) { display: none; }
+  :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(1) { --s: 64px; right: -18px; top: 58%; }
+  :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(2) { --s: 30px; right: 14px; top: 66%; }
+  :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(3) { --s: 44px; right: -16px; top: 74%; }
+  :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(8) { --s: 40px; right: 20px; top: 81%; --dx: -2vw; }
+}
+@media (prefers-color-scheme: dark) and (max-width: 700px) { :where(:root[data-theme="ds-memphis"]) .ambient > i { opacity: .22; } }
