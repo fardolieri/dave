@@ -79,6 +79,11 @@
 :where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(3) { left: 96%; top: 82%; --s: 66vmax; --c: 170 112 72; --a: .05; --dx: -5vmax; --dy: -6vmax; --t: 71s; --d: -12s; }
 :where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(4) { left: 48%; top: 6%; --s: 69vmax; --c: 84 36 52; --a: .13; --dx: 5vmax; --dy: 4vmax; --t: 109s; --d: -77s; }
 :where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(5) { left: 66%; top: 52%; --s: 51vmax; --c: 130 60 62; --a: .06; --dx: -4vmax; --dy: -3vmax; --t: 89s; --d: -44s; }
+/* A fine grain over the glows. The glows are so faint that the whole wash spans only a dozen or so of the screen's
+   brightness steps, so each step shows as a wide band, a ring around each glow; no curve or colour space helps with that,
+   only noise that breaks up the edge between two steps. It does not move, so it costs nothing per frame. */
+:where(:root[data-theme="imp-kino"]) .ambient::after { content: ''; position: absolute; inset: 0; opacity: .05;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1.6 -.3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
 @keyframes imp-kino-drift { from { transform: translate(0, 0) scale(1); } to { transform: translate(var(--dx), var(--dy)) scale(1.15); } }
 /* a phone's chat is the lower half of the screen: the glows gather there */
 @media (max-width: 700px) {
