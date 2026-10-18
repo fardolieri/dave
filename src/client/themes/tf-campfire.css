@@ -52,12 +52,12 @@
   border: 0; background: #000; color: var(--fg); box-shadow: none; }
 :root[data-theme="tf-campfire"] .share.share-fs :is(.share-head, .share-bar) { background: rgba(0,0,0,.55); }
 
-/* a warm soup of embers: five big glows of the fire's colours, a little redder or more amber each, each wider than half
-   the screen, so they run into one another and leave no dark between them, only warmer and cooler patches. They lie
+/* a warm soup of embers: five big glows of the fire's colours, from deep red to amber, each wider than a third of
+   the screen, so they run into one another, with darker patches of the night between the warmer ones. They lie
    on two layers that drift slowly against each other (two to three minutes each way), so the patches shift and merge.
    Now and then one of them bursts: a handful of small sparks flies out every way from its heart, slowing as it goes
    and drifting up, and goes out; a smaller echo follows. Each bursts about every half minute to minute, on its own
-   clock. Dim on purpose: no glow is more than 9 % of its colour where it is strongest, the sparks under half strength.
+   clock. Dim on purpose: no glow is more than 8 % of its colour where it is strongest, the sparks under half strength.
    Only transform and opacity move, on two screen-sized layers and the sparks; a burst is one pseudo-element whose
    box-shadows are its sparks, scaled out from the glow's heart and moving with its layer. */
 :root[data-theme="tf-campfire"] .ambient { display: block; }
@@ -65,12 +65,12 @@
 :root[data-theme="tf-campfire"] .ambient::after { content: ''; position: absolute; inset: -15%;
   animation: tf-campfire-drift-a 150s ease-in-out -50s infinite alternate; animation-play-state: var(--ambient-play); }
 :root[data-theme="tf-campfire"] .ambient::before { background:
-    radial-gradient(circle 60vmax at 30% 30%, rgb(255 138 61 / 0.085), rgb(255 138 61 / 0.043) 50%, rgb(255 138 61 / 0)),
-    radial-gradient(circle 55vmax at 75% 62%, rgb(232 96 52 / 0.085), rgb(232 96 52 / 0.043) 50%, rgb(232 96 52 / 0)),
-    radial-gradient(circle 50vmax at 22% 85%, rgb(255 164 90 / 0.07), rgb(255 164 90 / 0.035) 50%, rgb(255 164 90 / 0)); }
+    radial-gradient(circle 40vmax at 30% 30%, rgb(255 138 61 / 0.07), rgb(255 138 61 / 0.025) 45%, rgb(255 138 61 / 0)),
+    radial-gradient(circle 38vmax at 75% 62%, rgb(190 58 40 / 0.08), rgb(190 58 40 / 0.028) 45%, rgb(190 58 40 / 0)),
+    radial-gradient(circle 34vmax at 22% 85%, rgb(255 178 96 / 0.06), rgb(255 178 96 / 0.021) 45%, rgb(255 178 96 / 0)); }
 :root[data-theme="tf-campfire"] .ambient::after { background:
-    radial-gradient(circle 55vmax at 78% 18%, rgb(214 78 52 / 0.08), rgb(214 78 52 / 0.04) 50%, rgb(214 78 52 / 0)),
-    radial-gradient(circle 60vmax at 55% 88%, rgb(245 116 58 / 0.08), rgb(245 116 58 / 0.04) 50%, rgb(245 116 58 / 0));
+    radial-gradient(circle 36vmax at 78% 18%, rgb(160 46 42 / 0.075), rgb(160 46 42 / 0.026) 45%, rgb(160 46 42 / 0)),
+    radial-gradient(circle 40vmax at 55% 88%, rgb(235 112 54 / 0.065), rgb(235 112 54 / 0.023) 45%, rgb(235 112 54 / 0));
   animation-name: tf-campfire-drift-b; animation-duration: 180s; animation-delay: -90s; }
 @keyframes tf-campfire-drift-a { to { transform: translate(8vmin, 5vmin); } }
 @keyframes tf-campfire-drift-b { to { transform: translate(-9vmin, -4vmin); } }
