@@ -74,6 +74,28 @@
 :root[data-theme="fd-walkie"] .chat-input > button:not(.emoji-open) { background: var(--chassis); border-color: var(--chassis-dk); color: var(--rubber); }
 :root[data-theme="fd-walkie"] .chat-input .emoji-open { color: var(--rubber-fg); }
 
+/* on air: from the corner where the handset's antenna stands, three rings of signal go out across the LCD, one after
+   the other, and fade before they reach the chat's lines, as when someone keys the mic; then a long quiet, and the next
+   call. Faint ink (13 % at most, 9 on a phone where they cross the lines), so the chat keeps its contrast; the room's glare drifts across the glass over half a
+   minute. Transform and opacity only. On a phone the LCD is the lower half, so the calls come in from its right edge. */
+:root[data-theme="fd-walkie"] .ambient { display: block; --wr: clamp(220px, 42vmin, 640px); --oy: 0px; --wo: .13; }
+:root[data-theme="fd-walkie"] .ambient > i:nth-child(-n+3) { top: calc(var(--oy) - var(--wr)); right: calc(-1 * var(--wr)); width: calc(var(--wr) * 2); aspect-ratio: 1;
+  border-radius: 50%; border: clamp(2px, .3vmin, 5px) solid var(--lcd-ink); opacity: 0; transform: scale(.12);
+  animation: fd-walkie-wave 16s ease-out infinite; animation-play-state: var(--ambient-play); }
+:root[data-theme="fd-walkie"] .ambient > i:nth-child(1) { animation-delay: -5s; }
+:root[data-theme="fd-walkie"] .ambient > i:nth-child(2) { animation-delay: -3.8s; }
+:root[data-theme="fd-walkie"] .ambient > i:nth-child(3) { animation-delay: -2.6s; }
+:root[data-theme="fd-walkie"] .ambient > i:nth-child(n+4) { display: none; }
+@keyframes fd-walkie-wave { 0% { opacity: 0; transform: scale(.12); } 4% { opacity: var(--wo); } 36%, 100% { opacity: 0; transform: scale(1); } }
+:root[data-theme="fd-walkie"] .ambient::after { content: ''; position: absolute; inset: 0 -14% 0 0;
+  background: linear-gradient(118deg, transparent 34%, rgba(255,255,255,.07) 41%, rgba(255,255,255,.2) 46%,
+    rgba(255,255,255,.05) 49%, rgba(255,255,255,.1) 52%, transparent 58%);
+  animation: fd-walkie-glare 30s ease-in-out -9s infinite alternate; animation-play-state: var(--ambient-play); }
+@keyframes fd-walkie-glare { to { transform: translateX(-12%); } }
+@media (max-width: 700px) {
+  :root[data-theme="fd-walkie"] .ambient { --wr: 70vw; --oy: 62vh; --wo: .09; }
+}
+
 /* shares sit in black rubber frames */
 :root[data-theme="fd-walkie"] .share { background: var(--rubber); border: 3px solid var(--rubber); border-radius: 12px; color: var(--rubber-fg); }
 :root[data-theme="fd-walkie"] .share-live { border-color: var(--chassis); }
