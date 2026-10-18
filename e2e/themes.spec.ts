@@ -229,3 +229,34 @@ test('a theme\'s own fonts load with the server gone, from the service worker', 
   await alice.connected();
   await expect.poll(fonts, { message: `${theme}: its fonts still loaded once the server is back` }).toEqual(loaded);
 });
+
+// The test above photographs every theme while Bob shares, so a theme whose background goes dark under a share (Kino's
+// house lights) is never seen lit there. Read from the computed style: a gradient the engine cannot compute (a typo, or
+// a colour syntax one engine does not take) reads as `none` without a word on the console.
+test('Kino\'s house lights are on with nobody sharing, go down under a share and come up when it ends', async ({ crowd }) => {
+  const room = { secret: newSecret(), name: 'Friday night' };
+  const alice = await crowd.open('Alice', { rooms: [room], viewport: DESKTOP });
+  // Bob shares his screen, which only Chromium's fake capture does without a picker (share.spec.ts).
+  const bob = await crowd.open('Bob', { rooms: [room], engine: 'chromium' });
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  const page = alice.page;
+  await page.getByRole('combobox', { name: 'Theme', exact: true }).selectOption('imp-kino');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'imp-kino');
+  const ambient = page.locator('.ambient');
+  const lit = () => ambient.evaluate((el) => ({
+    shown: getComputedStyle(el).display,
+    glows: [...el.children].slice(0, 5).filter((i) => getComputedStyle(i).backgroundImage.startsWith('radial-gradient')).length,
+    grain: getComputedStyle(el, '::after').backgroundImage.startsWith('url('),
+  }));
+  const on = { shown: 'block', glows: 5, grain: true };
+  await expect.poll(lit, { message: 'the house lights are on: five glows and the grain' }).toEqual(on);
+  expect(await endless(page), 'the glows stand still with reduced motion').toEqual([]);
+
+  await bob.startShare();
+  await expect(ambient, 'the house goes dark under the stage').toBeHidden();
+  await bob.stopShare();
+  await expect.poll(lit, { message: 'the lights come up again when the share ends' }).toEqual(on);
+  expect(await endless(page), 'and still stand still with reduced motion').toEqual([]);
+});
