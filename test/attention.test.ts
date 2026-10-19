@@ -17,22 +17,36 @@ describe('attention cues', () => {
   /** Feeds the watch one level every 100 ms from `from` until `to`, and returns the last reading. */
   const feed = (watch: ReturnType<typeof createMicSilenceWatch>, level: (t: number) => number | null, from: number, to: number) => {
     let last = watch(level(from), from);
-    for (let t = from + 100; t <= to; t += 100) last = watch(level(t), t);
-    return last;
+    let ever = last.silent;
+    for (let t = from + 100; t <= to; t += 100) { last = watch(level(t), t); ever ||= last.silent; }
+    return { ...last, ever };
   };
   const muted = MIC_LIVE_LEVEL / 2, live = MIC_LIVE_LEVEL * 2;
   it('calls the microphone silent once a full minute was typically below the line, clicks and all', () => {
     const watch = createMicSilenceWatch();
     // A muted headset's hiss with a click now and then, louder than a live room but not loud.
-    const hiss = (t: number) => (t % 5000 === 0 ? MIC_LOUD_LEVEL / 2 : muted);
-    expect(feed(watch, hiss, 0, MIC_SILENCE_MS - 100).silent).toBe(false);
+    const hiss = (t: number) => (t % 5000 === 2500 ? MIC_LOUD_LEVEL / 2 : muted);
+    expect(feed(watch, hiss, 0, MIC_SILENCE_MS - 100).ever).toBe(false);
     const r = feed(watch, hiss, MIC_SILENCE_MS, MIC_SILENCE_MS);
     expect(r.silent).toBe(true);
     expect(r.median).toBe(muted);
   });
   it('never calls a live microphone in a quiet room silent', () => {
     const watch = createMicSilenceWatch();
-    expect(feed(watch, (t) => (t % 3000 === 0 ? muted : live), 0, 5 * MIC_SILENCE_MS).silent).toBe(false);
+    expect(feed(watch, (t) => (t % 3000 === 0 ? muted : live), 0, 5 * MIC_SILENCE_MS).ever).toBe(false);
+  });
+  it('waits a full minute from the last live second, however long the quiet listening before it', () => {
+    const watch = createMicSilenceWatch();
+    feed(watch, () => live, 0, 2 * MIC_SILENCE_MS);
+    const t = 2 * MIC_SILENCE_MS + 100;
+    expect(feed(watch, () => muted, t, t + MIC_SILENCE_MS - 100).ever).toBe(false);
+    expect(feed(watch, () => muted, t + MIC_SILENCE_MS, t + MIC_SILENCE_MS + MIC_BACK_MS).silent).toBe(true);
+  });
+  it('does not ask when the switch goes back on as the minute ends', () => {
+    const watch = createMicSilenceWatch();
+    const t = 2 * MIC_SILENCE_MS;
+    feed(watch, () => live, 0, t);
+    expect(feed(watch, (u) => (u < t + MIC_SILENCE_MS - 300 ? muted : live), t + 100, t + MIC_SILENCE_MS + 2 * MIC_BACK_MS).ever).toBe(false);
   });
   it('is back within a second of a live level, at once on a loud moment, and waits a full minute again', () => {
     const watch = createMicSilenceWatch();
@@ -41,7 +55,7 @@ describe('attention cues', () => {
     expect(feed(watch, () => live, MIC_SILENCE_MS + 500, MIC_SILENCE_MS + MIC_BACK_MS).silent).toBe(false);
     const t = MIC_SILENCE_MS + MIC_BACK_MS + 100;
     expect(feed(watch, () => muted, t, t + MIC_SILENCE_MS / 2).silent).toBe(false);
-    expect(feed(watch, () => muted, t + MIC_SILENCE_MS / 2 + 100, t + MIC_SILENCE_MS).silent).toBe(true);
+    expect(feed(watch, () => muted, t + MIC_SILENCE_MS / 2 + 100, t + MIC_SILENCE_MS + MIC_BACK_MS).silent).toBe(true);
     expect(watch(MIC_LOUD_LEVEL * 2, t + MIC_SILENCE_MS + 100).silent).toBe(false);
   });
   it('starts the wait over while the microphone is closed or muted in the app', () => {

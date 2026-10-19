@@ -30,12 +30,12 @@ export const MIC_SILENCE_MS = 60_000;
 export const MIC_LIVE_LEVEL = 10 ** (-61 / 20);
 /** -34 dBFS, a voice or a knock: one such moment says the microphone is live. The muted hiss clicked to -43 dBFS at most. */
 export const MIC_LOUD_LEVEL = 0.02;
-/** Once silent, a second whose typical level is above the line says the microphone is back. */
+/** A second whose typical level is above the line says the microphone is live: the wait starts over, a silence ends. */
 export const MIC_BACK_MS = 1000;
 
 /**
- * Watches the open microphone for a mute the app cannot see, a switch on the headset: silent once the typical level of a
- * full MIC_SILENCE_MS stays at or below MIC_LIVE_LEVEL, the median, so a click does not start the wait over. Fed the
+ * Watches the open microphone for a mute the app cannot see, a switch on the headset: silent once no second of a full
+ * MIC_SILENCE_MS was typically above MIC_LIVE_LEVEL, the median, so a click does not start the wait over. Fed the
  * microphone's level a few times a second, or null while it is closed or muted in the app, which starts the wait over,
  * as does a loud moment. `median` is the last minute's, to tell how near the line a silence was.
  */
@@ -57,7 +57,8 @@ export function createMicSilenceWatch(): (level: number | null, now: number) => 
     since ??= now;
     readings.push({ at: now, level });
     while (readings[0]!.at < now - MIC_SILENCE_MS) readings.shift();
-    if (silent && medianSince(now - MIC_BACK_MS) > MIC_LIVE_LEVEL) { silent = false; since = now; readings = [{ at: now, level }]; }
+    // A second that sounds live starts the wait over, so the minute counts from the last moment the microphone was live.
+    if (medianSince(now - MIC_BACK_MS) > MIC_LIVE_LEVEL) { since = now; silent = false; }
     else if (!silent && now - since >= MIC_SILENCE_MS && medianSince(now - MIC_SILENCE_MS) <= MIC_LIVE_LEVEL) silent = true;
     return { silent, median: medianSince(now - MIC_SILENCE_MS) };
   };
