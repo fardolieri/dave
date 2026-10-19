@@ -175,6 +175,11 @@ async function withHeadsetSwitch(friend: Friend): Promise<void> {
       gains.push(gain);
       const out = ctx.createMediaStreamDestination();
       ctx.createMediaStreamSource(raw).connect(gain).connect(out);
+      // The fake device only beeps: a steady level besides, as a live room has, so the typical level is above the line.
+      const room = ctx.createConstantSource();
+      room.offset.value = 0.01;
+      room.connect(gain);
+      room.start();
       const track = out.stream.getAudioTracks()[0]!;
       // The app reads the processing a capture runs (call.ts, takes): the real track's, so it reopens as it would.
       track.getSettings = () => input.getSettings();
@@ -214,7 +219,7 @@ test('a microphone silent for a minute asks in the title, on my row and out loud
   await alice.page.waitForTimeout(1000);
   await expect(alice.page).toHaveTitle('🔇❓ dave 🦊');
   await expect(asked).toBeVisible();
-  await alice.page.evaluate(() => (window as unknown as { __headset: (on: boolean) => void }).__headset(true)); // the beeps are sound
+  await alice.page.evaluate(() => (window as unknown as { __headset: (on: boolean) => void }).__headset(true)); // the room is heard again
   await expect(alice.page).toHaveTitle('dave 🦊');
   await expect(asked).toHaveCount(0);
   await alice.leave();

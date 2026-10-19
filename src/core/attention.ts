@@ -20,26 +20,46 @@ export function titleFor(faces: readonly string[], micSilent = false): string {
   return `${micSilent ? '🔇❓ ' : ''}${APP_TITLE}${faces.length > 0 ? ` ${faces.join('')}` : ''}`;
 }
 
-/** How long the open microphone may hear nothing at all before the title asks whether the headset is muted. */
+/** How long the open microphone may hear nothing before the title asks whether the headset is muted. */
 export const MIC_SILENCE_MS = 60_000;
 /**
- * Any sound at all, -80 dBFS: room noise that the voice gate keeps back counts. A headset muted by its own switch sends
- * zeros, or the converter's hiss far below this.
+ * -61 dBFS, the line between a live microphone in a quiet room and a muted one, for the typical level of a minute. A
+ * headset muted by its own switch need not send zeros: one of ours sent a steady hiss, typically -65.5 dBFS, against
+ * -56 dBFS live in a quiet room with nobody speaking (2026-10-19, Chrome on Linux, automatic gain control on).
  */
-export const MIC_ACTIVITY_LEVEL = 1e-4;
+export const MIC_LIVE_LEVEL = 10 ** (-61 / 20);
+/** -34 dBFS, a voice or a knock: one such moment says the microphone is live. The muted hiss clicked to -43 dBFS at most. */
+export const MIC_LOUD_LEVEL = 0.02;
+/** Once silent, a second whose typical level is above the line says the microphone is back. */
+export const MIC_BACK_MS = 1000;
 
 /**
- * Watches the open microphone for a mute the app cannot see, a switch on the headset: silent once it has heard nothing
- * for MIC_SILENCE_MS. Fed the microphone's level a few times a second, or null while it is closed or muted in the app,
- * which starts the wait over. `peak` is the loudest level since the last sound, to tell how near the line a silence was.
+ * Watches the open microphone for a mute the app cannot see, a switch on the headset: silent once the typical level of a
+ * full MIC_SILENCE_MS stays at or below MIC_LIVE_LEVEL, the median, so a click does not start the wait over. Fed the
+ * microphone's level a few times a second, or null while it is closed or muted in the app, which starts the wait over,
+ * as does a loud moment. `median` is the last minute's, to tell how near the line a silence was.
  */
-export function createMicSilenceWatch(): (level: number | null, now: number) => { silent: boolean; peak: number } {
+export function createMicSilenceWatch(): (level: number | null, now: number) => { silent: boolean; median: number } {
+  let readings: { at: number; level: number }[] = [];
   let since: number | null = null;
-  let peak = 0;
+  let silent = false;
+  const medianSince = (from: number) => {
+    const l = readings.filter((r) => r.at >= from).map((r) => r.level).sort((a, b) => a - b);
+    return l.length > 0 ? l[Math.floor(l.length / 2)]! : 0;
+  };
   return (level, now) => {
-    if (level === null || level > MIC_ACTIVITY_LEVEL || since === null) { since = level === null ? null : now; peak = 0; }
-    else peak = Math.max(peak, level);
-    return { silent: since !== null && now - since >= MIC_SILENCE_MS, peak };
+    if (level === null || level > MIC_LOUD_LEVEL) {
+      readings = [];
+      since = level === null ? null : now;
+      silent = false;
+      return { silent, median: 0 };
+    }
+    since ??= now;
+    readings.push({ at: now, level });
+    while (readings[0]!.at < now - MIC_SILENCE_MS) readings.shift();
+    if (silent && medianSince(now - MIC_BACK_MS) > MIC_LIVE_LEVEL) { silent = false; since = now; readings = [{ at: now, level }]; }
+    else if (!silent && now - since >= MIC_SILENCE_MS && medianSince(now - MIC_SILENCE_MS) <= MIC_LIVE_LEVEL) silent = true;
+    return { silent, median: medianSince(now - MIC_SILENCE_MS) };
   };
 }
 
