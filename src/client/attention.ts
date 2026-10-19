@@ -37,15 +37,17 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
   /** Rooms whose first real snapshot (one that includes me) has arrived; nothing before it is a join. */
   const seeded = () => new Set(links().filter((l) => l.room.people().some((p) => p.publicKey === myKey)).map((l) => l.room.roomId));
 
-  // ---- title: the faces of everyone in a call, you included, each once however many calls they are in. Join order
-  // within each room: every room counts its own joins. The name is the one the avatar shows, my nickname first.
-  // A friend who lost the server but whose voice still comes through stays, after the rest, as the list keeps them.
+  // ---- title: the faces of everyone in a call, each once however many calls they are in, in the call list's order:
+  // me first, whichever room my call is in, then join order within each room (every room counts its own joins), then a
+  // friend who lost the server but whose voice still comes through. The name is the one the avatar shows, my nickname first.
   const knownPicture = new Map<string, string | undefined>();
   const faces = () => {
     const byKey = new Map<string, string>();
     const add = (publicKey: string, name: string, picture: string | undefined) => {
       if (!byKey.has(publicKey)) byKey.set(publicKey, titleFace({ name: displayName(name, contactOf(publicKey)), picture }));
     };
+    const meInCall = links().flatMap((l) => l.room.people()).find((p) => p.publicKey === myKey && p.role === 'participant');
+    if (meInCall) add(meInCall.publicKey, meInCall.name, meInCall.picture);
     for (const l of links()) {
       const people = l.room.people();
       for (const p of people) knownPicture.set(p.publicKey, p.picture);
