@@ -14,7 +14,7 @@ export type RoomLink = { room: ReturnType<typeof createRoom>; call: ReturnType<t
 
 /**
  * Attention cues (spec §7.4) and the screen wake lock (spec §6.5) across every room: the faces of the call in the title,
- * focused or not, quiet chimes when others join or leave a call or start sharing, each friend's own, a tick for
+ * focused or not, which also asks about a silent microphone, quiet chimes when others join or leave a call or start sharing, each friend's own, a tick for
  * messages, and the screen kept awake while watching a share or, on a phone, while in a call. Everything derives from
  * room and call signals.
  */
@@ -56,7 +56,8 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
     }
     return [...byKey.values()];
   };
-  createEffect(() => titleFor(faces()), (title) => { document.title = title; });
+  const micSilent = () => links().some((l) => l.call.micSilent());
+  createEffect(() => titleFor(faces(), micSilent()), (title) => { document.title = title; });
 
   // ---- chimes: each friend's own cue from their profile picture (ticket 23)
   const disarm = armSound();

@@ -1,10 +1,34 @@
 import { describe, expect, it } from 'vitest';
-import { callDiff, sharesStarted, titleFace, titleFor } from '../src/core/attention';
+import { MIC_SILENCE_MS, MIC_SOUND_LEVEL, callDiff, createMicSilenceWatch, sharesStarted, titleFace, titleFor } from '../src/core/attention';
 
 describe('attention cues', () => {
   it('shows the faces of the call in the title, focused or not', () => {
     expect(titleFor([])).toBe('dave');
     expect(titleFor(['🦎', '𝗠', '☯️'])).toBe('dave 🦎𝗠☯️');
+  });
+  it('puts a question in front of the title for a silent microphone', () => {
+    expect(titleFor(['🦎', '𝗠'], true)).toBe('🔇❓ dave 🦎𝗠');
+    expect(titleFor([], true)).toBe('🔇❓ dave');
+  });
+  it('calls the microphone silent after a minute without a sound clearly heard, and a cough ends it', () => {
+    const watch = createMicSilenceWatch();
+    const hiss = MIC_SOUND_LEVEL / 3, click = MIC_SOUND_LEVEL * 0.7, cough = MIC_SOUND_LEVEL * 5;
+    expect(watch(hiss, 0)).toBe(false);
+    expect(watch(click, 1000)).toBe(false); // the switch's click is not a sound that counts
+    expect(watch(hiss, MIC_SILENCE_MS - 1)).toBe(false);
+    expect(watch(hiss, MIC_SILENCE_MS)).toBe(true);
+    expect(watch(0, MIC_SILENCE_MS + 100)).toBe(true);
+    expect(watch(cough, MIC_SILENCE_MS + 200)).toBe(false);
+    expect(watch(hiss, 2 * MIC_SILENCE_MS + 199)).toBe(false);
+    expect(watch(hiss, 2 * MIC_SILENCE_MS + 200)).toBe(true);
+  });
+  it('starts the wait over while the microphone is closed or muted in the app', () => {
+    const watch = createMicSilenceWatch();
+    watch(0, 0);
+    expect(watch(null, MIC_SILENCE_MS)).toBe(false);
+    expect(watch(0, MIC_SILENCE_MS + 1)).toBe(false);
+    expect(watch(0, 2 * MIC_SILENCE_MS)).toBe(false);
+    expect(watch(0, 2 * MIC_SILENCE_MS + 1)).toBe(true);
   });
   it('shows a face as the profile picture, else the initial in bold', () => {
     expect(titleFace({ name: 'Dani', picture: '🦎' })).toBe('🦎');

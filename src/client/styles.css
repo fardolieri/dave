@@ -190,6 +190,8 @@ dialog.viewer img { display: block; max-width: 96vw; max-height: 96dvh; object-f
 @media (prefers-reduced-motion: reduce) { .plist li { transition: none; } }
 .avatar.speaking { box-shadow: 0 0 0 2px var(--ok); }
 .plist em { font-style: normal; font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+/* Above every theme's own .plist em: the silent microphone (call.ts, watchMicSilence) is a warning in every look. */
+:root .plist .pflags > em.micsilent { color: var(--warn); border-color: currentColor; }
 /* Centred on the line box the dot rode above the lowercase letters; nudged down it sits level with them.
    The margins keep the line as tall as the text's when the list shows the dot alone. */
 .conn { font-size: 11px; display: inline-flex; align-items: center; gap: 4px; }

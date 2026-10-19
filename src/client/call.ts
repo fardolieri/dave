@@ -21,6 +21,7 @@ import {
   type AudioSettings, type ShareSettings, type ViewerSettings,
 } from '../core/settings';
 import { REJOIN_HEARTBEAT_MS, rejoinFor, type RejoinMarker } from '../core/rejoin';
+import { createMicSilenceWatch } from '../core/attention';
 import type { createRoom } from './room';
 import { cueContext, tryUnlockSound } from './sound';
 import { restartOnFailure, type ContextStarter } from './audiofailure';
@@ -356,6 +357,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (a.microphoneId) c.deviceId = { ideal: a.microphoneId };
     return c;
   }
+  /** Reopens under way: the silence watch waits them out. */
+  let reopening = 0;
   /** The constraints the live microphone was opened with, to tell whether the settings now ask for another. */
   let micOpenedWith = '';
   const capture = async (c: MediaTrackConstraints): Promise<MediaStream | null> => {
@@ -376,6 +379,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   async function reopenMicrophone(c: MediaTrackConstraints): Promise<boolean> {
     const old = voiceTrack;
     if (!old) return false;
+    reopening++;
+    try { return await swapMicrophone(old, c); } finally { reopening--; }
+  }
+  async function swapMicrophone(old: MediaStreamTrack, c: MediaTrackConstraints): Promise<boolean> {
     let stream = await capture(c);
     if (stream && voiceTrack === old && !takes(stream, c)) {
       stream.getTracks().forEach((t) => t.stop());
@@ -859,8 +866,50 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     for (const v of buf) sum += v * v;
     return Math.sqrt(sum / buf.length);
   };
+  /** The open microphone has heard nothing for a minute: perhaps the headset's own switch muted it, perhaps only quiet. */
+  const [micSilent, setMicSilentSignal] = createSignal(false);
+  let micQuiet = false;
+  let silentSince = 0;
+  const micSilence = createMicSilenceWatch();
+  const coarsePointer = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+  /**
+   * The microphone's level over its last 0.68 s, from an analyser of its own: a hidden tab reads it once a second, and a
+   * cough must not fall between two readings. The analyser goes with the microphone's source when that is replaced.
+   */
+  let silenceTap: { src: MediaStreamAudioSourceNode; an: AnalyserNode; buf: Float32Array<ArrayBuffer> } | null = null;
+  const micLevel = (): number | null => {
+    const src = sources.get('me');
+    if (!src) return null;
+    if (silenceTap?.src !== src) {
+      const an = src.context.createAnalyser();
+      an.fftSize = 32768;
+      src.connect(an);
+      silenceTap = { src, an, buf: new Float32Array(an.fftSize) };
+    }
+    silenceTap.an.getFloatTimeDomainData(silenceTap.buf);
+    let sum = 0;
+    for (const v of silenceTap.buf) sum += v * v;
+    return Math.sqrt(sum / silenceTap.buf.length);
+  };
+  function watchMicSilence(now: number): void {
+    // A reopen stops the old track before the new one runs: no sound comes in meanwhile, and none was missed either.
+    if (reopening > 0) return;
+    // Read only while the microphone can carry sound: a closed, app-muted (a mic test opens the track) or ended track, or a stopped context (a phone
+    // in a phone call), reads as zeros. A track the system muted is read, as a muted headset would be; not on a phone in
+    // the background, which mutes the track itself.
+    const open = joined && !muted() && voiceTrack?.enabled === true && voiceTrack.readyState === 'live' && audioCtx?.state === 'running'
+      && !(voiceTrack.muted && document.hidden && coarsePointer);
+    const level = open ? micLevel() : null;
+    const silentNow = micSilence(level, now);
+    if (silentNow === micQuiet) return;
+    micQuiet = silentNow;
+    setMicSilentSignal(micQuiet);
+    if (micQuiet) { silentSince = now; posthog.capture('mic_silent', { trackMuted: voiceTrack?.muted ?? null, agc: voiceTrack?.getSettings().autoGainControl ?? null }); }
+    else posthog.capture('mic_silence_ended', { ms: now - silentSince, by: level !== null ? 'sound' : muted() ? 'muted' : 'closed' });
+  }
   const lastLoud = new Map<string, number>();
   const speakingTimer = setInterval(() => {
+    watchMicSilence(Date.now());
     if (!audioCtx) return;
     const now = Date.now();
     const loud = (key: string, an: AnalyserNode | null | undefined, gate: boolean) => {
@@ -1998,7 +2047,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   exposeDevHook();
 
   return {
-    inCall, muted: () => muted() || micProblem() !== null, micProblem, views, speakingSelf, joinError, join: () => join(), leave, setMuted, myJoinSeq: () => myJoinSeq, audioBlocked, unblockAudio,
+    inCall, muted: () => muted() || micProblem() !== null, micProblem, micSilent, views, speakingSelf, joinError, join: () => join(), leave, setMuted, myJoinSeq: () => myJoinSeq, audioBlocked, unblockAudio,
     noiseRemoval, noiseRemovalStop, voiceLevel,
     micTest, hasMicTestClip: hasClip, canRecordMicTest: typeof MediaRecorder !== 'undefined', hearYourself, recordMicTest, playMicTest, stopMicTest,
     sharing, shareError, outgoing, startShare, stopShare, watch, watchOnly, shareStreamOf,
