@@ -1,29 +1,28 @@
 import { createEffect, onCleanup, untrack } from 'solid-js';
-import { callDiff, sharesStarted, titleFor } from '../core/attention';
+import { callDiff, sharesStarted, titleFace, titleFor } from '../core/attention';
 import { MESSAGE_CUE, joinCue, leaveCue, shareCue, type Cue } from '../core/cue';
 import { armSound, playCue } from './sound';
 import { getPicture } from './invite';
+import { contactOf } from './contacts';
+import { displayName } from '../core/names';
 import type { createRoom } from './room';
 import type { createCall } from './call';
 import { exposeHooks } from './hooks';
-import { windowFocused } from './focus';
 
 /** One room this browser is connected to, with its call. The list changes as rooms are added and left. */
 export type RoomLink = { room: ReturnType<typeof createRoom>; call: ReturnType<typeof createCall> };
 
 /**
- * Attention cues (spec §7.4) and the screen wake lock (spec §6.5) across every room: title badge while
- * the window is unfocused, quiet chimes when others join or leave a call or start sharing, each friend's own, a tick for
- * messages, and the screen kept awake while watching a share or, on a phone, while in a call. Platform state (focus,
- * visibility) is mirrored into a signal once; everything else derives from room and call signals.
+ * Attention cues (spec §7.4) and the screen wake lock (spec §6.5) across every room: the faces of the call in the title,
+ * focused or not, quiet chimes when others join or leave a call or start sharing, each friend's own, a tick for
+ * messages, and the screen kept awake while watching a share or, on a phone, while in a call. Everything derives from
+ * room and call signals.
  */
 export function createAttention(links: () => RoomLink[], myKey: string): void {
-  const unfocused = () => !windowFocused();
 
   // Participants are keyed per room, so a friend in two calls at once counts twice: two things are happening.
   const tag = (roomId: string, publicKey: string) => `${roomId} ${publicKey}`;
   const participants = (except?: string) => new Set(links().flatMap((l) => l.room.people().filter((p) => p.role === 'participant' && p.publicKey !== except).map((p) => tag(l.room.roomId, p.publicKey))));
-  const inCall = () => participants();
   const others = () => participants(myKey);
   const sharers = () => new Set(links().flatMap((l) => l.room.people().filter((p) => p.role === 'participant' && p.sharing && p.publicKey !== myKey).map((p) => tag(l.room.roomId, p.publicKey))));
   /**
@@ -38,8 +37,24 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
   /** Rooms whose first real snapshot (one that includes me) has arrived; nothing before it is a join. */
   const seeded = () => new Set(links().filter((l) => l.room.people().some((p) => p.publicKey === myKey)).map((l) => l.room.roomId));
 
-  // ---- title badge: everyone in the call, you included, so a one-on-one reads "2 in call"
-  createEffect(() => titleFor(inCall().size, unfocused()), (title) => { document.title = title; });
+  // ---- title: the faces of everyone in a call, you included, each once however many calls they are in. Join order
+  // within each room: every room counts its own joins. The name is the one the avatar shows, my nickname first.
+  // A friend who lost the server but whose voice still comes through stays, after the rest, as the list keeps them.
+  const knownPicture = new Map<string, string | undefined>();
+  const faces = () => {
+    const byKey = new Map<string, string>();
+    const add = (publicKey: string, name: string, picture: string | undefined) => {
+      if (!byKey.has(publicKey)) byKey.set(publicKey, titleFace({ name: displayName(name, contactOf(publicKey)), picture }));
+    };
+    for (const l of links()) {
+      const people = l.room.people();
+      for (const p of people) knownPicture.set(p.publicKey, p.picture);
+      for (const p of people.filter((p) => p.role === 'participant').sort((a, b) => (a.joinSeq ?? 0) - (b.joinSeq ?? 0))) add(p.publicKey, p.name, p.picture);
+      if (l.call.inCall()) for (const v of l.call.views()) if (v.serverLost) add(v.publicKey, v.name, knownPicture.get(v.publicKey));
+    }
+    return [...byKey.values()];
+  };
+  createEffect(() => titleFor(faces()), (title) => { document.title = title; });
 
   // ---- chimes: each friend's own cue from their profile picture (ticket 23)
   const disarm = armSound();
@@ -119,6 +134,6 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
     disarm();
     document.removeEventListener('visibilitychange', syncWakeLock);
     void sentinel?.release();
-    document.title = titleFor(0, false);
+    document.title = titleFor([]);
   });
 }

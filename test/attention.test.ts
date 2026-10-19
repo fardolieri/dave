@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { callDiff, sharesStarted, titleFor } from '../src/core/attention';
+import { callDiff, sharesStarted, titleFace, titleFor } from '../src/core/attention';
 
 describe('attention cues', () => {
-  it('badges the title only while hidden and while someone is in the call', () => {
-    expect(titleFor(0, true)).toBe('dave');
-    expect(titleFor(3, false)).toBe('dave');
-    expect(titleFor(3, true)).toBe('(3 in call) dave');
+  it('shows the faces of the call in the title, focused or not', () => {
+    expect(titleFor([])).toBe('dave');
+    expect(titleFor(['🦎', '𝗠', '☯️'])).toBe('dave 🦎𝗠☯️');
+  });
+  it('shows a face as the profile picture, else the initial in bold', () => {
+    expect(titleFace({ name: 'Dani', picture: '🦎' })).toBe('🦎');
+    expect(titleFace({ name: 'mare' })).toBe('𝗠');
+    expect(titleFace({ name: 'Zoë', picture: null })).toBe('𝗭');
+    expect(titleFace({ name: 'Ömer' })).toBe('Ö');
   });
   const view = (present: string[], kept: string[] = []) => ({ present: new Set(present), kept: new Set(kept) });
   it('diffs joins and leaves, ignoring yourself', () => {

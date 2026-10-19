@@ -2,9 +2,19 @@
 
 export const APP_TITLE = 'dave';
 
-/** Title shown while the tab is unfocused: a badge with how many people are in the Call, you included. */
-export function titleFor(participantsInCall: number, unfocused: boolean): string {
-  return unfocused && participantsInCall > 0 ? `(${participantsInCall} in call) ${APP_TITLE}` : APP_TITLE;
+/**
+ * How a person shows in the tab's title: the profile picture, else the initial of the name the avatar shows, in a bold
+ * letter so it reads as a face and not as part of a word.
+ */
+export function titleFace(person: { name: string; picture?: string | null }): string {
+  if (person.picture) return person.picture;
+  const initial = [...person.name][0]?.toUpperCase() ?? '?';
+  return /^[A-Z]$/.test(initial) ? String.fromCodePoint(0x1d5d4 + initial.charCodeAt(0) - 65) : initial;
+}
+
+/** The tab's title, focused or not: the faces of everyone in the Call, you included, in the order they joined. */
+export function titleFor(faces: readonly string[]): string {
+  return faces.length > 0 ? `${APP_TITLE} ${faces.join('')}` : APP_TITLE;
 }
 
 /** One view of the Call for cues: who presence lists as a participant, and whom I still hold a peer connection to. */
