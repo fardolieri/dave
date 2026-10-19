@@ -1,6 +1,6 @@
 # 59 · Flake: a friend whose browser closed in Firefox stays online for the others past 20 s
 
-Status: fixed on branch flake/59-closed-friend-goodbye, 2026-10-19; outcome 1 of ticket 35 (the test is wrong)
+Status: shipped 2026-10-19 to prod (7a8ed3d, nightly e2e green first); fixed on branch flake/59-closed-friend-goodbye, 2026-10-19; outcome 1 of ticket 35 (the test is wrong)
 Seen 2026-10-18: the preview run of PR #75 (39087065000, head eb353ce, against `dave-pr-75`), Firefox, shard 2, passed on
 the retry: `attachment.spec.ts:452` "a file sent again by a second friend comes from her while the first is away". After
 `alice.close()`, `bob.online()` still listed Alice 20 s later (`["Carol", "Alice", "Bob"]`). The retry saw her go within

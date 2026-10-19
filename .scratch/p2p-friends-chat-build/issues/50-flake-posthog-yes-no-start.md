@@ -1,6 +1,6 @@
 # 50 · Flake: PostHog did not start in 20 s after the yes (not pinned down)
 
-Status: likely found 2026-10-19, fixed on branch flake/59-closed-friend-goodbye (outcome 1 of ticket 35, the test is wrong); shipped 2026-10-14 to prod (41657fb): the e2e workflow now keeps the failed try of a test that passed on its retry
+Status: likely found, shipped 2026-10-19 to prod (7a8ed3d, nightly e2e green first); fixed on branch flake/59-closed-friend-goodbye (outcome 1 of ticket 35, the test is wrong); shipped 2026-10-14 to prod (41657fb): the e2e workflow now keeps the failed try of a test that passed on its retry
 Seen 2026-10-12: e2e run 38252207798 (local build, branch flake/worker-test-nightly), job 114821122667, Firefox shard 3:
 `privacy.spec.ts` "a yes starts PostHog and tells the server; stopping forgets it again" failed on its first try and
 passed on the retry (8.5 s). After the click on "Sure!", no request to PostHog in 20 s ("PostHog started after the yes",
