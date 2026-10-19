@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, OUT_OF_DATE, type Person } from '../src/core/protocol';
+import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, MAX_SEALED_LENGTH, OUT_OF_DATE, type Person } from '../src/core/protocol';
 import { onMessage, presenceSnapshot, type SocketState } from '../src/core/room';
 import { newBucket } from '../src/core/ratelimit';
 
@@ -24,6 +24,11 @@ describe('protocol', () => {
     for (const sealed of [undefined, '', 'not base64!', 7]) {
       expect(parseClientMessage(JSON.stringify({ t: 'sealed', sealed, id: 'a1b2' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'sealed' });
     }
+    // ADR 0007: a private text names its friend; one too long is refused by its id, which the writer's app goes by.
+    expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: 'c2Vh', id: 'a1b2' }))).toEqual({ t: 'private', to: 'pkB', sealed: 'c2Vh', id: 'a1b2' });
+    expect(parseClientMessage(JSON.stringify({ t: 'private', sealed: 'c2Vh', id: 'a1b2' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'private', id: 'a1b2' });
+    expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: 'c2Vh' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'private' });
+    expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: 'x'.repeat(MAX_SEALED_LENGTH + 1), id: 'a1b2' }))).toEqual({ t: 'invalid', reason: 'message longer than 2000 characters', ref: 'private', id: 'a1b2' });
     const bad = { t: 'invalid', reason: 'unrecognised message' };
     // ADR 0005: only an app from before sealed texts sends a plain one.
     expect(parseClientMessage(JSON.stringify({ t: 'text', text: 'x', id: 'a1b2' }))).toEqual({ t: 'invalid', reason: OUT_OF_DATE, ref: 'text' });
@@ -52,6 +57,13 @@ describe('protocol', () => {
     expect(parseClientMessage(JSON.stringify({ ...ok, authKey }))).toEqual({ ...ok, name: 'Dave Smith', authKey });
     expect(parseClientMessage(JSON.stringify({ ...ok, authKey: 'short' }))).toMatchObject({ t: 'invalid' });
     expect(parseClientMessage(JSON.stringify({ ...ok, authKey: 42 }))).toMatchObject({ t: 'invalid' });
+    // ADR 0007: the private text key and its signature, of the lengths a P-256 point and signature have.
+    const privateTexts = { key: 'k'.repeat(87), sig: 's'.repeat(86) };
+    expect(parseClientMessage(JSON.stringify({ ...ok, privateTexts }))).toEqual({ ...ok, name: 'Dave Smith', privateTexts });
+    // One of another shape is left out: the friend gets in, without private texts.
+    for (const bad of [null, 'k', { key: 'k'.repeat(86), sig: 's'.repeat(86) }, { key: 'k'.repeat(87) }, { key: 'k'.repeat(87), sig: '!'.repeat(86) }]) {
+      expect(parseClientMessage(JSON.stringify({ ...ok, privateTexts: bad }))).toEqual({ ...ok, name: 'Dave Smith' });
+    }
   });
 
   it('takes one emoji as the profile picture, in auth and on its own; null clears it', () => {

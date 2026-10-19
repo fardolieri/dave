@@ -1,6 +1,6 @@
 import { idbDelete, idbGet, idbRead, idbSet, local, type ParsedIdbKey } from './storage';
 import { MAX_HISTORY, type StoredText } from '../core/chatlog';
-import { UNSENT_MAX, type UnsentText } from '../core/unsent';
+import { UNSENT_MAX, type UnsentPrivate, type UnsentText } from '../core/unsent';
 import type { Identity } from '../core/protocol';
 
 /**
@@ -21,11 +21,14 @@ export function loadHistory(roomId: string): Promise<StoredText[]> {
 }
 
 let chain: Promise<void> = Promise.resolve();
-/** Appends one line, de-duplicated by key, trimming to the cap. Writes are serialised. */
+/**
+ * Appends one line, de-duplicated by key, and by writer and id: a text sent again (another tab of mine took it over, say)
+ * comes back with another time. Trims to the cap. Writes are serialised.
+ */
 export function appendHistory(roomId: string, m: StoredText): Promise<void> {
   chain = chain.then(async () => {
     const list = await read(keyFor(roomId));
-    if (list.some((x) => textKey(x) === textKey(m))) return;
+    if (list.some((x) => textKey(x) === textKey(m) || (m.id !== undefined && x.id === m.id && x.from.publicKey === m.from.publicKey))) return;
     list.push(m);
     await idbSet(keyFor(roomId), list.slice(-MAX_HISTORY));
   }).catch((e) => console.warn('history write failed', e));
@@ -59,7 +62,18 @@ export function keepUnsent(roomId: string, texts: UnsentText[]): void {
   else local.remove('unsent');
 }
 
-export const forgetUnsent = (roomId: string): void => keepUnsent(roomId, []);
+export const forgetUnsent = (roomId: string): void => { keepUnsent(roomId, []); keepUnsentPrivate(roomId, []); };
+
+/** My private texts in a room not back from the Room yet (ADR 0007), as a reload finds them; kept like `unsent`. */
+export const loadUnsentPrivate = (roomId: string): UnsentPrivate[] => local.read('unsentPrivate')[roomId] ?? [];
+
+export function keepUnsentPrivate(roomId: string, texts: UnsentPrivate[]): void {
+  const all = local.read('unsentPrivate');
+  if (texts.length) all[roomId] = texts;
+  else delete all[roomId];
+  if (Object.keys(all).length) local.set('unsentPrivate', JSON.stringify(all));
+  else local.remove('unsentPrivate');
+}
 
 /** One-time: the history from before rooms belongs to the room the old single secret became. */
 export function adoptLegacyHistory(roomId: string): Promise<void> {

@@ -393,17 +393,51 @@ function Workspace(props: WorkspaceProps) {
   // Not over an open dialog or popover (Report a problem, a profile card) or a share in fullscreen: those sit above the
   // frame, so a file staged from there would be staged unseen, to go with the next Enter. The cursor says no instead.
   const onTop = (t: EventTarget | null) => t instanceof Element && !!(t.closest('dialog[open], [popover]') || document.fullscreenElement?.contains(t));
+  /**
+   * The friend the composer writes to privately (ADR 0007), by key, in the room on screen; null writes to the room. Set
+   * from their profile card or a private text of theirs, and cleared with the composer's ✕, Escape, or another room.
+   */
+  const [privateTo, setPrivateTo] = createSignal<string | null>(null);
+  createEffect(() => current(), (now, prev) => { if (prev !== undefined && now !== prev) setPrivateTo(null); });
+  /** Who the composer writes to privately, and their presence entry while they are in the room on screen, else null. */
+  const privateFriend = createMemo(() => {
+    const key = privateTo();
+    if (!key) return null;
+    const p = current()?.room.people().find((x) => x.publicKey === key);
+    return { key, name: p ? labelOf(p).shown : displayName(contactOf(key)?.name ?? 'that friend', contactOf(key)), person: p ?? null };
+  });
+  /** Why a friend cannot be written to privately from the room on screen, or null when they can. */
+  const privateBlocked = (key: string): string | null => {
+    if (!identity.privateTexts) return "This browser can't keep a private text key";
+    const p = current()?.room.people().find((x) => x.publicKey === key);
+    if (!p) return `Not in ${current()?.saved.name ?? 'this room'}`;
+    return p.privateTexts ? null : "Their app can't take private texts (out of date?)";
+  };
+  const writePrivately = (key: string) => {
+    if (key === me || privateBlocked(key)) return;
+    setPrivateTo(key);
+    posthog.capture('private_text_started');
+  };
   // The files in the order shown, then the text, as a message with pictures reads: handed to the room together, which
   // sends them in that order. One that could not be read is dropped; its chip said so.
-  const send = (text: string) => {
+  /** Hands the composer's text and files to the room on screen; false when they stay in the composer. */
+  const send = (text: string): boolean => {
     const room = current()?.room;
     const files = staged();
-    if (!room || !files.every(settled)) return;
+    if (!room || !files.every(settled)) return false;
+    const priv = privateFriend();
+    if (priv) {
+      // Text only: an attachment's announcement goes to the whole room (the composer says so).
+      if (files.length || !text || !priv.person || !room.sendPrivate(priv.person, text)) return false;
+      setJumpToken((n) => n + 1);
+      return true;
+    }
     setStaged([]);
     for (const x of files) if (x.url) URL.revokeObjectURL(x.url);
     for (const x of files) if (x.prepared) room.sendPrepared(x.prepared);
     if (text) room.sendText(text);
     setJumpToken((n) => n + 1);
+    return true;
   };
   // When the room on screen came on screen: texts from well before then start out folded away (ticket 38).
   const openedAt = createMemo(() => (current(), Date.now()));
@@ -533,7 +567,8 @@ function Workspace(props: WorkspaceProps) {
               </Show>
             </div>
           </aside>
-          <ProfileCard open={profile()} people={withMe()} me={me} label={labelOf} onClose={() => setProfile(null)} onRenameSelf={renameSelf} onPictureSelf={pictureSelf} />
+          <ProfileCard open={profile()} people={withMe()} me={me} label={labelOf} onClose={() => setProfile(null)} onRenameSelf={renameSelf} onPictureSelf={pictureSelf}
+                       privateBlocked={privateBlocked} onPrivate={(key) => { setProfile(null); writePrivately(key); }} />
           <Banner status={bannerStatus(cur())} onTakeOver={() => { for (const l of links()) l.room.takeOver(); }} />
           <Show when={sharers().length > 0 && stage()}>{(s) => (
             <section class="shares" style={`grid-template-columns: repeat(${sharers().length}, 1fr)`}>
@@ -556,10 +591,11 @@ function Workspace(props: WorkspaceProps) {
               </For>
             </section>
           )}</Show>
-          <ChatLog lines={cur().room.lines()} openedAt={openedAt()} jumpToken={jumpToken()} label={labelOf}
+          <ChatLog lines={cur().room.lines()} openedAt={openedAt()} jumpToken={jumpToken()} label={labelOf} me={me} onPrivate={writePrivately} privateBlocked={privateBlocked}
                    attachment={(hash) => cur().room.attachment(hash)} onPull={(hash) => cur().room.pull(hash)} onCancel={(hash) => cur().room.cancelPull(hash)} />
         </div>
         <Composer connected={connected()} writable={writable()} roomName={cur().saved.name} onSend={send}
+                  privateTo={privateFriend() ? { key: privateFriend()!.key, name: privateFriend()!.name, blocked: privateBlocked(privateFriend()!.key) } : null} onPublic={() => setPrivateTo(null)}
                   staged={staged()} onStage={stageFile} onUnstage={unstageFile}>
           {/* Anchored to the composer's top edge, whatever its height on this device (ticket 32) */}
           <Show when={consent() === null || askingConsent()}><TelemetryNotice onAnswer={(c) => { setConsent(c); setAskingConsent(false); }} /></Show>
@@ -691,12 +727,17 @@ function PersonRow(props: { p: Person; isMe: boolean; label: Label; onProfile: (
  * profile picture from the emoji picker, which opens from your own big avatar. Follows presence
  * live, so a friend renaming themselves while the card is open shows up, and closes if they leave.
  */
-function ProfileCard(props: { open: { publicKey: string; anchor: HTMLElement } | null; people: Person[]; me: string; label: (id: Identity) => Label; onClose: () => void; onRenameSelf: (name: string) => void; onPictureSelf: (picture: string | null) => void }) {
+function ProfileCard(props: {
+  open: { publicKey: string; anchor: HTMLElement } | null; people: Person[]; me: string; label: (id: Identity) => Label; onClose: () => void; onRenameSelf: (name: string) => void; onPictureSelf: (picture: string | null) => void;
+  /** Why this friend cannot be written to privately from the room on screen, or null (ADR 0007). */
+  privateBlocked: (publicKey: string) => string | null; onPrivate: (publicKey: string) => void;
+}) {
   let card: HTMLDivElement | undefined;
   let input: HTMLInputElement | undefined;
   let ownAvatar: HTMLButtonElement | undefined;
   const person = createMemo(() => (props.open ? props.people.find((p) => p.publicKey === props.open!.publicKey) ?? null : null));
   const isMe = () => person()?.publicKey === props.me;
+  const privateBlocked = createMemo(() => (person() ? props.privateBlocked(person()!.publicKey) : null));
   const contact = () => (person() ? contactOf(person()!.publicKey) : undefined);
   const [editing, setEditing] = createSignal(false);
   const [draft, setDraft] = createSignal('');
@@ -790,6 +831,13 @@ function ProfileCard(props: { open: { publicKey: string; anchor: HTMLElement } |
               <dt>Known since</dt><dd title={contact() ? new Date(contact()!.since).toLocaleString() : undefined}>{knownAgo(contact()) ?? 'now'}</dd>
             </Show>
           </dl>
+          <Show when={!isMe() && !editing()}>
+            <button class="private-open" disabled={privateBlocked() !== null} onClick={() => props.onPrivate(p().publicKey)}
+                    title={privateBlocked() ?? `Only ${props.label(p()).shown} can read it; the server cannot`}>
+              🔒 Message privately
+            </button>
+            <Show when={privateBlocked()}>{(why) => <span class="dim">{why()}</span>}</Show>
+          </Show>
         </>
       )}</Show>
     </div>
@@ -1386,8 +1434,10 @@ async function originalPicture(url: string, still: File): Promise<File | null> {
  */
 function Composer(props: {
   connected: boolean; writable: boolean; roomName: string; children?: any;
-  /** Sends the text (maybe empty) with the staged files. */
-  onSend: (text: string) => void;
+  /** The friend this writes to privately (ADR 0007), and why they cannot be written to now, if so; null writes to the room. */
+  privateTo: { key: string; name: string; blocked: string | null } | null; onPublic: () => void;
+  /** Sends the text (maybe empty) with the staged files; false when it was not taken, and stays in the field. */
+  onSend: (text: string) => boolean;
   staged: Staged[]; onStage: (file: File, original?: Promise<File | null>) => void; onUnstage: (id: number) => void;
 }) {
   const [draft, setDraft] = createSignal('');
@@ -1407,13 +1457,21 @@ function Composer(props: {
   // A file staged from the attach button or a drop: Enter sends it, so the text field takes the focus where there is a
   // keyboard. A phone's would cover the chat, and it has the Send button.
   createEffect(() => props.staged.length, (n, prev) => { if (n > (prev ?? 0) && matchMedia('(pointer: fine)').matches) input?.focus(); });
+  // Writing privately starts from a profile card or a chat line: the text field takes the focus, where there is a keyboard.
+  // A draft written privately goes with it when that ends (✕, Escape, another room, another friend): the next Enter
+  // would send it to more people than it was written for.
+  createEffect(() => props.privateTo?.key, (key, prev) => {
+    if (prev && key !== prev) setDraft('');
+    if (key && matchMedia('(pointer: fine)').matches) input?.focus();
+  });
+  /** Why Send cannot send right now while writing privately, or null. */
+  const privateHeld = () => (!props.privateTo ? null : props.privateTo.blocked ? `Can't write to ${props.privateTo.name} privately (${props.privateTo.blocked})` : props.staged.length ? 'Files go to the whole room: remove them, or stop writing privately' : null);
   const submit = (e: Event) => {
     e.preventDefault();
     const text = draft().trim();
     // Waits for files still being made ready: the text stays, and Send says why.
-    if ((!text && !props.staged.length) || !props.writable || !props.staged.every(settled)) return;
-    props.onSend(text);
-    setDraft('');
+    if ((!text && !props.staged.length) || !props.writable || !props.staged.every(settled) || privateHeld()) return;
+    if (props.onSend(text)) setDraft('');
   };
   const insert = (emoji: string) => {
     const at = input?.selectionStart ?? draft().length;
@@ -1426,7 +1484,13 @@ function Composer(props: {
     queueMicrotask(() => { input?.focus(); input?.setSelectionRange(at + emoji.length, at + emoji.length); });
   };
   return (
-    <form class="chat-input" onSubmit={submit}>
+    <form class={props.privateTo ? 'chat-input private' : 'chat-input'} onSubmit={submit}>
+      <Show when={props.privateTo}>{(to) => (
+        <div class="private-to">
+          <span>🔒 Privately to <strong>{to().name}</strong>{to().blocked ? ` (${to().blocked})` : ', only they can read it'}</span>
+          <button type="button" class="unstage" onClick={props.onPublic} title="Write to the whole room again" aria-label="Stop writing privately">✕</button>
+        </div>
+      )}</Show>
       <Show when={props.staged.length}>
         <ul class="staged" aria-label="To send">
           <For each={props.staged}>{(x) => (
@@ -1443,14 +1507,20 @@ function Composer(props: {
         <button type="button" class="emoji-open" ref={emojiButton} popovertarget="composer-emoji" disabled={!props.writable} title="Emoji" aria-label="Emoji">🙂</button>
         <EmojiPicker id="composer-emoji" anchor={() => emojiButton} onPick={insert} />
         <input ref={input} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} onPaste={onPaste} disabled={!props.writable} maxlength={MAX_TEXT_LENGTH}
-               placeholder={props.connected ? `Message ${props.roomName}` : props.writable ? `Message ${props.roomName}, sent once reconnected` : holding() ? 'A new version of dave is loading…' : "Can't send while disconnected"} />
+               onKeyDown={(e) => {
+                 // Escape closes an open picker first; only then does it end writing privately (and the draft with it).
+                 if (e.key !== 'Escape' || !props.privateTo || e.isComposing || document.querySelector(':popover-open')) return;
+                 e.preventDefault();
+                 props.onPublic();
+               }}
+               placeholder={props.privateTo && props.writable ? `Message ${props.privateTo.name} privately${props.connected ? '' : ', sent once reconnected'}` : props.connected ? `Message ${props.roomName}` : props.writable ? `Message ${props.roomName}, sent once reconnected` : holding() ? 'A new version of dave is loading…' : "Can't send while disconnected"} />
         {/* Looks like the emoji button, in every theme: the themes style that one by its class */}
-        <button type="button" class="emoji-open attach-open" disabled={!props.writable} onClick={() => picker?.click()} title="Send a picture, a video or a file" aria-label="Attach a file">📎</button>
+        <button type="button" class="emoji-open attach-open" disabled={!props.writable || !!props.privateTo} onClick={() => picker?.click()} title={props.privateTo ? 'Files go to the whole room: stop writing privately to send one' : 'Send a picture, a video or a file'} aria-label="Attach a file">📎</button>
         {/* Wrapped: the text field is the field's one direct input child (styles and the e2e fixtures find it so) */}
         <span hidden><input ref={picker} type="file" multiple data-testid="attach" onChange={(e) => { const files = [...(e.currentTarget.files ?? [])]; e.currentTarget.value = ''; for (const f of files) props.onStage(f); }} /></span>
       </div>
-      <button disabled={!props.writable || (!draft().trim() && !props.staged.length) || !props.staged.every(settled)}
-              title={props.staged.every(settled) ? undefined : 'Waiting for the files to be ready'}>Send</button>
+      <button disabled={!props.writable || (!draft().trim() && !props.staged.length) || !props.staged.every(settled) || !!privateHeld()}
+              title={privateHeld() ?? (props.staged.every(settled) ? undefined : 'Waiting for the files to be ready')}>Send</button>
       {props.children}
     </form>
   );
@@ -1463,6 +1533,8 @@ function Composer(props: {
  */
 function ChatLog(props: {
   lines: ChatLine[]; openedAt: number; jumpToken: number; label: (id: Identity) => Label;
+  /** My key, and how to write privately to a friend (ADR 0007), or why not, for a private text's mark. */
+  me: string; onPrivate: (publicKey: string) => void; privateBlocked: (publicKey: string) => string | null;
   attachment: (hash: string) => Attachment | undefined; onPull: (hash: string) => void; onCancel: (hash: string) => void;
 }) {
   let log: HTMLDivElement | undefined;
@@ -1473,6 +1545,18 @@ function ChatLog(props: {
   const file = (m: Extract<ChatLine, { kind: 'file' }>, title: string | undefined) => (
     <FileView file={m.file} title={title} attachment={props.attachment(m.file.hash)} holder={props.label(m.from).shown}
               onPull={() => props.onPull(m.file.hash)} onCancel={() => props.onCancel(m.file.hash)} onView={view} />
+  );
+  // A private text (ADR 0007) says who it is between; one to me answers privately on a click.
+  const privateMark = (from: Identity, to: Identity) => (
+    <Show when={from.publicKey !== props.me} fallback={<span class="msg-to">🔒 to {props.label(to).shown}</span>}>
+      {(() => {
+        const blocked = createMemo(() => props.privateBlocked(from.publicKey));
+        return (
+          <button type="button" class="msg-to" disabled={blocked() !== null} onClick={() => props.onPrivate(from.publicKey)}
+                  title={`Only you and ${props.label(from).shown} can read this. ${blocked() ? `Can't answer privately (${blocked()}).` : 'Click to answer privately.'}`}>🔒 to you</button>
+        );
+      })()}
+    </Show>
   );
   const [unfoldedFor, setUnfoldedFor] = createSignal<number | null>(null); // the opening the reader unfolded the older lines in
   const folded = createMemo(() => (unfoldedFor() === props.openedAt ? 0 : olderCount(props.lines, props.openedAt - FOLD_OLDER_MS)));
@@ -1517,10 +1601,11 @@ function ChatLog(props: {
               <Match when={l.kind === 'text' && l}>
                 {(m) => (
                   <Show when={!continues(lines(), i())} fallback={
-                    <div class={m().pending ? 'msg msg-cont msg-pending' : 'msg msg-cont'}><div class="msg-text" title={m().pending ? 'Not sent yet' : when(m().at)}><Linkified text={m().text} /></div></div>
+                    <div class={msgClass('msg msg-cont', m())}><div class="msg-text" title={m().pending ? 'Not sent yet' : when(m().at)}><Linkified text={m().text} /></div></div>
                   }>
-                    <div class={m().pending ? 'msg msg-pending' : 'msg'}>
+                    <div class={msgClass('msg', m())}>
                       <span class="msg-from" title={props.label(m().from).title}>{props.label(m().from).shown}</span>
+                      <Show when={m().to}>{(to) => privateMark(m().from, to())}</Show>
                       <span class="msg-at">{when(m().at)}</span>
                       <div class="msg-text" title={m().pending ? 'Not sent yet' : undefined}><Linkified text={m().text} /></div>
                     </div>
@@ -1671,11 +1756,18 @@ function Picture(props: { src: string; type: string; alt: string; onClick?: () =
 
 /** How long after a line the same writer's next one still joins it under one name. */
 const GROUP_MS = 5 * 60 * 1000;
-/** Whether line i follows straight on from the same writer's previous text, so it goes under that name without its own. */
+/** A private text's friend, if it is one (ADR 0007). */
+const privateWith = (l: ChatLine | undefined): string | undefined => (l?.kind === 'text' ? l.to?.publicKey : undefined);
+/**
+ * Whether line i follows straight on from the same writer's previous text, so it goes under that name without its own:
+ * soon after, and private between the same two or not private at all.
+ */
 const continues = (lines: ChatLine[], i: number): boolean => {
   const l = lines[i], prev = lines[i - 1];
-  return l?.kind !== 'system' && !!l && prev?.kind !== undefined && prev.kind !== 'system' && prev.from.publicKey === l.from.publicKey && l.at - prev.at < GROUP_MS;
+  return l?.kind !== 'system' && !!l && prev?.kind !== undefined && prev.kind !== 'system' && prev.from.publicKey === l.from.publicKey && l.at - prev.at < GROUP_MS && privateWith(prev) === privateWith(l);
 };
+/** A private text is kept out of PostHog's autocapture too (`ph-no-capture`): a click on a link in it would carry the link. */
+const msgClass = (base: string, m: Extract<ChatLine, { kind: 'text' }>): string => `${base}${m.pending ? ' msg-pending' : ''}${m.to ? ' msg-private ph-no-capture' : ''}`;
 
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g;
 function Linkified(props: { text: string }) {

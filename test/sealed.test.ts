@@ -3,7 +3,7 @@ import { exportPublicKey, fromBase64Url, generateIdentityKeyPair, toBase64Url } 
 import { MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_TEXT_LENGTH } from '../src/core/protocol';
 import { MAX_FILE_NAME, MAX_PREVIEW_LENGTH, type FileMeta } from '../src/core/attachment';
 import { roomIdOf, textKeyOf } from '../src/core/rooms';
-import { openFile, openText, sealFile, sealText } from '../src/core/sealed';
+import { generatePrivateTextKeyPair, openFile, openPrivate, openText, sealFile, sealPrivate, sealText, sharedPrivateTextKey, signPrivateTextKey, verifyPrivateTextKey } from '../src/core/sealed';
 
 async function writer() {
   const keys = await generateIdentityKeyPair();
@@ -112,5 +112,66 @@ describe('sealed file announcements (ADR 0006)', async () => {
     const sealed = await sealFile({ ...base, file: longest });
     expect(sealed.length).toBeLessThanOrEqual(MAX_SEALED_FILE_LENGTH);
     expect(await openFile({ ...base, sealed })).toEqual({ ok: true, file: longest });
+  });
+});
+
+describe('private texts (ADR 0007)', async () => {
+  const roomId = await roomIdOf('a secret');
+  /** A friend with an identity and a private text key, published as the app publishes it. */
+  async function friend() {
+    const w = await writer();
+    const keys = await generatePrivateTextKeyPair();
+    const key = toBase64Url(await exportPublicKey(keys.publicKey));
+    return { ...w, keys, published: { key, sig: await signPrivateTextKey({ privateKey: w.privateKey, identity: w.from, key }) } };
+  }
+  type Friend = Awaited<ReturnType<typeof friend>>;
+  const shared = async (me: Friend, them: Friend) => (await sharedPrivateTextKey({ mine: me.keys.privateKey, theirs: them.published.key, me: me.from, them: them.from }))!;
+  const alice = await friend();
+  const bob = await friend();
+  const carol = await friend();
+  const toBob = async (text: string) => sealPrivate({ key: await shared(alice, bob), privateKey: alice.privateKey, roomId, id: 'c0ffee', from: alice.from, to: bob.from, text });
+  const asBob = async (sealed: string, over: Partial<Parameters<typeof openPrivate>[0]> = {}) =>
+    openPrivate({ key: await shared(bob, alice), roomId, id: 'c0ffee', from: alice.from, to: bob.from, sealed, ...over });
+
+  it('round-trips between the two friends, with a key each derives on their own, and the private half never leaves', async () => {
+    expect(alice.keys.privateKey.extractable).toBe(false);
+    expect(await asBob(await toBob('just between us 🤫'))).toEqual({ ok: true, text: 'just between us 🤫' });
+    // The other way round, the same pair of keys.
+    const back = await sealPrivate({ key: await shared(bob, alice), privateKey: bob.privateKey, roomId, id: 'beef', from: bob.from, to: alice.from, text: 'ok' });
+    expect(await openPrivate({ key: await shared(alice, bob), roomId, id: 'beef', from: bob.from, to: alice.from, sealed: back })).toEqual({ ok: true, text: 'ok' });
+  });
+
+  it('another friend of the room cannot open it, with the room key or with a key of her own', async () => {
+    const sealed = await toBob('just between us');
+    expect(new TextDecoder().decode(fromBase64Url(sealed)!)).not.toContain('between');
+    expect(await asBob(sealed, { key: await shared(carol, alice) })).toEqual({ ok: false, reason: 'unreadable' });
+    expect(await asBob(sealed, { key: await textKeyOf('a secret') })).toEqual({ ok: false, reason: 'unreadable' });
+  });
+
+  it('cannot be passed off as a text to the room, as one to another friend, or as one from another', async () => {
+    const sealed = await toBob('hi');
+    expect(await asBob(sealed, { to: carol.from })).toEqual({ ok: false, reason: 'unreadable' });
+    expect(await asBob(sealed, { id: 'beef' })).toEqual({ ok: false, reason: 'unreadable' });
+    expect(await asBob(sealed, { roomId: await roomIdOf('another secret') })).toEqual({ ok: false, reason: 'unreadable' });
+    expect(await asBob(sealed, { from: carol.from })).toEqual({ ok: false, reason: 'bad signature' });
+    const key = await textKeyOf('a secret');
+    const asText = await sealText({ key, privateKey: alice.privateKey, roomId, id: 'c0ffee', from: alice.from, text: 'hi' });
+    expect(await asBob(asText, { key })).toEqual({ ok: false, reason: 'unreadable' });
+    expect(await openText({ key, roomId, id: 'c0ffee', from: alice.from, sealed: await sealPrivate({ key, privateKey: alice.privateKey, roomId, id: 'c0ffee', from: alice.from, to: bob.from, text: 'hi' }) })).toEqual({ ok: false, reason: 'unreadable' });
+  });
+
+  it('a private text key counts only with the signature of its own identity, so a server cannot slip in its own', async () => {
+    expect(await verifyPrivateTextKey({ identity: bob.from, ...bob.published })).toBe(true);
+    // The server's key in Bob's place: signed by nobody, or by an identity that is not Bob's.
+    expect(await verifyPrivateTextKey({ identity: bob.from, key: carol.published.key, sig: bob.published.sig })).toBe(false);
+    expect(await verifyPrivateTextKey({ identity: bob.from, ...carol.published })).toBe(false);
+    expect(await verifyPrivateTextKey({ identity: bob.from, key: 'not a key', sig: bob.published.sig })).toBe(false);
+    expect(await verifyPrivateTextKey({ identity: 'not a key', ...bob.published })).toBe(false);
+    expect(await sharedPrivateTextKey({ mine: alice.keys.privateKey, theirs: 'AAAA', me: alice.from, them: bob.from })).toBeNull();
+  });
+
+  it('the longest private text stays within what the Room takes, and an empty one is refused', async () => {
+    expect((await toBob('€'.repeat(MAX_TEXT_LENGTH))).length).toBeLessThanOrEqual(MAX_SEALED_LENGTH);
+    expect(await asBob(await toBob('  '))).toEqual({ ok: false, reason: 'invalid text' });
   });
 });

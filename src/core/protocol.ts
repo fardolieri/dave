@@ -13,7 +13,22 @@ export type Identity = {
   picture?: string;
 };
 
+/** Whether a stored value has an identity's fields, as `identityOf` keeps them. */
+export const isIdentity = (v: unknown): v is Identity => {
+  const i = v as Partial<Identity> | null;
+  return !!i && typeof i === 'object' && typeof i.publicKey === 'string' && typeof i.fingerprint === 'string' && typeof i.name === 'string' && (i.picture === undefined || typeof i.picture === 'string');
+};
+/** The identity in a presence entry, as the Room tags a text with it and a chat line keeps it. */
+export const identityOf = ({ publicKey, fingerprint, name, picture }: Identity): Identity => ({ publicKey, fingerprint, name, ...(picture ? { picture } : {}) });
+
 export type Role = 'visitor' | 'participant';
+
+/**
+ * A browser's private text key (ADR 0007): the public half of its ECDH P-256 key, 65 bytes, base64url, and its identity's
+ * signature over it (core/sealed.ts, `signPrivateTextKey`). Friends seal private texts to it only once they checked the
+ * signature, so the server cannot hand out a key of its own.
+ */
+export type PrivateTextKey = { key: string; sig: string };
 
 /** One attached socket as everyone sees it. This is exactly what the server keeps in the socket attachment. */
 export type Person = Identity & {
@@ -22,6 +37,8 @@ export type Person = Identity & {
   joinSeq: number | null;
   sharing: boolean;
   muted: boolean;
+  /** Where private texts to this friend are sealed to; none from an app before ADR 0007, which cannot get one. */
+  privateTexts?: PrivateTextKey;
 };
 
 /** An entry for RTCPeerConnection's iceServers. */
@@ -69,7 +86,7 @@ export type ClientMessage =
    * `authKey` is sent only in answer to a `fresh` challenge: it becomes the room's verifier (ADR 0004).
    * `telemetry` says this browser opted in to PostHog (ticket 32); only then may the server report about this socket there.
    */
-  | { t: 'auth'; publicKey: string; name: string; picture?: string; hmac: string; signature: string; authKey?: string; telemetry?: true }
+  | { t: 'auth'; publicKey: string; name: string; picture?: string; hmac: string; signature: string; authKey?: string; telemetry?: true; privateTexts?: PrivateTextKey }
   /** The PostHog opt-in changed while connected (ticket 32). Only the server keeps it; nobody else learns of it. */
   | { t: 'telemetry'; on: boolean }
   | { t: 'ping' }
@@ -80,6 +97,8 @@ export type ClientMessage =
   | { t: 'sealed'; sealed: string; id: TextId }
   /** A file's announcement, sealed like a text under its own domain (ADR 0006); its bytes never come this way. */
   | { t: 'file'; sealed: string; id: TextId }
+  /** A private text (ADR 0007), sealed for the one friend `to`: the Room passes it on to them only, and back to me. */
+  | { t: 'private'; to: string; sealed: string; id: TextId }
   | { t: 'text'; text: string; id?: TextId }
   /** Enter the Call (or re-declare after a server reconnect). */
   /** `sharing` lets a re-join after a server reconnect keep an ongoing share visible to everyone. */
@@ -113,6 +132,11 @@ export type ServerMessage =
   | { t: 'sealed'; from: Identity; sealed: string; at: number; id: TextId }
   /** A file's announcement, tagged like a sealed text. */
   | { t: 'file'; from: Identity; sealed: string; at: number; id: TextId }
+  /**
+   * A private text, to the friend it is for and back to its writer, tagged like a sealed text. `key` is the writer's
+   * private text key as the Room has it, so the friend can open it after the writer is gone from presence.
+   */
+  | { t: 'private'; from: Identity; to: string; key?: PrivateTextKey; sealed: string; at: number; id: TextId }
   /** Reply to join: your place in the Call and the ICE servers to build peer connections with. */
   | { t: 'call'; joinSeq: number; iceServers: IceServer[]; issuedAt: number; id?: RequestId }
   /** A participant left on purpose; peers close that connection at once. A vanished socket only drops out of presence. */
@@ -123,8 +147,11 @@ export type ServerMessage =
   | { t: 'link'; from: string; data: LinkData }
   | { t: 'linkice'; iceServers: IceServer[]; issuedAt: number; id: RequestId }
   | { t: 'pong' }
-  /** `ref` names the client message type that was rejected, when known, so the client can attribute it. */
-  | { t: 'error'; reason: string; ref?: ClientMessage['t'] };
+  /**
+   * `ref` names the client message type that was rejected, when known, so the client can attribute it. `id` names the
+   * private text refused (ADR 0007): those do not all go to one friend, so the order alone does not say which.
+   */
+  | { t: 'error'; reason: string; ref?: ClientMessage['t']; id?: TextId };
 
 /** The exact frames the hibernation auto-response matches, so pings never wake the Room. */
 export const PING_FRAME = '{"t":"ping"}';
@@ -179,10 +206,10 @@ export function normalisePicture(raw: string): string | null {
 }
 
 /** Not a wire message: the parser's way of saying why a frame was rejected, and of which type it claimed to be when that is known. */
-export type Invalid = { t: 'invalid'; reason: string; ref?: ClientMessage['t'] };
+export type Invalid = { t: 'invalid'; reason: string; ref?: ClientMessage['t']; id?: TextId };
 const invalid = (reason: string): Invalid => ({ t: 'invalid', reason });
 
-const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'sealed', 'file', 'link', 'linkice', 'text', 'join', 'leave', 'mute', 'name', 'picture', 'signal', 'ice', 'share', 'subscribe', 'telemetry']);
+const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'sealed', 'file', 'private', 'link', 'linkice', 'text', 'join', 'leave', 'mute', 'name', 'picture', 'signal', 'ice', 'share', 'subscribe', 'telemetry']);
 const isClientType = (v: unknown): v is ClientMessage['t'] => typeof v === 'string' && CLIENT_TYPES.has(v);
 
 /**
@@ -235,6 +262,9 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
       }
       if (typeof m.authKey === 'string') auth.authKey = m.authKey;
       if (m.telemetry === true) auth.telemetry = true;
+      // Optional: one of another shape is left out, so the friend still gets in, without private texts (ADR 0007).
+      const k = m.privateTexts as Record<string, unknown> | null | undefined;
+      if (k && typeof k === 'object' && b64(k.key) && k.key.length === 87 && b64(k.sig) && k.sig.length === 86) auth.privateTexts = { key: k.key, sig: k.sig };
       return auth;
     }
     case 'ping':
@@ -305,6 +335,12 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
       if (!isTextId(m.id) || typeof m.sealed !== 'string' || !B64URL.test(m.sealed)) return invalid('unrecognised message');
       if (m.sealed.length > MAX_SEALED_FILE_LENGTH) return invalid('file description too long');
       return { t: 'file', sealed: m.sealed, id: m.id };
+    case 'private':
+      if (!isTextId(m.id)) return invalid('unrecognised message');
+      // Refused by its id from here on: the writer's app goes by it (client/room.ts).
+      if (!b64(m.to) || typeof m.sealed !== 'string' || !B64URL.test(m.sealed)) return { ...invalid('unrecognised message'), ref: 'private', id: m.id };
+      if (m.sealed.length > MAX_SEALED_LENGTH) return { ...invalid(`message longer than ${MAX_TEXT_LENGTH} characters`), ref: 'private', id: m.id };
+      return { t: 'private', to: m.to, sealed: m.sealed, id: m.id };
     case 'link': {
       if (!b64(m.to) || typeof m.data !== 'object' || m.data === null) return invalid('unrecognised message');
       const d = m.data as Record<string, unknown>;
