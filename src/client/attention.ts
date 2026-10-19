@@ -3,6 +3,8 @@ import { callDiff, sharesStarted, titleFace, titleFor } from '../core/attention'
 import { MESSAGE_CUE, MIC_SILENT_CUE, joinCue, leaveCue, shareCue, type Cue } from '../core/cue';
 import { armSound, playCue } from './sound';
 import { getPicture } from './invite';
+import { contactOf } from './contacts';
+import { displayName } from '../core/names';
 import type { createRoom } from './room';
 import type { createCall } from './call';
 import { exposeHooks } from './hooks';
@@ -36,9 +38,14 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
 
   // ---- title: the faces of everyone in a call, you included, each once however many calls they are in; and the silent microphone
   const micSilent = () => links().some((l) => l.call.micSilent());
+  // Join order within each room: every room counts its own joins. The name is the one the avatar shows, my nickname first.
   const faces = () => {
-    const byKey = new Map(links().flatMap((l) => l.room.people().filter((p) => p.role === 'participant').map((p) => [p.publicKey, p] as const)));
-    return [...byKey.values()].sort((a, b) => (a.joinSeq ?? 0) - (b.joinSeq ?? 0)).map(titleFace);
+    const byKey = new Map<string, string>();
+    for (const l of links()) {
+      const inCall = l.room.people().filter((p) => p.role === 'participant').sort((a, b) => (a.joinSeq ?? 0) - (b.joinSeq ?? 0));
+      for (const p of inCall) if (!byKey.has(p.publicKey)) byKey.set(p.publicKey, titleFace({ name: displayName(p.name, contactOf(p.publicKey)), picture: p.picture }));
+    }
+    return [...byKey.values()];
   };
   createEffect(() => titleFor(faces(), micSilent()), (title) => { document.title = title; });
 

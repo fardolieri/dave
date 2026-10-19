@@ -865,24 +865,47 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   let micQuiet = false;
   let silentSince = 0;
   const micSilence = createMicSilenceWatch();
+  const coarsePointer = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   /** The track's own mute as last seen, to report when the system mutes it: Chrome on Linux follows the headset's switch. */
   let trackMuted = false;
-  /** The first minute of this tab without a voice, how quiet it was, to set MIC_ACTIVITY_LEVEL by real headsets. */
-  let quiet: { since: number; floor: number; peak: number } | null = null;
-  let quietReported = false;
+  /** Each minute without a voice, how quiet it was and how flat its spectrum, to set MIC_ACTIVITY_LEVEL by real headsets. */
+  let quiet: { since: number; levels: number[]; flatness: number[] } | null = null;
+  let quietReports = 0;
+  const dbfs = (v: number) => Math.round(20 * Math.log10(Math.max(v, 1e-9)) * 10) / 10;
+  const centile = (sorted: number[], q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]!;
+  /** Spectral flatness, 0 to 1: near 1 for a converter's even hiss, lower for a room's hum and rumble. */
+  const flatnessOf = (an: AnalyserNode): number => {
+    const db = new Float32Array(an.frequencyBinCount);
+    an.getFloatFrequencyData(db);
+    let logSum = 0, sum = 0, n = 0;
+    for (let i = 1; i < db.length; i++) { const p = Math.pow(10, Math.max(db[i]!, -200) / 10); logSum += Math.log(p); sum += p; n++; }
+    return sum > 0 ? Math.exp(logSum / n) / (sum / n) : 0;
+  };
   function watchMicSilence(now: number): void {
     // Read only while the microphone can carry sound: a closed, muted or ended track, or a stopped context (a phone in a
-    // phone call), reads as zeros. A track the system muted is read: its zeros are what a muted headset sends.
-    const open = joined && localAnalyser !== null && voiceTrack?.enabled === true && voiceTrack.readyState === 'live' && audioCtx?.state === 'running';
+    // phone call), reads as zeros. A track the system muted is read: its zeros are what a muted headset sends. Not on a
+    // phone in the background, which mutes the track itself.
+    const open = joined && localAnalyser !== null && voiceTrack?.enabled === true && voiceTrack.readyState === 'live' && audioCtx?.state === 'running'
+      && !(voiceTrack.muted && document.hidden && coarsePointer);
     const level = open ? levelOf(localAnalyser!) : null;
     if (voiceTrack && voiceTrack.muted !== trackMuted) {
       trackMuted = voiceTrack.muted;
       posthog.capture('microphone_track_muted', { muted: trackMuted, hidden: document.hidden });
     }
     if (level === null || level > SPEAK_THRESHOLD) quiet = null;
-    else if (!quietReported) {
-      quiet = quiet ? { ...quiet, floor: Math.min(quiet.floor, level), peak: Math.max(quiet.peak, level) } : { since: now, floor: level, peak: level };
-      if (now - quiet.since >= MIC_SILENCE_MS) { quietReported = true; posthog.capture('mic_quiet_minute', { floor: quiet.floor, peak: quiet.peak, trackMuted, silent: micQuiet }); }
+    else if (quietReports < 30) {
+      quiet ??= { since: now, levels: [], flatness: [] };
+      quiet.levels.push(level);
+      quiet.flatness.push(flatnessOf(localAnalyser!));
+      if (now - quiet.since >= MIC_SILENCE_MS) {
+        const l = quiet.levels.sort((a, b) => a - b), f = quiet.flatness.sort((a, b) => a - b);
+        quietReports++;
+        posthog.capture('mic_quiet_minute', {
+          floor: l[0], peak: l[l.length - 1], p10_db: dbfs(centile(l, 0.1)), p50_db: dbfs(centile(l, 0.5)), p90_db: dbfs(centile(l, 0.9)), peak_db: dbfs(l[l.length - 1]!),
+          flatness_p50: Math.round(centile(f, 0.5) * 1000) / 1000, trackMuted, silent: micQuiet, agc: voiceTrack?.getSettings().autoGainControl ?? null, ns: voiceTrack?.getSettings().noiseSuppression ?? null,
+        });
+        quiet = null;
+      }
     }
     const reading = micSilence(level, now);
     if (reading.silent === micQuiet) return;

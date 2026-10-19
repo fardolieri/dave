@@ -3,7 +3,7 @@
 export const APP_TITLE = 'dave';
 
 /**
- * How a person shows in the tab's title: the profile picture, else the initial as the avatar shows it, in a bold
+ * How a person shows in the tab's title: the profile picture, else the initial of the name the avatar shows, in a bold
  * letter so it reads as a face and not as part of a word.
  */
 export function titleFace(person: { name: string; picture?: string | null }): string {
