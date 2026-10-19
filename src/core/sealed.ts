@@ -10,6 +10,10 @@
 // An attachment's announcement (ADR 0006) is sealed the same way under its own domain, `dave file v1`: its body is the
 // file's description as JSON (core/attachment.ts), so a text cannot be passed off as a file or a file as a text.
 //
+// A private text (ADR 0007) is sealed the same way under `dave private v1`, with the one friend it is for in the signed
+// bytes and the additional data, and under a key only the two of them have: ECDH between the private text keys of the
+// two browsers (`sharedPrivateTextKey`), each browser's own and published signed by its identity key (`signPrivateTextKey`).
+//
 // WebCrypto only; runs unchanged in browsers, workerd and Node.
 import { fromBase64Url, importPublicKey, signBytes, toBase64Url, verifyBytes } from './identity';
 import { MAX_TEXT_LENGTH } from './protocol';
@@ -17,6 +21,8 @@ import { MAX_FILE_BODY_BYTES, parseFileMeta, type FileMeta } from './attachment'
 
 const DOMAIN = 'dave text v1';
 const FILE_DOMAIN = 'dave file v1';
+const PRIVATE_DOMAIN = 'dave private v1';
+const PRIVATE_TEXT_KEY_DOMAIN = 'dave private text key v1';
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 const SIGNATURE_BYTES = 64; // ECDSA P-256 as WebCrypto writes it: r || s
@@ -24,12 +30,15 @@ const BUCKET = 256;
 
 const utf8 = (s: string) => new TextEncoder().encode(s);
 
-/** The bytes the writer signs and every friend verifies. Keys, room ids and text ids hold no newline; the text comes last. */
-export function textBindingBytes(input: { roomId: string; id: string; from: string; text: string }, domain = DOMAIN): Uint8Array {
-  return utf8([domain, input.roomId, input.id, input.from, input.text].join('\n'));
+/**
+ * The bytes the writer signs and every friend verifies. Keys, room ids and text ids hold no newline; the text comes last.
+ * `to`, the friend a private text is for, only in a private text's.
+ */
+export function textBindingBytes(input: { roomId: string; id: string; from: string; to?: string; text: string }, domain = DOMAIN): Uint8Array {
+  return utf8([domain, input.roomId, input.id, input.from, ...(input.to === undefined ? [] : [input.to]), input.text].join('\n'));
 }
 
-const additionalData = (roomId: string, id: string, domain = DOMAIN) => utf8([domain, roomId, id].join('\n'));
+const additionalData = (roomId: string, id: string, domain = DOMAIN, to?: string) => utf8([domain, roomId, id, ...(to === undefined ? [] : [to])].join('\n'));
 
 function pad(bytes: Uint8Array): Uint8Array {
   const out = new Uint8Array(Math.ceil((bytes.length + 1) / BUCKET) * BUCKET);
@@ -54,7 +63,15 @@ export function sealFile(input: { key: CryptoKey; privateKey: CryptoKey; roomId:
   return seal({ ...input, text: JSON.stringify(input.file) }, FILE_DOMAIN);
 }
 
-async function seal(input: { key: CryptoKey; privateKey: CryptoKey; roomId: string; id: string; from: string; text: string }, domain: string): Promise<string> {
+/**
+ * Writer side: a private text sealed for the one friend `to` (their identity's public key), with the key the two share
+ * (`sharedPrivateTextKey`), signed by `from`.
+ */
+export function sealPrivate(input: { key: CryptoKey; privateKey: CryptoKey; roomId: string; id: string; from: string; to: string; text: string }): Promise<string> {
+  return seal(input, PRIVATE_DOMAIN);
+}
+
+async function seal(input: { key: CryptoKey; privateKey: CryptoKey; roomId: string; id: string; from: string; to?: string; text: string }, domain: string): Promise<string> {
   const signature = await signBytes(input.privateKey, textBindingBytes(input, domain));
   const text = utf8(input.text);
   const inner = new Uint8Array(signature.length + text.length);
@@ -62,7 +79,7 @@ async function seal(input: { key: CryptoKey; privateKey: CryptoKey; roomId: stri
   inner.set(text, signature.length);
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
   const sealed = new Uint8Array(await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv, additionalData: additionalData(input.roomId, input.id, domain) as BufferSource }, input.key, pad(inner) as BufferSource,
+    { name: 'AES-GCM', iv, additionalData: additionalData(input.roomId, input.id, domain, input.to) as BufferSource }, input.key, pad(inner) as BufferSource,
   ));
   const out = new Uint8Array(iv.length + sealed.length);
   out.set(iv);
@@ -97,13 +114,24 @@ export async function openFile(input: { key: CryptoKey; roomId: string; id: stri
   return file ? { ok: true, file } : { ok: false, reason: 'invalid file' };
 }
 
-async function open(input: { key: CryptoKey; roomId: string; id: string; from: string; sealed: string }, domain: string): Promise<OpenedText> {
+/**
+ * Reader side: a private text, if it was sealed for `to` with the key `to` shares with `from`, under this room and id,
+ * and signed by `from`. On the same terms as a text's otherwise.
+ */
+export async function openPrivate(input: { key: CryptoKey; roomId: string; id: string; from: string; to: string; sealed: string }): Promise<OpenedText> {
+  const opened = await open(input, PRIVATE_DOMAIN);
+  if (!opened.ok) return opened;
+  if (opened.text.trim().length === 0 || opened.text.length > MAX_TEXT_LENGTH) return { ok: false, reason: 'invalid text' };
+  return opened;
+}
+
+async function open(input: { key: CryptoKey; roomId: string; id: string; from: string; to?: string; sealed: string }, domain: string): Promise<OpenedText> {
   const bytes = fromBase64Url(input.sealed);
   if (!bytes || bytes.length < IV_BYTES + TAG_BYTES + BUCKET) return { ok: false, reason: 'unreadable' };
   let inner: Uint8Array | null;
   try {
     inner = unpad(new Uint8Array(await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: bytes.subarray(0, IV_BYTES) as BufferSource, additionalData: additionalData(input.roomId, input.id, domain) as BufferSource },
+      { name: 'AES-GCM', iv: bytes.subarray(0, IV_BYTES) as BufferSource, additionalData: additionalData(input.roomId, input.id, domain, input.to) as BufferSource },
       input.key, bytes.subarray(IV_BYTES) as BufferSource,
     )));
   } catch {
@@ -122,4 +150,57 @@ async function open(input: { key: CryptoKey; roomId: string; id: string; from: s
   const ok = await verifyBytes(publicKey, inner.subarray(0, SIGNATURE_BYTES), textBindingBytes({ ...input, text }, domain));
   if (!ok) return { ok: false, reason: 'bad signature' };
   return { ok: true, text };
+}
+
+const ECDH = { name: 'ECDH', namedCurve: 'P-256' } as const;
+
+/** Client side: this browser's key for private texts, an ECDH P-256 keypair whose private half never leaves it. */
+export function generatePrivateTextKeyPair(): Promise<CryptoKeyPair> {
+  return crypto.subtle.generateKey(ECDH, false, ['deriveBits']) as Promise<CryptoKeyPair>;
+}
+
+const privateTextKeyBytes = (identity: string, key: string) => utf8([PRIVATE_TEXT_KEY_DOMAIN, identity, key].join('\n'));
+
+/**
+ * The identity's signature over its key for private texts, so a server that hands out another key in its place is
+ * found out: friends seal private texts only to a key its identity signed (`verifyPrivateTextKey`).
+ */
+export async function signPrivateTextKey(input: { privateKey: CryptoKey; identity: string; key: string }): Promise<string> {
+  return toBase64Url(await signBytes(input.privateKey, privateTextKeyBytes(input.identity, input.key)));
+}
+
+/** Whether `key` is the key for private texts that `identity` signed, and a valid P-256 point. */
+export async function verifyPrivateTextKey(input: { identity: string; key: string; sig: string }): Promise<boolean> {
+  const raw = fromBase64Url(input.identity);
+  const signature = fromBase64Url(input.sig);
+  const publicKey = raw && (await importPublicKey(raw));
+  if (!publicKey || !signature || !(await importPrivateTextKey(input.key))) return false;
+  return verifyBytes(publicKey, signature, privateTextKeyBytes(input.identity, input.key));
+}
+
+async function importPrivateTextKey(key: string): Promise<CryptoKey | null> {
+  const raw = fromBase64Url(key);
+  if (!raw || raw.length !== 65 || raw[0] !== 0x04) return null;
+  try {
+    return await crypto.subtle.importKey('raw', raw as BufferSource, ECDH, true, []);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The AES-GCM key two friends share for their private texts: ECDH between my private key and their public one, through
+ * HKDF bound to both identities, in an order both sides agree on. The same both ways. Null for a key that is no point.
+ */
+export async function sharedPrivateTextKey(input: { mine: CryptoKey; theirs: string; me: string; them: string }): Promise<CryptoKey | null> {
+  const theirs = await importPrivateTextKey(input.theirs);
+  if (!theirs) return null;
+  // Workers types spell the field `$public`; every runtime takes `public`.
+  const shared = await crypto.subtle.deriveBits({ name: 'ECDH', public: theirs } as unknown as Parameters<SubtleCrypto['deriveBits']>[0], input.mine, 256);
+  const hkdf = await crypto.subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey']);
+  const pair = [input.me, input.them].sort().join('\n');
+  return crypto.subtle.deriveKey(
+    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32) as BufferSource, info: utf8(`${PRIVATE_DOMAIN}\n${pair}`) as BufferSource },
+    hkdf, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'],
+  );
 }

@@ -3,7 +3,7 @@
 // Everything here is plain data plus WebCrypto, so it survives hibernation.
 // No Cloudflare, Node, or DOM imports; scripts/check-core-isolation.mjs enforces that.
 import { fromBase64Url, fingerprint, randomNonce, toBase64Url, verifyAnswer } from './identity';
-import { CLOSE_AUTH_FAILED, OUT_OF_DATE, parseClientMessage, type ClientMessage, type IceServer, type Person, type ServerMessage } from './protocol';
+import { CLOSE_AUTH_FAILED, OUT_OF_DATE, identityOf, parseClientMessage, type ClientMessage, type IceServer, type Person, type ServerMessage, type TextId } from './protocol';
 import { SIGNAL_BURST, SIGNAL_RATE_PER_SECOND, newBucket, takeToken, type Bucket } from './ratelimit';
 import { LINK_ICE_TTL_SECONDS, nextJoinSeq } from './mesh';
 
@@ -156,6 +156,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       joinSeq: null,
       sharing: false,
       muted: false,
+      ...(msg.privateTexts ? { privateTexts: msg.privateTexts } : {}),
     };
     // A newer socket for a known identity wins: an older one is either a ghost the server has not
     // noticed dying (the client already reconnected) or another tab, which is told so.
@@ -175,7 +176,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     return { state, replies: [{ t: 'error', reason: 'invalid socket state' }], close: { code: CLOSE_AUTH_FAILED, reason: 'invalid socket state' } };
   }
 
-  const error = (reason: string, ref: ClientMessage['t'] | undefined): ServerMessage => (ref ? { t: 'error', reason, ref } : { t: 'error', reason });
+  const error = (reason: string, ref: ClientMessage['t'] | undefined, id?: TextId): ServerMessage => ({ t: 'error', reason, ...(ref ? { ref } : {}), ...(id !== undefined ? { id } : {}) });
 
   // Rate limit every authenticated frame, parseable or not. Signaling has its own generous bucket (see ratelimit.ts), and
   // file links another as generous, so pulls cannot hold up the call's own signaling.
@@ -192,7 +193,8 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     const taken = takeToken(state.bucket, ctx.now);
     next = { ...state, bucket: taken.bucket };
     const ref = msg.t === 'invalid' ? msg.ref : msg.t;
-    if (!taken.ok) return { state: next, replies: [error('rate limited', ref)] };
+    const id = msg.t === 'private' || (msg.t === 'invalid' && msg.ref === 'private') ? msg.id : undefined;
+    if (!taken.ok) return { state: next, replies: [error('rate limited', ref, id)] };
   }
   const notInCall = (ref: ClientMessage['t']): Outcome => ({ state: next, replies: [{ t: 'error', reason: 'not in the call', ref }] });
   const attachedByKey = (key: string): boolean => { for (const p of ctx.others) if (p.publicKey === key) return true; return false; };
@@ -203,7 +205,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     case 'invalid':
       return {
         state: next,
-        replies: [error(msg.reason, msg.ref)],
+        replies: [error(msg.reason, msg.ref, msg.id)],
         rejected: { from: state.person.publicKey, reason: msg.reason, ...(msg.ref ? { ref: msg.ref } : {}), length: typeof raw === 'string' ? raw.length : raw instanceof ArrayBuffer ? raw.byteLength : 0, telemetry: state.telemetry === true },
       };
     case 'auth':
@@ -212,12 +214,17 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       // Normally answered by the hibernation auto-response before reaching here.
       return { state: next, replies: [{ t: 'pong' }] };
     case 'sealed': {
-      const { publicKey, fingerprint: fp, name, picture } = state.person;
-      return { state: next, replies: [], broadcast: [{ t: 'sealed', from: { publicKey, fingerprint: fp, name, ...(picture ? { picture } : {}) }, sealed: msg.sealed, at: ctx.now, id: msg.id }] };
+      return { state: next, replies: [], broadcast: [{ t: 'sealed', from: identityOf(state.person), sealed: msg.sealed, at: ctx.now, id: msg.id }] };
     }
     case 'file': {
-      const { publicKey, fingerprint: fp, name, picture } = state.person;
-      return { state: next, replies: [], broadcast: [{ t: 'file', from: { publicKey, fingerprint: fp, name, ...(picture ? { picture } : {}) }, sealed: msg.sealed, at: ctx.now, id: msg.id }] };
+      return { state: next, replies: [], broadcast: [{ t: 'file', from: identityOf(state.person), sealed: msg.sealed, at: ctx.now, id: msg.id }] };
+    }
+    case 'private': {
+      // To one friend here, and back to its writer, who learns it went out (ADR 0007). Nobody else hears of it.
+      if (msg.to === state.person.publicKey || !attachedByKey(msg.to)) return { state: next, replies: [error('that friend is not here', 'private', msg.id)] };
+      const { privateTexts } = state.person;
+      const m: ServerMessage = { t: 'private', from: identityOf(state.person), to: msg.to, ...(privateTexts ? { key: privateTexts } : {}), sealed: msg.sealed, at: ctx.now, id: msg.id };
+      return { state: next, replies: [m], relay: { to: msg.to, message: m } };
     }
     case 'text':
       return { state: next, replies: [error(OUT_OF_DATE, 'text')] }; // the parser refuses it already

@@ -24,6 +24,14 @@ _Avoid_: Room key, chat password
 A text as it travels: encrypted with the text key and signed by its writer, so the server passes it on without being able to read or forge it.
 _Avoid_: Encrypted message (in UI copy), ciphertext (fine in code)
 
+**Private text**:
+A text to one friend in the room, sealed so that only the two of them can read it, and relayed by the Room to that friend alone. Shown in the room's chat with a 🔒 mark; live, like any text (ADR 0007).
+_Avoid_: DM, whisper, direct message (in UI copy)
+
+**Private text key**:
+The second keypair of a browser, next to its identity, that private texts to it are sealed with. Published in presence, signed by the identity, so the server cannot slip in its own.
+_Avoid_: Encryption key, DM key
+
 **Attachment**:
 A file sent into the chat: a picture, a GIF, a video or anything else. Its announcement travels like a sealed text, with a small preview; its bytes go from friend to friend and never through the server (ADR 0006).
 _Avoid_: Upload, media, image (unless it is one)
