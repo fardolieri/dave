@@ -496,7 +496,7 @@ function Workspace(props: WorkspaceProps) {
                   </div>
                   <Show when={selected() && inviteOpen()}><InvitePanel link={inviteLinkFor(l.saved)} name={l.saved.name} /></Show>
                   <ul class="plist">
-                    <Show when={participants().self}>{(s) => <ParticipantRow p={s()} isMe label={labelOf(s())} onProfile={(el) => openProfile(s(), el)} speaking={l.call.speakingSelf()} />}</Show>
+                    <Show when={participants().self}>{(s) => <ParticipantRow p={s()} isMe label={labelOf(s())} onProfile={(el) => openProfile(s(), el)} speaking={l.call.speakingSelf()} micSilent={l.call.micSilent()} />}</Show>
                     <For each={participants().others}>{(p) => <ParticipantRow p={p} isMe={false} label={labelOf(p)} onProfile={(el) => openProfile(p, el)} view={inThis() ? viewOf(l, p.publicKey) : undefined} speaking={viewOf(l, p.publicKey)?.speaking ?? false} onVolume={inThis() ? (v) => l.call.setVolume(p.publicKey, v) : undefined} />}</For>
                     <For each={participants().lost}>{(v) => <li class="lost"><span class="avatar">{displayName(v.name, contactOf(v.publicKey))[0]}</span><span class="pname">{displayName(v.name, contactOf(v.publicKey))} <em>connection to server lost</em></span></li>}</For>
                     <Show when={selected() && !participants().self && participants().others.length === 0}><li class="dim">nobody in the call</li></Show>
@@ -961,7 +961,7 @@ function badgesFitWhole(line: HTMLElement): boolean {
   return avatar.offsetWidth + floor + need + 2 * gap(line) <= line.clientWidth;
 }
 
-function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: PeerView; speaking: boolean; onVolume?: (v: number) => void; onProfile: (anchor: HTMLElement) => void }) {
+function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: PeerView; speaking: boolean; micSilent?: boolean; onVolume?: (v: number) => void; onProfile: (anchor: HTMLElement) => void }) {
   const [sliderOpen, setSliderOpen] = createSignal(false);
   const volume = () => props.view?.volume ?? 1;
   const percent = () => Math.round(volume() * 100);
@@ -981,6 +981,7 @@ function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: 
       <Avatar initial={props.label.shown[0]!} picture={props.label.picture} speaking={props.speaking} title={props.isMe ? 'Your profile' : 'Profile'} onOpen={props.onProfile} />
       <span class="pname" title={props.label.title}><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span></span>
       <span class="pflags">
+        <Show when={props.micSilent}><em class="micsilent" title="Your microphone has picked up no sound at all for a minute. Is it muted on the headset?">🔇❓ no sound</em></Show>
         <Show when={props.p.muted}><em>muted</em></Show>
         <Show when={props.p.sharing}><em>sharing</em></Show>
         <Show when={props.view}>{(v) => <span class={`conn conn-${v().conn}`} title={CONN_LABEL[v().conn]}><i /><span class="conn-label">{CONN_LABEL[v().conn]}</span></span>}</Show>

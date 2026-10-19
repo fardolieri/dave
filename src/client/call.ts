@@ -12,6 +12,7 @@ import type { LocalIdentity } from './identity';
 import { bytesIn, candidateCounts, reportStats, summarise, voiceCounters, windowProps } from './peerstats';
 import { createInvariantWatchdog } from './invariants';
 import { gainFor, type CallFacts } from '../core/invariants';
+import { MIC_SILENCE_MS, createMicSilenceWatch } from '../core/attention';
 import {
   ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, ICE_RESTART_BACKOFF_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
 } from '../core/mesh';
@@ -859,8 +860,40 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     for (const v of buf) sum += v * v;
     return Math.sqrt(sum / buf.length);
   };
+  /** The open microphone has heard nothing at all for a minute: perhaps the headset's own switch muted it. */
+  const [micSilent, setMicSilentSignal] = createSignal(false);
+  let micQuiet = false;
+  let silentSince = 0;
+  const micSilence = createMicSilenceWatch();
+  /** The track's own mute as last seen, to report when the system mutes it: Chrome on Linux follows the headset's switch. */
+  let trackMuted = false;
+  /** The first minute of this tab without a voice, how quiet it was, to set MIC_ACTIVITY_LEVEL by real headsets. */
+  let quiet: { since: number; floor: number; peak: number } | null = null;
+  let quietReported = false;
+  function watchMicSilence(now: number): void {
+    // Read only while the microphone can carry sound: a closed, muted or ended track, or a stopped context (a phone in a
+    // phone call), reads as zeros. A track the system muted is read: its zeros are what a muted headset sends.
+    const open = joined && localAnalyser !== null && voiceTrack?.enabled === true && voiceTrack.readyState === 'live' && audioCtx?.state === 'running';
+    const level = open ? levelOf(localAnalyser!) : null;
+    if (voiceTrack && voiceTrack.muted !== trackMuted) {
+      trackMuted = voiceTrack.muted;
+      posthog.capture('microphone_track_muted', { muted: trackMuted, hidden: document.hidden });
+    }
+    if (level === null || level > SPEAK_THRESHOLD) quiet = null;
+    else if (!quietReported) {
+      quiet = quiet ? { ...quiet, floor: Math.min(quiet.floor, level), peak: Math.max(quiet.peak, level) } : { since: now, floor: level, peak: level };
+      if (now - quiet.since >= MIC_SILENCE_MS) { quietReported = true; posthog.capture('mic_quiet_minute', { floor: quiet.floor, peak: quiet.peak, trackMuted, silent: micQuiet }); }
+    }
+    const reading = micSilence(level, now);
+    if (reading.silent === micQuiet) return;
+    micQuiet = reading.silent;
+    setMicSilentSignal(micQuiet);
+    if (micQuiet) { silentSince = now; posthog.capture('mic_silent', { peak: reading.peak, trackMuted, processed: sentVoice !== null && sentVoice === voice?.track }); }
+    else posthog.capture('mic_silence_ended', { ms: now - silentSince, by: level !== null ? 'sound' : muted() ? 'muted' : 'closed' });
+  }
   const lastLoud = new Map<string, number>();
   const speakingTimer = setInterval(() => {
+    watchMicSilence(Date.now());
     if (!audioCtx) return;
     const now = Date.now();
     const loud = (key: string, an: AnalyserNode | null | undefined, gate: boolean) => {
@@ -1998,7 +2031,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   exposeDevHook();
 
   return {
-    inCall, muted: () => muted() || micProblem() !== null, micProblem, views, speakingSelf, joinError, join: () => join(), leave, setMuted, myJoinSeq: () => myJoinSeq, audioBlocked, unblockAudio,
+    inCall, muted: () => muted() || micProblem() !== null, micProblem, micSilent, views, speakingSelf, joinError, join: () => join(), leave, setMuted, myJoinSeq: () => myJoinSeq, audioBlocked, unblockAudio,
     noiseRemoval, noiseRemovalStop, voiceLevel,
     micTest, hasMicTestClip: hasClip, canRecordMicTest: typeof MediaRecorder !== 'undefined', hearYourself, recordMicTest, playMicTest, stopMicTest,
     sharing, shareError, outgoing, startShare, stopShare, watch, watchOnly, shareStreamOf,

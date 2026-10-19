@@ -2,9 +2,45 @@
 
 export const APP_TITLE = 'dave';
 
-/** Title shown while the tab is unfocused: a badge with how many people are in the Call, you included. */
-export function titleFor(participantsInCall: number, unfocused: boolean): string {
-  return unfocused && participantsInCall > 0 ? `(${participantsInCall} in call) ${APP_TITLE}` : APP_TITLE;
+/**
+ * How a person shows in the tab's title: the profile picture, else the initial as the avatar shows it, in a bold
+ * letter so it reads as a face and not as part of a word.
+ */
+export function titleFace(person: { name: string; picture?: string | null }): string {
+  if (person.picture) return person.picture;
+  const initial = [...person.name][0]?.toUpperCase() ?? '?';
+  return /^[A-Z]$/.test(initial) ? String.fromCodePoint(0x1d5d4 + initial.charCodeAt(0) - 65) : initial;
+}
+
+/**
+ * The tab's title, focused or not: the faces of everyone in the Call, you included, in the order they joined. A
+ * microphone that has heard nothing for a minute puts a question in front, for a forgotten mute switch on the headset.
+ */
+export function titleFor(faces: readonly string[], micSilent = false): string {
+  return `${micSilent ? '🔇❓ ' : ''}${APP_TITLE}${faces.length > 0 ? ` ${faces.join('')}` : ''}`;
+}
+
+/** How long the open microphone may hear nothing at all before the title asks whether the headset is muted. */
+export const MIC_SILENCE_MS = 60_000;
+/**
+ * Any sound at all, -80 dBFS: room noise that the voice gate keeps back counts. A headset muted by its own switch sends
+ * zeros, or the converter's hiss far below this.
+ */
+export const MIC_ACTIVITY_LEVEL = 1e-4;
+
+/**
+ * Watches the open microphone for a mute the app cannot see, a switch on the headset: silent once it has heard nothing
+ * for MIC_SILENCE_MS. Fed the microphone's level a few times a second, or null while it is closed or muted in the app,
+ * which starts the wait over. `peak` is the loudest level since the last sound, to tell how near the line a silence was.
+ */
+export function createMicSilenceWatch(): (level: number | null, now: number) => { silent: boolean; peak: number } {
+  let since: number | null = null;
+  let peak = 0;
+  return (level, now) => {
+    if (level === null || level > MIC_ACTIVITY_LEVEL || since === null) { since = level === null ? null : now; peak = 0; }
+    else peak = Math.max(peak, level);
+    return { silent: since !== null && now - since >= MIC_SILENCE_MS, peak };
+  };
 }
 
 /** One view of the Call for cues: who presence lists as a participant, and whom I still hold a peer connection to. */

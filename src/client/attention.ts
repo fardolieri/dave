@@ -1,29 +1,25 @@
 import { createEffect, onCleanup, untrack } from 'solid-js';
-import { callDiff, sharesStarted, titleFor } from '../core/attention';
-import { MESSAGE_CUE, joinCue, leaveCue, shareCue, type Cue } from '../core/cue';
+import { callDiff, sharesStarted, titleFace, titleFor } from '../core/attention';
+import { MESSAGE_CUE, MIC_SILENT_CUE, joinCue, leaveCue, shareCue, type Cue } from '../core/cue';
 import { armSound, playCue } from './sound';
 import { getPicture } from './invite';
 import type { createRoom } from './room';
 import type { createCall } from './call';
 import { exposeHooks } from './hooks';
-import { windowFocused } from './focus';
 
 /** One room this browser is connected to, with its call. The list changes as rooms are added and left. */
 export type RoomLink = { room: ReturnType<typeof createRoom>; call: ReturnType<typeof createCall> };
 
 /**
- * Attention cues (spec §7.4) and the screen wake lock (spec §6.5) across every room: title badge while
- * the window is unfocused, quiet chimes when others join or leave a call or start sharing, each friend's own, a tick for
- * messages, and the screen kept awake while watching a share or, on a phone, while in a call. Platform state (focus,
- * visibility) is mirrored into a signal once; everything else derives from room and call signals.
+ * Attention cues (spec §7.4) and the screen wake lock (spec §6.5) across every room: the faces of the call in the title,
+ * focused or not, which also asks about a silent microphone, with a chime of its own, quiet chimes when others join or leave a call or start sharing, each friend's own,
+ * a tick for messages, and the screen kept awake while watching a share or, on a phone, while in a call. Everything
+ * derives from room and call signals.
  */
 export function createAttention(links: () => RoomLink[], myKey: string): void {
-  const unfocused = () => !windowFocused();
-
   // Participants are keyed per room, so a friend in two calls at once counts twice: two things are happening.
   const tag = (roomId: string, publicKey: string) => `${roomId} ${publicKey}`;
   const participants = (except?: string) => new Set(links().flatMap((l) => l.room.people().filter((p) => p.role === 'participant' && p.publicKey !== except).map((p) => tag(l.room.roomId, p.publicKey))));
-  const inCall = () => participants();
   const others = () => participants(myKey);
   const sharers = () => new Set(links().flatMap((l) => l.room.people().filter((p) => p.role === 'participant' && p.sharing && p.publicKey !== myKey).map((p) => tag(l.room.roomId, p.publicKey))));
   /**
@@ -38,8 +34,13 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
   /** Rooms whose first real snapshot (one that includes me) has arrived; nothing before it is a join. */
   const seeded = () => new Set(links().filter((l) => l.room.people().some((p) => p.publicKey === myKey)).map((l) => l.room.roomId));
 
-  // ---- title badge: everyone in the call, you included, so a one-on-one reads "2 in call"
-  createEffect(() => titleFor(inCall().size, unfocused()), (title) => { document.title = title; });
+  // ---- title: the faces of everyone in a call, you included, each once however many calls they are in; and the silent microphone
+  const micSilent = () => links().some((l) => l.call.micSilent());
+  const faces = () => {
+    const byKey = new Map(links().flatMap((l) => l.room.people().filter((p) => p.role === 'participant').map((p) => [p.publicKey, p] as const)));
+    return [...byKey.values()].sort((a, b) => (a.joinSeq ?? 0) - (b.joinSeq ?? 0)).map(titleFace);
+  };
+  createEffect(() => titleFor(faces(), micSilent()), (title) => { document.title = title; });
 
   // ---- chimes: each friend's own cue from their profile picture (ticket 23)
   const disarm = armSound();
@@ -75,6 +76,8 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
     if (now.some((id) => !prev.includes(id))) cue(joinCue(getPicture()));
     if (prev.some((id) => !now.includes(id))) cue(leaveCue(getPicture()));
   });
+  // A microphone gone silent asks once, out loud too: the title is out of sight behind a game or another window.
+  createEffect(() => micSilent(), (silent, prev) => { if (silent && prev === false) cue(MIC_SILENT_CUE); });
   // Starting my own share plays my share cue too, once the browser's picker has handed over the screen.
   createEffect(() => links().filter((l) => l.call.sharing() !== null).map((l) => l.room.roomId), (now, prev) => {
     if (prev && now.some((id) => !prev.includes(id))) cue(shareCue(getPicture()));
@@ -119,6 +122,6 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
     disarm();
     document.removeEventListener('visibilitychange', syncWakeLock);
     void sentinel?.release();
-    document.title = titleFor(0, false);
+    document.title = titleFor([]);
   });
 }

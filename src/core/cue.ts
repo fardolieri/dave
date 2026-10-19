@@ -57,6 +57,8 @@ const semitones = (n: number) => C4 * 2 ** (n / 12);
 
 /** A friend without a picture keeps the plain chime: two notes rising. */
 const PLAIN: Cue = { timbre: 'sine', gain: CUE_GAIN, notes: [523.25, 659.25].map((freq) => ({ freq, seconds: STEP_SECONDS })), vibrato: 0 };
+/** My microphone has heard nothing for a minute: down and back up, a "hello?", the same for everyone. */
+export const MIC_SILENT_CUE: Cue = { timbre: 'sine', gain: CUE_GAIN, notes: [523.25, 392, 523.25].map((freq, i) => ({ freq, seconds: (i === 2 ? 2 : 1) * STEP_SECONDS })), vibrato: 0 };
 /** Someone else's message: one soft high note, the same for everyone. */
 export const MESSAGE_CUE: Cue = { timbre: 'sine', gain: MESSAGE_GAIN, notes: [{ freq: 880, seconds: STEP_SECONDS }], vibrato: 0 };
 

@@ -59,7 +59,7 @@
 :root[data-theme="fd-walkie"] .new { background: var(--rubber); color: var(--chassis); }
 :root[data-theme="fd-walkie"] .warn { background: #FBE3A6; color: #5E3500; border: 1px solid #C78A1E; }
 :root[data-theme="fd-walkie"] .side .conn-direct, :root[data-theme="fd-walkie"] .side .lag-ok { color: #1A5C2C; }
-:root[data-theme="fd-walkie"] .side .conn-relayed, :root[data-theme="fd-walkie"] .side .conn-reconnecting, :root[data-theme="fd-walkie"] .side .lag-warn { color: #6B3A00; }
+:root[data-theme="fd-walkie"] .side .conn-relayed, :root[data-theme="fd-walkie"] .side .conn-reconnecting, :root[data-theme="fd-walkie"] .side .lag-warn, :root[data-theme="fd-walkie"] .side .pflags > em.micsilent { color: #6B3A00; }
 :root[data-theme="fd-walkie"] .side .conn-unreachable, :root[data-theme="fd-walkie"] .side .lag-bad { color: #8C1A14; }
 :root[data-theme="fd-walkie"] .theme-pick { background: none; color: #4A3E10; border-color: #9C7F1E; }
 

@@ -1,11 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import { callDiff, sharesStarted, titleFor } from '../src/core/attention';
+import { MIC_ACTIVITY_LEVEL, MIC_SILENCE_MS, callDiff, createMicSilenceWatch, sharesStarted, titleFace, titleFor } from '../src/core/attention';
 
 describe('attention cues', () => {
-  it('badges the title only while hidden and while someone is in the call', () => {
-    expect(titleFor(0, true)).toBe('dave');
-    expect(titleFor(3, false)).toBe('dave');
-    expect(titleFor(3, true)).toBe('(3 in call) dave');
+  it('shows the faces of the call in the title, focused or not, with a question for a silent microphone in front', () => {
+    expect(titleFor([])).toBe('dave');
+    expect(titleFor(['🦎', '𝗠', '☯️'])).toBe('dave 🦎𝗠☯️');
+    expect(titleFor(['🦎'], true)).toBe('🔇❓ dave 🦎');
+    expect(titleFor([], true)).toBe('🔇❓ dave');
+  });
+  it('shows a face as the profile picture, else the initial in bold', () => {
+    expect(titleFace({ name: 'Dani', picture: '🦎' })).toBe('🦎');
+    expect(titleFace({ name: 'mare' })).toBe('𝗠');
+    expect(titleFace({ name: 'Zoë', picture: null })).toBe('𝗭');
+    expect(titleFace({ name: 'Ömer' })).toBe('Ö');
+  });
+  it('calls the microphone silent after a minute without any sound, however quiet', () => {
+    const watch = createMicSilenceWatch();
+    const quiet = MIC_ACTIVITY_LEVEL / 2;
+    expect(watch(quiet, 0).silent).toBe(false);
+    expect(watch(quiet, MIC_SILENCE_MS - 1).silent).toBe(false);
+    expect(watch(quiet, MIC_SILENCE_MS)).toEqual({ silent: true, peak: quiet });
+    // Room noise the voice gate keeps back is sound: the wait starts over.
+    expect(watch(0.001, MIC_SILENCE_MS + 1).silent).toBe(false);
+    expect(watch(0, 2 * MIC_SILENCE_MS).silent).toBe(false);
+    expect(watch(0, 2 * MIC_SILENCE_MS + 1).silent).toBe(true);
+  });
+  it('starts the wait over while the microphone is closed or muted in the app', () => {
+    const watch = createMicSilenceWatch();
+    watch(0, 0);
+    expect(watch(null, MIC_SILENCE_MS).silent).toBe(false);
+    expect(watch(0, MIC_SILENCE_MS + 1).silent).toBe(false);
+    expect(watch(0, 2 * MIC_SILENCE_MS).silent).toBe(false);
+    expect(watch(0, 2 * MIC_SILENCE_MS + 1).silent).toBe(true);
   });
   const view = (present: string[], kept: string[] = []) => ({ present: new Set(present), kept: new Set(kept) });
   it('diffs joins and leaves, ignoring yourself', () => {
