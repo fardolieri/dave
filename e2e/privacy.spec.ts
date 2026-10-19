@@ -7,6 +7,17 @@ import { expect, test } from './fixtures';
 const posthogStorage = (page: Page) => page.evaluate(() => [...Object.keys(localStorage), ...Object.keys(sessionStorage), ...document.cookie.split(';').map((c) => c.split('=')[0]!.trim())]
   .filter((k) => k.startsWith('ph_') || k.startsWith('__ph_')));
 
+/**
+ * Answers the notice once its bubble has popped in. It scales up from its corner after a delay, and Playwright found a
+ * button stable while the bubble still waited at its first frame; the click then missed it, the
+ * notice stayed open and the yes was never given (ticket 50: Firefox, 2026-10-12 and twice on 2026-10-15).
+ */
+async function answer(page: Page, button: 'Sure!' | 'Maybe later'): Promise<void> {
+  const notice = page.getByRole('region', { name: 'Help find bugs' });
+  await notice.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))).then(() => {}));
+  await notice.getByRole('button', { name: button }).click();
+}
+
 test('a fresh browser is asked once, again only from the sidebar, and sends nothing to PostHog before a yes or after a no', async ({ crowd }) => {
   const alice = await crowd.open('Alice', { telemetry: null, plainUserAgent: true });
   const notice = alice.page.getByRole('region', { name: 'Help find bugs' });
@@ -16,7 +27,7 @@ test('a fresh browser is asked once, again only from the sidebar, and sends noth
   expect(alice.posthog, 'no request to PostHog before an answer').toEqual([]);
   expect(await posthogStorage(alice.page)).toEqual([]);
 
-  await notice.getByRole('button', { name: 'Maybe later' }).click();
+  await answer(alice.page, 'Maybe later');
   await expect(notice).not.toBeVisible();
   await alice.page.reload();
   await alice.connected();
@@ -32,7 +43,7 @@ test('a fresh browser is asked once, again only from the sidebar, and sends noth
 
 test('a yes starts PostHog and tells the server; stopping forgets it again', async ({ crowd }) => {
   const alice = await crowd.open('Alice', { telemetry: null, plainUserAgent: true });
-  await alice.page.getByRole('region', { name: 'Help find bugs' }).getByRole('button', { name: 'Sure!' }).click();
+  await answer(alice.page, 'Sure!');
   await expect.poll(() => alice.posthog.length, { message: 'PostHog started after the yes' }).toBeGreaterThan(0);
   await expect.poll(() => alice.posthog.some((u) => /\/e\/(\?|$)/.test(u)), { message: 'and sends events: opted in, not only loaded' }).toBe(true);
   // All of it through our own origin: tracker blockers drop requests to posthog.com, even from a friend who said yes.
@@ -52,18 +63,18 @@ test('a yes starts PostHog and tells the server; stopping forgets it again', asy
   await alice.page.getByRole('button', { name: 'Stop helping find bugs' }).click();
   const notice = alice.page.getByRole('region', { name: 'Help find bugs' });
   await expect(notice).toContainText('You are helping right now');
-  await notice.getByRole('button', { name: 'Maybe later' }).click();
+  await answer(alice.page, 'Maybe later');
   await expect(notice).not.toBeVisible();
   await expect(alice.page.getByRole('button', { name: 'Help find bugs', exact: true })).toBeVisible();
   await expect.poll(() => alice.wire.frames('up', 'telemetry').at(-1)).toEqual({ t: 'telemetry', on: false });
   await expect.poll(() => posthogStorage(alice.page)).toEqual([]);
   // A yes again on the same page: the SDK is still loaded, and its reset on the no dropped the build, which comes back
   await alice.page.getByRole('button', { name: 'Help find bugs', exact: true }).click();
-  await notice.getByRole('button', { name: 'Sure!' }).click();
+  await answer(alice.page, 'Sure!');
   await expect.poll(superProperties, { message: 'the build is registered again after a no and a yes' })
     .toMatchObject({ build_commit: expect.stringMatching(/^[0-9a-f]{40}$/), build_target: expect.stringMatching(/^(live|nightly|preview|e2e|local)$/) });
   await alice.page.getByRole('button', { name: 'Stop helping find bugs' }).click();
-  await notice.getByRole('button', { name: 'Maybe later' }).click();
+  await answer(alice.page, 'Maybe later');
   await expect.poll(() => posthogStorage(alice.page)).toEqual([]);
   await alice.page.reload();
   await alice.connected();
@@ -104,7 +115,7 @@ test('a yes during the handshake neither refuses the room nor gets lost', async 
   alice.wire.down = (frame) => (challenge === null && frame.includes('"t":"challenge"') ? ((challenge = frame), null) : frame);
   await alice.page.goto('/');
   await expect.poll(() => challenge).not.toBeNull();
-  await alice.page.getByRole('region', { name: 'Help find bugs' }).getByRole('button', { name: 'Sure!' }).click();
+  await answer(alice.page, 'Sure!');
   await alice.page.waitForTimeout(300);
   alice.wire.deliver(challenge!);
   await alice.connected(); // not refused: nothing went up before the welcome
