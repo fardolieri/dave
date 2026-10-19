@@ -1,6 +1,6 @@
 # 50 · Flake: PostHog did not start in 20 s after the yes (not pinned down)
 
-Status: open, cause not found, 2026-10-12; shipped 2026-10-14 to prod (41657fb): the e2e workflow now keeps the failed try of a test that passed on its retry
+Status: likely found 2026-10-19, fixed on branch flake/59-closed-friend-goodbye (outcome 1 of ticket 35, the test is wrong); shipped 2026-10-14 to prod (41657fb): the e2e workflow now keeps the failed try of a test that passed on its retry
 Seen 2026-10-12: e2e run 38252207798 (local build, branch flake/worker-test-nightly), job 114821122667, Firefox shard 3:
 `privacy.spec.ts` "a yes starts PostHog and tells the server; stopping forgets it again" failed on its first try and
 passed on the retry (8.5 s). After the click on "Sure!", no request to PostHog in 20 s ("PostHog started after the yes",
@@ -36,3 +36,13 @@ it finished, the service worker's state.
 
 ## Left as it is
 The flake, until it shows again with its trace.
+
+## Seen with its trace (2026-10-19)
+The kept failed tries of 2026-10-15 (e2e runs 38721164482 and 38764424455, Firefox) were the neighbouring test
+"a yes during the handshake…": the auth went up without the yes, and no `telemetry` frame followed it either. The page
+snapshot after the failure still has the notice open, which "Sure!" closes: the click Playwright reported done did not
+reach the button. It came about 0.55 s after the load, inside the bubble's pop-in (`bubble-pop .35s .45s`, scaling from
+0.6 around its corner): Playwright found the button stable while the bubble waited at its first frame, and by the click
+it had moved. Ticket 50's run had the same shape, zero requests after a click early after the load, so most likely the
+same miss; not proven, its try was not kept. The privacy tests now wait for the notice's animations to end before they
+answer it (`answer`, privacy.spec.ts). The same kind of miss as ticket 57's Join click: layout moving under a click.
