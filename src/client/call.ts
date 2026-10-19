@@ -874,8 +874,23 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   const coarsePointer = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   /** The track's own mute as last seen, to report when the system mutes it: Chrome on Linux follows the headset's switch. */
   let trackMuted = false;
-  /** Each minute without a voice, how quiet it was, to check MIC_LIVE_LEVEL against real headsets. */
-  let quiet: { since: number; levels: number[] } | null = null;
+  /** Each minute without a voice, how quiet it was and in which pitches, to tell a muted headset's hiss from a quiet room. */
+  let quiet: { since: number; levels: number[]; bands: number[] } | null = null;
+  /** Upper edges in Hz of the pitch bands reported: a room hums low, a converter hisses evenly. */
+  const BAND_EDGES = [250, 500, 1000, 2000, 4000, 8000, 16000, Infinity];
+  /** The mean power of each band's bins in one reading, added to `into`. */
+  const addBands = (an: AnalyserNode, into: number[]): void => {
+    const db = new Float32Array(an.frequencyBinCount);
+    an.getFloatFrequencyData(db);
+    const hz = an.context.sampleRate / an.fftSize;
+    const sum = BAND_EDGES.map(() => 0), n = BAND_EDGES.map(() => 0);
+    for (let i = 1; i < db.length; i++) {
+      const b = BAND_EDGES.findIndex((edge) => i * hz < edge);
+      if (Number.isFinite(db[i]!)) sum[b]! += 10 ** (db[i]! / 10);
+      n[b]!++;
+    }
+    for (let b = 0; b < BAND_EDGES.length; b++) into[b] = (into[b] ?? 0) + (n[b]! > 0 ? sum[b]! / n[b]! : 0);
+  };
   let quietReports = 0;
   const dbfs = (v: number) => Math.round(20 * Math.log10(Math.max(v, 1e-9)) * 10) / 10;
   const centile = (sorted: number[], q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]!;
@@ -894,13 +909,15 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     }
     if (level === null || level > SPEAK_THRESHOLD) quiet = null;
     else if (quietReports < 30) {
-      quiet ??= { since: now, levels: [] };
+      quiet ??= { since: now, levels: [], bands: [] };
       quiet.levels.push(level);
+      addBands(localAnalyser!, quiet.bands);
       if (now - quiet.since >= MIC_SILENCE_MS) {
         const l = quiet.levels.sort((a, b) => a - b);
         quietReports++;
         posthog.capture('mic_quiet_minute', {
           floor: l[0], peak: l[l.length - 1], p10_db: dbfs(centile(l, 0.1)), p50_db: dbfs(centile(l, 0.5)), p90_db: dbfs(centile(l, 0.9)), peak_db: dbfs(l[l.length - 1]!),
+          bands_db: quiet.bands.map((p) => Math.round(10 * Math.log10(Math.max(p / l.length, 1e-30)) * 10) / 10), rate: audioCtx?.sampleRate ?? null,
           trackMuted, silent: micQuiet, agc: voiceTrack?.getSettings().autoGainControl ?? null, ns: voiceTrack?.getSettings().noiseSuppression ?? null,
         });
         quiet = null;
