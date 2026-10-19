@@ -129,6 +129,9 @@ test('texts from more than 18 h before the room came on screen wait behind a but
   await alice.say('yesterday two');
   await alice.say('this morning');
   await expect.poll(() => bob.chatTexts()).toEqual(['yesterday one', 'yesterday two', 'this morning']);
+  // Written, not only shown (ticket 43): a write landing between the read and the put below was overwritten by two aged
+  // lines, and "this morning" was gone after the reload (Firefox, 2026-10-17).
+  await expect.poll(() => bob.storedTexts()).toEqual(['yesterday one', 'yesterday two', 'this morning']);
   // Bob's own copy, as if the first two had come in 19 h ago and the third 17 h ago.
   await bob.page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('dave'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
