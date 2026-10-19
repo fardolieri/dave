@@ -6,6 +6,12 @@ describe('attention cues', () => {
     expect(titleFor([])).toBe('dave');
     expect(titleFor(['🦎', '𝗠', '☯️'])).toBe('dave 🦎𝗠☯️');
   });
+  it('marks in the title whether I am heard in my call', () => {
+    expect(titleFor(['🦎', '☯️', '𝗠'], 'quiet')).toBe('🔘 dave 🦎☯️𝗠');
+    expect(titleFor(['🦎', '☯️', '𝗠'], 'talking')).toBe('⚪ dave 🦎☯️𝗠');
+    expect(titleFor(['🦎', '☯️', '𝗠'], 'muted')).toBe('🔇 dave 🦎☯️𝗠');
+    expect(titleFor(['☯️', '𝗠'], 'out')).toBe('dave ☯️𝗠');
+  });
   it('shows a face as the profile picture, else the initial in bold', () => {
     expect(titleFace({ name: 'Dani', picture: '🦎' })).toBe('🦎');
     expect(titleFace({ name: 'mare' })).toBe('𝗠');

@@ -524,15 +524,15 @@ test('a friend cut off from the server stays in the call, dimmed, as long as the
   else { test.slow(); await bob.page.waitForTimeout(65_000); }
   await expect(lost).toContainText('Alice');
   // Her face stays in the title too, as long as her voice comes through, after Bob's own, as the list has them.
-  await expect(bob.page).toHaveTitle('dave 𝗕𝗔');
+  await expect(bob.page).toHaveTitle(/^(🔘|⚪) dave 𝗕𝗔$/u);
   if (await bob.hasHooks()) await bob.hearing('Alice');
   alice.wire.restore();
   // The next attempt comes after the back-off (client/room.ts): a few seconds here, 15 to 30 s after a minute away.
   await alice.connected(35_000);
   await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
   await expect(lost).toHaveCount(0);
-  await expect(bob.page).toHaveTitle('dave 𝗕𝗔');
-  await expect(alice.page).toHaveTitle('dave 𝗔𝗕'); // my own face first, though Alice joined again after Bob
+  await expect(bob.page).toHaveTitle(/^(🔘|⚪) dave 𝗕𝗔$/u);
+  await expect(alice.page).toHaveTitle(/^(🔘|⚪) dave 𝗔𝗕$/u); // my own face first, though Alice joined again after Bob
   await bob.connectedTo('Alice');
 });
 

@@ -156,6 +156,23 @@ test('ticket 23: join and leave cues follow each friend\'s profile picture', asy
   expect(await heard(carol)).toBeTruthy(); // Carol heard her own leave
 });
 
+test('the title says whether I am heard in my call, and that I am muted, and nothing once out', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { picture: '🦊' });
+  const bob = await crowd.open('Bob', { picture: '😀' });
+  await bob.join();
+  await expect(alice.page).toHaveTitle('dave 😀'); // not in the call: no mark
+  await alice.join(); // my own face first, as the call list has it
+  await expect(alice.page).toHaveTitle(/^(🔘|⚪) dave 🦊😀$/u);
+  await alice.selectedRoom.getByRole('button', { name: 'Mute' }).click();
+  await expect(alice.page).toHaveTitle('🔇 dave 🦊😀');
+  await alice.page.waitForTimeout(1000); // the fake microphone keeps beeping: muted, none of it is heard
+  await expect(alice.page).toHaveTitle('🔇 dave 🦊😀');
+  await alice.selectedRoom.getByRole('button', { name: 'Unmute' }).click();
+  await expect(alice.page).toHaveTitle(/^(🔘|⚪) dave 🦊😀$/u);
+  await alice.leave();
+  await expect(alice.page).toHaveTitle('dave 😀');
+});
+
 test('ticket 39: starting a share plays the sharer\'s cue with a high C6 on top, for everyone and the sharer', async ({ crowd }) => {
   const alice = await crowd.open('Alice', { picture: '😀' });
   const bob = await crowd.open('Bob', { picture: '🐸' }); // no wobble, so the cue's first notes match the join's

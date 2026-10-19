@@ -1,5 +1,5 @@
 import { createEffect, onCleanup, untrack } from 'solid-js';
-import { callDiff, sharesStarted, titleFace, titleFor } from '../core/attention';
+import { callDiff, sharesStarted, titleFace, titleFor, type MyVoice } from '../core/attention';
 import { MESSAGE_CUE, joinCue, leaveCue, shareCue, type Cue } from '../core/cue';
 import { armSound, playCue } from './sound';
 import { getPicture } from './invite';
@@ -14,7 +14,7 @@ export type RoomLink = { room: ReturnType<typeof createRoom>; call: ReturnType<t
 
 /**
  * Attention cues (spec §7.4) and the screen wake lock (spec §6.5) across every room: the faces of the call in the title,
- * focused or not, quiet chimes when others join or leave a call or start sharing, each friend's own, a tick for
+ * focused or not, with whether I am being heard in front, quiet chimes when others join or leave a call or start sharing, each friend's own, a tick for
  * messages, and the screen kept awake while watching a share or, on a phone, while in a call. Everything derives from
  * room and call signals.
  */
@@ -56,7 +56,12 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
     }
     return [...byKey.values()];
   };
-  createEffect(() => titleFor(faces()), (title) => { document.title = title; });
+  const myVoice = (): MyVoice => {
+    const mine = links().filter((l) => l.call.inCall());
+    // Muted first: the speaking ring holds a moment after the last sound, and Mute pressed mid-word is muted at once.
+    return mine.length === 0 ? 'out' : mine.every((l) => l.call.muted()) ? 'muted' : mine.some((l) => l.call.speakingSelf()) ? 'talking' : 'quiet';
+  };
+  createEffect(() => titleFor(faces(), myVoice()), (title) => { document.title = title; });
 
   // ---- chimes: each friend's own cue from their profile picture (ticket 23)
   const disarm = armSound();

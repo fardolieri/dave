@@ -12,9 +12,18 @@ export function titleFace(person: { name: string; picture?: string | null }): st
   return /^[A-Z]$/.test(initial) ? String.fromCodePoint(0x1d5d4 + initial.charCodeAt(0) - 65) : initial;
 }
 
-/** The tab's title, focused or not: the faces of everyone in the Call, you included, in the order they joined. */
-export function titleFor(faces: readonly string[]): string {
-  return faces.length > 0 ? `${APP_TITLE} ${faces.join('')}` : APP_TITLE;
+/** Where I am in a Call, for the title: not in one, muted in the app, quiet, or being heard. */
+export type MyVoice = 'out' | 'muted' | 'quiet' | 'talking';
+const VOICE_MARK: Record<MyVoice, string> = { out: '', muted: '🔇 ', quiet: '🔘 ', talking: '⚪ ' };
+
+/**
+ * The tab's title, focused or not: the faces of everyone in the Call, you included, in the call list's order. In a call,
+ * a quiet mark in front says whether I am being heard, as the ring on my avatar does: talking into a headset muted by its
+ * own switch leaves it at 🔘.
+ */
+export function titleFor(faces: readonly string[], me: MyVoice = 'out'): string {
+  const mark = VOICE_MARK[me];
+  return `${mark}${APP_TITLE}${faces.length > 0 ? ` ${faces.join('')}` : ''}`;
 }
 
 /** One view of the Call for cues: who presence lists as a participant, and whom I still hold a peer connection to. */
