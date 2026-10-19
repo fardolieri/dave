@@ -523,6 +523,8 @@ test('a friend cut off from the server stays in the call, dimmed, as long as the
   if (canExpire) expect(await bob.hook<string>('expireGrace', 'Alice')).toBe('kept');
   else { test.slow(); await bob.page.waitForTimeout(65_000); }
   await expect(lost).toContainText('Alice');
+  // Her face stays in the title too, as long as her voice comes through: Alice and Bob show their bold initials.
+  await expect.poll(() => bob.page.title()).toMatch(/^dave (𝗔𝗕|𝗕𝗔)$/u);
   if (await bob.hasHooks()) await bob.hearing('Alice');
   alice.wire.restore();
   // The next attempt comes after the back-off (client/room.ts): a few seconds here, 15 to 30 s after a minute away.

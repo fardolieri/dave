@@ -357,6 +357,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (a.microphoneId) c.deviceId = { ideal: a.microphoneId };
     return c;
   }
+  /** Reopens under way: the silence watch waits them out. */
+  let reopening = 0;
   /** The constraints the live microphone was opened with, to tell whether the settings now ask for another. */
   let micOpenedWith = '';
   const capture = async (c: MediaTrackConstraints): Promise<MediaStream | null> => {
@@ -377,6 +379,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   async function reopenMicrophone(c: MediaTrackConstraints): Promise<boolean> {
     const old = voiceTrack;
     if (!old) return false;
+    reopening++;
+    try { return await swapMicrophone(old, c); } finally { reopening--; }
+  }
+  async function swapMicrophone(old: MediaStreamTrack, c: MediaTrackConstraints): Promise<boolean> {
     let stream = await capture(c);
     if (stream && voiceTrack === old && !takes(stream, c)) {
       stream.getTracks().forEach((t) => t.stop());
@@ -882,6 +888,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     return sum > 0 ? Math.exp(logSum / n) / (sum / n) : 0;
   };
   function watchMicSilence(now: number): void {
+    // A reopen stops the old track before the new one runs: no sound comes in meanwhile, and none was missed either.
+    if (reopening > 0) return;
     // Read only while the microphone can carry sound: a closed, muted or ended track, or a stopped context (a phone in a
     // phone call), reads as zeros. A track the system muted is read: its zeros are what a muted headset sends. Not on a
     // phone in the background, which mutes the track itself.

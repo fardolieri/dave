@@ -1,4 +1,4 @@
-import { expect, needHooks, test } from './fixtures';
+import { expect, needHooks, test, type Friend } from './fixtures';
 
 test('two friends join the call, connect directly and hear each other', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
@@ -154,6 +154,71 @@ test('ticket 23: join and leave cues follow each friend\'s profile picture', asy
   const carolLeave = await heard(alice);
   expect(carolLeave).not.toEqual(carolJoin); // the leave is the picture's cue backwards and lower
   expect(await heard(carol)).toBeTruthy(); // Carol heard her own leave
+});
+
+/** A headset with its own mute switch: the track stays live and enabled, and carries zeros while the switch is off. */
+async function withHeadsetSwitch(friend: Friend): Promise<void> {
+  await friend.context.addInitScript(() => {
+    const gains: GainNode[] = [];
+    let on = true;
+    (window as unknown as { __headset: (on: boolean) => void }).__headset = (v) => { on = v; for (const g of gains) g.gain.value = v ? 1 : 0; };
+    const media = navigator.mediaDevices;
+    const real = media.getUserMedia.bind(media);
+    media.getUserMedia = async (c) => {
+      const raw = await real(c);
+      const input = raw.getAudioTracks()[0];
+      if (!input || c?.video) return raw;
+      const ctx = new AudioContext();
+      void ctx.resume();
+      const gain = ctx.createGain();
+      gain.gain.value = on ? 1 : 0;
+      gains.push(gain);
+      const out = ctx.createMediaStreamDestination();
+      ctx.createMediaStreamSource(raw).connect(gain).connect(out);
+      const track = out.stream.getAudioTracks()[0]!;
+      // The app reads the processing a capture runs (call.ts, takes): the real track's, so it reopens as it would.
+      track.getSettings = () => input.getSettings();
+      const stop = track.stop.bind(track);
+      let stopped = false;
+      track.stop = () => { if (stopped) return; stopped = true; stop(); input.stop(); ctx.close().catch(() => {}); };
+      return out.stream;
+    };
+  });
+}
+
+test('a microphone silent for a minute asks in the title, on my row and out loud, through a settings change, until sound comes', async ({ crowd, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Firefox\'s fake microphone runs no processing, and headless Firefox gets no running AudioContext');
+  test.setTimeout(240_000);
+  const alice = await crowd.open('Alice', { connect: false, picture: '🦊' });
+  await withHeadsetSwitch(alice);
+  await alice.open();
+  await alice.join();
+  await needHooks(alice);
+  const context = await alice.hook<{ context: string | null }>('playback').then((p) => p.context);
+  test.skip(context !== 'running', `no running AudioContext here (${context}): the microphone is never read`);
+  await expect(alice.page).toHaveTitle('dave 🦊');
+  await alice.page.evaluate(() => (window as unknown as { __headset: (on: boolean) => void }).__headset(false));
+  await alice.cuesPlayed();
+  const asked = alice.selectedRoom.locator('li.prow em.micsilent');
+  await expect(alice.page).toHaveTitle('🔇❓ dave 🦊', { timeout: 80_000 });
+  await expect(asked).toBeVisible();
+  await expect.poll(async () => (await alice.cuesPlayed()).join(','), { message: 'asked out loud' }).toContain('sine 523,sine 392,sine 523');
+  // Checking the settings opens the microphone again: no sound came, so the question stays.
+  await alice.selectedRoom.getByTitle('Audio settings').click();
+  const panel = alice.page.locator('.panel');
+  const echo = async () => (await alice.hook<{ track: { echoCancellation?: boolean } | null }>('audio')).track?.echoCancellation;
+  await panel.getByLabel('Echo cancellation').uncheck();
+  await expect.poll(echo).toBe(false);
+  await panel.getByLabel('Echo cancellation').check();
+  await expect.poll(echo).toBe(true);
+  await alice.page.waitForTimeout(1000);
+  await expect(alice.page).toHaveTitle('🔇❓ dave 🦊');
+  await expect(asked).toBeVisible();
+  await alice.page.evaluate(() => (window as unknown as { __headset: (on: boolean) => void }).__headset(true)); // the beeps are sound
+  await expect(alice.page).toHaveTitle('dave 🦊');
+  await expect(asked).toHaveCount(0);
+  await alice.leave();
+  await expect(alice.page).toHaveTitle('dave');
 });
 
 test('ticket 39: starting a share plays the sharer\'s cue with a high C6 on top, for everyone and the sharer', async ({ crowd }) => {

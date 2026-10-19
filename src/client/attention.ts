@@ -39,11 +39,18 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
   // ---- title: the faces of everyone in a call, you included, each once however many calls they are in; and the silent microphone
   const micSilent = () => links().some((l) => l.call.micSilent());
   // Join order within each room: every room counts its own joins. The name is the one the avatar shows, my nickname first.
+  // A friend who lost the server but whose voice still comes through stays, after the rest, as the list keeps them.
+  const knownPicture = new Map<string, string | undefined>();
   const faces = () => {
     const byKey = new Map<string, string>();
+    const add = (publicKey: string, name: string, picture: string | undefined) => {
+      if (!byKey.has(publicKey)) byKey.set(publicKey, titleFace({ name: displayName(name, contactOf(publicKey)), picture }));
+    };
     for (const l of links()) {
-      const inCall = l.room.people().filter((p) => p.role === 'participant').sort((a, b) => (a.joinSeq ?? 0) - (b.joinSeq ?? 0));
-      for (const p of inCall) if (!byKey.has(p.publicKey)) byKey.set(p.publicKey, titleFace({ name: displayName(p.name, contactOf(p.publicKey)), picture: p.picture }));
+      const people = l.room.people();
+      for (const p of people) knownPicture.set(p.publicKey, p.picture);
+      for (const p of people.filter((p) => p.role === 'participant').sort((a, b) => (a.joinSeq ?? 0) - (b.joinSeq ?? 0))) add(p.publicKey, p.name, p.picture);
+      if (l.call.inCall()) for (const v of l.call.views()) if (v.serverLost) add(v.publicKey, v.name, knownPicture.get(v.publicKey));
     }
     return [...byKey.values()];
   };
@@ -84,7 +91,8 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
     if (prev.some((id) => !now.includes(id))) cue(leaveCue(getPicture()));
   });
   // A microphone gone silent asks once, out loud too: the title is out of sight behind a game or another window.
-  createEffect(() => micSilent(), (silent, prev) => { if (silent && prev === false) cue(MIC_SILENT_CUE); });
+  // A mic test hears nothing but myself: a silence that set in during one asks once the test is over.
+  createEffect(() => micSilent() && !links().some((l) => l.call.micTest() !== null), (ask, prev) => { if (ask && prev === false) cue(MIC_SILENT_CUE); });
   // Starting my own share plays my share cue too, once the browser's picker has handed over the screen.
   createEffect(() => links().filter((l) => l.call.sharing() !== null).map((l) => l.room.roomId), (now, prev) => {
     if (prev && now.some((id) => !prev.includes(id))) cue(shareCue(getPicture()));
