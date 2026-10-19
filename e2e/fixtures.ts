@@ -107,6 +107,21 @@ export class Wire {
 
   restore(): void { this.refusing = false; }
 
+  /**
+   * The tab goes away and says so on its open sockets, as a closed tab does, and waits a moment for the Room to answer.
+   * Closing the context alone left that to the browser: the socket to the server lives in the page, the route reports it
+   * closed as the page goes, and the close sent on to the server then has no page left to go out from. Firefox at times
+   * kept the socket open after its context closed, and the Room listed the friend until its sweep (ticket 59). A severed
+   * socket stays severed: its tab dies unheard. Page JS can close with 1000, not with a tab's 1001. The page is not told,
+   * as a tab on its way out is not, so the app does not reconnect in the moment left; nor would a reconnect get through.
+   */
+  async goAway(): Promise<void> {
+    this.refusing = true;
+    const open = [...this.routes].filter((p) => !p.severed && !p.closing);
+    for (const pair of open) { pair.severed = true; await pair.server.close({ code: 1000, reason: 'e2e: tab closed' }).catch(() => {}); }
+    for (let waited = 0; open.some((p) => this.routes.has(p)) && waited < 2_000; waited += 50) await new Promise((r) => setTimeout(r, 50));
+  }
+
   /** Sends a frame to the page as if the server had, e.g. one a `down` tamper held back earlier. */
   deliver(frame: string): void { for (const { page } of this.routes) page.send(frame); }
 
@@ -498,7 +513,10 @@ export class Friend {
   }
 
   // The context is missing when the launch itself failed; teardown must not hide that error.
-  async close(): Promise<void> { await this.context?.close().catch(() => {}); }
+  async close(): Promise<void> {
+    await this.wire.goAway();
+    await this.context?.close().catch(() => {});
+  }
 }
 
 const clean = (s: string) => s.replace(/\s*\(you\)\s*$/, '').trim();
