@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 import posthog, { onConsentChange, telemetryOn } from './posthog';
-import { buildAuthMessage } from '../core/identity';
+import { buildAuthMessage, randomHex } from '../core/identity';
 import { openFile, openText, sealFile, sealText } from '../core/sealed';
 import { MAX_FILE_BYTES, MAX_FILE_NAME, PIECED_FROM, PIECE_BYTES, PULLS_AT_ONCE, formatSize, inlineKind, pullsByItself, type FileMeta } from '../core/attachment';
 import { createLinks, PullFailed, type PullError } from './links';
@@ -217,7 +217,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const sendPrepared = ({ picked, file, list }: PreparedFile): void => {
     if (picked.size > MAX_FILE_BYTES) { push({ kind: 'system', text: `Not sent: ${picked.name} is ${formatSize(picked.size)}.`, at: Date.now() }); return; }
     if (stopped) return;
-    const id = Array.from(crypto.getRandomValues(new Uint8Array(12)), (x) => x.toString(16).padStart(2, '0')).join('');
+    const id = randomHex(12);
     const at = Date.now();
     const { hash } = file;
     holdSent(hash, picked);
@@ -311,7 +311,6 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   }
 
   const links = createLinks({ identity: opts.identity, send: (m) => send(m), serves: async (hash) => { await historyLoaded; return announced.has(hash); } });
-  /** Who announced each file I want, by hash; pulled from them (ticket 02: from anyone who has it). */
   /** Who announced each file, by hash, oldest first: any of them has it (ticket 02: anyone who pulled it, too). */
   const holders = new Map<string, { file: FileMeta; from: string[] }>();
   const online = (key: string): boolean => people().some((p) => p.publicKey === key);
@@ -385,7 +384,6 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     setAttachment(hash, { status: 'failed', reason, retryAt });
   }
 
-  /** Shows a file from bytes I hold: a blob URL of its own type if it shows inline, else one that only downloads. */
   /**
    * Every try again whose time has come is made now: after an outage, or when this tab takes the room back, a timer that
    * fired meanwhile found no socket or a tab not in charge (review of PR #70).
@@ -400,6 +398,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     }
   }
 
+  /** Shows a file from bytes I hold: a blob URL of its own type if it shows inline, else one that only downloads. */
   function show(file: FileMeta, blob: Blob): void {
     stopRetry(file.hash);
     asked.delete(file.hash);
@@ -876,7 +875,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     sendText: (text: string) => {
       // The Room cannot read a sealed text to refuse it, and friends would drop it unseen (core/sealed.ts): said here instead.
       if (text.length > MAX_TEXT_LENGTH) { push({ kind: 'system', text: `Not sent: message longer than ${MAX_TEXT_LENGTH} characters.`, at: Date.now() }); return; }
-      const id = Array.from(crypto.getRandomValues(new Uint8Array(12)), (x) => x.toString(16).padStart(2, '0')).join(''); // not randomUUID: http on a LAN too
+      const id = randomHex(12);
       unconfirmed.push({ id, text, at: Date.now() });
       unconfirmedChanged();
       sendText({ id, text });
@@ -888,7 +887,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
      * goes again on the next one if the last took it without bringing it back; unlike a text, a reload forgets it. It goes
      * at once: after what was sent before it and before what is sent after it, a text among them.
      */
-    sendPrepared: (prepared: PreparedFile): void => sendPrepared(prepared),
+    sendPrepared,
     /** Empties the local history; the server never had it. */
     clearHistory: async () => { await clearHistory(opts.roomId); setLines([]); },
     /** Dev aid for scripts/drive.mjs: drops the socket so the reconnect path runs. */

@@ -24,6 +24,9 @@ export function fromBase64Url(text: string): Uint8Array | null {
   return out;
 }
 
+/** `bytes` random bytes as lowercase hex. */
+export const randomHex = (bytes: number): string => Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (x) => x.toString(16).padStart(2, '0')).join('');
+
 export function randomNonce(): Uint8Array {
   return crypto.getRandomValues(new Uint8Array(32));
 }

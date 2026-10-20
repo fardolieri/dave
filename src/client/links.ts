@@ -4,6 +4,7 @@
 // (ADR 0004), so the Room cannot sit in the middle. Nothing here touches the call.
 import posthog from './posthog';
 import { signDescription, verifyDescription } from '../core/dtls';
+import { randomHex } from '../core/identity';
 import { CLOSED, closeLatch, keyedChain, unlessClosed } from '../core/signalchain';
 import { STUN_ONLY } from '../core/turn';
 import { LINK_ICE_TTL_SECONDS } from '../core/mesh';
@@ -78,8 +79,6 @@ type Link = {
 const CANDIDATE_TYPES = new Set(['host', 'srflx', 'prflx', 'relay']);
 /** The type an ICE candidate line names (`typ host`, `typ relay`, …). */
 const candidateType = (line: string): string => /\btyp (\w+)/.exec(line)?.[1] ?? 'unknown';
-
-const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(9)), (x) => x.toString(16).padStart(2, '0')).join('');
 
 /**
  * The file links of one room. `serves` says whether a file is one this room has seen announced: a friend can pull only
@@ -303,7 +302,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
   ): Promise<Blob | null> {
     const servers = await iceServers();
     if (signal.aborted) throw new PullFailed('lost');
-    const link = open(from, randomId(), servers);
+    const link = open(from, randomHex(9), servers);
     signal.addEventListener('abort', () => close(link, 'cancelled'), { once: true });
     // The link closed under the pull (the friend left, the connection failed, the room went): no event says so.
     const gone = (reason: PullError) => link.latch.closed.then((): never => { throw new PullFailed(link.atLimit ? 'busy' : reason); });
