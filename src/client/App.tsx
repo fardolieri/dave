@@ -114,10 +114,6 @@ export default function App() {
             <h2>You need an invite link</h2>
             <p>Open the link a friend sent you, or paste it here. Nothing else gets you in.</p>
             <JoinLinkForm autofocus onJoin={join} />
-            <p class="dim">
-              Installed on an iPhone or iPad home screen? Tapped links open in Safari, which keeps its rooms to itself, so pasting is the only way in here.
-              This copy of the app also starts with its own identity: friends will see you as new.
-            </p>
             <VersionDialog />
           </main>
         </Match>
