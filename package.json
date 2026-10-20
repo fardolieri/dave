@@ -14,7 +14,6 @@
     "test": "node scripts/check-core-isolation.mjs && node scripts/check-theme-fonts.mjs && node scripts/check-theme-masks.mjs && vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.e2e.json --noEmit",
     "types": "wrangler types",
-    "proto:room-ui": "cd prototypes/room-ui && pnpm install && pnpm dev",
     "e2e": "playwright test",
     "e2e:nightly": "E2E_URL=nightly playwright test"
   },

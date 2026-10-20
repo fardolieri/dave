@@ -28,7 +28,7 @@ const REGRESSION = 'Regression test:';
 const EXCUSE = 'No regression test:';
 
 /** What stays as the branch has it when the old app goes in. Everything else the branch changes goes back. */
-const TEST_SIDE = /^(?:test|e2e|scripts|docs|prototypes|\.github|\.claude|\.scratch)\/|\.md$|^(?:package\.json|pnpm-lock\.yaml|playwright\.config\.ts|vitest\.config\.ts|tsconfig\.e2e\.json)$/;
+const TEST_SIDE = /^(?:test|e2e|scripts|docs|\.github|\.claude|\.scratch)\/|\.md$|^(?:package\.json|pnpm-lock\.yaml|playwright\.config\.ts|vitest\.config\.ts|tsconfig\.e2e\.json)$/;
 
 /** Errors of a test that reaches for code the old app does not have yet: an import, a function, a hook. */
 const NEW_CODE = /is not a function|is not a constructor|is not defined|does not provide an export named|is not exported|Cannot find module|Failed to (?:load|resolve)|Cannot read properties of undefined|undefined is not an object/;
