@@ -8,6 +8,8 @@ const SECRET_BYTES = 16;
 /** base64url of a SHA-256 digest, unpadded. */
 export const ROOM_ID_LENGTH = 43;
 const ROOM_ID_RE = /^[A-Za-z0-9_-]{43}$/;
+/** What `newRoomSecret` makes: 16 bytes as base64url, unpadded. */
+const SECRET_RE = /^[A-Za-z0-9_-]{22}$/;
 /** Links from before rooms had names carry only the secret; that room gets this name. */
 export const DEFAULT_ROOM_NAME = 'Friends';
 
@@ -72,11 +74,17 @@ export function formatInviteFragment(link: InviteLink): string {
  * `://` is taken as a fragment, so a URL without a fragment or a sentence off the clipboard is not a
  * link and cannot open a garbage room. Needed because iOS never routes a tapped link into a home-screen
  * web app, so pasting is the only way a room gets in there.
+ *
+ * The secret must look like one `newRoomSecret` makes: anything else typed in is a typo or a word, and
+ * would open a new empty room of its own. Opened links stay lenient (`parseInviteFragment`), so a link from
+ * the days of a shared passphrase still works when tapped, though no longer when pasted.
  */
 export function parseInviteText(text: string): InviteLink | null {
   const trimmed = text.trim();
   const hash = trimmed.indexOf('#');
-  if (hash >= 0) return parseInviteFragment(trimmed.slice(hash));
-  if (/\s/.test(trimmed) || trimmed.includes('://')) return null;
-  return parseInviteFragment(trimmed);
+  let link: InviteLink | null;
+  if (hash >= 0) link = parseInviteFragment(trimmed.slice(hash));
+  else if (/\s/.test(trimmed) || trimmed.includes('://')) return null;
+  else link = parseInviteFragment(trimmed);
+  return link && SECRET_RE.test(link.secret) ? link : null;
 }
