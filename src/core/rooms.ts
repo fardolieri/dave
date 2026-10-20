@@ -68,6 +68,9 @@ export function formatInviteFragment(link: InviteLink): string {
   return `#${encodeURIComponent(link.secret)}/${encodeURIComponent(link.name)}`;
 }
 
+/** Text without line breaks and zero-width characters, as an `<input>` keeps it (breaks) or as the eye sees it. */
+export const withoutBreaks = (text: string): string => text.replace(/[\r\n\u200B-\u200D\u2060\uFEFF]/g, '');
+
 /**
  * An invite link as a friend pastes it: the whole URL, just its fragment, or the bare `secret/name`.
  * Everything from the first `#` counts. Without one, only a single token with no whitespace and no
@@ -75,12 +78,15 @@ export function formatInviteFragment(link: InviteLink): string {
  * link and cannot open a garbage room. Needed because iOS never routes a tapped link into a home-screen
  * web app, so pasting is the only way a room gets in there.
  *
+ * Line breaks and invisible characters are dropped first: a mail or a messenger may wrap a link or mark it
+ * with zero-width spaces. Chromium's field drops line breaks as well, so it never shows a link it would refuse.
+ *
  * The secret must look like one `newRoomSecret` makes: anything else typed in is a typo or a word, and
  * would open a new empty room of its own. Opened links stay lenient (`parseInviteFragment`), so a link from
  * the days of a shared passphrase still works when tapped, though no longer when pasted.
  */
 export function parseInviteText(text: string): InviteLink | null {
-  const trimmed = text.trim();
+  const trimmed = withoutBreaks(text).trim();
   const hash = trimmed.indexOf('#');
   let link: InviteLink | null;
   if (hash >= 0) link = parseInviteFragment(trimmed.slice(hash));

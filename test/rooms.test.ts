@@ -70,6 +70,15 @@ describe('pasted invite text', () => {
     expect(parseInviteText('   ')).toBeNull();
   });
 
+  it('reads a link a mail or messenger broke over lines or marked with invisible characters', () => {
+    const s = link.secret;
+    expect(parseInviteText(`https://dave.example/#${s.slice(0, 11)}\n${s.slice(11)}/Game%20night`)).toEqual(link);
+    expect(parseInviteText(`https://dave.example/#${s.slice(0, 11)}\r\n${s.slice(11)}/Game%20night`)).toEqual(link);
+    expect(parseInviteText(`\u200B${fragment}\u200B`)).toEqual(link);
+    expect(parseInviteText(`https://dave.example/#${s}\uFEFF`)).toEqual({ secret: s, name: DEFAULT_ROOM_NAME });
+    expect(parseInviteText('see you\nat 8')).toBeNull();
+  });
+
   it('rejects anything whose secret is not one the app makes, so a typo cannot open a new empty room', () => {
     expect(parseInviteText('hello')).toBeNull();
     expect(parseInviteText('the-passphrase/Game night')).toBeNull();

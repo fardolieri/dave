@@ -5,7 +5,7 @@ import posthog, { consent, isTestAccount, setConsent, telemetryOn, type Consent 
 import { loadIdentity, type LocalIdentity } from './identity';
 import { getName, getPicture, inviteLinkFor, setName, setPicture, takeInviteLink } from './invite';
 import { addRoom, forgetRoom, getSelectedRoom, loadRooms, setSelectedRoom, type SavedRoom } from './rooms';
-import { newRoomSecret, normaliseRoomName, parseInviteText, type InviteLink } from '../core/rooms';
+import { newRoomSecret, normaliseRoomName, parseInviteText, withoutBreaks, type InviteLink } from '../core/rooms';
 import { encodeQr, qrPath } from '../core/qr';
 import { createRoom, prepareFile, type Attachment, type ChatLine, type PreparedFile, type ServerStatus } from './room';
 import { formatSize, inlineKind, pastedImageUrl, type FileMeta } from '../core/attachment';
@@ -212,7 +212,7 @@ function JoinLinkForm(props: { onJoin: (link: InviteLink) => void; onCancel?: ()
     try { text = await navigator.clipboard.readText(); } catch { setNote('Could not read the clipboard. Paste the link into the field instead.'); return; }
     const link = parseInviteText(text);
     if (link) join(link);
-    else { setDraft(text); setNote('The clipboard does not hold an invite link.'); }
+    else { setDraft(withoutBreaks(text)); setNote('The clipboard does not hold an invite link.'); }
   };
   return (
     <form class="joinlink" onSubmit={submit}>
