@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CUE_GAIN, MINOR_SCALE, TIMBRES, VIBRATOS, joinCue, joinParts, leaveCue, melodySteps, noteGain, shareCue } from '../src/core/cue';
+import { CUE_GAIN, MINOR_SCALE, VIBRATOS, joinCue, joinParts, leaveCue, melodySteps, noteGain, shareCue } from '../src/core/cue';
 import { EMOJI_CATEGORIES } from '../src/core/emoji';
 
 const signature = (emoji: string) => JSON.stringify(joinCue(emoji));
@@ -66,10 +66,6 @@ describe('join and leave cues from the profile picture', () => {
     expect(all.filter((cue) => cue.vibrato === 0).length / all.length).toBeGreaterThan(0.18);
     expect(leaveCue('🦊').vibrato).toBe(joinCue('🦊').vibrato);
   });
-  it('plays every emoji as a sine, the tone that won the picks', () => {
-    for (const c of EMOJI_CATEGORIES) for (const e of c.entries) expect(joinCue(e.char).timbre).toBe('sine');
-    expect(Object.keys(TIMBRES)).toEqual(['sine']);
-  });
   it('shapes a tune from its digits: two steps wide at least, ending higher, never arching, two notes from the outer offsets', () => {
     expect(melodySteps(1, [0, 0, 0], 3)).toEqual([1, 1, 3]);
     expect(melodySteps(0, [3, 1, 2], 3)).toEqual([2, 1, 3]);
@@ -80,7 +76,6 @@ describe('join and leave cues from the profile picture', () => {
   it('plays the leave backwards, lower, slower and quieter, so it falls where the join rose', () => {
     const join = joinCue('🦊');
     const leave = leaveCue('🦊');
-    expect(leave.timbre).toBe(join.timbre);
     expect(leave.gain).toBeLessThan(join.gain);
     expect(leave.notes.at(-1)!.freq).toBeLessThanOrEqual(leave.notes[0]!.freq);
     const back = [...join.notes].reverse();

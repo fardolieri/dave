@@ -1,4 +1,4 @@
-import { TIMBRES, noteGain, type Cue } from '../core/cue';
+import { noteGain, type Cue } from '../core/cue';
 import { restartOnFailure, type ContextStarter } from './audiofailure';
 
 // The one AudioContext for cues (spec §7.4). Browsers only let audio start after a gesture, so the context is created
@@ -39,7 +39,7 @@ export function armSound(): () => void {
 export const cueContext = (): AudioContext | null => ctx;
 
 /** The low-pass cutoff for a note: follows the pitch, so a square at C4 and one at A5 keep the same overtones and a low note does not buzz; on the soft side, since soft tones won the picks. */
-export const cutoffFor = (freq: number): number => Math.min(5000, Math.max(1000, freq * 4));
+const cutoffFor = (freq: number): number => Math.min(5000, Math.max(1000, freq * 4));
 
 /**
  * Builds the graph for one cue starting at `t0` and returns its oscillators. Every note is a struck chime: an 8 ms
@@ -59,7 +59,6 @@ export function scheduleCue(c: AudioContext, cue: Cue, t0: number): OscillatorNo
       const osc = c.createOscillator();
       const gain = c.createGain();
       const filter = c.createBiquadFilter();
-      osc.type = TIMBRES[cue.timbre];
       osc.frequency.value = freq;
       if (last && cue.vibrato > 0) {
         const lfo = c.createOscillator();

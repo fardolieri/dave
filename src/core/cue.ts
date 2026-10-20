@@ -2,17 +2,14 @@
 // The profile picture is the sound. Nothing is chosen or sent apart from the emoji: every browser derives the same
 // cue from it, and a friend who does not like how theirs sounds picks another emoji.
 
-/**
- * The tones a cue can have. Over three rounds of blind picks (274 pairs) sine won 29-1 and beat triangle head to head;
- * triangle, square, sawtooth and every overtone mix (organ, bell, reed, glass) lost and are gone. The knob stays, in
- * case a tone ever earns its way back.
- */
-export const TIMBRES = { sine: 'sine' } as const satisfies Record<string, 'sine'>; // core is runtime-neutral, so no OscillatorType here
-export type Timbre = keyof typeof TIMBRES;
 /** One note, with an optional second voice sounding at the same time (a dyad). */
 export type Note = { freq: number; seconds: number; with?: number };
-/** `vibrato` is the depth of a slow wobble on the last note, 0 (none) to 1 (about a fifth of a semitone). */
-export type Cue = { timbre: Timbre; gain: number; notes: Note[]; vibrato: number };
+/**
+ * A cue is always a sine, the oscillator's default: over three rounds of blind picks (274 pairs) sine won 29-1 and every
+ * other tone (triangle, square, sawtooth, organ, bell, reed, glass) lost. `vibrato` is the depth of a slow wobble on the
+ * last note, 0 (none) to 1 (about a fifth of a semitone).
+ */
+export type Cue = { gain: number; notes: Note[]; vibrato: number };
 
 /** Loudness of a cue; the message tick is softer. */
 export const CUE_GAIN = 0.08;
@@ -20,14 +17,6 @@ export const MESSAGE_GAIN = 0.05;
 export const STEP_SECONDS = 0.06;
 const C4 = 261.63;
 
-export const TIMBRE_NAMES = Object.keys(TIMBRES) as Timbre[];
-/** What the hash draws from. */
-export const TIMBRE_POOL: Timbre[] = ['sine'];
-/**
- * Evens the tones out: at the same gain a sine sounds much louder than a low-passed square. From a model of the
- * rendering (harmonics, the pitch-tracking low-pass, A-weighting; see the ticket), sine being the reference.
- */
-const TIMBRE_GAIN: Record<Timbre, number> = { sine: 1 };
 /** Major pentatonic over an octave and a half, in semitones: no two notes clash, so every melody sounds pleasant. */
 export const SCALE = [0, 2, 4, 7, 9, 12, 14, 16];
 /** Its wistful sister, the minor pentatonic: the mood knob, half the emoji. */
@@ -46,19 +35,12 @@ export const TOP = 12;
  * (17-11) led for three, short-long-short lost (5-17) and is gone. Cues over 340 ms lost, so none is longer than four steps.
  */
 export const RHYTHMS: Record<2 | 3, number[][]> = { 2: [[1, 2], [1, 2], [1, 2], [1, 1]], 3: [[2, 1, 1], [2, 1, 1], [1, 1, 2], [1, 1, 1]] };
-/**
- * Harmony: single notes (a quarter of the emoji); a second voice under the last note two scale steps up (a third or a
- * fourth; three eighths) or three up (a fifth or a sixth; a quarter); or that fifth under every note (an eighth).
- * Partners stay on the scale, so every dyad is consonant. A voice on the last note won both rounds of picks.
- */
-export const DYADS = ['none', 'third on last', 'fifth on last', 'fifths throughout'] as const;
-
 const semitones = (n: number) => C4 * 2 ** (n / 12);
 
 /** A friend without a picture keeps the plain chime: two notes rising. */
-const PLAIN: Cue = { timbre: 'sine', gain: CUE_GAIN, notes: [523.25, 659.25].map((freq) => ({ freq, seconds: STEP_SECONDS })), vibrato: 0 };
+const PLAIN: Cue = { gain: CUE_GAIN, notes: [523.25, 659.25].map((freq) => ({ freq, seconds: STEP_SECONDS })), vibrato: 0 };
 /** Someone else's message: one soft high note, the same for everyone. */
-export const MESSAGE_CUE: Cue = { timbre: 'sine', gain: MESSAGE_GAIN, notes: [{ freq: 880, seconds: STEP_SECONDS }], vibrato: 0 };
+export const MESSAGE_CUE: Cue = { gain: MESSAGE_GAIN, notes: [{ freq: 880, seconds: STEP_SECONDS }], vibrato: 0 };
 
 /** FNV-1a over the UTF-16 units, then a finaliser so neighbouring code points land far apart. */
 function hash(s: string): number {
@@ -85,15 +67,14 @@ export function melodySteps(base: number, offsets: number[], count: 2 | 3): numb
   return o.map((x) => base + x);
 }
 
-/** The knobs one cue is built from: scale steps (indices into the mood's scale), a register, a rhythm, a tone, a mood and a wobble. */
-export type CueParts = { timbre: Timbre; steps: number[]; register: number; rhythm: readonly number[]; dyad: number; mood: Mood; vibrato: number; stepSeconds?: number };
+/** The knobs one cue is built from: scale steps (indices into the mood's scale), a register, a rhythm, a harmony, a mood and a wobble. */
+export type CueParts = { steps: number[]; register: number; rhythm: readonly number[]; dyad: number; mood: Mood; vibrato: number; stepSeconds?: number };
 
 export function buildCue(p: CueParts): Cue {
   const step = p.stepSeconds ?? STEP_SECONDS;
   const scale = scaleFor(p.mood);
   return {
-    timbre: p.timbre,
-    gain: CUE_GAIN * TIMBRE_GAIN[p.timbre],
+    gain: CUE_GAIN,
     vibrato: p.vibrato,
     notes: p.steps.map((s, i) => {
       const note: Note = { freq: semitones(scale[s]! + p.register), seconds: p.rhythm[i]! * step };
@@ -121,8 +102,11 @@ export function joinParts(picture: string): CueParts {
   const steps = melodySteps(base, [take(4), take(4), take(4)], count);
   const mood = MOODS[take(2)]!;
   const fits = REGISTERS.filter((r) => scaleFor(mood)[Math.max(...steps)]! + r <= TOP); // never empty: the base keeps register 0 in
+  // Harmony: single notes (a quarter of the emoji); a second voice under the last note two scale steps up (a third or a
+  // fourth; three eighths) or three up (a fifth or a sixth; a quarter); or that fifth under every note (an eighth).
+  // Partners stay on the scale, so every dyad is consonant. A voice on the last note won both rounds of picks.
   const dyad = [0, 0, 1, 1, 1, 2, 2, 3][take(8)]!;
-  return { steps, register: fits[take(4) % fits.length]!, rhythm: RHYTHMS[count][take(4)]!, timbre: TIMBRE_POOL[take(TIMBRE_POOL.length)]!, dyad, mood, vibrato: VIBRATOS[take(4)]! };
+  return { steps, register: fits[take(4) % fits.length]!, rhythm: RHYTHMS[count][take(4)]!, dyad, mood, vibrato: VIBRATOS[take(4)]! };
 }
 
 /** The cue a friend's arrival plays. */
@@ -133,7 +117,7 @@ export function joinCue(picture: string | null | undefined): Cue {
 /** The same friend leaving: their cue backwards, a fourth lower, slower and a little quieter. */
 export function leaveCue(picture: string | null | undefined): Cue {
   const join = joinCue(picture);
-  return { timbre: join.timbre, gain: join.gain * 0.8, vibrato: join.vibrato, notes: [...join.notes].reverse().map((n) => ({ freq: n.freq * 2 ** (-5 / 12), seconds: n.seconds * 1.2, ...(n.with ? { with: n.with * 2 ** (-5 / 12) } : {}) })) };
+  return { gain: join.gain * 0.8, vibrato: join.vibrato, notes: [...join.notes].reverse().map((n) => ({ freq: n.freq * 2 ** (-5 / 12), seconds: n.seconds * 1.2, ...(n.with ? { with: n.with * 2 ** (-5 / 12) } : {}) })) };
 }
 
 /** The sparkle a share start ends on: a C6 over two steps, above every join cue (they stop at C5). */
