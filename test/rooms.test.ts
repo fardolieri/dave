@@ -47,14 +47,14 @@ describe('invite fragments', () => {
 });
 
 describe('pasted invite text', () => {
-  const link = { secret: 'S3cr-t_x', name: 'Game night' };
+  const link = { secret: 'AbCdEfGhIjKlMnOp-_0123', name: 'Game night' };
   const fragment = formatInviteFragment(link);
 
   it('reads a whole URL, its fragment alone, or the bare secret and name', () => {
     expect(parseInviteText(`https://dave.example/${fragment}`)).toEqual(link);
     expect(parseInviteText(`  ${fragment}\n`)).toEqual(link);
     expect(parseInviteText(fragment.slice(1))).toEqual(link);
-    expect(parseInviteText('the-passphrase')).toEqual({ secret: 'the-passphrase', name: DEFAULT_ROOM_NAME });
+    expect(parseInviteText(link.secret)).toEqual({ secret: link.secret, name: DEFAULT_ROOM_NAME });
   });
 
   it('takes the fragment from any origin or path', () => {
@@ -68,5 +68,14 @@ describe('pasted invite text', () => {
     expect(parseInviteText('see you at 8')).toBeNull();
     expect(parseInviteText('')).toBeNull();
     expect(parseInviteText('   ')).toBeNull();
+  });
+
+  it('rejects anything whose secret is not one the app makes, so a typo cannot open a new empty room', () => {
+    expect(parseInviteText('hello')).toBeNull();
+    expect(parseInviteText('the-passphrase/Game night')).toBeNull();
+    expect(parseInviteText('https://dave.example/#hello')).toBeNull();
+    expect(parseInviteText(`https://dave.example/#${link.secret.slice(1)}/Game%20night`)).toBeNull(); // one character short
+    expect(parseInviteText(`https://dave.example/#${link.secret}x/Game%20night`)).toBeNull(); // one too many
+    expect(parseInviteText(`https://dave.example/#${link.secret.slice(1)}+/Game%20night`)).toBeNull(); // not base64url
   });
 });
