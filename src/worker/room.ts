@@ -115,7 +115,7 @@ export class Room extends DurableObject<Env> {
       const state = ws.deserializeAttachment() as SocketState | null;
       if (!state) continue;
       if (state.stage === 'challenge') {
-        if (challengeExpired(state, now)) ws.close(CLOSE_AUTH_FAILED, 'challenge timed out');
+        if (challengeExpired(state, now)) { try { ws.close(CLOSE_AUTH_FAILED, 'challenge timed out'); } catch { /* closed by an earlier sweep */ } }
         else challengesLeft++;
         continue;
       }
@@ -123,7 +123,7 @@ export class Room extends DurableObject<Env> {
       const lastPing = this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? state.attachedAt;
       if (now - lastPing >= SILENT_TIMEOUT_MS) {
         this.letGo(ws, state); // out of presence now, whenever the runtime lets go
-        ws.close(CLOSE_SILENT, 'no sign of life');
+        try { ws.close(CLOSE_SILENT, 'no sign of life'); } catch { /* already gone */ }
         dropped = true;
       } else attachedLeft++;
     }
