@@ -696,7 +696,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       setDevices({ microphones: real.filter((d) => d.kind === 'audioinput'), speakers: real.filter((d) => d.kind === 'audiooutput') });
     } catch { /* enumeration unavailable */ }
   }
-  navigator.mediaDevices?.addEventListener?.('devicechange', () => void refreshDevices());
+  const onDeviceChange = () => void refreshDevices();
+  navigator.mediaDevices?.addEventListener?.('devicechange', onDeviceChange);
 
   async function applySink(el: HTMLMediaElement): Promise<void> {
     const id = untrack(audioSettings).speakerId; // a snapshot: sinks are re-applied explicitly when the setting changes
@@ -1876,6 +1877,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   onCleanup(() => {
     unsubscribe();
     window.removeEventListener('pagehide', onPageHide);
+    navigator.mediaDevices?.removeEventListener?.('devicechange', onDeviceChange);
     document.removeEventListener('visibilitychange', onTestHidden);
     clearInterval(statsTimer);
     clearInterval(voiceTimer);
