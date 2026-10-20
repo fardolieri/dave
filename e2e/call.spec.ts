@@ -1,4 +1,4 @@
-import { expect, needHooks, test } from './fixtures';
+import { expect, needHooks, newSecret, test } from './fixtures';
 
 test('two friends join the call, connect directly and hear each other', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
@@ -74,6 +74,33 @@ test('a friend without a microphone joins to listen, shown muted; Unmute takes o
   await expect(hint).toHaveCount(0);
   await expect(nickRow).not.toContainText('muted');
   await alice.hearing('Nick');
+});
+
+test('regression: a room left takes its call off the device list, which it no longer follows', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const bob = await crowd.open('Bob', { rooms: [crowd.room, other], connect: false });
+  // Counts the "devicechange" listeners alive on the page: each room's call follows the plugged-in microphones.
+  await bob.page.addInitScript(() => {
+    const live = new Set<unknown>();
+    (window as unknown as { __deviceListeners: () => number }).__deviceListeners = () => live.size;
+    const add = MediaDevices.prototype.addEventListener;
+    const remove = MediaDevices.prototype.removeEventListener;
+    MediaDevices.prototype.addEventListener = function (this: MediaDevices, type: string, l: unknown, ...rest: unknown[]) {
+      if (type === 'devicechange') live.add(l);
+      return (add as (...a: unknown[]) => void).call(this, type, l, ...rest);
+    };
+    MediaDevices.prototype.removeEventListener = function (this: MediaDevices, type: string, l: unknown, ...rest: unknown[]) {
+      if (type === 'devicechange') live.delete(l);
+      return (remove as (...a: unknown[]) => void).call(this, type, l, ...rest);
+    };
+  });
+  await bob.open();
+  const listeners = () => bob.page.evaluate(() => (window as unknown as { __deviceListeners: () => number }).__deviceListeners());
+  await expect.poll(listeners).toBe(2);
+  bob.page.once('dialog', (d) => void d.accept());
+  await bob.page.getByRole('button', { name: `Leave ${crowd.room.name}` }).click();
+  await expect(bob.page.locator('button.room-name', { hasText: crowd.room.name })).toHaveCount(0);
+  await expect.poll(listeners).toBe(1);
 });
 
 test('a participant who rejoins is connected again', async ({ crowd }) => {
