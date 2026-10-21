@@ -17,7 +17,7 @@ import { parseContacts } from './names';
 import { normalisePicture } from './protocol';
 import { parseRejoinMarker } from './rejoin';
 import { parseStoredRooms } from './rooms';
-import { parseHistory } from './chatlog';
+import { parseHistory, parsePrivateThreads } from './chatlog';
 import { parseBigIndex, parseFileIndex, parsePartialPull } from './attachment';
 import { parseUnsent, parseUnsentPrivate } from './unsent';
 import { parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes } from './settings';
@@ -162,6 +162,27 @@ export const IDB = {
       ],
     },
   },
+  'private:<friendKey>': {
+    about: 'My private conversation with one friend (ADR 0007), texts both ways, whichever room carried them; like a room\'s history (core/chatlog.ts, client/history.ts).',
+    parse: parseHistory,
+    fixtures: {
+      '2026-10-21, private conversations': [
+        { from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna', picture: '🦕' }, text: 'just between us', at: 1761000000000, id: '0a1b2c3d4e5f60718293a4b5' },
+        { from: { publicKey: 'pkMe', fingerprint: 'XYZ789', name: 'Me' }, text: 'ok', at: 1761000001000, id: '1a1b2c3d4e5f60718293a4b5' },
+      ],
+    },
+  },
+  privateThreads: {
+    about: 'My private conversations, most recent first: the friend and when the last text came or went (core/chatlog.ts, client/history.ts).',
+    parse: parsePrivateThreads,
+    fixtures: {
+      '2026-10-21, private conversations': [
+        { friend: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna', picture: '🦕' }, at: 1761000001000 },
+        { friend: { publicKey: 'pkB', fingerprint: 'DEF456', name: 'Ben' }, at: 1760900000000 },
+        { friend: { name: 'no key' }, at: 1 },
+      ],
+    },
+  },
   files: {
     about: 'The files this browser keeps, oldest first, with their size, within a budget (core/attachment.ts, client/files.ts).',
     parse: parseFileIndex,
@@ -193,7 +214,7 @@ export const IDB = {
     fixtures: { '2026-09-08, before rooms': [{ from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna' }, text: 'hi', at: 1757500000000 }] },
   },
 } satisfies Record<string, StoredKey<unknown>>;
-export type IdbKey = Exclude<keyof typeof IDB, 'history:<roomId>' | 'file:<hash>' | 'partial:<hash>' | 'pieces:<hash>'> | `history:${string}` | `file:${string}` | `partial:${string}` | `pieces:${string}`;
+export type IdbKey = Exclude<keyof typeof IDB, 'history:<roomId>' | 'private:<friendKey>' | 'file:<hash>' | 'partial:<hash>' | 'pieces:<hash>'> | `history:${string}` | `private:${string}` | `file:${string}` | `partial:${string}` | `pieces:${string}`;
 
 /** sessionStorage, per tab and gone with it, so a changed shape meets old values only across one reload. Read in place. */
 export const SESSION = {

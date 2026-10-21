@@ -1,4 +1,4 @@
-import { isIdentity, type Identity, type TextId } from './protocol';
+import { identityOf, isIdentity, type Identity, type TextId } from './protocol';
 import { parseFileMeta, type FileMeta } from './attachment';
 
 /** Texts from more than this long before a room came on screen start out folded away above the log (ticket 38). */
@@ -21,6 +21,23 @@ export function olderCount(lines: ReadonlyArray<{ at: number }>, cutoff: number)
  * from before reads one as a text to the whole room, in this browser only: nothing is sent again.
  */
 export type StoredText = { from: Identity; text: string; at: number; id?: TextId; file?: FileMeta; to?: Identity };
+/**
+ * My private conversations (ADR 0007), by friend, most recent first, as the sidebar lists them (IndexedDB
+ * `privateThreads`): the friend as I last saw them, and when the last text came or went.
+ */
+export type PrivateThread = { friend: Identity; at: number };
+/** A conversation list as read from IndexedDB: anything but a list of conversations with a friend is dropped. */
+export function parsePrivateThreads(raw: unknown): PrivateThread[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  return raw.flatMap((t: unknown): PrivateThread[] => {
+    const v = t as Partial<PrivateThread> | null;
+    if (!v || typeof v !== 'object' || typeof v.at !== 'number' || !isIdentity(v.friend) || seen.has(v.friend.publicKey)) return [];
+    seen.add(v.friend.publicKey);
+    return [{ friend: identityOf(v.friend), at: v.at }];
+  });
+}
+
 /** The history keeps the most recent texts only. */
 export const MAX_HISTORY = 500;
 

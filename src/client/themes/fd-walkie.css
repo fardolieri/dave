@@ -37,6 +37,7 @@
 :root[data-theme="fd-walkie"] button.room-name, :root[data-theme="fd-walkie"] button.avatar,
 :root[data-theme="fd-walkie"] .emoji-tabs button, :root[data-theme="fd-walkie"] .emoji-grid button,
 :root[data-theme="fd-walkie"] .chat-input .emoji-open, :root[data-theme="fd-walkie"] .profile button.edit,
+:root[data-theme="fd-walkie"] .private-head button.edit, :root[data-theme="fd-walkie"] button.thread,
 :root[data-theme="fd-walkie"] .chat-older { box-shadow: none; }
 :root[data-theme="fd-walkie"] button.avatar:hover:not(.speaking) { box-shadow: 0 0 0 2px var(--rubber); }
 :root[data-theme="fd-walkie"] .chat-input .emoji-open:hover:not(:disabled) { border-color: #7C7752; }

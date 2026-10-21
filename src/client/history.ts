@@ -1,5 +1,6 @@
 import { idbDelete, idbGet, idbRead, idbSet, local, type ParsedIdbKey } from './storage';
-import { MAX_HISTORY, type StoredText } from '../core/chatlog';
+import { MAX_HISTORY, type PrivateThread, type StoredText } from '../core/chatlog';
+import { IDB } from '../core/storedstate';
 import { UNSENT_MAX, type UnsentPrivate, type UnsentText } from '../core/unsent';
 import type { Identity } from '../core/protocol';
 
@@ -26,12 +27,55 @@ let chain: Promise<void> = Promise.resolve();
  * comes back with another time. Trims to the cap. Writes are serialised.
  */
 export function appendHistory(roomId: string, m: StoredText): Promise<void> {
+  return appendTo(keyFor(roomId), m);
+}
+
+function appendTo(key: `history:${string}` | `private:${string}`, m: StoredText): Promise<void> {
   chain = chain.then(async () => {
-    const list = await read(keyFor(roomId));
-    if (list.some((x) => textKey(x) === textKey(m) || (m.id !== undefined && x.id === m.id && x.from.publicKey === m.from.publicKey))) return;
+    const list = await read(key);
+    // A private conversation's texts come through several rooms, each with its own clock: by writer and id alone there.
+    const same = (x: StoredText) => (m.id !== undefined && x.id === m.id && x.from.publicKey === m.from.publicKey) || (!key.startsWith('private:') && textKey(x) === textKey(m));
+    if (list.some(same)) return;
     list.push(m);
-    await idbSet(keyFor(roomId), list.slice(-MAX_HISTORY));
+    await idbSet(key, list.slice(-MAX_HISTORY));
   }).catch((e) => console.warn('history write failed', e));
+  return chain;
+}
+
+/** My private conversation with a friend (ADR 0007), by their key: kept like a room's history, apart from every room. */
+/** Read after the writes queued before it, so a conversation deleted a moment ago reads as empty. */
+export function loadPrivate(friend: string): Promise<StoredText[]> {
+  const read_ = chain.then(() => read(`private:${friend}`));
+  chain = read_.then(() => {}, () => {});
+  return read_;
+}
+export const appendPrivate = (friend: string, m: StoredText): Promise<void> => appendTo(`private:${friend}`, m);
+
+/** Deletes a private conversation from this browser: its texts and its place in the list. */
+export function forgetPrivate(friend: string): Promise<void> {
+  chain = chain.then(async () => {
+    await idbDelete(`private:${friend}`);
+    await idbSet('privateThreads', (await readThreads()).filter((t) => t.friend.publicKey !== friend));
+  }).catch((e) => console.warn('private conversation delete failed', e));
+  return chain;
+}
+
+/** My private conversations, most recent first (core/chatlog.ts). */
+const readThreads = async (): Promise<PrivateThread[]> => IDB.privateThreads.parse(await idbGet<unknown>('privateThreads'));
+/** Read after the writes queued before it, like `loadPrivate`. */
+export function loadPrivateThreads(): Promise<PrivateThread[]> {
+  const read_ = chain.then(readThreads);
+  chain = read_.then(() => {}, () => {});
+  return read_;
+}
+/** A text came or went in the conversation with `friend`: it goes to the top of the list, with their latest name. */
+export function touchPrivateThread(friend: Identity, at: number): Promise<void> {
+  chain = chain.then(async () => {
+    const list = await readThreads();
+    const was = list.find((t) => t.friend.publicKey === friend.publicKey);
+    const next = [{ friend, at: Math.max(at, was?.at ?? 0) }, ...list.filter((t) => t !== was)].sort((a, b) => b.at - a.at);
+    await idbSet('privateThreads', next);
+  }).catch((e) => console.warn('private conversation list write failed', e));
   return chain;
 }
 

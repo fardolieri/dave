@@ -18,7 +18,7 @@ export type RoomLink = { room: ReturnType<typeof createRoom>; call: ReturnType<t
  * messages, and the screen kept awake while watching a share or, on a phone, while in a call. Everything derives from
  * room and call signals.
  */
-export function createAttention(links: () => RoomLink[], myKey: string): void {
+export function createAttention(links: () => RoomLink[], myKey: string, privateTexts?: (l: () => void) => () => void): void {
 
   // Participants are keyed per room, so a friend in two calls at once counts twice: two things are happening.
   const tag = (roomId: string, publicKey: string) => `${roomId} ${publicKey}`;
@@ -108,6 +108,8 @@ export function createAttention(links: () => RoomLink[], myKey: string): void {
     const stops = rooms.map((room) => room.onText(() => { cues++; cue(MESSAGE_CUE); }));
     return () => { for (const stop of stops) stop(); };
   });
+  // A friend's private text, once per text (client/privates.ts), whichever room carried it.
+  if (privateTexts) onCleanup(privateTexts(() => { cues++; cue(MESSAGE_CUE); }));
   if (exposeHooks) (window as unknown as { __daveCues?: () => number }).__daveCues = () => cues;
 
   // ---- wake lock while watching at least one live share, or while in a call on a touch device: a phone that

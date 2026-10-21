@@ -114,7 +114,7 @@
 :where(:root[data-theme="ds-memphis"]) .new { background: var(--color-pop-yellow); color: var(--color-ink); border: 1px solid var(--color-ink); border-radius: var(--border-radius-full); transform: rotate(4deg); }
 /* buttons: ink outline, hard shadow, press down when clicked */
 :where(:root[data-theme="ds-memphis"]) button { border: 2px solid var(--line); border-radius: var(--border-radius-sm); font-weight: 600; box-shadow: var(--shadow-sm); }
-:where(:root[data-theme="ds-memphis"]) button:where(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open), :where(:root[data-theme="ds-memphis"]) :is(.emoji-tabs, .emoji-grid) button { box-shadow: none; }
+:where(:root[data-theme="ds-memphis"]) button:where(.link, .avatar, .room-name, .thread, .edit, .chat-older, .emoji-open), :where(:root[data-theme="ds-memphis"]) :is(.emoji-tabs, .emoji-grid) button { box-shadow: none; }
 :where(:root[data-theme="ds-memphis"]) button.on:where(:not(.link)), :where(:root[data-theme="ds-memphis"]) button.join, :where(:root[data-theme="ds-memphis"]) button.leave, :where(:root[data-theme="ds-memphis"]) button.unblock { border-color: var(--line); font-weight: 700; }
 :where(:root[data-theme="ds-memphis"]) input, :where(:root[data-theme="ds-memphis"]) select.picker, :where(:root[data-theme="ds-memphis"]) dialog.report textarea, :where(:root[data-theme="ds-memphis"]) dialog.report .field select { border: 2px solid var(--line); border-radius: var(--border-radius-sm); }
 :where(:root[data-theme="ds-memphis"]) select.picker::picker(select) { border: 2px solid var(--line); border-radius: var(--border-radius-md); box-shadow: var(--shadow-md); }
@@ -158,8 +158,8 @@
 /* bouncy, for those who want motion: buttons lift on hover and press flat on click */
 @media (prefers-reduced-motion: no-preference) {
   :where(:root[data-theme="ds-memphis"]) button { transition: transform var(--duration-fast) var(--easing-bounce), box-shadow var(--duration-fast) var(--easing-bounce); }
-  :where(:root[data-theme="ds-memphis"]) button:where(:not(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open, :disabled)):hover { transform: translate(-1px, -2px); box-shadow: 3px 4px 0 var(--line); }
-  :where(:root[data-theme="ds-memphis"]) button:where(:not(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open, :disabled)):active { transform: translate(0, 2px); box-shadow: 0 0 0 var(--line); }
+  :where(:root[data-theme="ds-memphis"]) button:where(:not(.link, .avatar, .room-name, .thread, .edit, .chat-older, .emoji-open, :disabled)):hover { transform: translate(-1px, -2px); box-shadow: 3px 4px 0 var(--line); }
+  :where(:root[data-theme="ds-memphis"]) button:where(:not(.link, .avatar, .room-name, .thread, .edit, .chat-older, .emoji-open, :disabled)):active { transform: translate(0, 2px); box-shadow: 0 0 0 var(--line); }
   :where(:root[data-theme="ds-memphis"]) :is(.emoji-tabs, .emoji-grid) button:hover { transform: scale(1.08) rotate(-6deg); box-shadow: none; }
 }
 /* the flyer's confetti: a dozen Memphis shapes (squiggles, a zigzag, rings, a triangle, a half-moon, a plus, a stick,

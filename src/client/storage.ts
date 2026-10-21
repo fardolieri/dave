@@ -72,10 +72,10 @@ export async function idbDelete(key: IdbKey): Promise<void> {
 }
 
 /** The parsed IndexedDB keys; `identity` is read raw with idbGet. */
-export type ParsedIdbKey = 'history' | `history:${string}`;
+export type ParsedIdbKey = 'history' | `history:${string}` | `private:${string}`;
 /** Reads an IndexedDB key through its parser in the registry. */
 export async function idbRead(key: ParsedIdbKey): Promise<ReturnType<(typeof IDB)['history']['parse']>> {
-  const entry = key === 'history' ? IDB.history : IDB['history:<roomId>'];
+  const entry = key === 'history' ? IDB.history : key.startsWith('private:') ? IDB['private:<friendKey>'] : IDB['history:<roomId>'];
   return entry.parse(await idbGet<unknown>(key));
 }
 

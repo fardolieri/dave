@@ -1,82 +1,132 @@
-import { expect, test, type Friend } from './fixtures';
+import { expect, newSecret, test, type Friend } from './fixtures';
 
-// Private texts (ADR 0007): a text to one friend in the room, sealed so that only the two of them can read it, and
-// relayed by the Room to that friend alone. These pin what each friend sees, and what reaches Carol's browser at all.
+// Private conversations (ADR 0007): one per friend, apart from every room. A text travels sealed so that only the two
+// friends can read it, through a room they share, and is relayed by the Room to that friend alone. These pin what each
+// friend sees, and what reaches Carol's browser at all.
 
-/** Opens a friend's profile card from the Online list and starts writing to them privately. */
-async function writePrivately(from: Friend, to: string): Promise<void> {
-  await from.page.locator('aside.side > ul.plist li', { hasText: to }).locator('button.avatar').click();
-  await from.page.locator('.profile').getByRole('button', { name: /Message privately/ }).click();
-  await expect(from.page.locator('.private-to')).toContainText(to);
+/** Opens the private conversation with a friend from their avatar in the Online list. */
+async function openFromOnline(f: Friend, name: string): Promise<void> {
+  await f.page.locator('aside.side > ul.plist li', { hasText: name }).locator('button.avatar').click();
+  await expect(f.page.locator('.private-head')).toContainText(name);
 }
 
-/** The private texts in the chat on screen, as `text` with its mark ("🔒 to you", "🔒 to Bob"), sent ones only. */
-async function privateLines(f: Friend): Promise<Array<{ text: string; mark: string }>> {
-  return f.page.locator('.chat-log .msg-private:not(.msg-pending)').evaluateAll((els) => els.map((e) => ({
-    text: (e.querySelector('.msg-text') as HTMLElement | null)?.innerText.trim() ?? '',
-    mark: (e.querySelector('.msg-to') as HTMLElement | null)?.innerText.trim() ?? '',
-  })));
+/** Opens a conversation from the sidebar's Private list. */
+async function openFromList(f: Friend, name: string): Promise<void> {
+  await f.page.locator('ul.threads button.thread', { hasText: name }).click();
+  await expect(f.page.locator('.private-head')).toContainText(name);
 }
 
-test('a private text reaches only its friend, and an answer goes back the same way', async ({ crowd }) => {
+/** The conversation on screen: writer and text, sent ones only, a follow-on line taking the name above. */
+async function conversation(f: Friend): Promise<Array<{ from: string; text: string }>> {
+  return f.page.locator('.chat.private .msg:not(.msg-sys)').evaluateAll((els) => {
+    let from = '';
+    return els.flatMap((e) => {
+      const own = e.querySelector('.msg-from');
+      if (own) from = (own.firstChild?.textContent ?? '').trim();
+      return e.classList.contains('msg-pending') ? [] : [{ from, text: (e.querySelector('.msg-text') as HTMLElement | null)?.innerText.trim() ?? '' }];
+    });
+  });
+}
+
+/** The sidebar's Private list: names, with the unread count where there is one. */
+async function threads(f: Friend): Promise<string[]> {
+  return f.page.locator('ul.threads button.thread').evaluateAll((els) => els.map((e) => {
+    const name = e.querySelector('.tname')?.textContent?.trim() ?? '';
+    const unread = e.querySelector('.unread')?.textContent?.trim();
+    return unread ? `${name} (${unread})` : name;
+  }));
+}
+
+test('a private text reaches only its friend, in a conversation of its own, and an answer goes back the same way', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   const carol = await crowd.open('Carol');
-  await writePrivately(alice, 'Bob');
+  await openFromOnline(alice, 'Bob');
   await alice.composer.fill('just between us');
   await alice.composer.press('Enter');
-  await expect.poll(() => privateLines(bob)).toEqual([{ text: 'just between us', mark: '🔒 to you' }]);
-  await expect.poll(() => privateLines(alice)).toEqual([{ text: 'just between us', mark: '🔒 to Bob' }]);
-
-  // Bob answers from the mark on Alice's text.
-  await bob.page.locator('.chat-log button.msg-to').click();
-  await expect(bob.page.locator('.private-to')).toContainText('Alice');
+  await expect.poll(() => conversation(alice)).toEqual([{ from: 'Alice', text: 'just between us' }]);
+  // Bob reads the room; the conversation shows up in his list, unread, and never in the room's chat.
+  await expect.poll(() => threads(bob)).toEqual(['Alice (1)']);
+  expect(await bob.chatTexts()).toEqual([]);
+  await openFromList(bob, 'Alice');
+  await expect.poll(() => conversation(bob)).toEqual([{ from: 'Alice', text: 'just between us' }]);
+  await expect.poll(() => threads(bob)).toEqual(['Alice']);
   await bob.composer.fill('got it');
   await bob.composer.press('Enter');
-  await expect.poll(() => privateLines(alice)).toEqual([{ text: 'just between us', mark: '🔒 to Bob' }, { text: 'got it', mark: '🔒 to you' }]);
+  await expect.poll(() => conversation(alice)).toEqual([{ from: 'Alice', text: 'just between us' }, { from: 'Bob', text: 'got it' }]);
 
-  // Back to the room: Escape, and the next text is everyone's. A draft written privately goes with it, so the next Enter
-  // cannot send it to the room. Carol sees the room's text, and nothing before it.
+  // Back to the room: a draft written privately goes with the conversation, so the next Enter cannot send it to the room.
   await alice.composer.fill('a draft for Bob only');
-  await alice.composer.press('Escape');
-  await expect(alice.page.locator('.private-to')).toHaveCount(0);
+  await alice.page.locator('.private-back').click();
+  await expect(alice.page.locator('.private-head')).toHaveCount(0);
   await expect(alice.composer).toHaveValue('');
   await alice.say('hello everyone');
   await expect.poll(() => carol.chatTexts()).toEqual(['hello everyone']);
-  expect(await privateLines(carol)).toEqual([]);
+  expect(await threads(carol)).toEqual([]);
   expect(carol.wire.log.filter((f) => f.dir === 'down' && f.frame.startsWith('{"t":"private"'))).toEqual([]);
   // What the Room relayed holds neither text in the clear.
   for (const f of [...alice.wire.log, ...bob.wire.log]) expect(f.frame).not.toMatch(/between us|got it/);
 });
 
-test('a private text kept in the history is still private after a reload', async ({ crowd }) => {
+test('two friends in the same two rooms have one conversation, whichever room each has on screen', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
+  const bob = await crowd.open('Bob', { rooms: [other, crowd.room] });
+  await openFromOnline(alice, 'Bob');
+  await alice.composer.fill('one');
+  await alice.composer.press('Enter');
+  await expect.poll(() => threads(bob)).toEqual(['Alice (1)']);
+  await openFromList(bob, 'Alice');
+  await bob.composer.fill('two');
+  await bob.composer.press('Enter');
+  await expect.poll(() => conversation(alice)).toEqual([{ from: 'Alice', text: 'one' }, { from: 'Bob', text: 'two' }]);
+  await expect.poll(() => conversation(bob)).toEqual([{ from: 'Alice', text: 'one' }, { from: 'Bob', text: 'two' }]);
+  expect(await threads(alice)).toEqual(['Bob']);
+  // The head says where Bob is: in both rooms.
+  await expect(alice.page.locator('.private-where')).toContainText(/Room.*Other|Other.*Room/);
+});
+
+test('a private conversation is still there after a reload', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
-  await writePrivately(alice, 'Bob');
+  await openFromOnline(alice, 'Bob');
   await alice.composer.fill('still ours');
   await alice.composer.press('Enter');
-  await expect.poll(() => privateLines(bob)).toEqual([{ text: 'still ours', mark: '🔒 to you' }]);
-  await expect.poll(() => bob.storedTexts()).toEqual(['still ours']);
+  await expect.poll(() => threads(bob)).toEqual(['Alice (1)']);
+  // Kept before the reload: the list and the conversation are written as the text arrives.
+  await expect.poll(() => bob.page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('dave'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+    try {
+      const store = db.transaction('kv', 'readonly').objectStore('kv');
+      const get = (k: string) => new Promise<unknown>((resolve) => { const r = store.get(k); r.onsuccess = () => resolve(r.result); r.onerror = () => resolve(undefined); });
+      const list = (await get('privateThreads')) as unknown[] | undefined;
+      return list?.length ?? 0;
+    } finally { db.close(); }
+  })).toBe(1);
   await bob.page.reload();
   await bob.connected();
-  await expect.poll(() => privateLines(bob)).toEqual([{ text: 'still ours', mark: '🔒 to you' }]);
+  await openFromList(bob, 'Alice');
+  await expect.poll(() => conversation(bob)).toEqual([{ from: 'Alice', text: 'still ours' }]);
 });
 
 test('a private text written while the server is away survives a reload, and reaches its friend once it is back', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
-  await writePrivately(alice, 'Bob');
+  await openFromOnline(alice, 'Bob');
   await alice.wire.cut();
   await expect(alice.banner).toContainText(/Reconnecting|Server unavailable/);
   await alice.composer.fill('kept for you');
   await alice.composer.press('Enter');
-  await expect(alice.page.locator('.chat-log .msg-private.msg-pending .msg-text')).toHaveText(['kept for you']);
+  await expect(alice.page.locator('.chat.private .msg-pending .msg-text')).toHaveText(['kept for you']);
   await alice.page.reload();
   // Waiting, as written, before the Room is back: sealed only once it lists Bob.
-  await expect(alice.page.locator('.chat-log .msg-private.msg-pending .msg-text')).toHaveText(['kept for you']);
+  await openFromList(alice, 'Bob');
+  await expect(alice.page.locator('.chat.private .msg-pending .msg-text')).toHaveText(['kept for you']);
   alice.wire.restore();
   await alice.connected();
-  await expect.poll(() => privateLines(bob)).toEqual([{ text: 'kept for you', mark: '🔒 to you' }]);
-  await expect.poll(() => privateLines(alice)).toEqual([{ text: 'kept for you', mark: '🔒 to Bob' }]);
-  await expect(alice.page.locator('.chat-log .msg-pending')).toHaveCount(0);
+  await expect.poll(() => threads(bob)).toEqual(['Alice (1)']);
+  await openFromList(bob, 'Alice');
+  await expect.poll(() => conversation(bob)).toEqual([{ from: 'Alice', text: 'kept for you' }]);
+  await expect.poll(() => conversation(alice)).toEqual([{ from: 'Alice', text: 'kept for you' }]);
+  await expect(alice.page.locator('.chat .msg-pending')).toHaveCount(0);
 });

@@ -98,7 +98,7 @@
 :where(:root[data-theme="ds-brutalist"]) .room.selected .room-head { border-left: 6px solid var(--fg); padding-left: 8px; }
 /* every box shows its edge; nothing is rounded, not even a face */
 :where(:root[data-theme="ds-brutalist"]) button { border: var(--border-width) solid var(--line); border-radius: 0; background: var(--panel2); font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
-:where(:root[data-theme="ds-brutalist"]) button:where(:hover:not(:disabled, .on, .join, .leave, .unblock, .link, .avatar, .room-name, .edit, .chat-older, .emoji-open, .recording)) { background: var(--fg); color: var(--bg); }
+:where(:root[data-theme="ds-brutalist"]) button:where(:hover:not(:disabled, .on, .join, .leave, .unblock, .link, .avatar, .room-name, .thread, .edit, .chat-older, .emoji-open, .recording)) { background: var(--fg); color: var(--bg); }
 :where(:root[data-theme="ds-brutalist"]) :is(.emoji-tabs, .emoji-grid) button:hover { background: var(--color-hazard); color: var(--color-text-on-hazard); }
 :where(:root[data-theme="ds-brutalist"]) button.on:where(:not(.link)) { border-color: var(--line); }
 :where(:root[data-theme="ds-brutalist"]) button.join, :where(:root[data-theme="ds-brutalist"]) button.leave, :where(:root[data-theme="ds-brutalist"]) button.unblock { border-color: var(--line); }
