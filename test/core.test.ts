@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, MAX_SEALED_LENGTH, OUT_OF_DATE, type Person } from '../src/core/protocol';
+import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, OUT_OF_DATE, type Person } from '../src/core/protocol';
 import { onMessage, presenceSnapshot, type SocketState } from '../src/core/room';
 import { newBucket } from '../src/core/ratelimit';
 
@@ -28,6 +28,10 @@ describe('protocol', () => {
     expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: 'c2Vh', id: 'a1b2' }))).toEqual({ t: 'private', to: 'pkB', sealed: 'c2Vh', id: 'a1b2' });
     expect(parseClientMessage(JSON.stringify({ t: 'private', sealed: 'c2Vh', id: 'a1b2' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'private', id: 'a1b2' });
     expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: 'c2Vh' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'private' });
+    // A file's announcement for one friend: flagged, and taken up to a file description's length.
+    const long = 'x'.repeat(MAX_SEALED_LENGTH + 1);
+    expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: long, id: 'a1b2', file: true }))).toEqual({ t: 'private', to: 'pkB', sealed: long, id: 'a1b2', file: true });
+    expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: 'x'.repeat(MAX_SEALED_FILE_LENGTH + 1), id: 'a1b2', file: true }))).toMatchObject({ t: 'invalid', ref: 'private', id: 'a1b2' });
     expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: 'x'.repeat(MAX_SEALED_LENGTH + 1), id: 'a1b2' }))).toEqual({ t: 'invalid', reason: 'message longer than 2000 characters', ref: 'private', id: 'a1b2' });
     const bad = { t: 'invalid', reason: 'unrecognised message' };
     // ADR 0005: only an app from before sealed texts sends a plain one.

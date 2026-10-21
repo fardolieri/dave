@@ -223,7 +223,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       // To one friend here, and back to its writer, who learns it went out (ADR 0007). Nobody else hears of it.
       if (msg.to === state.person.publicKey || !attachedByKey(msg.to)) return { state: next, replies: [error('that friend is not here', 'private', msg.id)] };
       const { privateTexts } = state.person;
-      const m: ServerMessage = { t: 'private', from: identityOf(state.person), to: msg.to, ...(privateTexts ? { key: privateTexts } : {}), sealed: msg.sealed, at: ctx.now, id: msg.id };
+      const m: ServerMessage = { t: 'private', from: identityOf(state.person), to: msg.to, ...(privateTexts ? { key: privateTexts } : {}), sealed: msg.sealed, at: ctx.now, id: msg.id, ...(msg.file ? { file: true as const } : {}) };
       return { state: next, replies: [m], relay: { to: msg.to, message: m } };
     }
     case 'text':

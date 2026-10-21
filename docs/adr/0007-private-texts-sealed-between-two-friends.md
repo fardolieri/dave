@@ -19,11 +19,16 @@ their identity. The Room passes `private` on to that one friend and back to its 
 writer's key, so the friend can open it after the writer left.
 
 In the app, private texts with a friend make one **private conversation**, apart from every room: two friends in the
-same two rooms have one conversation, whichever room carried each text. The sidebar lists the conversations under
-"Private", each with its unread count. A friend's avatar opens it, in the main section in place of a room's chat, with
-the friend's profile as its head (name, nickname, fingerprint, known since, where they are now) and an accent edge,
-so it is never taken for a room; that head is the friend's profile card now. A text goes through a room the two
-share, the one on screen if the friend is in it. Text only: files go to a whole room.
+same two rooms have one conversation, whichever room carried each text. A friend's row in the sidebar is the one way
+in: their avatar opens the conversation, and the row carries its unread count; a friend I have a conversation with who
+is online in none of my rooms is listed after everyone online, dimmed. It shows in the main section in place of a
+room's chat, a centred column, with the friend's profile as its head (name, nickname, fingerprint, known since, where
+they are now); that head is the friend's profile card now. A text goes through a room the two share, the one on
+screen if the friend is in it.
+
+Files go too (ADR 0006): a file's announcement is sealed for the one friend under its own domain, `dave private file
+v1`, and travels as a `private` frame flagged `file`; the friend pulls the bytes from me through that room, as a room's
+file, and a pull of one asks the friend alone, never others in the room.
 
 ## Considered options
 

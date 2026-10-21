@@ -97,8 +97,12 @@ export type ClientMessage =
   | { t: 'sealed'; sealed: string; id: TextId }
   /** A file's announcement, sealed like a text under its own domain (ADR 0006); its bytes never come this way. */
   | { t: 'file'; sealed: string; id: TextId }
-  /** A private text (ADR 0007), sealed for the one friend `to`: the Room passes it on to them only, and back to me. */
-  | { t: 'private'; to: string; sealed: string; id: TextId }
+  /**
+   * A private text (ADR 0007), sealed for the one friend `to`: the Room passes it on to them only, and back to me. `file`:
+   * a file's announcement for them instead (ADR 0006), sealed under its own domain, so the flag cannot pass one off as
+   * the other; the Room only takes a longer one for it.
+   */
+  | { t: 'private'; to: string; sealed: string; id: TextId; file?: true }
   | { t: 'text'; text: string; id?: TextId }
   /** Enter the Call (or re-declare after a server reconnect). */
   /** `sharing` lets a re-join after a server reconnect keep an ongoing share visible to everyone. */
@@ -136,7 +140,7 @@ export type ServerMessage =
    * A private text, to the friend it is for and back to its writer, tagged like a sealed text. `key` is the writer's
    * private text key as the Room has it, so the friend can open it after the writer is gone from presence.
    */
-  | { t: 'private'; from: Identity; to: string; key?: PrivateTextKey; sealed: string; at: number; id: TextId }
+  | { t: 'private'; from: Identity; to: string; key?: PrivateTextKey; sealed: string; at: number; id: TextId; file?: true }
   /** Reply to join: your place in the Call and the ICE servers to build peer connections with. */
   | { t: 'call'; joinSeq: number; iceServers: IceServer[]; issuedAt: number; id?: RequestId }
   /** A participant left on purpose; peers close that connection at once. A vanished socket only drops out of presence. */
@@ -339,6 +343,10 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
       if (!isTextId(m.id)) return invalid('unrecognised message');
       // Refused by its id from here on: the writer's app goes by it (client/room.ts).
       if (!b64(m.to) || typeof m.sealed !== 'string' || !B64URL.test(m.sealed)) return { ...invalid('unrecognised message'), ref: 'private', id: m.id };
+      if (m.file === true) {
+        if (m.sealed.length > MAX_SEALED_FILE_LENGTH) return { ...invalid('file description too long'), ref: 'private', id: m.id };
+        return { t: 'private', to: m.to, sealed: m.sealed, id: m.id, file: true };
+      }
       if (m.sealed.length > MAX_SEALED_LENGTH) return { ...invalid(`message longer than ${MAX_TEXT_LENGTH} characters`), ref: 'private', id: m.id };
       return { t: 'private', to: m.to, sealed: m.sealed, id: m.id };
     case 'link': {

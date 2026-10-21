@@ -257,7 +257,8 @@ function Workspace(props: WorkspaceProps) {
   const links = mapArray(() => props.rooms.map((r) => r.secret), (secret): Link => {
     let last = untrack(() => props.rooms.find((r) => r.secret === secret)!);
     // A deliberate one-time snapshot of name and picture: the socket is created once; changes go through `rename` and `setPicture`.
-    const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, textKey: last.textKey, name: untrack(() => props.name), picture: getPicture(), hold: holding });
+    // Private files are served by their conversation's word: to the friend it is with alone (client/privates.ts).
+    const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, textKey: last.textKey, name: untrack(() => props.name), picture: getPicture(), hold: holding, servesPrivate: (hash, peer) => privates.serves(hash, peer) });
     const call = createCall(room, identity, { mayRejoin: untrack(() => props.mayRejoin) });
     posthog.capture('room_entered');
     // The latest saved entry; the last one seen while the room is being forgotten and its link disposed.
@@ -365,10 +366,16 @@ function Workspace(props: WorkspaceProps) {
   // the order handed over. A reload drops them.
   const [staged, setStaged] = createSignal<Staged[]>([]);
   let stagedIds = 0;
+  /** The room's staged files, set aside while a private conversation is on screen (see the effect below). */
+  let roomStaged: Staged[] = [];
   const stageFile = (file: File, original?: Promise<File | null>) => {
     const id = ++stagedIds;
     setStaged((all) => [...all, { id, file, url: thumbnailUrl(file), state: original ? 'original' : 'preparing', prepared: null }]);
-    const update = (change: (x: Staged) => Staged) => setStaged((all) => all.map((x) => (x.id === id ? change(x) : x)));
+    // Wherever it is by then: on screen, or set aside with the room's while a conversation is (`roomStaged`).
+    const update = (change: (x: Staged) => Staged) => {
+      setStaged((all) => all.map((x) => (x.id === id ? change(x) : x)));
+      roomStaged = roomStaged.map((x) => (x.id === id ? change(x) : x));
+    };
     void (async () => {
       const picked = (await original) ?? file;
       update((x) => {
@@ -384,6 +391,16 @@ function Workspace(props: WorkspaceProps) {
       }
     })();
   };
+  // Like the composer's draft: the room's staged files wait while a conversation is on screen and come back after; files
+  // staged in a conversation go as it leaves the screen, so a Send in the room cannot take them to everyone.
+  createEffect(() => privates.openWith(), (key, prev) => {
+    if (key === prev || (prev === undefined && key === null)) return;
+    const now = untrack(staged);
+    if (!prev && key) { roomStaged = now; setStaged([]); return; }
+    for (const x of now) if (x.url) URL.revokeObjectURL(x.url);
+    setStaged(key ? [] : roomStaged);
+    if (!key) roomStaged = [];
+  });
   const unstageFile = (id: number) => {
     const gone = staged().find((x) => x.id === id);
     if (gone?.url) URL.revokeObjectURL(gone.url);
@@ -401,7 +418,7 @@ function Workspace(props: WorkspaceProps) {
   // so, even standing still (the HTML spec; maybe not every engine), so none for 3 s means it has gone.
   let lapse: ReturnType<typeof setTimeout> | undefined;
   const endDrag = () => { clearTimeout(lapse); depth = 0; setDragging(false); };
-  const overPage = () => { clearTimeout(lapse); lapse = setTimeout(endDrag, 3000); setDragging(writable() && !privateFriend()); };
+  const overPage = () => { clearTimeout(lapse); lapse = setTimeout(endDrag, 3000); setDragging(privateFriend() ? !privateFriend()!.blocked : writable()); };
   onCleanup(() => clearTimeout(lapse));
   // Not over an open dialog or popover (Report a problem, a profile card) or a share in fullscreen: those sit above the
   // frame, so a file staged from there would be staged unseen, to go with the next Enter. The cursor says no instead.
@@ -409,6 +426,8 @@ function Workspace(props: WorkspaceProps) {
   // Another room put on screen (a click, an invite link) ends the conversation on screen; the room behind it going away
   // (left, forgotten) does not: another simply takes its place behind.
   createEffect(() => current(), (now, prev) => { if (prev && now !== prev && untrack(links).includes(prev)) privates.close(); });
+  /** My conversations with friends online in none of my rooms: listed after everyone online, dimmed. */
+  const awayThreads = createMemo(() => privates.threads().filter((t) => !present(t.friend.publicKey)));
   /** The private conversation on screen: the friend as presence has them now, else as I last saw them. */
   const privateFriend = createMemo(() => {
     const key = privates.openWith();
@@ -425,10 +444,14 @@ function Workspace(props: WorkspaceProps) {
     if (!room || !files.every(settled)) return false;
     const priv = privateFriend();
     if (priv) {
-      // Text only: an attachment's announcement goes to a whole room (the composer says so).
-      if (files.length || !text || !privates.send(priv.key, text)) return false;
-      setPrivateJump((n) => n + 1);
-      return true;
+      // Files first, then the text, as in a room; each goes to the friend alone. One a room would not take stays staged.
+      const kept = files.filter((x) => x.prepared && !privates.sendFile(priv.key, x.prepared));
+      for (const x of files) if (x.url && !kept.includes(x)) URL.revokeObjectURL(x.url);
+      setStaged(kept);
+      const sent = text ? privates.send(priv.key, text) : false;
+      if (sent || kept.length < files.length) setPrivateJump((n) => n + 1);
+      // True when the text went, so the field empties: the files no room took stay staged, and the conversation says why.
+      return text ? sent : kept.length === 0;
     }
     setStaged([]);
     for (const x of files) if (x.url) URL.revokeObjectURL(x.url);
@@ -483,12 +506,12 @@ function Workspace(props: WorkspaceProps) {
            onDragOver={(e) => {
              if (!hasFiles(e)) return;
              e.preventDefault();
-             // Over a dialog, or a private conversation (files go to a whole room): the cursor says no.
-             if (!onTop(e.target) && !privateFriend()) overPage();
+             // Over a dialog, or a conversation with a friend I cannot write to now: the cursor says no.
+             if (!onTop(e.target) && !privateFriend()?.blocked) overPage();
              else { e.dataTransfer!.dropEffect = 'none'; clearTimeout(lapse); setDragging(false); }
            }}
            onDragLeave={(e) => { if (hasFiles(e) && --depth <= 0) endDrag(); }}
-           onDrop={(e) => { endDrag(); if (!hasFiles(e)) return; e.preventDefault(); if (writable() && !privateFriend() && !onTop(e.target)) for (const f of e.dataTransfer?.files ?? []) stageFile(f); }}>
+           onDrop={(e) => { endDrag(); if (!hasFiles(e)) return; e.preventDefault(); if ((privateFriend() ? !privateFriend()!.blocked : writable()) && !onTop(e.target)) for (const f of e.dataTransfer?.files ?? []) stageFile(f); }}>
         <div class="scroll">
           <aside class="side">
             <h2>Online</h2>
@@ -499,30 +522,22 @@ function Workspace(props: WorkspaceProps) {
                 const p = () => (last = online().find((q) => q.publicKey === key) ?? last);
                 return key === me
                   ? <PersonRow p={p()} isMe label={labelOf(p())} pending={!connected()} onProfile={(el) => openProfile(p(), el)} />
-                  : <PersonRow p={p()} isMe={false} label={labelOf(p())} arrive onProfile={(el) => openProfile(p(), el)} />;
+                  : <PersonRow p={p()} isMe={false} label={labelOf(p())} arrive onProfile={(el) => openProfile(p(), el)} unread={privates.unread(key)} on={privates.openWith() === key} />;
               }}</For>
               <Show when={online().length === 0}><li class="dim">nobody yet</li></Show>
             </ul>
-            <Show when={privates.threads().length > 0}>
-              <h2>Private</h2>
-              {/* Out of PostHog's autocapture: who I write to privately is mine (`ph-no-capture`) */}
-              <ul class="threads ph-no-capture">
-                <For each={privates.threads()}>{(t) => {
-                  const key = t.friend.publicKey;
-                  const who = () => present(key) ?? t.friend;
-                  return (
-                    <li class={privates.openWith() === key ? 'on' : ''}>
-                      <button class="thread" onClick={() => openPrivate(who())} title={`Your private conversation with ${labelOf(who()).shown}`}>
-                        <span class={`avatar ${labelOf(who()).picture ? 'pic' : ''}`}>{labelOf(who()).picture ?? labelOf(who()).shown[0]}</span>
-                        <span class="tname">{labelOf(who()).shown}</span>
-                        {/* A key this browser has not acknowledged, as in the lists: a name alone is no proof (ADR 0003) */}
-                        <Show when={!labelOf(who()).known}><b class="new">new</b></Show>
-                        <Show when={privates.onlineIn(key).length === 0}><span class="dim">offline</span></Show>
-                        <Show when={privates.unread(key) > 0}><b class="unread" title="new messages">{privates.unread(key)}</b></Show>
-                      </button>
-                    </li>
-                  );
-                }}</For>
+            {/* Friends I have a conversation with who are online in none of my rooms: their row is where it is, as for anyone */}
+            <Show when={awayThreads().length > 0}>
+              <ul class="away ph-no-capture" aria-label="Offline">
+                <For each={awayThreads()}>{(t) => (
+                  <li class={privates.openWith() === t.friend.publicKey ? 'on' : ''}>
+                    <Avatar initial={labelOf(t.friend).shown[0]!} picture={labelOf(t.friend).picture} title={`Your private conversation with ${labelOf(t.friend).shown}`} onOpen={() => openPrivate(t.friend)} />
+                    <span class="pname" title={labelOf(t.friend).title}><span class="tname">{labelOf(t.friend).shown}</span><span class="dim">offline</span>
+                      <Show when={!labelOf(t.friend).known}><b class="new">new</b></Show>
+                      <Show when={privates.unread(t.friend.publicKey) > 0}><b class="unread" title="New private messages">{privates.unread(t.friend.publicKey)}</b></Show>
+                    </span>
+                  </li>
+                )}</For>
               </ul>
             </Show>
             <For each={links()}>{(l) => {
@@ -551,7 +566,7 @@ function Workspace(props: WorkspaceProps) {
                   <Show when={selected() && inviteOpen()}><InvitePanel link={inviteLinkFor(l.saved)} name={l.saved.name} /></Show>
                   <ul class="plist">
                     <Show when={participants().self}>{(s) => <ParticipantRow p={s()} isMe label={labelOf(s())} onProfile={(el) => openProfile(s(), el)} speaking={l.call.speakingSelf()} />}</Show>
-                    <For each={participants().others}>{(p) => <ParticipantRow p={p} isMe={false} label={labelOf(p)} onProfile={(el) => openProfile(p, el)} view={inThis() ? viewOf(l, p.publicKey) : undefined} speaking={viewOf(l, p.publicKey)?.speaking ?? false} onVolume={inThis() ? (v) => l.call.setVolume(p.publicKey, v) : undefined} />}</For>
+                    <For each={participants().others}>{(p) => <ParticipantRow p={p} isMe={false} label={labelOf(p)} onProfile={(el) => openProfile(p, el)} unread={privates.unread(p.publicKey)} on={privates.openWith() === p.publicKey} view={inThis() ? viewOf(l, p.publicKey) : undefined} speaking={viewOf(l, p.publicKey)?.speaking ?? false} onVolume={inThis() ? (v) => l.call.setVolume(p.publicKey, v) : undefined} />}</For>
                     <For each={participants().lost}>{(v) => <li class="lost"><span class="avatar">{displayName(v.name, contactOf(v.publicKey))[0]}</span><span class="pname">{displayName(v.name, contactOf(v.publicKey))} <em>connection to server lost</em></span></li>}</For>
                     <Show when={selected() && !participants().self && participants().others.length === 0}><li class="dim">nobody in the call</li></Show>
                   </ul>
@@ -619,7 +634,9 @@ function Workspace(props: WorkspaceProps) {
                    attachment={(hash) => cur().room.attachment(hash)} onPull={(hash) => cur().room.pull(hash)} onCancel={(hash) => cur().room.cancelPull(hash)} />
           <Show when={privateFriend()}>{(pf) => (
             <ChatLog lines={privates.lines(pf().key)} openedAt={privateOpenedAt()} jumpToken={privateJump()} label={labelOf} private
-                     attachment={() => undefined} onPull={() => {}} onCancel={() => {}}
+                     empty={privates.isRead(pf().key) ? `Only ${labelOf(pf().friend).shown} gets what you write here.` : undefined}
+                     attachment={(hash) => privates.attachment(hash, pf().key)} onPull={(hash) => privates.pull(hash, pf().key)} onCancel={(hash) => privates.cancelPull(hash, pf().key)}
+                     holder={(from) => (from.publicKey === me ? labelOf(pf().friend).shown : labelOf(from).shown)}
                      head={<PrivateHead friend={pf().friend} me={me} label={labelOf} where={privates.onlineIn(pf().key)} blocked={pf().blocked}
                                         back={cur().saved.name} onBack={() => privates.close()} onForget={() => privates.forget(pf().key)} />} />
           )}</Show>
@@ -631,7 +648,7 @@ function Workspace(props: WorkspaceProps) {
           {/* Anchored to the composer's top edge, whatever its height on this device (ticket 32) */}
           <Show when={consent() === null || askingConsent()}><TelemetryNotice onAnswer={(c) => { setConsent(c); setAskingConsent(false); }} /></Show>
         </Composer>
-        <Show when={dragging()}><div class="drop-hint">Drop to send to {cur().saved.name}</div></Show>
+        <Show when={dragging()}><div class="drop-hint">Drop to send to {privateFriend() ? labelOf(privateFriend()!.friend).shown : cur().saved.name}</div></Show>
       </div>
     )}</Show>
   );
@@ -741,13 +758,15 @@ function open(el: HTMLElement, delay: number): void {
   opening.finished.then(() => { el.style.overflow = ''; }, () => {});
 }
 
-function PersonRow(props: { p: Person; isMe: boolean; label: Label; onProfile: (anchor: HTMLElement) => void; pending?: boolean; arrive?: boolean }) {
+/** `unread`: private texts from this friend I have not read; `on`: my conversation with them is on screen (ADR 0007). */
+function PersonRow(props: { p: Person; isMe: boolean; label: Label; onProfile: (anchor: HTMLElement) => void; pending?: boolean; arrive?: boolean; unread?: number; on?: boolean }) {
   const acknowledge = () => { if (!props.label.known) { markKnown(props.p.publicKey, props.p.name); posthog.capture('new_key_acknowledged'); } };
   return (
-    <li ref={(el) => { if (untrack(() => props.arrive)) slideIn(el); }} class={props.pending ? 'pending' : undefined} onClick={acknowledge} title={props.label.known ? props.label.title : `${props.label.title}. Click to acknowledge.`}>
+    <li ref={(el) => { if (untrack(() => props.arrive)) slideIn(el); }} class={[props.pending ? 'pending' : '', props.on ? 'on' : ''].join(' ').trim() || undefined} onClick={acknowledge} title={props.label.known ? props.label.title : `${props.label.title}. Click to acknowledge.`}>
       <Avatar initial={props.label.shown[0]!} picture={props.label.picture} title={props.isMe ? 'Your profile' : `Your private conversation with ${props.label.shown}`} onOpen={props.onProfile} />
       <span class="pname"><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span>
         <Show when={!props.label.known}><b class="new">new</b></Show>
+        <Show when={props.unread}><b class="unread" title="New private messages">{props.unread}</b></Show>
       </span>
     </li>
   );
@@ -872,19 +891,21 @@ function Profile(props: { person: Identity; me: string; label: (id: Identity) =>
 
 /**
  * The head of a private conversation (ADR 0007), above its log: who it is with, as their profile shows them, and where
- * they are now, the rooms we share, or why I cannot write to them. Its own look tells it from a room at a glance.
+ * they are now, the rooms we share, or why I cannot write to them. The friend's own profile, at the top of the page,
+ * is what tells a conversation from a room at a glance.
  */
 function PrivateHead(props: { friend: Identity; me: string; label: (id: Identity) => Label; where: string[]; blocked: string | null; back: string; onBack: () => void; onForget: () => void }) {
   return (
     <header class="private-head ph-no-capture">
       <button type="button" class="link private-back" onClick={props.onBack} title={`Back to ${props.back}`}>← {props.back}</button>
-      <p class="private-title">🔒 Private: only you and {props.label(props.friend).shown} can read this, not the server</p>
       <div class="private-who">
         {/* Keyed by the friend: another conversation starts out not editing, so a nickname typed for one is never saved on another */}
         <Show when={props.friend.publicKey} keyed>{(_key) => <Profile person={props.friend} me={props.me} label={props.label} onRenameSelf={() => {}} onPictureSelf={() => {}} />}</Show>
       </div>
       <p class="private-where">
-        {props.blocked ? `Can't write now: ${props.blocked}.` : props.where.length ? `Online in ${props.where.join(', ')}.` : 'Your rooms with them are reconnecting: a text waits until one is back.'}{' '}
+        <span class={props.where.length && !props.blocked ? 'here on' : 'here'}>
+          {props.blocked ? `Can't write now: ${props.blocked}` : props.where.length ? `In ${props.where.join(', ')}` : 'Your rooms with them are reconnecting'}
+        </span>
         <button type="button" class="link" title="Only this browser's copy: nothing is stored on the server" onClick={() => { if (confirm(`Delete your private conversation with ${props.label(props.friend).shown} from this browser? Nothing is stored on the server, so this cannot be undone.`)) props.onForget(); }}>Delete conversation</button>
       </p>
     </header>
@@ -1052,7 +1073,7 @@ function badgesFitWhole(line: HTMLElement): boolean {
   return avatar.offsetWidth + floor + need + 2 * gap(line) <= line.clientWidth;
 }
 
-function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: PeerView; speaking: boolean; onVolume?: (v: number) => void; onProfile: (anchor: HTMLElement) => void }) {
+function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: PeerView; speaking: boolean; onVolume?: (v: number) => void; onProfile: (anchor: HTMLElement) => void; unread?: number; on?: boolean }) {
   const [sliderOpen, setSliderOpen] = createSignal(false);
   const volume = () => props.view?.volume ?? 1;
   const percent = () => Math.round(volume() * 100);
@@ -1067,10 +1088,12 @@ function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: 
     watcher = [resize, mutation];
   };
   return (
-    <li class="prow">
+    <li class={props.on ? 'prow on' : 'prow'}>
       <div class={`pline ${tight() ? 'tight' : ''}`} ref={watchFit}>
       <Avatar initial={props.label.shown[0]!} picture={props.label.picture} speaking={props.speaking} title={props.isMe ? 'Your profile' : `Your private conversation with ${props.label.shown}`} onOpen={props.onProfile} />
-      <span class="pname" title={props.label.title}><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span></span>
+      <span class="pname" title={props.label.title}><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span>
+        <Show when={props.unread}><b class="unread" title="New private messages">{props.unread}</b></Show>
+      </span>
       <span class="pflags">
         <Show when={props.p.muted}><em>muted</em></Show>
         <Show when={props.p.sharing}><em>sharing</em></Show>
@@ -1495,8 +1518,8 @@ function Composer(props: {
   // browser comes as a still PNG; the original it points at takes its place when the page can read it, so a GIF moves.
   const onPaste = (e: ClipboardEvent) => {
     const files = [...(e.clipboardData?.files ?? [])];
-    // Not in a private conversation: files go to a whole room, and one staged here would go with the room's next Send.
-    if (!files.length || !props.writable || props.privateTo) return;
+    // Not where no file can go now (a conversation with a friend I cannot write to): the attach button and a drop say no too.
+    if (!files.length || !props.writable || privateHeld()) return;
     e.preventDefault();
     const url = files.length === 1 && files[0]!.type.startsWith('image/') ? pastedImageUrl(e.clipboardData?.getData('text/html') ?? '') : null;
     if (!url) for (const f of files) props.onStage(f);
@@ -1517,7 +1540,7 @@ function Composer(props: {
     if (key && matchMedia('(pointer: fine)').matches) input?.focus();
   });
   /** Why Send cannot send right now while writing privately, or null. */
-  const privateHeld = () => (!props.privateTo ? null : props.privateTo.blocked ? `Can't write to ${props.privateTo.name} now: ${props.privateTo.blocked}` : props.staged.length ? 'Files go to a whole room: remove them, or go back to the room' : null);
+  const privateHeld = () => (props.privateTo?.blocked ? `Can't write to ${props.privateTo.name} now: ${props.privateTo.blocked}` : null);
   const submit = (e: Event) => {
     e.preventDefault();
     const text = draft().trim();
@@ -1554,9 +1577,9 @@ function Composer(props: {
         <button type="button" class="emoji-open" ref={emojiButton} popovertarget="composer-emoji" disabled={!props.writable} title="Emoji" aria-label="Emoji">🙂</button>
         <EmojiPicker id="composer-emoji" anchor={() => emojiButton} onPick={insert} />
         <input ref={input} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} onPaste={onPaste} disabled={!props.writable} maxlength={MAX_TEXT_LENGTH}
-               placeholder={props.privateTo?.blocked ? `Can't write to ${props.privateTo.name} now: ${props.privateTo.blocked}` : props.privateTo && props.writable ? `Message ${props.privateTo.name} privately${props.connected ? '' : ', sent once reconnected'}` : props.connected ? `Message ${props.roomName}` : props.writable ? `Message ${props.roomName}, sent once reconnected` : holding() ? 'A new version of dave is loading…' : "Can't send while disconnected"} />
+               placeholder={props.privateTo?.blocked ? `Can't write to ${props.privateTo.name} now: ${props.privateTo.blocked}` : props.privateTo && props.writable ? `Message ${props.privateTo.name}${props.connected ? '' : ', sent once reconnected'}` : props.connected ? `Message ${props.roomName}` : props.writable ? `Message ${props.roomName}, sent once reconnected` : holding() ? 'A new version of dave is loading…' : "Can't send while disconnected"} />
         {/* Looks like the emoji button, in every theme: the themes style that one by its class */}
-        <button type="button" class="emoji-open attach-open" disabled={!props.writable || !!props.privateTo} onClick={() => picker?.click()} title={props.privateTo ? 'Files go to a whole room: send them from the room' : 'Send a picture, a video or a file'} aria-label="Attach a file">📎</button>
+        <button type="button" class="emoji-open attach-open" disabled={!props.writable || !!privateHeld()} onClick={() => picker?.click()} title={props.privateTo ? `Send ${props.privateTo.name} a picture, a video or a file` : 'Send a picture, a video or a file'} aria-label="Attach a file">📎</button>
         {/* Wrapped: the text field is the field's one direct input child (styles and the e2e fixtures find it so) */}
         <span hidden><input ref={picker} type="file" multiple data-testid="attach" onChange={(e) => { const files = [...(e.currentTarget.files ?? [])]; e.currentTarget.value = ''; for (const f of files) props.onStage(f); }} /></span>
       </div>
@@ -1576,6 +1599,10 @@ function ChatLog(props: {
   lines: ChatLine[]; openedAt: number; jumpToken: number; label: (id: Identity) => Label;
   /** Above the log: a private conversation's head (ADR 0007), which is all `private` then. */
   head?: any; private?: boolean; hidden?: boolean;
+  /** What an empty log says. */
+  empty?: string;
+  /** Whom a file's bytes come from, by its writer (a private file of mine, after a reload: the friend who pulled it). */
+  holder?: (from: Identity) => string;
   attachment: (hash: string) => Attachment | undefined; onPull: (hash: string) => void; onCancel: (hash: string) => void;
 }) {
   let log: HTMLDivElement | undefined;
@@ -1584,7 +1611,7 @@ function ChatLog(props: {
   const view = (url: string, name: string, type: string) => { setViewing({ url, name, type }); if (viewer && !viewer.open) viewer.showModal(); };
   // The tooltip (the time, or that it is not sent yet) is on the text or the attachment, not on the whole row.
   const file = (m: Extract<ChatLine, { kind: 'file' }>, title: string | undefined) => (
-    <FileView file={m.file} title={title} attachment={props.attachment(m.file.hash)} holder={props.label(m.from).shown}
+    <FileView file={m.file} title={title} attachment={props.attachment(m.file.hash)} holder={props.holder?.(m.from) ?? props.label(m.from).shown}
               onPull={() => props.onPull(m.file.hash)} onCancel={() => props.onCancel(m.file.hash)} onView={view} />
   );
   const [unfoldedFor, setUnfoldedFor] = createSignal<number | null>(null); // the opening the reader unfolded the older lines in
@@ -1645,6 +1672,7 @@ function ChatLog(props: {
     <div class={props.private ? 'chat private ph-no-capture' : 'chat'} hidden={props.hidden}>
       {props.head}
       <div class="chat-log" ref={log} onScroll={onScroll}>
+        <Show when={props.empty && props.lines.length === 0}><p class="chat-empty">{props.empty}</p></Show>
         <Show when={folded() > 0}>
           <button class="chat-older" onClick={() => setUnfoldedFor(props.openedAt)} title="Messages from more than 18 hours before you opened this room">
             Show older messages

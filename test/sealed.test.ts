@@ -3,7 +3,7 @@ import { exportPublicKey, fromBase64Url, generateIdentityKeyPair, toBase64Url } 
 import { MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_TEXT_LENGTH } from '../src/core/protocol';
 import { MAX_FILE_NAME, MAX_PREVIEW_LENGTH, type FileMeta } from '../src/core/attachment';
 import { roomIdOf, textKeyOf } from '../src/core/rooms';
-import { generatePrivateTextKeyPair, openFile, openPrivate, openText, sealFile, sealPrivate, sealText, sharedPrivateTextKey, signPrivateTextKey, verifyPrivateTextKey } from '../src/core/sealed';
+import { generatePrivateTextKeyPair, openFile, openPrivate, openPrivateFile, openText, sealFile, sealPrivate, sealPrivateFile, sealText, sharedPrivateTextKey, signPrivateTextKey, verifyPrivateTextKey } from '../src/core/sealed';
 
 async function writer() {
   const keys = await generateIdentityKeyPair();
@@ -168,6 +168,19 @@ describe('private texts (ADR 0007)', async () => {
     expect(await verifyPrivateTextKey({ identity: bob.from, key: 'not a key', sig: bob.published.sig })).toBe(false);
     expect(await verifyPrivateTextKey({ identity: 'not a key', ...bob.published })).toBe(false);
     expect(await sharedPrivateTextKey({ mine: alice.keys.privateKey, theirs: 'AAAA', me: alice.from, them: bob.from })).toBeNull();
+  });
+
+  it('a file for one friend round-trips for them alone, and is never taken for a private text or a room\'s file', async () => {
+    const file: FileMeta = { name: 'secret.png', type: 'image/png', size: 2048, hash: 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg' };
+    const key = await shared(alice, bob);
+    const base = { key, privateKey: alice.privateKey, roomId, id: 'c0ffee', from: alice.from, to: bob.from };
+    const sealed = await sealPrivateFile({ ...base, file });
+    expect(await openPrivateFile({ ...base, key: await shared(bob, alice), sealed })).toEqual({ ok: true, file });
+    expect(await openPrivateFile({ ...base, key: await shared(carol, alice), sealed })).toEqual({ ok: false, reason: 'unreadable' });
+    expect(await openPrivate({ ...base, sealed })).toEqual({ ok: false, reason: 'unreadable' });
+    expect(await openPrivateFile({ ...base, sealed: await sealPrivate({ ...base, text: JSON.stringify(file) }) })).toEqual({ ok: false, reason: 'unreadable' });
+    expect(await openFile({ key, roomId, id: 'c0ffee', from: alice.from, sealed })).toEqual({ ok: false, reason: 'unreadable' });
+    expect((await sealPrivateFile({ ...base, file: { ...file, name: '😀'.repeat(MAX_FILE_NAME / 2), type: 'x'.repeat(100), preview: `data:image/jpeg;base64,${'A'.repeat(MAX_PREVIEW_LENGTH - 23)}` } })).length).toBeLessThanOrEqual(MAX_SEALED_FILE_LENGTH);
   });
 
   it('the longest private text stays within what the Room takes, and an empty one is refused', async () => {
