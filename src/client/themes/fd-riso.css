@@ -54,6 +54,7 @@
 :root[data-theme="fd-riso"] .panel .mictest button.recording { background-image: linear-gradient(var(--pink-soft), var(--pink-soft)); }
 :root[data-theme="fd-riso"] button.room-name, :root[data-theme="fd-riso"] button.avatar, :root[data-theme="fd-riso"] .emoji-tabs button,
 :root[data-theme="fd-riso"] .emoji-grid button, :root[data-theme="fd-riso"] .chat-input .emoji-open, :root[data-theme="fd-riso"] .profile button.edit,
+:root[data-theme="fd-riso"] .private-head button.edit, :root[data-theme="fd-riso"] button.thread,
 :root[data-theme="fd-riso"] .chat-older { box-shadow: none; }
 
 :root[data-theme="fd-riso"] .side { border-right: 2px solid var(--blue); box-shadow: 4px 0 0 var(--pink); }

@@ -108,14 +108,28 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .msg-text { white-space: pre-wrap; word-break: break-word; width: fit-content; } /* as wide as its words, so its time shows over them only */
 .msg-cont { margin-top: -8px; } /* a follow-on line from the same writer sits under their name: 2px apart instead of the log's 10px */
 .msg-sys { font-size: 12px; color: var(--dim); font-style: italic; } .msg-sys .msg-text { display: inline; }
-/* A private text (ADR 0007): an accent line down its left edge, and who it is between beside the name */
-.msg-private { border-left: 2px solid var(--acc); padding-left: 8px; }
-.msg-to { margin-left: 6px; color: var(--acc); background: none; border: 0; padding: 0; font: inherit; font-size: 11px; }
-button.msg-to { cursor: pointer; text-decoration: underline dotted; } button.msg-to:disabled { cursor: default; text-decoration: none; opacity: 1; }
-.private-to { flex: 1 0 100%; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 2px 4px 2px 10px; border-left: 2px solid var(--acc); font-size: 13px; color: var(--dim); }
-.private-to .unstage { padding: 2px 8px; background: none; border-color: transparent; color: var(--dim); }
-.profile .private-open { margin-top: 10px; width: 100%; }
-.profile .private-open + .dim { display: block; margin-top: 4px; font-size: 12px; text-align: center; }
+/* A private conversation (ADR 0007): its own head above the log, with the friend's profile, and an accent edge and tint
+   down the whole of it, so it is never taken for a room */
+.chat[hidden] { display: none; } /* a room's log behind a private conversation, kept with its place */
+.chat.private { border-left: 3px solid var(--acc); background: color-mix(in srgb, var(--acc) 6%, transparent); }
+/* It gives way to the log in a short row (a share on stage, a small window), scrolling itself, instead of spilling over the composer */
+.private-head { flex: 0 1 auto; min-height: 0; max-height: 60%; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding: 4px 0 12px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
+.private-head .private-back { align-self: flex-start; padding: 0; font-size: 12px; }
+.private-title { margin: 0; font-size: 12px; color: var(--acc); font-weight: 600; }
+.private-who { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; }
+.private-who .profile-facts { margin: 0; }
+.private-who .profile-edit { flex: 1; min-width: 220px; }
+.private-where { margin: 0; font-size: 12px; color: var(--dim); }
+/* The sidebar's list of private conversations */
+.threads { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+/* Plain in every theme, like a room's name: the themes' button looks (shadows, weight, a lift on hover) are not its */
+button.thread { width: 100%; display: flex; align-items: center; gap: 8px; background: none; border: 0; border-radius: 6px; padding: 2px 4px; text-align: left; cursor: pointer; color: var(--dim); box-shadow: none; font-weight: inherit; transform: none; }
+button.thread:hover, .threads li.on button.thread { color: var(--fg); }
+.threads li.on button.thread { background: color-mix(in srgb, var(--acc) 15%, transparent); }
+button.thread .tname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.thread .dim { font-size: 11px; }
+/* The room on screen behind a private conversation: still the room the composer's back button returns to */
+.room.selected.behind .room-title { color: var(--dim); }
 /* My own text the Room has not brought back yet. Dimmed only after a second, so the usual round trip shows no flicker. */
 .msg-pending { animation: msg-pending 0s 1s forwards; }
 @keyframes msg-pending { to { opacity: 0.5; } }
@@ -332,17 +346,17 @@ button.avatar.own:hover::after { color: var(--fg); }
 .profile-name { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .profile-name strong { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* the one edit the card offers sits right by the name it changes */
-.profile button.edit { background: none; border: 0; padding: 2px 5px; color: var(--dim); font-size: 13px; line-height: 1; flex: none; }
-.profile button.edit:hover { color: var(--fg); }
+:is(.profile, .private-head) button.edit { background: none; border: 0; padding: 2px 5px; color: var(--dim); font-size: 13px; line-height: 1; flex: none; }
+:is(.profile, .private-head) button.edit:hover { color: var(--fg); }
 .profile-names .dim { font-size: 12px; }
 .profile-head > input { flex: 1; min-width: 0; } /* the name field only; the emoji picker's search field lives in the head too */
 .profile-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 12px 0 0; font-size: 13px; }
 .profile-facts dt { color: var(--dim); }
 .profile-facts dd { margin: 0; }
-.profile .row { display: flex; gap: 6px; margin-top: 12px; }
-.profile .row button:first-child { flex: 1; }
-.profile > form input { width: 100%; }
-.profile .hint { margin: 8px 0 0; font-size: 12px; color: var(--dim); }
+:is(.profile, .private-head) .row { display: flex; gap: 6px; margin-top: 12px; }
+:is(.profile, .private-head) .row button:first-child { flex: 1; }
+:is(.profile, .private-who) > form input { width: 100%; }
+:is(.profile, .private-head) .hint { margin: 8px 0 0; font-size: 12px; color: var(--dim); }
 
 /* Emoji picker (issue #3): a popover over the button that opened it, placed by script like the profile card.
    The UA hides a closed popover with display:none, so the flex layout applies only while open. */
@@ -427,7 +441,10 @@ dialog.report .row button:first-child { flex: 1; }
   .side { grid-column: 1; grid-row: 1; border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
   .shares { grid-column: 1; grid-row: 2; grid-template-columns: 1fr !important; }
   .shares .share { min-height: 180px; }
-  .chat { grid-column: 1; grid-row: 3; min-height: 180px; padding-bottom: 8px; } /* breathing room between the newest line and the composer's top border */
+  .chat { grid-column: 1; grid-row: 3; min-height: 180px; padding-bottom: 8px; }
+  /* A private conversation is brought into view whole: its head and room for its lines below it, the composer under that */
+  .chat.private { min-height: calc(100dvh - 120px); }
+  .private-head .profile-facts { font-size: 12px; } /* breathing room between the newest line and the composer's top border */
   .chat-input { grid-column: 1; grid-row: 2; border-top: 1px solid var(--line); padding: 8px 14px calc(8px + env(safe-area-inset-bottom)); }
   .emoji-picker[popover] { width: calc(100vw - 16px); } /* the whole width: the finger is the pointer here */
 }

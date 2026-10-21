@@ -18,15 +18,20 @@ and the friend's, through HKDF bound to both identities. A friend's key counts o
 their identity. The Room passes `private` on to that one friend and back to its writer, tagged like a text, with the
 writer's key, so the friend can open it after the writer left.
 
-In the app it is a text in the room's chat, marked "🔒 to Bob" or "🔒 to you": started from a friend's profile card, or
-by clicking the mark of a private text to me, and ended with the composer's ✕, Escape, or another room.
+In the app, private texts with a friend make one **private conversation**, apart from every room: two friends in the
+same two rooms have one conversation, whichever room carried each text. The sidebar lists the conversations under
+"Private", each with its unread count. A friend's avatar opens it, in the main section in place of a room's chat, with
+the friend's profile as its head (name, nickname, fingerprint, known since, where they are now) and an accent edge,
+so it is never taken for a room; that head is the friend's profile card now. A text goes through a room the two
+share, the one on screen if the friend is in it. Text only: files go to a whole room.
 
 ## Considered options
 
 - Sealing with the room's text key and routing to one friend only: no new key, but anyone with the invite link could read
   it if the server passed it on, and the server could. Private only on trust.
-- A separate chat per pair of friends, outside the rooms: a second list, second unread counts, second history, and a
-  place to meet that is not a room. Far more than "a word to one friend" needs; the room is where friends are.
+- Private texts inside the room's chat, marked "🔒 to Bob" (the first build of this, PR #88): no new list or history,
+  but two friends in two rooms had two threads, a private line sat among the room's, and a draft written privately
+  could go to the room with one wrong key. The owner chose a conversation of its own (2026-10-21).
 - An ephemeral key per text (ECIES): forward secrecy for the writer's side only, and only until the friend's key leaks.
   With non-extractable keys that is a lost device, which is the identity lost too. Static keys are simpler, and the
   shared key is derived once per friend.
@@ -44,7 +49,7 @@ by clicking the mark of a private text to me, and ended with the composer's ✕,
   localStorage as written, like a text (`unsentPrivate`, apart from the room's `unsent`, so an app from before cannot send
   it to the whole room), and sealed again once the Room lists the friend. After a
   reconnect it goes after the room's waiting texts.
-- Each browser keeps its private texts opened in its history, marked by `to`. An app from before this change, after a
-  rollback, would show one as a text to the room, in that browser only.
+- Each browser keeps a conversation's texts opened in its own history (IndexedDB `private:<friendKey>`), and the list
+  of conversations in `privateThreads`. Neither existed before, so nothing migrates.
 - Losing site data means a new private text key with the new identity. No forward secrecy: anyone who gets a browser's
   private text key can open the private texts sealed with it that they also captured on the wire.

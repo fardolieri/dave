@@ -18,8 +18,6 @@ import {
 import { beat, heard, heartbeat } from '../core/heartbeat';
 import { tooOld, type UnsentPrivate } from '../core/unsent';
 import type { LocalIdentity } from './identity';
-import { contactOf } from './contacts';
-import { displayName } from '../core/names';
 import { appendHistory, clearHistory, keepUnsent, keepUnsentPrivate, loadHistory, loadUnsent, loadUnsentPrivate, textKey, type StoredText } from './history';
 
 export type ServerStatus =
@@ -34,15 +32,28 @@ export type ServerStatus =
 export type ChatLine =
   /**
    * `pending`: my own text the Room has not brought back yet; it waits at the end of the log, `at` my own clock's.
-   * `to`: a private text's friend (ADR 0007), the one it went to, or me for one that came to me.
    */
-  | { kind: 'text'; id: string; from: Identity; text: string; at: number; pending?: true; to?: Identity }
+  | { kind: 'text'; id: string; from: Identity; text: string; at: number; pending?: true }
   /** An attachment (ADR 0006); its bytes are in `attachment(file.hash)`. `pending`: mine, not back from the Room yet. */
   | { kind: 'file'; id: string; from: Identity; file: FileMeta; at: number; pending?: true }
   | { kind: 'system'; id: string; text: string; at: number };
 
 /** A friend's text as opened: the Room relayed it sealed (ADR 0005). An attachment's `text` is its name. */
-export type Text = { from: Identity; text: string; at: number; id: TextId; to?: Identity };
+export type Text = { from: Identity; text: string; at: number; id: TextId };
+
+/**
+ * What a room has to say about private texts (ADR 0007), which are not its own: they belong to the private conversation
+ * with the friend (client/privates.ts), whichever room carried them. A text, mine back from the Room or one to me; or a
+ * notice about mine, that it was not sent.
+ */
+export type PrivateEvent =
+  | { kind: 'text'; friend: Identity; text: Text }
+  | { kind: 'notice'; friend: Identity; text: string; at: number }
+  /** Mine, waiting for a friend this room no longer lists, never out: another room we share may carry them. */
+  /** `waited`: they waited here for the friend already, and go on only to a room that lists them. */
+  | { kind: 'stranded'; friend: Identity; texts: WaitingPrivate[]; why: string; waited?: true };
+/** A private text of mine waiting to go, as its conversation shows it. `out`: it went out unanswered, so may have arrived. */
+export type WaitingPrivate = { id: TextId; to: Identity; text: string; at: number; out?: true };
 
 /**
  * Where an attachment's bytes are, in this browser. `idle`: not pulled, waits for a click. `waiting`: whoever has it is
@@ -134,9 +145,6 @@ function privateKeyWith(me: LocalIdentity, friend: string, published: PrivateTex
 /** Entries in `privateKeys` at most: one per friend and key, and the signatures that failed. */
 const PRIVATE_KEYS_MAX = 256;
 
-/** How this browser names a friend in the chat's own lines: by my nickname for them, if I gave one. */
-const nameOf = (friend: Identity): string => displayName(friend.name, contactOf(friend.publicKey));
-const namesOf = (friends: Identity[]): string => [...new Set(friends.map(nameOf))].join(', ');
 
 /** A file made ready to send (`prepareFile`): its announcement but for the sealing, and what this browser keeps of it. */
 export type PreparedFile = { picked: File; file: FileMeta; list: Uint8Array | null };
@@ -204,7 +212,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   let presences = 0;
   /** `waitingPrivate` as shown; read and changed through the array, whose changes show at once (signal writes are batched). */
   const [pendingPrivate, setPendingPrivate] = createSignal<typeof waitingPrivate>([]);
-  const toKept = ({ id, to, text, at, outOn, outBefore }: (typeof waitingPrivate)[number]): UnsentPrivate => ({ id, to, text, at, ...(outOn || outBefore ? { out: true as const } : {}) });
+  /** Whether a waiting private text went out unanswered, so may have reached the friend. */
+  const mayHaveGone = (x: (typeof waitingPrivate)[number]): boolean => !!x.outBefore || x.outOn !== undefined;
+  const toKept = (x: (typeof waitingPrivate)[number]): UnsentPrivate => ({ id: x.id, to: x.to, text: x.text, at: x.at, ...(mayHaveGone(x) ? { out: true as const } : {}) });
   /** `waitingPrivate` changed: it shows, and is kept for a reload (client/history.ts), like `unconfirmed`. */
   const privateChanged = (keep = true) => {
     setPendingPrivate([...waitingPrivate]);
@@ -225,13 +235,28 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
    * not sent" for those that went out without an answer, which may have reached the friend all the same.
    */
   const notSentPrivate = (gone: typeof waitingPrivate, why: string): void => {
-    const mayHaveGone = (x: (typeof waitingPrivate)[number]) => !!x.outBefore || x.outOn !== undefined;
-    for (const [maybe, which] of [[false, gone.filter((x) => !mayHaveGone(x))], [true, gone.filter(mayHaveGone)]] as const) {
-      if (!which.length) continue;
-      const what = which.length === 1 ? 'a private text' : `${which.length} private texts`;
-      push({ kind: 'system', text: `${maybe ? 'Maybe not' : 'Not'} sent to ${namesOf(which.map((x) => x.to))}: ${what} ${why}${maybe ? ', and the connection dropped before the Room said it went out' : ''}.`, at: Date.now() });
+    for (const friend of new Set(gone.map((x) => x.to.publicKey))) {
+      const theirs = gone.filter((x) => x.to.publicKey === friend);
+      for (const [maybe, which] of [[false, theirs.filter((x) => !mayHaveGone(x))], [true, theirs.filter(mayHaveGone)]] as const) {
+        if (!which.length) continue;
+        const what = which.length === 1 ? 'a text' : `${which.length} texts`;
+        privateNotice(which[0]!.to, `${maybe ? 'Maybe not' : 'Not'} sent: ${what} ${why}${maybe ? ', and the connection dropped before the Room said it went out' : ''}.`);
+      }
     }
   };
+  /**
+   * Texts this room can no longer carry (the friend is gone from it, or the room refuses me): those never out go back to
+   * their conversation, which may send them through another room we share; the rest may have arrived, and are only said.
+   */
+  const strandPrivate = (gone: typeof waitingPrivate, why: string, waited = false): void => {
+    notSentPrivate(gone.filter(mayHaveGone), why);
+    for (const friend of new Set(gone.filter((x) => !mayHaveGone(x)).map((x) => x.to.publicKey))) {
+      const texts = gone.filter((x) => !mayHaveGone(x) && x.to.publicKey === friend);
+      for (const l of privateListeners) l({ kind: 'stranded', friend: texts[0]!.to, texts: texts.map(toKept), why, ...(waited ? { waited: true as const } : {}) });
+    }
+  };
+  const privateListeners = new Set<(e: PrivateEvent) => void>();
+  const privateNotice = (friend: Identity, text: string): void => { for (const l of privateListeners) l({ kind: 'notice', friend, text, at: Date.now() }); };
   /** The Room's latest presence, read at once (signal writes are batched): who `flushPrivate` may send to. None while no socket is let in. */
   let listed: Person[] = [];
   /** When this socket's first presence came. */
@@ -272,7 +297,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       else x.absent ??= now;
     }
     const due = (x: (typeof waitingPrivate)[number]) => Math.max(x.absent! + ABSENT_WAIT_MS, listedAt + ABSENT_GRACE_MS);
-    notSentPrivate(takePrivate((x) => x.absent !== undefined && now >= due(x) && !outNow(x)), 'to a friend no longer here');
+    // Never out, they are handed back to their conversation, which may send them through another room we share.
+    strandPrivate(takePrivate((x) => x.absent !== undefined && now >= due(x) && !outNow(x)), 'to a friend no longer here', true);
     // Only those the drop could take: one out on this socket waits for the Room's answer, however long.
     const next = Math.min(...waitingPrivate.flatMap((x) => (x.absent !== undefined && !outNow(x) ? [due(x)] : [])));
     if (Number.isFinite(next)) absentTimer = setTimeout(() => { if (!stopped) flushPrivate(); }, Math.max(0, next - now));
@@ -315,12 +341,13 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     return false;
   };
   // Recent history from this browser, loaded once; live lines append after it.
-  const fromStored = ({ from, text, at, file, to }: StoredText): ChatLine =>
-    file ? { kind: 'file', id: textKey({ from, at }), from, file, at } : { kind: 'text', id: textKey({ from, at }), from, text, at, ...(to ? { to } : {}) };
+  const fromStored = ({ from, text, at, file }: StoredText): ChatLine =>
+    file ? { kind: 'file', id: textKey({ from, at }), from, file, at } : { kind: 'text', id: textKey({ from, at }), from, text, at };
   /** The history is loaded: until then, a friend's pull of a file announced before this page opened waits for it. */
   const historyLoaded = loadHistory(opts.roomId).then((stored) => {
     for (const m of stored) if (m.id !== undefined) seen(m.from.publicKey, m.id);
-    setLines((l) => [...stored.map(fromStored), ...l]);
+    // A private text kept here by the app of PR #88 belongs to its conversation now, which never had it: left out.
+    setLines((l) => [...stored.filter((m) => !m.to).map(fromStored), ...l]);
     const now = Date.now();
     // An older picture this browser no longer keeps is pulled on a click: every start would pull them all again.
     for (const m of stored) if (m.file) void arrived(m.file, m.from.publicKey, now - m.at < PULL_HISTORY_MS);
@@ -330,7 +357,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     const { name, picture } = carried(latest);
     return you() ?? { publicKey: opts.identity.publicKey, fingerprint: opts.identity.fingerprint, name, ...(picture ? { picture } : {}) };
   };
-  const push = (line: { kind: 'text'; id: string; from: Identity; text: string; at: number; to?: Identity } | { kind: 'file'; id: string; from: Identity; file: FileMeta; at: number } | { kind: 'system'; text: string; at: number }) =>
+  const push = (line: { kind: 'text'; id: string; from: Identity; text: string; at: number } | { kind: 'file'; id: string; from: Identity; file: FileMeta; at: number } | { kind: 'system'; text: string; at: number }) =>
     setLines((l) => [...l, 'id' in line ? (line as ChatLine) : ({ ...line, id: `sys-${nextId++}` } as ChatLine)]);
   let ws: WebSocket | null = null;
   /** The socket the server has let in (its welcome came), and how many sockets it has let in so far. */
@@ -486,9 +513,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       const [mine] = takePrivate((x) => x.id === m.id);
       if (!mine) return;
       if (seen(m.from.publicKey, m.id)) return;
-      const text: Text = { from: m.from, text: mine.text, at: m.at, id: m.id, to: mine.to };
-      push({ kind: 'text', id: textKey(text), from: text.from, text: text.text, at: text.at, to: mine.to });
-      void appendHistory(opts.roomId, text);
+      const text: Text = { from: m.from, text: mine.text, at: m.at, id: m.id };
+      for (const l of privateListeners) l({ kind: 'text', friend: mine.to, text });
       return;
     }
     if (m.to !== opts.identity.publicKey) return; // not mine to open: a Room that misroutes
@@ -510,12 +536,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       return;
     }
     if (seen(m.from.publicKey, m.id)) return;
-    const me = identityOf(myIdentity());
-    const text: Text = { from: m.from, text: opened.text, at: m.at, id: m.id, to: me };
-    push({ kind: 'text', id: textKey(text), from: text.from, text: text.text, at: text.at, to: me });
-    void appendHistory(opts.roomId, text);
-    setUnread((n) => n + 1);
-    for (const l of textListeners) l(text);
+    const text: Text = { from: m.from, text: opened.text, at: m.at, id: m.id };
+    // The message cue is the conversation's to play: it knows a text it has shown already, from before a reload too.
+    for (const l of privateListeners) l({ kind: 'text', friend: identityOf(m.from), text });
   }
 
   /** An attachment's announcement from the Room: shown like a text, then its bytes are looked for (`arrived`). */
@@ -985,6 +1008,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           } else if (status().kind !== 'refused') {
             // A wrong answer during the handshake: our stored secret is wrong. Retrying cannot help.
             setStatus({ kind: 'refused', reason: m.reason });
+            strandPrivate(takePrivate(() => true), 'waiting in a room that refuses you');
             stopped = true;
             socket.close(1000, 'refused');
           }
@@ -1044,6 +1068,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     if (code === CLOSE_AUTH_FAILED) {
       stopped = true;
       setStatus({ kind: 'refused', reason: 'the invite link is wrong or has been rotated' });
+      strandPrivate(takePrivate(() => true), 'waiting in a room that refuses you');
       return;
     }
     if (downSince === null) {
@@ -1094,14 +1119,12 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     lines: createMemo((): ChatLine[] => {
       const waiting = pending();
       const files = pendingFiles();
-      const privately = pendingPrivate();
-      if (!waiting.length && !files.length && !privately.length) return lines();
+      if (!waiting.length && !files.length) return lines();
       const me = myIdentity();
       const mine = [
         // Files first: one sent with a text in the same millisecond was handed over first, and stays first (a stable sort).
         ...files.map((f): ChatLine => ({ kind: 'file', id: `pending:${f.id}`, from: me, file: f.file, at: f.at, pending: true })),
         ...waiting.map((u): ChatLine => ({ kind: 'text', id: `pending:${u.id}`, from: me, text: u.text, at: u.at, pending: true })),
-        ...privately.map((u): ChatLine => ({ kind: 'text', id: `pending:${u.id}`, from: me, text: u.text, at: u.at, pending: true, to: u.to })),
       ].sort((a, b) => a.at - b.at);
       return [...lines(), ...mine];
     }),
@@ -1166,16 +1189,13 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     sendPrepared,
     /**
      * Sends a private text to one friend in this room (ADR 0007): only they can open it, and only they get it. It waits for
-     * a socket like a text, and goes again on the next one, after a reload too.
+     * a socket like a text, and goes again on the next one, after a reload too. What becomes of it is told to `onPrivate`.
+     * False, and nothing said, when this room cannot take it (refused, no key on either side, too many waiting): the
+     * conversation tries another room, and says so if none can (client/privates.ts).
      */
     sendPrivate: (to: Person, text: string): boolean => {
-      // Refused here, it stays in the composer (false), to be sent once it can.
-      if (text.length > MAX_TEXT_LENGTH) { push({ kind: 'system', text: `Not sent: message longer than ${MAX_TEXT_LENGTH} characters.`, at: Date.now() }); return false; }
-      if (stopped || !opts.identity.privateTexts) return false; // the composer says why already
-      if (!to.privateTexts) { push({ kind: 'system', text: `Not sent to ${nameOf(to)}: their app cannot take private texts yet.`, at: Date.now() }); return false; }
-      if (waitingPrivate.length >= PRIVATE_WAITING_MAX) { push({ kind: 'system', text: `Not sent to ${nameOf(to)}: ${PRIVATE_WAITING_MAX} private texts are waiting to go already.`, at: Date.now() }); return false; }
+      if (text.length > MAX_TEXT_LENGTH || stopped || !opts.identity.privateTexts || !to.privateTexts || waitingPrivate.length >= PRIVATE_WAITING_MAX) return false;
       sendPrivate(to, text);
-      posthog.capture('private_text_sent');
       return true;
     },
     /** Empties the local history; the server never had it. */
@@ -1198,6 +1218,29 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       stopped = false; attempt = 0; downSince = null; setStatus({ kind: 'connecting' }); open();
       nextPull(); // pulls queued while another tab had the room
     },
+    /** My private texts this room has waiting to go, oldest first. */
+    pendingPrivate: (): WaitingPrivate[] => pendingPrivate().map(toKept),
+    /**
+     * Takes over a private text another room of mine could not carry (client/privates.ts), as written: it waits here,
+     * kept over a reload, and is sealed once this room lists the friend, a minute at most. False, and nothing said, when
+     * this room cannot take it (refused, or too many waiting).
+     */
+    adoptPrivate: (to: Identity, text: string, at: number, id = randomHex(12)): boolean => {
+      if (stopped || !opts.identity.privateTexts || waitingPrivate.length >= PRIVATE_WAITING_MAX) return false;
+      // In the order written among those waiting here, as they show in the conversation.
+      const later = waitingPrivate.findIndex((x) => x.at > at);
+      // Its id too: it never went out (one that did is not handed on), so the friend cannot have it twice.
+      waitingPrivate.splice(later < 0 ? waitingPrivate.length : later, 0, { id, to: identityOf(to), text, at });
+      privateChanged();
+      sealing = sealing.then(flushPrivate).catch((e: unknown) => console.error('sending private texts failed', e));
+      return true;
+    },
+    /** Takes out and returns all my private texts waiting here, for another room to carry: I am leaving this one. */
+    handOverPrivate: (): WaitingPrivate[] => takePrivate(() => true).map(toKept),
+    /** Drops my private texts to this friend still waiting here, without a word: their conversation was deleted. */
+    cancelPrivate: (friend: string): void => { takePrivate((x) => x.to.publicKey === friend); },
+    /** Private texts this room carried, and notices about mine: for their conversations (client/privates.ts). */
+    onPrivate: (l: (e: PrivateEvent) => void) => { privateListeners.add(l); return () => privateListeners.delete(l); },
     /** Fires for texts from other people (for the message cue). */
     onText: (l: (m: Text) => void) => { textListeners.add(l); return () => textListeners.delete(l); },
     /** Messages the room store does not handle itself (call, left, signal, ice) go to subscribers. */

@@ -330,7 +330,7 @@ export class Friend {
    * yet (`pendingTexts`). A follow-on line has no name of its own and takes the one above.
    */
   async chat(): Promise<Array<{ from: string; text: string }>> {
-    return this.page.locator('.chat-log .msg:not(.msg-sys)').evaluateAll((els) => {
+    return this.page.locator('.chat:not(.private) .chat-log .msg:not(.msg-sys)').evaluateAll((els) => {
       let from = '';
       return els.flatMap((e) => {
         const own = e.querySelector('.msg-from');
@@ -341,7 +341,7 @@ export class Friend {
   }
   async chatTexts(): Promise<string[]> { return (await this.chat()).map((l) => l.text); }
   /** My own texts in the chat that the Room has not brought back yet, shown as waiting. */
-  async pendingTexts(): Promise<string[]> { return (await this.page.locator('.chat-log .msg-pending .msg-text').allInnerTexts()).map((t) => t.trim()); }
+  async pendingTexts(): Promise<string[]> { return (await this.page.locator('.chat:not(.private) .chat-log .msg-pending .msg-text').allInnerTexts()).map((t) => t.trim()); }
   /**
    * The texts this browser has written to its chat history (IndexedDB, client/history.ts), every room's in turn. A line
    * shows before its write ends, and a reload in between loses it, a gap ticket 35 accepts: before a reload that a test
