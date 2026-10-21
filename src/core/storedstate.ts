@@ -163,12 +163,20 @@ export const IDB = {
     },
   },
   'private:<friendKey>': {
-    about: 'My private conversation with one friend (ADR 0007), texts both ways, whichever room carried them; like a room\'s history (core/chatlog.ts, client/history.ts).',
+    about: 'My private conversation with one friend (ADR 0007), texts and files both ways, whichever room carried them; like a room\'s history (core/chatlog.ts, client/history.ts).',
     parse: parseHistory,
     fixtures: {
       '2026-10-21, private conversations': [
         { from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna', picture: '🦕' }, text: 'just between us', at: 1761000000000, id: '0a1b2c3d4e5f60718293a4b5' },
         { from: { publicKey: 'pkMe', fingerprint: 'XYZ789', name: 'Me' }, text: 'ok', at: 1761000001000, id: '1a1b2c3d4e5f60718293a4b5' },
+      ],
+      '2026-10-21, private files': [
+        { from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna', picture: '🦕' }, text: 'just between us', at: 1761000000000, id: '0a1b2c3d4e5f60718293a4b5' },
+        {
+          from: { publicKey: 'pkMe', fingerprint: 'XYZ789', name: 'Me' }, text: 'cat.jpg', at: 1761000001000, id: '1a1b2c3d4e5f60718293a4b5',
+          file: { name: 'cat.jpg', type: 'image/jpeg', size: 123456, hash: 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg', preview: 'data:image/webp;base64,UklGRg==', width: 4032, height: 3024 },
+        },
+        { from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna' }, text: 'notes.zip', at: 1761000002000, id: '2a1b2c3d4e5f60718293a4b5', file: { name: 'notes.zip', type: 'application/zip', size: 2048, hash: 'AAAAgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg' } },
       ],
     },
   },

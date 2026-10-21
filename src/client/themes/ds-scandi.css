@@ -102,7 +102,7 @@
 :where(:root[data-theme="ds-scandi"]) .room-title { font-size: 14px; font-weight: 800; text-transform: none; letter-spacing: 0; }
 :where(:root[data-theme="ds-scandi"]) h2 { font-weight: 800; letter-spacing: .06em; }
 :where(:root[data-theme="ds-scandi"]) button { border-radius: var(--border-radius-sm); font-weight: 700; box-shadow: var(--shadow-sm); }
-:where(:root[data-theme="ds-scandi"]) button:where(.link, .avatar, .room-name, .thread, .edit, .chat-older, .emoji-open), :where(:root[data-theme="ds-scandi"]) :is(.emoji-tabs, .emoji-grid) button { box-shadow: none; }
+:where(:root[data-theme="ds-scandi"]) button:where(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open), :where(:root[data-theme="ds-scandi"]) :is(.emoji-tabs, .emoji-grid) button { box-shadow: none; }
 :where(:root[data-theme="ds-scandi"]) .avatar.speaking { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--color-ring); }
 :where(:root[data-theme="ds-scandi"]) input, :where(:root[data-theme="ds-scandi"]) select.picker, :where(:root[data-theme="ds-scandi"]) dialog.report textarea { border-radius: var(--border-radius-sm); }
 :where(:root[data-theme="ds-scandi"]) input:focus, :where(:root[data-theme="ds-scandi"]) textarea:focus { border-color: var(--color-border-focus); }
@@ -128,7 +128,7 @@
 /* gentle lifts, only for those who want motion */
 @media (prefers-reduced-motion: no-preference) {
   :where(:root[data-theme="ds-scandi"]) button { transition: transform var(--duration-normal) var(--easing-out), box-shadow var(--duration-normal) var(--easing-out), background-color var(--duration-normal) var(--easing-out); }
-  :where(:root[data-theme="ds-scandi"]) button:where(:not(.link, .avatar, .room-name, .thread, .edit, .chat-older, .emoji-open, :disabled)):hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+  :where(:root[data-theme="ds-scandi"]) button:where(:not(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open, :disabled)):hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
   :where(:root[data-theme="ds-scandi"]) :is(.emoji-tabs, .emoji-grid) button:hover { transform: none; box-shadow: none; }
   :where(:root[data-theme="ds-scandi"]) .share { transition: box-shadow var(--duration-normal) var(--easing-out); }
   :where(:root[data-theme="ds-scandi"]) .share:hover { box-shadow: var(--shadow-lg); }

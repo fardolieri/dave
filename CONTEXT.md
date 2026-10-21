@@ -29,7 +29,7 @@ A text to one friend, sealed so that only the two of them can read it, and relay
 _Avoid_: DM, whisper, direct message (in UI copy)
 
 **Private conversation**:
-All private texts between me and one friend, apart from every room, whichever room carried them. Listed under "Private" in the sidebar; opened from the friend's avatar, with their profile as its head.
+All private texts and files between me and one friend, apart from every room, whichever room carried them. Opened from the friend's avatar in the sidebar, whose row carries its unread count, with their profile as its head.
 _Avoid_: DM, thread (in UI copy), chat
 
 **Private text key**:

@@ -10,7 +10,8 @@
 // An attachment's announcement (ADR 0006) is sealed the same way under its own domain, `dave file v1`: its body is the
 // file's description as JSON (core/attachment.ts), so a text cannot be passed off as a file or a file as a text.
 //
-// A private text (ADR 0007) is sealed the same way under `dave private v1`, with the one friend it is for in the signed
+// A private text (ADR 0007) is sealed the same way under `dave private v1` (a file's announcement for one friend under
+// `dave private file v1`), with the one friend it is for in the signed
 // bytes and the additional data, and under a key only the two of them have: ECDH between the private text keys of the
 // two browsers (`sharedPrivateTextKey`), each browser's own and published signed by its identity key (`signPrivateTextKey`).
 //
@@ -22,6 +23,7 @@ import { MAX_FILE_BODY_BYTES, parseFileMeta, type FileMeta } from './attachment'
 const DOMAIN = 'dave text v1';
 const FILE_DOMAIN = 'dave file v1';
 const PRIVATE_DOMAIN = 'dave private v1';
+const PRIVATE_FILE_DOMAIN = 'dave private file v1';
 const PRIVATE_TEXT_KEY_DOMAIN = 'dave private text key v1';
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
@@ -69,6 +71,11 @@ export function sealFile(input: { key: CryptoKey; privateKey: CryptoKey; roomId:
  */
 export function sealPrivate(input: { key: CryptoKey; privateKey: CryptoKey; roomId: string; id: string; from: string; to: string; text: string }): Promise<string> {
   return seal(input, PRIVATE_DOMAIN);
+}
+
+/** Writer side: a file's announcement for the one friend `to` (ADR 0006, 0007), sealed like a private text. */
+export function sealPrivateFile(input: { key: CryptoKey; privateKey: CryptoKey; roomId: string; id: string; from: string; to: string; file: FileMeta }): Promise<string> {
+  return seal({ ...input, text: JSON.stringify(input.file) }, PRIVATE_FILE_DOMAIN);
 }
 
 async function seal(input: { key: CryptoKey; privateKey: CryptoKey; roomId: string; id: string; from: string; to?: string; text: string }, domain: string): Promise<string> {
@@ -123,6 +130,17 @@ export async function openPrivate(input: { key: CryptoKey; roomId: string; id: s
   if (!opened.ok) return opened;
   if (opened.text.trim().length === 0 || opened.text.length > MAX_TEXT_LENGTH) return { ok: false, reason: 'invalid text' };
   return opened;
+}
+
+/** Reader side: a file's announcement for `to`, on the same terms as a private text's. */
+export async function openPrivateFile(input: { key: CryptoKey; roomId: string; id: string; from: string; to: string; sealed: string }): Promise<OpenedFile> {
+  const opened = await open(input, PRIVATE_FILE_DOMAIN);
+  if (!opened.ok) return { ok: false, reason: opened.reason === 'invalid text' ? 'invalid file' : opened.reason };
+  let file: FileMeta | null = null;
+  try {
+    file = opened.text.length <= MAX_FILE_BODY_BYTES ? parseFileMeta(JSON.parse(opened.text)) : null;
+  } catch { /* not JSON */ }
+  return file ? { ok: true, file } : { ok: false, reason: 'invalid file' };
 }
 
 async function open(input: { key: CryptoKey; roomId: string; id: string; from: string; to?: string; sealed: string }, domain: string): Promise<OpenedText> {

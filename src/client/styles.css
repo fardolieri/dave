@@ -108,28 +108,45 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .msg-text { white-space: pre-wrap; word-break: break-word; width: fit-content; } /* as wide as its words, so its time shows over them only */
 .msg-cont { margin-top: -8px; } /* a follow-on line from the same writer sits under their name: 2px apart instead of the log's 10px */
 .msg-sys { font-size: 12px; color: var(--dim); font-style: italic; } .msg-sys .msg-text { display: inline; }
-/* A private conversation (ADR 0007): its own head above the log, with the friend's profile, and an accent edge and tint
-   down the whole of it, so it is never taken for a room */
+/* A private conversation (ADR 0007). One column, centred on a wide screen, the composer under it lined up the same: a
+   conversation between two reads as a page, where a room's chat runs the whole width. Its head is the friend's profile,
+   centred: the face and the name first, the facts in one quiet line, then where they are. Colours and the header face
+   come from the theme (--acc, --dim, --panel2, .profile-name strong), so every theme draws it in its own palette. */
 .chat[hidden] { display: none; } /* a room's log behind a private conversation, kept with its place */
-.chat.private { border-left: 3px solid var(--acc); background: color-mix(in srgb, var(--acc) 6%, transparent); }
+.chat.private { --col: 720px; }
+.chat.private > .chat-log, .private-head { padding-inline: max(0px, calc((100% - var(--col)) / 2)); }
+.chat-input.private { padding-inline: max(14px, calc((100% - 720px) / 2)); }
 /* It gives way to the log in a short row (a share on stage, a small window), scrolling itself, instead of spilling over the composer */
-.private-head { flex: 0 1 auto; min-height: 0; max-height: 60%; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding: 4px 0 12px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
-.private-head .private-back { align-self: flex-start; padding: 0; font-size: 12px; }
-.private-title { margin: 0; font-size: 12px; color: var(--acc); font-weight: 600; }
-.private-who { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; }
-.private-who .profile-facts { margin: 0; }
-.private-who .profile-edit { flex: 1; min-width: 220px; }
-.private-where { margin: 0; font-size: 12px; color: var(--dim); }
-/* The sidebar's list of private conversations */
-.threads { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-/* Plain in every theme, like a room's name: the themes' button looks (shadows, weight, a lift on hover) are not its */
-button.thread { width: 100%; display: flex; align-items: center; gap: 8px; background: none; border: 0; border-radius: 6px; padding: 2px 4px; text-align: left; cursor: pointer; color: var(--dim); box-shadow: none; font-weight: inherit; transform: none; }
-button.thread:hover, .threads li.on button.thread { color: var(--fg); }
-.threads li.on button.thread { background: color-mix(in srgb, var(--acc) 15%, transparent); }
-button.thread .tname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-button.thread .dim { font-size: 11px; }
-/* The room on screen behind a private conversation: still the room the composer's back button returns to */
+.private-head { position: relative; flex: 0 1 auto; min-height: 0; max-height: 60%; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 18px; padding-bottom: 16px; margin-bottom: 4px; border-bottom: 1px solid var(--line); text-align: center; }
+.private-head .private-back { position: absolute; top: 0; left: max(0px, calc((100% - var(--col)) / 2)); padding: 0; font-size: 12px; }
+.private-who { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.private-who > .profile-head { flex-direction: column; gap: 8px; }
+.private-who .avatar.big { width: 64px; height: 64px; font-size: 26px; }
+.private-who .avatar.big.pic { font-size: 36px; }
+.private-who .profile-names { align-items: center; }
+.private-who .profile-name strong { font-size: 20px; }
+.private-who .profile-facts { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 6px; margin: 0; font-size: 12px; color: var(--dim); }
+.private-who .profile-facts dt { margin: 0; }
+.private-who .profile-facts dt::after { content: ':'; }
+.private-who .profile-facts dd { margin: 0 8px 0 0; color: var(--fg); }
+.private-who .profile-edit { width: min(360px, 100%); text-align: left; }
+.private-where { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 14px; margin: 0; font-size: 12px; color: var(--dim); }
+.private-where .here::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--dim); vertical-align: 1px; }
+.private-where .here.on::before { background: var(--ok); }
+.private-where .link { font-size: 12px; padding: 0; }
+.chat-empty { align-self: center; margin: auto 0 12px; font-size: 13px; color: var(--dim); }
+/* The room on screen behind a private conversation: still the room the head's back link returns to, dimmed */
 .room.selected.behind .room-title { color: var(--dim); }
+/* A friend's row while my conversation with them is on screen, in the lists of people: the one way in to it */
+.plist li.on, .away li.on { background: color-mix(in srgb, var(--acc) 14%, transparent); border-radius: 8px; }
+.plist .pname .unread, .away .unread { margin-left: 2px; }
+/* Friends I have a conversation with, online in none of my rooms: after everyone who is, dimmed */
+.away { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.away li { display: flex; align-items: center; gap: 8px; }
+.away .avatar { opacity: .55; }
+.away .pname { display: flex; align-items: baseline; gap: 6px; min-width: 0; color: var(--dim); }
+.away .tname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.away .dim { font-size: 11px; }
 /* My own text the Room has not brought back yet. Dimmed only after a second, so the usual round trip shows no flicker. */
 .msg-pending { animation: msg-pending 0s 1s forwards; }
 @keyframes msg-pending { to { opacity: 0.5; } }
@@ -441,10 +458,10 @@ dialog.report .row button:first-child { flex: 1; }
   .side { grid-column: 1; grid-row: 1; border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
   .shares { grid-column: 1; grid-row: 2; grid-template-columns: 1fr !important; }
   .shares .share { min-height: 180px; }
-  .chat { grid-column: 1; grid-row: 3; min-height: 180px; padding-bottom: 8px; }
+  .chat { grid-column: 1; grid-row: 3; min-height: 180px; padding-bottom: 8px; } /* breathing room between the newest line and the composer's top border */
   /* A private conversation is brought into view whole: its head and room for its lines below it, the composer under that */
   .chat.private { min-height: calc(100dvh - 120px); }
-  .private-head .profile-facts { font-size: 12px; } /* breathing room between the newest line and the composer's top border */
+  .chat-input.private { padding-inline: 14px; }
   .chat-input { grid-column: 1; grid-row: 2; border-top: 1px solid var(--line); padding: 8px 14px calc(8px + env(safe-area-inset-bottom)); }
   .emoji-picker[popover] { width: calc(100vw - 16px); } /* the whole width: the finger is the pointer here */
 }
