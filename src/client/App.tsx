@@ -583,13 +583,14 @@ function Workspace(props: WorkspaceProps) {
               // Who is in the call but me, by key: the call box's rows are keyed by friend, as a row made anew on each presence
               // frame would lose focus, its tooltip, its open slider and the card it holds open.
               const faceKeys = createMemo<string[]>(() => participants().others.map((p) => p.publicKey), { equals: sameKeyList });
-              // Another room, beside its name: everyone in it but me, as faces, those in its call first (a green ring), then
-              // the rest (a plain one). Not its call when its box is shown (my call, in a room not on screen): that lists them.
+              // Another room, beside its name: everyone in it as faces, those in its call first (a green ring), then the rest (a
+              // plain one). Me only when I am in its call: a room not on screen is folded even then, its controls on screen in it.
               // At most FACES_SHOWN, then a count of the rest, so a busy room keeps its name. Only rooms not on screen need them.
               const faces = createMemo(() => {
                 if (selected()) return [];
                 const people = l.room.people().filter((p) => p.publicKey !== me);
-                const inCall = inThis() ? [] : participants().others;
+                const self = participants().self;
+                const inCall = self ? [self, ...participants().others] : participants().others;
                 // The rest in the order they came, the newest first, as the lists of the room on screen (online() keeps `cameAt`;
                 // one in a call elsewhere is not in it, and comes last).
                 online();
@@ -649,8 +650,8 @@ function Workspace(props: WorkspaceProps) {
                       }}</For>
                     </ul>
                   </Show>
-                  {/* The room on screen, or the one whose call I am in: its call in full, in a box of its own */}
-                  <Show when={selected() || inThis()}>
+                  {/* The room on screen: its call in full, in a box of its own */}
+                  <Show when={selected()}>
                   <ul class={`plist ${participants().self || participants().others.length || participants().lost.length ? 'callbox' : ''}`}>
                     <Show when={participants().self}>{(s) => <ParticipantRow p={s()} isMe label={labelOf(s())} onProfile={(el) => openProfile(s(), el)} speaking={l.call.speakingSelf()} />}</Show>
                     {/* Keyed by friend: a row made anew on each presence frame would lose its open slider, and the card it holds open */}
@@ -663,7 +664,7 @@ function Workspace(props: WorkspaceProps) {
                     <Show when={selected() && !participants().self && participants().others.length === 0 && participants().lost.length === 0}><li class="dim">nobody in the call</li></Show>
                   </ul>
                   </Show>
-                  <Show when={selected() || inThis()}>
+                  <Show when={selected()}>
                     <div class="actions">
                       <Show when={!inThis()} fallback={<CallControls call={l.call} panel={panel()} onPanel={setPanel} canShare={canShare} />}>
                         <button class="join" disabled={l.room.status().kind !== 'connected'} title={holding() ? 'A new version of dave is loading' : elsewhere() ? `Leaves the call in ${elsewhere()!.saved.name}` : undefined} onClick={() => joinCall(l)}>Join</button>
