@@ -36,26 +36,26 @@ test('rooms are separate: presence and text do not cross', async ({ crowd }) => 
   expect(await alice.online()).toEqual(['Alice']);
 });
 
-test('the sidebar says who is in the room on screen, who is in another room, and who is in another room\'s call', async ({ crowd }) => {
+test('the sidebar lists who is in the room on screen, and shows another room\'s people as faces beside its name, its call first', async ({ crowd }) => {
   const other = { secret: newSecret(), name: 'Other' };
   const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
   await crowd.open('Bob');
   const carol = await crowd.open('Carol', { rooms: [other] });
-  const names = async (list: string) => (await alice.page.locator(`aside.side ul.plist.${list} .nm`).allInnerTexts()).map((t) => t.replace(/\s*\(you\)\s*$/, '').trim());
-  const faces = alice.page.locator('aside.side section.room:not(.selected) .callfaces button.avatar');
-  // Bob and I are here, ready to join the call; Carol is in Other alone.
-  await expect.poll(() => names('here')).toEqual(['Bob', 'Alice']);
-  await expect.poll(() => names('elsewhere')).toEqual(['Carol']);
-  await expect(faces).toHaveCount(0);
-  // In Other's call, Carol leaves the lists and shows as a face under that room.
+  const dave = await crowd.open('Dave', { rooms: [other] });
+  const here = async () => (await alice.page.locator('aside.side ul.plist.here .nm').allInnerTexts()).map((t) => t.replace(/\s*\(you\)\s*$/, '').trim());
+  const faces = () => alice.page.locator('aside.side section.room:not(.selected) .room-head .roomfaces .face').evaluateAll((els) =>
+    els.map((e) => `${e.querySelector('button.avatar')!.getAttribute('title')!.split(/[.,]/)[0]}${e.classList.contains('in-call') ? ' [call]' : ''}`));
+  // Bob and I are here, ready to join the call; Carol and Dave are in Other, as faces beside its name, the newest first.
+  await expect.poll(here).toEqual(['Bob', 'Alice']);
+  await expect.poll(faces).toEqual(['Dave', 'Carol']);
+  await expect(alice.page.locator('aside.side h2'), 'no list of other rooms').toHaveCount(0);
+  // In Other's call, Carol comes first, in the call's ring.
   await carol.join();
-  await expect(faces).toHaveCount(1);
-  await expect(faces).toHaveAttribute('title', 'Carol');
-  await expect.poll(() => names('elsewhere')).toEqual([]);
-  expect(await names('here')).toEqual(['Bob', 'Alice']);
+  await expect.poll(faces).toEqual(['Carol [call]', 'Dave']);
+  expect(await here()).toEqual(['Bob', 'Alice']);
+  // Out of it, she is back as the newest.
   await carol.leave();
-  await expect(faces).toHaveCount(0);
-  await expect.poll(() => names('elsewhere')).toEqual(['Carol']);
+  await expect.poll(faces).toEqual(['Carol', 'Dave']);
 });
 
 test('on a phone, dave and ⚙ head the sidebar, my own row is only in the room, and the menu opens under the ⚙', async ({ crowd }) => {

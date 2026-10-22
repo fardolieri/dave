@@ -58,13 +58,17 @@ input { background: var(--panel2); color: var(--fg); border: 1px solid var(--lin
 .side-foot > button.link, .side-foot .about-link button.link { text-align: left; padding: 7px 8px; border-radius: 8px; font-size: 14px; text-decoration: none; }
 .side-foot > button.link:hover, .side-foot .about-link button.link:hover { background: var(--panel2); }
 .side-foot .theme-pick { margin: 6px 8px 2px; }
-/* Another room's call, at a glance: the faces of who is in it, overlapping a little; nothing for a room without one */
-.callfaces { display: flex; padding: 0 0 4px 2px; }
-.callfaces .face { position: relative; display: inline-flex; margin-left: -6px; border-radius: 50%; }
-.callfaces .face:first-child { margin-left: 0; }
-.callfaces .face .unread { position: absolute; z-index: 1; top: -6px; right: -8px; font-size: 9px; line-height: 14px; padding: 0 4px; }
-.callfaces .avatar { width: 24px; height: 24px; font-size: 12px; box-shadow: 0 0 0 2px var(--panel); }
-.callfaces .avatar.pic { font-size: 14px; }
+/* Another room, at a glance beside its name: the faces of who is in it, overlapping a little; a green ring for those in
+   its call, who come first, a plain one for the rest */
+.roomfaces { display: flex; flex: none; padding: 0 2px; }
+.roomfaces .face { position: relative; display: inline-flex; margin-left: -6px; border-radius: 50%; }
+.roomfaces .face:first-child { margin-left: 0; }
+.roomfaces .face .unread { position: absolute; z-index: 1; pointer-events: none; top: -6px; right: -8px; font-size: 9px; line-height: 14px; padding: 0 4px; }
+aside.side .room-head .roomfaces .avatar { width: 22px; height: 22px; font-size: 11px; box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--line); }
+aside.side .room-head .roomfaces .face.in-call .avatar { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--ok); }
+aside.side .room-head .roomfaces .avatar.pic { font-size: 13px; } /* over any theme's size for avatars: a busy room keeps its name */
+.roomfaces .face .newdot { position: absolute; z-index: 1; pointer-events: none; right: -1px; bottom: -1px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 2px var(--panel); }
+.roomfaces .more { align-self: center; margin-left: 4px; font-size: 11px; color: var(--dim); }
 /* The call of the room on screen, in a box of its own; who is here and not in it follows below, ready to join */
 .plist.callbox { padding: 8px; border-radius: 10px; background: color-mix(in srgb, var(--ok) 10%, transparent); }
 .plist.here { margin: 0 0 12px; } /* above the call box: a clear gap between who is ready to join and who is in the call */
@@ -89,7 +93,9 @@ button.room-name:focus-visible { outline: 2px solid var(--acc); outline-offset: 
 :where(.room.selected) { margin: 10px -8px 0; padding: 0 8px 8px; border-radius: 12px; background: color-mix(in srgb, var(--fg) 6%, transparent); }
 :where(.room.selected) > .room-head { margin-top: 0; padding-top: 8px; } /* low specificity: a theme's head spacing wins */
 /* A room's ⋯ menu: invite, clear chat history, leave */
-.room-more { flex: none; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--dim); font-size: 16px; line-height: 1; }
+.room:not(.selected) button.room-name { flex: 0 1 auto; } /* its faces right after its name */
+.room:not(.selected) .room-head { cursor: pointer; } /* all of it brings the room on screen */
+.room-more { flex: none; margin-left: auto; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--dim); font-size: 16px; line-height: 1; }
 .room-more:hover, .room-more:focus-visible { color: var(--fg); background: var(--panel2); }
 .room-menu[popover] { position: fixed; inset: auto; margin: 0; overflow: auto; padding: 8px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
 .room-menu[popover]:popover-open { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
@@ -97,7 +103,7 @@ button.room-name:focus-visible { outline: 2px solid var(--acc); outline-offset: 
 .room-menu button.link:hover { background: var(--panel2); }
 .room-menu button.link.danger { color: var(--bad); } /* Leave: this browser forgets the room and its history */
 /* that room's presence is stale while its socket is down (spec §8.1); the header stays clickable */
-.room.frozen .plist, .room.frozen .callfaces { opacity: .45; transition: opacity .2s; } /* stale, like the rest of the room, but still the way to a friend's private conversation */
+.room.frozen .plist, .room.frozen .roomfaces { opacity: .45; transition: opacity .2s; } /* stale, like the rest of the room, but still the way to a friend's private conversation */
 .room.frozen .actions { opacity: .45; pointer-events: none; transition: opacity .2s; }
 .panel.invite input { width: 100%; font-size: 12px; font-family: monospace; }
 .panel.invite .hint { margin: 0; }
@@ -170,15 +176,15 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .room.selected.behind .room-title { color: var(--dim); }
 /* The conversation on screen: its row under Direct messages, the one highlighted */
 .away li.on { background: color-mix(in srgb, var(--acc) 14%, transparent); border-radius: 8px; }
-.plist .pname .unread, .away .unread { margin-left: 2px; }
 /* Everyone I have a conversation with, folded away above me at the bottom of the sidebar; a friend offline dimmed */
 .dms { margin-top: auto; padding: 10px 0; }
 .dms + .side-me { margin-top: 0; }
 .dms > summary { cursor: pointer; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
 .dms > summary:hover { color: var(--fg); }
 .dms > summary .unread { margin-left: 6px; text-transform: none; letter-spacing: 0; }
+.dms[open] > summary .unread { display: none; } /* unfolded, each row has its own */
 .away { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.away li { display: flex; align-items: center; gap: 8px; }
+.away li { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .away li.offline .avatar { opacity: .55; }
 .away .pname { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .away li.offline .pname { color: var(--dim); }

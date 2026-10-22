@@ -52,10 +52,10 @@ async function conversation(f: Friend): Promise<Array<{ from: string; text: stri
   });
 }
 
-/** The friends in the sidebar with private texts I have not read, as "Name (n)". One entry point per friend: their row. */
+/** The friends under Direct messages with private texts I have not read, as "Name (n)". */
 async function threads(f: Friend): Promise<string[]> {
-  return f.page.locator('aside.side li:has(.unread)').evaluateAll((els) => els.map((e) => {
-    const name = (e.querySelector('.nm, .tname')?.firstChild?.textContent ?? '').trim();
+  return f.page.locator('aside.side details.dms li:has(.unread)').evaluateAll((els) => els.map((e) => {
+    const name = (e.querySelector('.tname')?.firstChild?.textContent ?? '').trim();
     return `${name} (${e.querySelector('.unread')!.textContent!.trim()})`;
   }));
 }
@@ -86,6 +86,7 @@ test('a private text reaches only its friend, in a conversation of its own, and 
   await alice.say('hello everyone');
   await expect.poll(() => carol.chatTexts()).toEqual(['hello everyone']);
   expect(await threads(carol)).toEqual([]);
+  await expect(carol.page.locator('aside.side .unread'), 'no unread count anywhere in her sidebar').toHaveCount(0);
   expect(carol.wire.log.filter((f) => f.dir === 'down' && f.frame.startsWith('{"t":"private"'))).toEqual([]);
   // What the Room relayed holds neither text in the clear.
   for (const f of [...alice.wire.log, ...bob.wire.log]) expect(f.frame).not.toMatch(/between us|got it/);

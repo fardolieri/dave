@@ -346,19 +346,14 @@ function Workspace(props: WorkspaceProps) {
   });
   /**
    * Who is in a room and not in a call, ready to join: listed at the top of the room on screen, above its call; me last,
-   * unless I am in a call. A friend in a call elsewhere is shown in that call. In the order they came, the newest on top,
-   * as in the list of other rooms. Not me while this tab holds no place there (another tab has it, or the Room refused it).
+   * unless I am in a call. A friend in a call elsewhere is shown in that call. In the order they came, the newest on top.
+   * Not me while this tab holds no place there (another tab has it, or the Room refused it). Another room shows who is in
+   * it as faces beside its name.
    */
   const hereIn = (l: Link): Person[] => {
     const holds = !['elsewhere', 'refused'].includes(l.room.status().kind);
     return online().filter((p) => (p.publicKey === me ? holds : l.room.people().some((q) => q.publicKey === p.publicKey)));
   };
-  /** Everyone else online and not in a call, but in none of the room on screen's lists: they are in other rooms of mine. */
-  const elsewhere = createMemo(() => {
-    const here = current()?.room.people() ?? [];
-    return online().filter((p) => p.publicKey !== me && !here.some((q) => q.publicKey === p.publicKey));
-  });
-  const elsewhereKeys = createMemo<string[]>(() => elsewhere().map((p) => p.publicKey), { equals: sameKeyList });
   let menuOpenings = 0;
   /**
    * The ⚙ menu opens above the gear, by its bottom edge, so it grows upward as a form in it opens (New room, Join by link).
@@ -373,7 +368,7 @@ function Workspace(props: WorkspaceProps) {
   const sharers = createMemo(() => stage()?.room.people().filter((p) => p.role === 'participant' && p.sharing) ?? []);
   // Tiles are keyed by public key, not by Person object: every presence frame (a join, a leave, a mute, a rename)
   // replaces every Person, and a tile recreated for that would lose its video element and its fullscreen.
-  // The rows of the list of other rooms are keyed the same way (`elsewhereKeys`), so a friend's row is made once, when they come online, and slides in then.
+  // The rows of the room on screen are keyed the same way (`hereKeys`), so a friend's row is made once, when they come online, and slides in then.
   const sharerKeys = createMemo<string[]>(() => sharers().map((p) => p.publicKey), { equals: sameKeyList });
   const sharerOf = (key: string): Person => sharers().find((p) => p.publicKey === key) ?? sharers()[0]!;
   const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
@@ -471,8 +466,8 @@ function Workspace(props: WorkspaceProps) {
     if (k && !dms.open) { dms.open = true; unfoldedForIt = true; }
     else if (!k && unfoldedForIt) { dms.open = false; unfoldedForIt = false; }
   });
-  /** Unread private texts from friends online in none of my rooms: only the folded list of direct messages has a row for them. */
-  const awayUnread = createMemo(() => privates.threads().reduce((n, t) => n + (present(t.friend.publicKey) ? 0 : privates.unread(t.friend.publicKey)), 0));
+  /** Every unread private text: on Direct messages while it is folded; unfolded, each friend's row has its own count. */
+  const dmsUnread = createMemo(() => privates.threads().reduce((n, t) => n + privates.unread(t.friend.publicKey), 0));
   /** The private conversation on screen: the friend as presence has them now, else as I last saw them. */
   const privateFriend = createMemo(() => {
     const key = privates.openWith();
@@ -569,18 +564,6 @@ function Workspace(props: WorkspaceProps) {
               <span class="brand">dave</span>
               <button class="gear" ref={gearMenu.anchor} popovertarget="side-menu" title="New room, join by link, theme, report a problem, and more" aria-label="Settings and more">⚙</button>
             </div>
-            {/* Friends online in my other rooms, not in a call: the room on screen lists its own at its top */}
-            <Show when={elsewhere().length > 0}>
-              <h2>In other rooms</h2>
-              <ul class="plist visitors elsewhere">
-                <For each={elsewhereKeys()}>{(key) => {
-                  // The latest entry; the last one seen while the row is on its way out.
-                  let last = untrack(() => elsewhere().find((p) => p.publicKey === key)!);
-                  const p = () => (last = elsewhere().find((q) => q.publicKey === key) ?? last);
-                  return <PersonRow p={p()} isMe={false} label={labelOf(p())} arrive={justCame(key)} onProfile={(el) => openProfile(p(), el)} unread={privates.unread(key)} />;
-                }}</For>
-              </ul>
-            </Show>
             <For each={links()}>{(l) => {
               const selected = () => l === cur();
               const inThis = () => l.call.inCall();
@@ -597,20 +580,52 @@ function Workspace(props: WorkspaceProps) {
               // Only the room on screen lists them: the others need not work them out on every presence frame.
               const here = createMemo(() => (selected() ? hereIn(l) : []));
               const hereKeys = createMemo<string[]>(() => here().map((p) => p.publicKey), { equals: sameKeyList });
-              // Who is in the call but me, by key: another room's call faces and the call box's rows are keyed by friend, as a row made
-              // anew on each presence frame would lose focus, its tooltip, its open slider and the card it holds open.
+              // Who is in the call but me, by key: the call box's rows are keyed by friend, as a row made anew on each presence
+              // frame would lose focus, its tooltip, its open slider and the card it holds open.
               const faceKeys = createMemo<string[]>(() => participants().others.map((p) => p.publicKey), { equals: sameKeyList });
+              // Another room, beside its name: everyone in it but me, as faces, those in its call first (a green ring), then
+              // the rest (a plain one). Not its call when its box is shown (my call, in a room not on screen): that lists them.
+              // At most FACES_SHOWN, then a count of the rest, so a busy room keeps its name. Only rooms not on screen need them.
+              const faces = createMemo(() => {
+                if (selected()) return [];
+                const people = l.room.people().filter((p) => p.publicKey !== me);
+                const inCall = inThis() ? [] : participants().others;
+                // The rest in the order they came, the newest first, as the lists of the room on screen (online() keeps `cameAt`;
+                // one in a call elsewhere is not in it, and comes last).
+                online();
+                const rest = people.filter((p) => p.role !== 'participant').sort((a, b) => (cameAt.get(b.publicKey) ?? -1) - (cameAt.get(a.publicKey) ?? -1));
+                return [...inCall, ...rest];
+              });
+              const roomFaceKeys = createMemo<string[]>(() => faces().slice(0, FACES_SHOWN).map((p) => p.publicKey), { equals: sameKeyList });
               const inviteOpen = () => inviteFor() === l.saved.secret;
               // The room's ⋯ menu: below its button, else above it when there is more room there.
               const menuId = `room-menu-${++roomMenus}`;
               const roomMenu = sidebarMenu({ width: ROOM_MENU_W, prefer: 'below' });
               return (
                 <section class={`room ${selected() ? 'selected' : ''} ${selected() && privates.openWith() ? 'behind' : ''} ${l.room.status().kind === 'connected' ? '' : 'frozen'}`}>
-                  <div class="room-head">
+                  {/* The whole head brings the room on screen, not only its name; its faces and ⋯ do their own */}
+                  <div class="room-head" onClick={(e) => { if (!(e.target as Element).closest('button, [popover], .roomfaces')) { privates.close(); props.onSelect(l.saved.secret); } }}>
                     <button class="room-name" onClick={() => { privates.close(); props.onSelect(l.saved.secret); }} title={selected() && !privates.openWith() ? 'This room is on screen' : `Read ${l.saved.name}`}>
                       <span class="room-title">{l.saved.name}</span>
                       <Show when={l.room.unread() > 0}><b class="unread" title="new messages">{l.room.unread()}</b></Show>
                     </button>
+                    <Show when={!selected() && roomFaceKeys().length > 0}>
+                      {/* Out of PostHog's recordings with its names (`ph-no-capture`); a face carries its friend's unread private texts */}
+                      <div class="roomfaces ph-no-capture" title={faces().map((p) => `${labelOf(p).shown}${p.role === 'participant' ? ' (in the call)' : ''}`).join(', ')}>
+                        <For each={roomFaceKeys()}>{(key) => {
+                          let last = untrack(() => faces().find((p) => p.publicKey === key)!);
+                          const p = () => (last = faces().find((q) => q.publicKey === key) ?? last);
+                          return (
+                            <span class={p().role === 'participant' ? 'face in-call' : 'face'}>
+                              <Avatar initial={labelOf(p()).shown[0]!} picture={labelOf(p()).picture} title={`${labelOf(p()).shown}${p().role === 'participant' ? ', in the call' : ''}${labelOf(p()).known ? '' : '. A new key: opening their card acknowledges it.'}`} onOpen={(el) => openProfile(p(), el)} />
+                              <Show when={privates.unread(key) > 0}><b class="unread" title="New private messages">{privates.unread(key)}</b></Show>
+                              <Show when={!labelOf(p()).known}><b class="newdot" title="new" /></Show>
+                            </span>
+                          );
+                        }}</For>
+                        <Show when={faces().length > FACES_SHOWN}><span class="more">+{faces().length - FACES_SHOWN}</span></Show>
+                      </div>
+                    </Show>
                     <Show when={selected()}>
                       <button class="room-more" ref={roomMenu.anchor} popovertarget={menuId} title="Invite, clear chat history, leave" aria-label={`More for ${l.saved.name}`}>⋯</button>
                       <div class="room-menu" id={menuId} popover="auto" ref={roomMenu.menu} onBeforeToggle={roomMenu.beforeToggle} onToggle={roomMenu.toggle}>
@@ -624,7 +639,7 @@ function Workspace(props: WorkspaceProps) {
                   {/* Who is here and not in the call, me too, ready to join: at the top of the room on screen */}
                   <Show when={selected() && hereKeys().length > 0}>
                     <ul class="plist visitors here">
-                      {/* Keyed by friend, as the list of other rooms: a presence frame replaces every Person, and a row made anew slides in again */}
+                      {/* Keyed by friend: a presence frame replaces every Person, and a row made anew slides in again */}
                       <For each={hereKeys()}>{(key) => {
                         let last = untrack(() => here().find((p) => p.publicKey === key)!);
                         const p = () => (last = here().find((q) => q.publicKey === key) ?? last);
@@ -633,24 +648,7 @@ function Workspace(props: WorkspaceProps) {
                     </ul>
                   </Show>
                   {/* The room on screen, or the one whose call I am in: its call in full, in a box of its own */}
-                  <Show when={selected() || inThis()} fallback={
-                    <Show when={participants().others.length > 0}>
-                      {/* Any other room: only who is in its call, as faces */}
-                      {/* Out of PostHog's recordings with its names (`ph-no-capture`); a face carries its friend's unread private texts */}
-                      <div class="callfaces ph-no-capture" title={`In the call: ${participants().others.map((p) => labelOf(p).shown).join(', ')}`}>
-                        <For each={faceKeys()}>{(key) => {
-                          let last = untrack(() => participants().others.find((p) => p.publicKey === key)!);
-                          const p = () => (last = participants().others.find((q) => q.publicKey === key) ?? last);
-                          return (
-                            <span class="face">
-                              <Avatar initial={labelOf(p()).shown[0]!} picture={labelOf(p()).picture} title={labelOf(p()).shown} onOpen={(el) => openProfile(p(), el)} />
-                              <Show when={privates.unread(key) > 0}><b class="unread" title="New private messages">{privates.unread(key)}</b></Show>
-                            </span>
-                          );
-                        }}</For>
-                      </div>
-                    </Show>
-                  }>
+                  <Show when={selected() || inThis()}>
                   <ul class={`plist ${participants().self || participants().others.length || participants().lost.length ? 'callbox' : ''}`}>
                     <Show when={participants().self}>{(s) => <ParticipantRow p={s()} isMe label={labelOf(s())} onProfile={(el) => openProfile(s(), el)} speaking={l.call.speakingSelf()} />}</Show>
                     {/* Keyed by friend: a row made anew on each presence frame would lose its open slider, and the card it holds open */}
@@ -676,21 +674,21 @@ function Workspace(props: WorkspaceProps) {
               );
             }}</For>
             {/* Everyone I have a private conversation with, folded away: the way back to older texts, to a friend offline too.
-                A friend online is also in a list above, with their unread count; here only an offline friend's count shows. */}
+                Each row has its friend's unread count, as their row in a room does; folded, the heading has them all. */}
             <Show when={privates.threads().length > 0}>
               {/* Unfolded for the conversation on screen: its row here is the one highlighted, wherever else the friend is listed */}
               <details class="dms ph-no-capture" ref={(el) => { dms = el; if (untrack(unfoldDms)) { el.open = true; unfoldedForIt = true; } }} onToggle={(e) => { if (!e.currentTarget.open) unfoldedForIt = false; }}>
-                <summary>Direct messages<Show when={awayUnread() > 0}><b class="unread" title="New private messages">{awayUnread()}</b></Show></summary>
+                <summary>Direct messages<Show when={dmsUnread() > 0}><b class="unread" title="New private messages">{dmsUnread()}</b></Show></summary>
                 <ul class="away" aria-label="Direct messages">
                   <For each={privates.threads()}>{(t) => {
                     // The friend as presence has them now, else as I last saw them
                     const friend = () => present(t.friend.publicKey) ?? t.friend;
                     return (
-                    <li class={`${present(t.friend.publicKey) ? '' : 'offline'} ${privates.openWith() === t.friend.publicKey ? 'on' : ''}`.trim() || undefined}>
+                    <li class={`${present(t.friend.publicKey) ? '' : 'offline'} ${privates.openWith() === t.friend.publicKey ? 'on' : ''}`.trim() || undefined} onClick={() => openPrivate(friend())}>
                       <Avatar initial={labelOf(friend()).shown[0]!} picture={labelOf(friend()).picture} title={`Your private conversation with ${labelOf(friend()).shown}`} onOpen={() => openPrivate(friend())} />
+                      <Show when={privates.unread(t.friend.publicKey) > 0}><b class="unread" title="New private messages">{privates.unread(t.friend.publicKey)}</b></Show>
                       <span class="pname" title={labelOf(friend()).title}><span class="tname">{labelOf(friend()).shown}</span>
                         <Show when={!labelOf(friend()).known}><b class="new">new</b></Show>
-                        <Show when={!present(t.friend.publicKey) && privates.unread(t.friend.publicKey) > 0}><b class="unread" title="New private messages">{privates.unread(t.friend.publicKey)}</b></Show>
                       </span>
                     </li>
                     );
@@ -909,6 +907,8 @@ function sidebarMenu(opts: { width: number; prefer: 'above' | 'below'; onOpen?: 
 const ARRIVE_MS = 1500;
 /** The ⚙ menu's width, at most (the window's, less a margin, on a phone). */
 const MENU_W = 260;
+/** Faces beside the name of a room not on screen, at most; the rest are counted. */
+const FACES_SHOWN = 6;
 /** A room's ⋯ menu's width, at most. */
 const ROOM_MENU_W = 200;
 /** Numbers the rooms' ⋯ menus, for the ids their buttons point at (a room's secret is not for the page's markup). */
@@ -964,9 +964,9 @@ function PersonRow(props: { p: Person; isMe: boolean; label: Label; onProfile: (
   return (
     <li ref={(el) => { row = el; if (untrack(() => props.arrive)) slideIn(el); }} class={props.pending ? 'pending ph-no-autocapture' : 'ph-no-autocapture'} onClick={() => props.onProfile(row!)} title={props.label.known ? props.label.title : `${props.label.title}. A new key: opening their card acknowledges it.`}>
       <Avatar initial={props.label.shown[0]!} picture={props.label.picture} title={props.isMe ? 'Your profile' : `${props.label.shown}'s profile`} onOpen={() => props.onProfile(row!)} />
+      <Show when={props.unread}><b class="unread" title="New private messages">{props.unread}</b></Show>
       <span class="pname"><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span>
         <Show when={!props.label.known}><b class="new">new</b></Show>
-        <Show when={props.unread}><b class="unread" title="New private messages">{props.unread}</b></Show>
       </span>
     </li>
   );
@@ -1323,8 +1323,8 @@ function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: 
       {/* The whole line opens the profile card, beside the row; not the volume button or its slider */}
       <div class={`pline ${tight() ? 'tight' : ''}`} ref={watchFit} onClick={() => props.onProfile(row!)}>
       <Avatar initial={props.label.shown[0]!} picture={props.label.picture} speaking={props.speaking} title={props.isMe ? 'Your profile' : `${props.label.shown}'s profile`} onOpen={() => props.onProfile(row!)} />
+      <Show when={props.unread}><b class="unread" title="New private messages">{props.unread}</b></Show>
       <span class="pname" title={props.label.title}><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span>
-        <Show when={props.unread}><b class="unread" title="New private messages">{props.unread}</b></Show>
       </span>
       <span class="pflags">
         <Show when={props.p.muted}><em>muted</em></Show>

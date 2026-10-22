@@ -312,8 +312,8 @@ export class Friend {
   get away(): Locator { return this.banner.filter({ hasText: /Connecting|Reconnecting|Server unavailable/ }); }
   get selectedRoom(): Locator { return this.page.locator('section.room.selected'); }
   /**
-   * Names of everyone online and in no call, as the sidebar lists them: friends in my other rooms, then those in the room on
-   * screen, newest first, then me, unless I am in a call (or this tab holds no place in the room on screen).
+   * Names of everyone in the room on screen and in no call, as the sidebar lists them: friends newest first, then me, unless
+   * I am in a call (or this tab holds no place in the room). Another room's people are faces beside its name, not listed.
    */
   async online(): Promise<string[]> {
     // Not deduplicated: a friend listed twice is a bug these lists must show.
@@ -324,6 +324,20 @@ export class Friend {
    * (`open` in App.tsx), and a click that Playwright found stable can still land where the row pushed it from. Endless
    * animations (a speaking glow, a spinner) never stop, and move nothing: they do not count.
    */
+  /**
+   * Names of everyone the sidebar shows, wherever: in the lists of the room on screen, its call box, or as a face beside
+   * the name of another room (a face's title starts with the name).
+   */
+  async seen(): Promise<string[]> {
+    const listed = (await this.page.locator('aside.side ul.plist .nm').allInnerTexts()).map(clean);
+    const faces = await this.page.locator('aside.side .roomfaces button.avatar').evaluateAll((els) => els.map((e) => (e.getAttribute('title') ?? '').split(/[.,]/)[0]!.trim()));
+    return [...listed, ...faces];
+  }
+  /** As settledOnline, for names shown anywhere in the sidebar (`seen`): a friend in another room only is a face there. */
+  async settledSeen(...names: string[]): Promise<void> {
+    await expect.poll(async () => { const seen = await this.seen(); return names.filter((n) => !seen.includes(n)); }, { message: `${this.name} shows ${names.join(', ')}` }).toEqual([]);
+    await expect.poll(() => this.page.locator('aside.side').evaluate((side) => [...side.querySelectorAll('ul.plist.visitors')].flatMap((ul) => ul.getAnimations({ subtree: true })).filter((a) => a.effect?.getTiming().iterations !== Infinity).length), { message: `${this.name}'s lists stop moving` }).toBe(0);
+  }
   async settledOnline(...names: string[]): Promise<void> {
     await expect.poll(async () => { const online = await this.online(); return names.filter((n) => !online.includes(n)); }, { message: `${this.name} lists ${names.join(', ')}` }).toEqual([]);
     await expect.poll(() => this.page.locator('aside.side').evaluate((side) => [...side.querySelectorAll('ul.plist.visitors')].flatMap((ul) => ul.getAnimations({ subtree: true })).filter((a) => a.effect?.getTiming().iterations !== Infinity).length), { message: `${this.name}'s Online list stops moving` }).toBe(0);
@@ -569,8 +583,9 @@ export const test = base.extend<{ crowd: Crowd }>({
             // A friend without a composer (a form, a step-back screen) is not in the room: isConnected would wait for one.
             if ((await o.friend.composer.count().catch(() => 0)) > 0 && (await o.friend.isConnected().catch(() => false))) peers.push(o.friend);
           }
-          for (const f of peers) await f.settledOnline(name);
-          await friend.settledOnline(...peers.map((f) => f.name));
+          // Shown, not only listed: a friend in a room of mine that is not on screen is a face beside its name.
+          for (const f of peers) await f.settledSeen(name);
+          await friend.settledSeen(...peers.map((f) => f.name));
           opened.push({ friend, secrets });
         }
         return friend;
