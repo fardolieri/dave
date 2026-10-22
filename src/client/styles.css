@@ -538,3 +538,50 @@ dialog.about dd { margin: 0; }
 
 /* The design-trial picker (theme.ts): as quiet as the links around it. */
 .theme-pick { background: none; color: var(--dim); border: 1px solid var(--line); border-radius: 6px; font-size: 11px; padding: 2px 4px; }
+
+/* ── Motion and touch (apple-design) ────────────────────────────────────────────────────────────────────────────────────
+   What answers a hand answers at once and from where the hand was: a press shows on the press, a menu or card grows out of
+   what opened it and goes back the same way, the room opened eases in. One curve, critically damped (no overshoot): it
+   settles like a spring with nothing to bounce. All of it at zero specificity (`:where`), so a theme's own motion wins;
+   with reduced motion asked for, opacity alone. */
+:root { --spring: cubic-bezier(.2, .8, .2, 1); }
+@media (prefers-reduced-motion: no-preference) {
+  /* The press, on pointer-down: a button gives a little under the finger */
+  :where(button:not(:disabled)) { transition: transform 100ms ease-out, background-color .15s, border-color .15s, color .15s; }
+  :where(button:not(:disabled):active) { transform: scale(.97); }
+  :where(button.avatar:not(:disabled):active) { transform: scale(.92); }
+  /* Menus and the card materialize from their trigger: the ⚙ menu out of the gear below it, a room's ⋯ menu out of its
+     button above it, the card out of the row at its left. Leaving, the same path back. */
+  :where(.side-foot[popover], .room-menu[popover], .profile[popover]) {
+    transition: opacity .16s ease-out, transform .24s var(--spring), overlay .24s allow-discrete, display .24s allow-discrete;
+    opacity: 0; transform: scale(.94);
+  }
+  :where(.side-foot[popover]) { transform-origin: bottom right; }
+  :where(.room-menu[popover]) { transform-origin: top right; }
+  :where(.profile[popover]) { transform-origin: top left; }
+  :where(.side-foot[popover], .room-menu[popover], .profile[popover]):popover-open { opacity: 1; transform: none; }
+  @starting-style {
+    :where(.side-foot[popover], .room-menu[popover], .profile[popover]):popover-open { opacity: 0; transform: scale(.94); }
+  }
+  /* The room brought on screen: what opens under its name comes down out of it */
+  :where(.room.selected) > :not(.room-head) { animation: room-open .26s var(--spring) both; }
+  @keyframes room-open { from { opacity: 0; transform: translateY(-6px); } }
+}
+
+@media (max-width: 700px) {
+  /* A thumb's targets: 44 px, the rows of people too */
+  :where(.plist li:not(.prow), .prow .pline, .away li, .room-more, .side-top .gear, .side-me .gear) { min-height: 44px; } /* a call row: its line, centred, not the row with its slider */
+  :where(.room-more, .side-top .gear) { min-width: 44px; }
+  /* The bar with dave and ⚙ is a material over the column, held at the top as it scrolls: the lists slide under it */
+  .side-top { position: sticky; top: 0; z-index: 5; margin: 0 -14px; padding: 8px 14px; background: color-mix(in srgb, var(--panel) 72%, transparent); -webkit-backdrop-filter: blur(16px) saturate(160%); backdrop-filter: blur(16px) saturate(160%); }
+  /* The card is a sheet from the bottom edge, where the thumb is: the rows above stay free to tap, the next one swaps it */
+  .profile[popover] { left: 0 !important; right: 0; top: auto !important; bottom: 0; width: 100%; max-width: none; max-height: 80dvh; border-radius: 16px 16px 0 0; border-bottom: 0; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  @media (prefers-reduced-motion: no-preference) {
+    :where(.profile[popover]) { transform: translateY(100%); opacity: 1; transform-origin: bottom center; transition: transform .3s var(--spring), overlay .3s allow-discrete, display .3s allow-discrete; }
+    :where(.profile[popover]):popover-open { transform: none; }
+    @starting-style { :where(.profile[popover]):popover-open { transform: translateY(100%); } }
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .side-top { background: var(--panel); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
