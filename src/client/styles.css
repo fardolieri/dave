@@ -407,6 +407,9 @@ button.avatar.own:hover::after { color: var(--fg); }
 .profile-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 12px 0 0; font-size: 13px; }
 .profile-facts dt { color: var(--dim); }
 .profile-facts dd { margin: 0; }
+.profile-message { width: 100%; margin-top: 14px; }
+/* A row of a person, the whole of it, opens their profile card */
+.plist.visitors li, .prow .pline { cursor: pointer; }
 :is(.profile, .private-head) .row { display: flex; gap: 6px; margin-top: 12px; }
 :is(.profile, .private-head) .row button:first-child { flex: 1; }
 :is(.profile, .private-who) > form input { width: 100%; }

@@ -24,10 +24,11 @@ function png(width: number, height: number): Buffer {
 // friends can read it, through a room they share, and is relayed by the Room to that friend alone. These pin what each
 // friend sees, and what reaches Carol's browser at all.
 
-/** Opens the private conversation with a friend from their avatar in the Online list. */
+/** Opens the private conversation with a friend from their row in the sidebar's lists: their card, then Message. */
 async function openFromOnline(f: Friend, name: string): Promise<void> {
   await f.settledOnline(name);
-  await f.page.locator('aside.side ul.plist.visitors li', { hasText: name }).first().locator('button.avatar').click();
+  await f.page.locator('aside.side ul.plist.visitors li', { hasText: name }).first().locator('.nm').click();
+  await f.page.locator('.profile .profile-message').click();
   await expect(f.page.locator('.private-head')).toContainText(name);
 }
 
@@ -171,4 +172,33 @@ test('a picture sent privately reaches only its friend, inline, and nobody else 
   // Nothing of it in the room, and Carol hears of no file: no announcement, and no file link to her.
   expect(await bob.page.locator('.chat:not(.private) .att-media').count()).toBe(0);
   expect(carol.wire.log.filter((f) => f.dir === 'down' && /^\{"t":"(private|file|link)"/.test(f.frame))).toEqual([]);
+});
+
+test('a friend\'s row opens their card beside the sidebar, the next row another card, and Message their conversation', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  await crowd.open('Bob');
+  const carol = await crowd.open('Carol');
+  await alice.settledOnline('Carol', 'Bob', 'Alice');
+  const card = alice.page.locator('.profile');
+  const row = (name: string) => alice.page.locator('aside.side ul.plist.visitors li', { hasText: name }).first();
+  await row('Bob').locator('.nm').click();
+  await expect(card.locator('.profile-name strong')).toHaveText('Bob');
+  // In the chat area, clear of the sidebar, so the next row is still there to click.
+  const side = (await alice.page.locator('aside.side').boundingBox())!;
+  expect((await card.boundingBox())!.x).toBeGreaterThanOrEqual(side.x + side.width);
+  await row('Carol').click();
+  await expect(card.locator('.profile-name strong')).toHaveText('Carol');
+  // Her row again puts her card away; once more brings it back.
+  await row('Carol').click();
+  await expect(card).toBeHidden();
+  await row('Carol').click();
+  await expect(card.locator('.profile-name strong')).toHaveText('Carol');
+  // Carol into the call: her row here is gone, and the card with it; her row in the call box opens it again.
+  await carol.join();
+  await expect(card).toBeHidden();
+  await alice.selectedRoom.locator('li.prow', { hasText: 'Carol' }).locator('.nm').click();
+  await expect(card.locator('.profile-name strong')).toHaveText('Carol');
+  await card.locator('.profile-message').click();
+  await expect(card).toBeHidden();
+  await expect(alice.page.locator('.private-head')).toContainText('Carol');
 });

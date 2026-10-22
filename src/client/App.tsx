@@ -297,13 +297,24 @@ function Workspace(props: WorkspaceProps) {
   /** My private conversations (ADR 0007), one per friend, whichever rooms we share. */
   const privates = createPrivates({ identity, name: () => props.name, rooms: () => links().map((l) => ({ room: l.room, name: l.saved.name })), current: () => current()?.room ?? null });
   createAttention(links, me, privates.onText);
-  // My profile card, and the avatar it hangs from. A friend's avatar opens my private conversation with them instead,
-  // whose head is their profile; opening it acknowledges the key, as the card did.
+  // The profile card, and the row or avatar it hangs from: mine, or a friend's, whose card has the way to our private
+  // conversation. Opening a friend's acknowledges their key. The row it hangs from clicked again puts it away: light
+  // dismiss closes it during that input, before the click, and reopening it there would only make it flicker. What was
+  // open is taken at pointerdown, which comes before light dismiss for a mouse and a finger alike, and dropped in a task
+  // after the click's (a microtask would run before the row's own handler), so a click by keyboard (no pointerdown) or a
+  // later one opens it again.
+  let openAtDown: { publicKey: string; anchor: HTMLElement } | null = null;
+  const takeOpen = () => { openAtDown = untrack(profile); };
+  const dropOpen = () => setTimeout(() => { openAtDown = null; });
+  document.addEventListener('pointerdown', takeOpen, true);
+  document.addEventListener('click', dropOpen, true);
+  onCleanup(() => { document.removeEventListener('pointerdown', takeOpen, true); document.removeEventListener('click', dropOpen, true); });
   const [profile, setProfile] = createSignal<{ publicKey: string; anchor: HTMLElement } | null>(null);
   const openProfile = (p: Person, anchor: HTMLElement) => {
-    if (p.publicKey !== me) { openPrivate(p); return; }
+    if (openAtDown?.publicKey === p.publicKey && openAtDown.anchor === anchor) { openAtDown = null; setProfile(null); return; }
+    if (p.publicKey !== me && !isKnown(p.publicKey)) { markKnown(p.publicKey, p.name); posthog.capture('new_key_acknowledged'); }
     setProfile({ publicKey: p.publicKey, anchor });
-    posthog.capture('profile_opened', { own: true });
+    posthog.capture('profile_opened', { own: p.publicKey === me });
   };
   const openPrivate = (friend: Identity) => {
     if (!isKnown(friend.publicKey)) { markKnown(friend.publicKey, friend.name); posthog.capture('new_key_acknowledged'); }
@@ -586,7 +597,8 @@ function Workspace(props: WorkspaceProps) {
               // Only the room on screen lists them: the others need not work them out on every presence frame.
               const here = createMemo(() => (selected() ? hereIn(l) : []));
               const hereKeys = createMemo<string[]>(() => here().map((p) => p.publicKey), { equals: sameKeyList });
-              // Another room's call faces, keyed by friend too: a face made anew on each presence frame would lose focus and its tooltip.
+              // Who is in the call but me, by key: another room's call faces and the call box's rows are keyed by friend, as a row made
+              // anew on each presence frame would lose focus, its tooltip, its open slider and the card it holds open.
               const faceKeys = createMemo<string[]>(() => participants().others.map((p) => p.publicKey), { equals: sameKeyList });
               const inviteOpen = () => inviteFor() === l.saved.secret;
               // The room's ⋯ menu: below its button, else above it when there is more room there.
@@ -641,7 +653,12 @@ function Workspace(props: WorkspaceProps) {
                   }>
                   <ul class={`plist ${participants().self || participants().others.length || participants().lost.length ? 'callbox' : ''}`}>
                     <Show when={participants().self}>{(s) => <ParticipantRow p={s()} isMe label={labelOf(s())} onProfile={(el) => openProfile(s(), el)} speaking={l.call.speakingSelf()} />}</Show>
-                    <For each={participants().others}>{(p) => <ParticipantRow p={p} isMe={false} label={labelOf(p)} onProfile={(el) => openProfile(p, el)} unread={privates.unread(p.publicKey)} view={inThis() ? viewOf(l, p.publicKey) : undefined} speaking={viewOf(l, p.publicKey)?.speaking ?? false} onVolume={inThis() ? (v) => l.call.setVolume(p.publicKey, v) : undefined} />}</For>
+                    {/* Keyed by friend: a row made anew on each presence frame would lose its open slider, and the card it holds open */}
+                    <For each={faceKeys()}>{(key) => {
+                      let last = untrack(() => participants().others.find((p) => p.publicKey === key)!);
+                      const p = () => (last = participants().others.find((q) => q.publicKey === key) ?? last);
+                      return <ParticipantRow p={p()} isMe={false} label={labelOf(p())} onProfile={(el) => openProfile(p(), el)} unread={privates.unread(key)} view={inThis() ? viewOf(l, key) : undefined} speaking={viewOf(l, key)?.speaking ?? false} onVolume={inThis() ? (v) => l.call.setVolume(key, v) : undefined} />;
+                    }}</For>
                     <For each={participants().lost}>{(v) => <li class="lost"><span class="avatar">{displayName(v.name, contactOf(v.publicKey))[0]}</span><span class="pname">{displayName(v.name, contactOf(v.publicKey))} <em>connection to server lost</em></span></li>}</For>
                     <Show when={selected() && !participants().self && participants().others.length === 0 && participants().lost.length === 0}><li class="dim">nobody in the call</li></Show>
                   </ul>
@@ -714,7 +731,7 @@ function Workspace(props: WorkspaceProps) {
               </Show>
             </div>
           </aside>
-          <ProfileCard open={profile()} people={withMe()} me={me} label={labelOf} onClose={() => setProfile(null)} onRenameSelf={renameSelf} onPictureSelf={pictureSelf} />
+          <ProfileCard open={profile()} people={withMe()} me={me} label={labelOf} onClose={() => setProfile(null)} onRenameSelf={renameSelf} onPictureSelf={pictureSelf} onMessage={(p) => { setProfile(null); openPrivate(p); }} />
           <Banner status={bannerStatus(cur())} onTakeOver={() => { for (const l of links()) l.room.takeOver(); }} />
           <Show when={sharers().length > 0 && stage()}>{(s) => (
             <section class="shares" style={`grid-template-columns: repeat(${sharers().length}, 1fr)`}>
@@ -820,8 +837,8 @@ type Label = { shown: string; known: boolean; title: string; picture?: string };
 
 /** The avatar is the way into a friend's profile card. It shows the profile picture (issue #8), else the initial. */
 function Avatar(props: { initial: string; picture?: string; speaking?: boolean; title: string; onOpen: (anchor: HTMLElement) => void }) {
-  // Out of PostHog's autocapture (`ph-no-capture`): a friend's avatar opens my private conversation with them, and whom
-  // I write to privately is mine.
+  // Out of PostHog's autocapture (`ph-no-capture`): a friend's avatar opens their card, the way to our private
+  // conversation, and whom I write to privately is mine.
   return <button class={`avatar ph-no-capture ${props.picture ? 'pic' : ''} ${props.speaking ? 'speaking' : ''}`} title={props.title} onClick={(e) => { e.stopPropagation(); props.onOpen(e.currentTarget); }}>{props.picture ?? props.initial}</button>;
 }
 
@@ -942,10 +959,11 @@ function open(el: HTMLElement, delay: number): void {
 
 /** `unread`: private texts from this friend I have not read (ADR 0007). */
 function PersonRow(props: { p: Person; isMe: boolean; label: Label; onProfile: (anchor: HTMLElement) => void; pending?: boolean; arrive?: boolean; unread?: number }) {
-  const acknowledge = () => { if (!props.label.known) { markKnown(props.p.publicKey, props.p.name); posthog.capture('new_key_acknowledged'); } };
+  // The whole row opens the profile card, beside the row (a friend's has the way to our conversation).
+  let row: HTMLLIElement | undefined;
   return (
-    <li ref={(el) => { if (untrack(() => props.arrive)) slideIn(el); }} class={props.pending ? 'pending' : undefined} onClick={acknowledge} title={props.label.known ? props.label.title : `${props.label.title}. Click to acknowledge.`}>
-      <Avatar initial={props.label.shown[0]!} picture={props.label.picture} title={props.isMe ? 'Your profile' : `Your private conversation with ${props.label.shown}`} onOpen={props.onProfile} />
+    <li ref={(el) => { row = el; if (untrack(() => props.arrive)) slideIn(el); }} class={props.pending ? 'pending ph-no-autocapture' : 'ph-no-autocapture'} onClick={() => props.onProfile(row!)} title={props.label.known ? props.label.title : `${props.label.title}. A new key: opening their card acknowledges it.`}>
+      <Avatar initial={props.label.shown[0]!} picture={props.label.picture} title={props.isMe ? 'Your profile' : `${props.label.shown}'s profile`} onOpen={() => props.onProfile(row!)} />
       <span class="pname"><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span>
         <Show when={!props.label.known}><b class="new">new</b></Show>
         <Show when={props.unread}><b class="unread" title="New private messages">{props.unread}</b></Show>
@@ -955,11 +973,13 @@ function PersonRow(props: { p: Person; isMe: boolean; label: Label; onProfile: (
 }
 
 /**
- * The profile card (issues #6, #7, #8): a popover hanging from my own avatar, with my name, my fingerprint, and the edits
- * that are mine to make: the name everyone sees, and the profile picture from the emoji picker, which opens from my big
- * avatar. A friend's profile is the head of my private conversation with them (`PrivateHead`), not a card.
+ * The profile card (issues #6, #7, #8): a popover hanging from a person's row or avatar. Mine has my name, my fingerprint,
+ * and the edits that are mine to make: the name everyone sees, and the profile picture from the emoji picker, which opens
+ * from my big avatar. A friend's has their nickname and Message, the way to our private conversation, whose head shows
+ * the same profile (`PrivateHead`). Out of PostHog's autocapture (`ph-no-autocapture`; recordings mask its text anyway):
+ * whom I look up and write to is mine.
  */
-function ProfileCard(props: { open: { publicKey: string; anchor: HTMLElement } | null; people: Person[]; me: string; label: (id: Identity) => Label; onClose: () => void; onRenameSelf: (name: string) => void; onPictureSelf: (picture: string | null) => void }) {
+function ProfileCard(props: { open: { publicKey: string; anchor: HTMLElement } | null; people: Person[]; me: string; label: (id: Identity) => Label; onClose: () => void; onRenameSelf: (name: string) => void; onPictureSelf: (picture: string | null) => void; onMessage: (friend: Person) => void }) {
   let card: HTMLDivElement | undefined;
   const person = createMemo(() => (props.open ? props.people.find((p) => p.publicKey === props.open!.publicKey) ?? null : null));
   const isOpen = () => card?.matches(':popover-open') ?? false;
@@ -967,11 +987,32 @@ function ProfileCard(props: { open: { publicKey: string; anchor: HTMLElement } |
     if (!card) return;
     if (!o) { if (isOpen()) card.hidePopover(); return; }
     if (!isOpen()) card.showPopover();
-    place(card, o.anchor);
+    placeCard(o.anchor);
   });
+  // Beside its row as the lists move (a friend comes online above it, the sidebar scrolls); its row gone (the friend
+  // joined the call, left the room), put away: it would point at whoever is there now.
+  createEffect(() => props.open, (o) => {
+    if (!o) return;
+    const lists = o.anchor.closest('aside.side');
+    if (!lists) return;
+    let placing = 0;
+    const follow = () => {
+      if (placing) return; // once a frame at most
+      placing = requestAnimationFrame(() => { placing = 0; if (!o.anchor.isConnected) props.onClose(); else if (isOpen()) placeCard(o.anchor); });
+    };
+    const moved = new MutationObserver(follow);
+    moved.observe(lists, { childList: true, subtree: true });
+    moved.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    addEventListener('scroll', follow, true);
+    addEventListener('resize', follow);
+    return () => { cancelAnimationFrame(placing); moved.disconnect(); removeEventListener('scroll', follow, true); removeEventListener('resize', follow); };
+  });
+  // From the sidebar it opens beside it, in the chat area at the row's height, so the next row is still there to click;
+  // on a phone, where the sidebar is the whole width, below the row.
+  const placeCard = (anchor: HTMLElement) => { if (card) place(card, anchor, 'beside', anchor.closest<HTMLElement>('aside.side') ?? undefined); };
   // Placed again when it changes size (✎ makes it taller): from my avatar at the bottom of the sidebar it would grow past the
   // window. Placing moves it and does not resize it, so this cannot loop.
-  const resized = new ResizeObserver(() => { if (card && props.open?.anchor.isConnected && isOpen()) place(card, props.open.anchor); });
+  const resized = new ResizeObserver(() => { if (card && props.open?.anchor.isConnected && isOpen()) placeCard(props.open.anchor); });
   onCleanup(() => resized.disconnect());
   // Gone from presence (the socket rebuilt it without me): nothing to show.
   createEffect(() => props.open !== null && person() === null, (gone) => { if (gone) props.onClose(); });
@@ -979,10 +1020,13 @@ function ProfileCard(props: { open: { publicKey: string; anchor: HTMLElement } |
   // dismisses and reopens in the same task, so only report a close that stuck.
   const onToggle = (e: Event) => { if ((e as ToggleEvent).newState === 'closed' && !isOpen()) props.onClose(); };
   return (
-    <div class="profile" popover="auto" ref={(el) => { card = el; resized.observe(el); }} onToggle={onToggle}>
+    <div class="profile ph-no-autocapture" popover="auto" ref={(el) => { card = el; resized.observe(el); }} onToggle={onToggle}>
       {/* Keyed by the opening: each one starts out not editing */}
       <Show when={props.open} keyed>{(_opened) => (
-        <Show when={person()}>{(p) => <Profile person={p()} me={props.me} label={props.label} onRenameSelf={props.onRenameSelf} onPictureSelf={props.onPictureSelf} />}</Show>
+        <Show when={person()}>{(p) => <>
+          <Profile person={p()} me={props.me} label={props.label} onRenameSelf={props.onRenameSelf} onPictureSelf={props.onPictureSelf} />
+          <Show when={p().publicKey !== props.me}><button class="on profile-message" onClick={() => props.onMessage(p())}>Message {props.label(p()).shown}</button></Show>
+        </>}</Show>
       )}</Show>
     </div>
   );
@@ -1261,6 +1305,7 @@ function badgesFitWhole(line: HTMLElement): boolean {
 
 function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: PeerView; speaking: boolean; onVolume?: (v: number) => void; onProfile: (anchor: HTMLElement) => void; unread?: number }) {
   const [sliderOpen, setSliderOpen] = createSignal(false);
+  let row: HTMLLIElement | undefined;
   const volume = () => props.view?.volume ?? 1;
   const percent = () => Math.round(volume() * 100);
   const [tight, setTight] = createSignal(false);
@@ -1274,9 +1319,10 @@ function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: 
     watcher = [resize, mutation];
   };
   return (
-    <li class="prow">
-      <div class={`pline ${tight() ? 'tight' : ''}`} ref={watchFit}>
-      <Avatar initial={props.label.shown[0]!} picture={props.label.picture} speaking={props.speaking} title={props.isMe ? 'Your profile' : `Your private conversation with ${props.label.shown}`} onOpen={props.onProfile} />
+    <li class="prow ph-no-autocapture" ref={row}>
+      {/* The whole line opens the profile card, beside the row; not the volume button or its slider */}
+      <div class={`pline ${tight() ? 'tight' : ''}`} ref={watchFit} onClick={() => props.onProfile(row!)}>
+      <Avatar initial={props.label.shown[0]!} picture={props.label.picture} speaking={props.speaking} title={props.isMe ? 'Your profile' : `${props.label.shown}'s profile`} onOpen={() => props.onProfile(row!)} />
       <span class="pname" title={props.label.title}><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span>
         <Show when={props.unread}><b class="unread" title="New private messages">{props.unread}</b></Show>
       </span>
@@ -1286,7 +1332,7 @@ function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: 
         <Show when={props.view}>{(v) => <span class={`conn conn-${v().conn}`} title={CONN_LABEL[v().conn]}><i /><span class="conn-label">{CONN_LABEL[v().conn]}</span></span>}</Show>
         <Show when={props.view && props.view.rttMs !== null}><Lag ms={props.view!.rttMs!} /></Show>
         <Show when={props.onVolume && props.view}>
-          <button class={`vol ${percent() !== 100 ? 'on' : ''}`} title={`Their voice for you: ${percent()}%`} onClick={() => setSliderOpen(!sliderOpen())}>
+          <button class={`vol ${percent() !== 100 ? 'on' : ''}`} title={`Their voice for you: ${percent()}%`} onClick={(e) => { e.stopPropagation(); setSliderOpen(!sliderOpen()); }}>
             {percent() === 0 ? '🔇' : '🔊'}<Show when={percent() !== 100}><small>{percent()}%</small></Show>
           </button>
         </Show>
