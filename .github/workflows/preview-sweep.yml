@@ -1,8 +1,9 @@
 name: preview-sweep
-# A preview Worker (preview.yml) is deleted when its PR closes or turns into a draft. A run that failed or was cancelled
-# then would leave it behind, and the free plan allows 100 Workers. Once a week, and by hand from the Actions tab, every
-# dave-pr-<n> whose PR is closed or a draft is deleted, and `dave-preview`, which no deploy uses: a preview deploy's
-# secrets once went to that name from wrangler.jsonc and made a Worker of it (2026-10-16, e2e/turn.spec.ts).
+# A preview Worker (preview.yml) is deleted when its PR closes. A run that failed or was cancelled then would leave it
+# behind, and the free plan allows 100 Workers. Once a week, and by hand from the Actions tab, every dave-pr-<n> whose PR is
+# closed or is a night-shift draft (one marked ready got a preview, then went back) is deleted, and `dave-preview`, which no
+# deploy uses: a preview deploy's secrets once went to that name from wrangler.jsonc and made a Worker of it (2026-10-16,
+# e2e/turn.spec.ts).
 on:
   schedule:
     - cron: '0 4 * * 1' # Mondays 04:00 UTC, clear of the soak (01:00) and the night shift (02:30)
@@ -28,8 +29,10 @@ jobs:
           failed=0
           for w in $workers; do
             pr=${w#dave-pr-}
-            # Only a PR GitHub says is closed, a draft or not there is swept: an API error keeps the Worker for next week.
-            if ! state=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr" --jq 'if .draft then "draft" else .state end' 2>&1); then
+            # Only a PR GitHub says is closed, a night-shift draft or not there is swept: an API error keeps the Worker for
+            # next week. Other drafts keep theirs: a draft is a PR still being iterated on, with its preview (preview.yml).
+            if ! state=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr" \
+                --jq 'if .draft and (.head.ref | startswith("night-shift/")) then "a night-shift draft" else .state end' 2>&1); then
               grep -q 'HTTP 404' <<<"$state" || { echo "::warning::$w: $state"; failed=1; continue; }
               state=gone
             fi

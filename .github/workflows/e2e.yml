@@ -1,6 +1,7 @@
 name: e2e
 # The browser suite (e2e/, playwright.config.ts) in Chromium and Firefox, the only browser tests this repo has:
-#   - every pushed branch except master and prod: against a local build (Worker and Room in workerd, inspection hooks on)
+#   - every pushed branch except master and prod: against a local build (Worker and Room in workerd, inspection hooks on),
+#     unless the branch's PR is a draft (draft-gate.yml)
 #   - after each successful master deploy: against nightly, which master builds with the same hooks
 #   - by hand from the Actions tab: local, nightly, or any deployed URL
 #   - called by preview.yml after each pull request preview deploy: against that preview, which is built like nightly
@@ -46,9 +47,15 @@ concurrency:
   group: e2e-${{ github.event_name == 'workflow_run' && 'nightly' || github.event_name == 'pull_request' && format('preview-{0}', github.ref) || github.ref }}
   cancel-in-progress: true
 jobs:
+  draft:
+    uses: ./.github/workflows/draft-gate.yml
+    permissions:
+      contents: read
+      pull-requests: read
   e2e:
+    needs: draft
     # After a deploy, only when it succeeded; a failed deploy leaves nightly on the previous version.
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    if: needs.draft.outputs.run == 'true' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -125,9 +132,10 @@ jobs:
     # and not this job's own check because GitHub's rules do not count checks from workflow_run runs (tried 2026-10-08).
     # Branch runs of the same commit never write it.
     # Called from preview.yml it gates nothing, and is named so.
+    # A push to a draft PR's branch tested nothing and reports nothing.
     name: ${{ github.event_name == 'pull_request' && 'result' || 'release gate' }}
-    needs: e2e
-    if: always()
+    needs: [draft, e2e]
+    if: always() && needs.draft.outputs.run == 'true'
     runs-on: ubuntu-latest
     permissions:
       statuses: write

@@ -1,0 +1,41 @@
+name: draft-gate
+# Called first by ci.yml, e2e.yml and red-green.yml: says whether their checks run. A push to a branch whose open pull request
+# is a draft skips them, so a PR opened only for its preview (preview.yml deploys drafts too) can take quick pushes without a
+# full CI run each. Marking it ready for review runs all three on its head (preview.yml dispatches them).
+# Everything else runs: other events (nightly, by hand, a preview's call), a branch with no PR yet (its first push usually
+# comes before the PR), and night-shift/* branches, whose draft "Repro:" PRs need the red e2e run as their evidence. An API
+# error runs the checks too: a missed skip costs a run, a wrong skip would pass a branch nobody tested.
+# A skipped run ends green with its jobs skipped; the summary says why. It is no verdict on the commit (/ship knows).
+on:
+  workflow_call:
+    outputs:
+      run:
+        description: "'true' when the checks run, 'false' when the branch's PR is a draft"
+        value: ${{ jobs.draft.outputs.run }}
+jobs:
+  draft:
+    name: draft?
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          run=true
+          if [ "$EVENT" = push ] && [[ "$BRANCH" != night-shift/* ]]; then
+            if pr=$(gh api -X GET "repos/$GITHUB_REPOSITORY/pulls" -f head="$GITHUB_REPOSITORY_OWNER:$BRANCH" -f state=open \
+                --jq '.[0] | select(.draft) | .number' 2>&1); then
+              if [ -n "$pr" ]; then
+                run=false
+                echo "::notice::Skipped: PR #$pr is a draft. Mark it ready for review to run the checks on its head."
+                echo "Skipped: [PR #$pr](${{ github.server_url }}/$GITHUB_REPOSITORY/pull/$pr) is a draft. Marking it ready for review runs \`ci\`, \`e2e\` and \`red-green\` on its head." >> "$GITHUB_STEP_SUMMARY"
+              fi
+            else
+              echo "::warning::could not look up the PR of $BRANCH, running the checks: $pr"
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"

@@ -48,9 +48,12 @@ Then:
 
 ## 3. Push and let CI judge
 
-1. Push the branch (`git push -u origin HEAD`). If a PR exists or the owner works with PRs, open or update it and link it
+1. If the branch's PR is a draft, mark it ready (`gh pr ready`) before pushing: a draft's pushes skip `ci`, `e2e` and
+   `red-green` (`draft-gate.yml`), and a run that ended green with its jobs skipped is no verdict. Ready first, so the push
+   runs them itself (marking ready after a push also dispatches them, but a push seconds later can cancel that).
+   Push the branch (`git push -u origin HEAD`). If a PR exists or the owner works with PRs, open or update it and link it
    in the thread (`link_pull_request` when the t3-code MCP server is up).
-2. Wait for both `ci` and `e2e` on the branch head, and with an open (not draft) PR also `preview` (its deploy, then the
+2. Wait for both `ci` and `e2e` on the branch head, and with an open PR also `preview` (its deploy, then the
    e2e suite against the preview, real Cloudflare before master): **one** loop polling the Actions API (see `CLAUDE.md` for the curl form
    when `gh` times out), checking every 60 s, about 15 min at most. Never several watchers.
 3. If red, read the failing job's log (`curl -L` on `/actions/jobs/<id>/logs`), fix, and push again. A test that failed and

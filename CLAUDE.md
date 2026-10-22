@@ -28,7 +28,7 @@ environment.** Push a branch and read the results of `ci.yml` and `e2e.yml`.
   then green" receipt); the rest of CI must be green. Do not push the test alone just to watch it go red: every red run
   emails the owner, and these were 38 of the last 100 failed runs.
 - Push the test alone first only when `red-green.yml` cannot show the bug: it runs browser tests in Chromium only, against
-  a local build, once. A bug that needs Firefox, or real Cloudflare (open a PR so its preview runs the suite), goes red
+  a local build, once. A bug that needs Firefox, or real Cloudflare (open a ready, not draft, PR so its preview runs the suite), goes red
   alone first; say why in the report. Same-ref pushes cancel each other, so wait for the red run to finish first.
 - Watch CI with one waiting loop, not several background watchers. Under memory pressure `gh` times out on TLS; use
   `curl -H "Authorization: Bearer $(gh auth token)"` against the Actions API instead.
@@ -46,7 +46,7 @@ Every change climbs this ladder, and every report says which rung it reached, in
 |---|---|---|
 | 0 typed | `pnpm typecheck` passes | here or CI |
 | 1 unit | `pnpm test` passes | CI (`ci.yml`) |
-| 2 browser | the e2e suite passes against a local build, both engines; with an open PR, also against its preview | CI (`e2e.yml` on the branch, `preview.yml` on the PR) |
+| 2 browser | the e2e suite passes against a local build, both engines; with an open ready PR, also against its preview | CI (`e2e.yml` on the branch, `preview.yml` on the PR) |
 | 3 nightly | deployed to nightly and the e2e suite passed against it | CI (`e2e.yml` after deploy) |
 | 4 seen | a human or a recording looked at the real thing (real browser, real device for phone features) | owner, or a recording |
 
@@ -82,11 +82,14 @@ Rules:
 ## What watches the app
 
 - **CI on every branch:** typecheck and unit tests in both Wrangler envs (`ci.yml`), the browser suite in both engines
-  (`e2e.yml`), the red-then-green check of regression tests (`red-green.yml`).
-- **On every open PR** (not drafts): a preview Worker of its own, `dave-pr-<n>` (`preview.yml`), built like nightly, with
-  the whole e2e suite run against it once deployed. One comment on the PR links it and a room of the PR's own, so the owner
-  can try a change from the phone before it reaches master. It starts with empty storage: a change that meets old saved
-  state is only really seen on nightly. A weekly sweep (`preview-sweep.yml`) deletes previews whose PR closed or is a draft.
+  (`e2e.yml`), the red-then-green check of regression tests (`red-green.yml`). Not while the branch's PR is a draft
+  (`draft-gate.yml`): a draft is still being iterated on, and its pushes end green with the jobs skipped, which is no
+  verdict. Marking it ready runs all three on its head. `night-shift/*` branches always run them.
+- **On every open PR**, drafts too: a preview Worker of its own, `dave-pr-<n>` (`preview.yml`), built like nightly, with
+  the whole e2e suite run against it once deployed (once ready, not while a draft). One comment on the PR links it and a
+  room of the PR's own, so the owner can try a change from the phone before it reaches master. It starts with empty
+  storage: a change that meets old saved state is only really seen on nightly. The night shift's drafts get none. A weekly
+  sweep (`preview-sweep.yml`) deletes previews whose PR closed.
 - **Inside every e2e test:** unexpected console warnings and runtime invariants (`src/client/invariants.ts`: UI that
   contradicts the call) fail the test.
 - **Nightly:** the suite against nightly is the release gate; the chaos soak (`soak.yml`, 01:00 UTC) opens `soak` issues

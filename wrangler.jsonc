@@ -42,7 +42,7 @@
     },
     // Pull request previews (.github/workflows/preview.yml): the same as nightly, built per PR and deployed under the name
     // dave-pr-<number>, which the workflow writes into the built config. Each preview is its own Worker with its own rooms,
-    // deleted when the PR closes or turns into a draft. One rate-limit namespace for all of them.
+    // deleted when the PR closes. One rate-limit namespace for all of them.
     "preview": {
       "name": "dave-preview",
       "vars": { "TURN_KEY_ID": "d3d456166c56302f67957272a1ff9ba5", "POSTHOG_KEY": "phc_qN9fsscYFP3YPfBdoNu4gyK2VsqGaXzALoASMUfJqm7q", "POSTHOG_HOST": "https://eu.i.posthog.com", "BUILD_TARGET": "preview" },

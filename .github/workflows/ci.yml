@@ -1,7 +1,7 @@
 name: ci
 # Typecheck, tests and a build for every pushed branch, which covers pull requests from this repository without a second
 # run per push. master and prod get the same checks from deploy.yml right before deploying, so they are skipped here.
-# Runs on GitHub's machines so a small dev box never has to.
+# Runs on GitHub's machines so a small dev box never has to. A push to a draft PR's branch skips it (draft-gate.yml).
 # Both Wrangler environments the deploys use: deploy.yml tests master with CLOUDFLARE_ENV=nightly, and a test that only
 # breaks there (a nightly-only var, say) once failed the master deploy after a green branch.
 on:
@@ -12,8 +12,15 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  draft:
+    uses: ./.github/workflows/draft-gate.yml
+    permissions:
+      contents: read
+      pull-requests: read
   check:
     name: check (${{ matrix.wrangler-env || 'prod' }})
+    needs: draft
+    if: needs.draft.outputs.run == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

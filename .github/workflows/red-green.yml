@@ -5,7 +5,7 @@ name: red-green
 # The job fails only when the branch has a "Problem report:" commit and its "Regression test:" and "Problem report:"
 # commits change no test, or every test they touched ran and passed on the old code; otherwise it is informative. A line
 # "No regression test: <reason>" in the fix's body excuses it. Browser tests run in Chromium only, just the touched ones.
-# From the Actions tab it can compare with another branch than master.
+# From the Actions tab it can compare with another branch than master. A push to a draft PR's branch skips it (draft-gate.yml).
 on:
   push:
     branches-ignore: [master, prod]
@@ -21,7 +21,14 @@ concurrency:
 permissions:
   contents: read
 jobs:
+  draft:
+    uses: ./.github/workflows/draft-gate.yml
+    permissions:
+      contents: read
+      pull-requests: read
   receipt:
+    needs: draft
+    if: needs.draft.outputs.run == 'true'
     runs-on: ubuntu-latest
     # Setup and installs take up to ~20 min on a slow runner; the run step has 35 (inside it: unit tests 8, browser tests 23).
     timeout-minutes: 60
