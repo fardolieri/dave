@@ -51,8 +51,8 @@ input { background: var(--panel2); color: var(--fg); border: 1px solid var(--lin
 .side-me { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 10px 0 0; border-top: 1px solid var(--line); }
 .side-me .nm { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-me .nm.pending { opacity: .45; }
-.side-me .gear { flex: none; width: 32px; height: 32px; padding: 0; border-radius: 50%; border: 0; background: none; color: var(--dim); font-size: 17px; line-height: 1; }
-.side-me .gear:hover, .side-me .gear:focus-visible { color: var(--fg); background: var(--panel2); }
+:is(.side-me, .side-top) .gear { flex: none; width: 32px; height: 32px; padding: 0; border-radius: 50%; border: 0; background: none; color: var(--dim); font-size: 17px; line-height: 1; }
+:is(.side-me, .side-top) .gear:is(:hover, :focus-visible) { color: var(--fg); background: var(--panel2); }
 .side-foot[popover] { position: fixed; inset: auto; margin: 0; overflow: auto; padding: 10px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
 .side-foot[popover]:popover-open { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
 .side-foot > button.link, .side-foot .about-link button.link { text-align: left; padding: 7px 8px; border-radius: 8px; font-size: 14px; text-decoration: none; }
@@ -485,8 +485,13 @@ dialog.report .row button:first-child { flex: 1; }
   .consent .bubble { margin-bottom: 4px; padding: 14px 16px 8px; }
 }
 
+/* dave and ⚙ at the top of the sidebar: a phone's, where the row of me at the bottom is gone */
+.side-top { display: none; }
 @media (max-width: 700px) {
   #app { height: 100dvh; }
+  .side-top { display: flex; align-items: center; justify-content: space-between; padding: 10px 0 0; }
+  .side-top .brand { font-weight: 800; font-size: 18px; letter-spacing: -.01em; }
+  .side-me { display: none; }
   .app { --side-w: 0px; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
   .app.split { grid-template-rows: minmax(0, 1fr) auto; }
   /* everything above the composer scrolls as one; the composer is the app's last row and can never cover a line */

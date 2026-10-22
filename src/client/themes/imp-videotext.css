@@ -26,7 +26,7 @@
 /* Header rows: the lists of friends (In other rooms, Not online) and every room name are full-width blue rows, like the top lines of a teletext page. */
 :where(:root[data-theme="imp-videotext"]) .side { border-right: 2px solid var(--bar); }
 :where(:root[data-theme="imp-videotext"]) .side > h2 { margin: 0 -14px 8px; padding: 5px 14px; background: var(--bar); color: var(--warn); font-size: 13px; }
-:where(:root[data-theme="imp-videotext"]) .side > * + h2 { margin-top: 14px; }
+:where(:root[data-theme="imp-videotext"]) .side > :not(.side-top) + h2 { margin-top: 14px; }
 :where(:root[data-theme="imp-videotext"]) .room-head { margin: 14px -14px 6px; padding: 3px 14px; background: var(--bar); }
 :where(:root[data-theme="imp-videotext"]) .room-title { color: var(--acc); font-size: 13px; letter-spacing: .04em; }
 :where(:root[data-theme="imp-videotext"]) .room.selected .room-title,

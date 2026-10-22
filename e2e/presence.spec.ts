@@ -58,6 +58,23 @@ test('the sidebar says who is in the room on screen, who is in another room, and
   await expect.poll(() => names('elsewhere')).toEqual(['Carol']);
 });
 
+test('on a phone, dave and ⚙ head the sidebar, my own row is only in the room, and the menu opens under the ⚙', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { viewport: { width: 390, height: 780 } });
+  const page = alice.page;
+  await expect(page.locator('aside.side .side-top .brand')).toHaveText('dave');
+  await expect(page.locator('aside.side .side-me')).toBeHidden();
+  await expect.poll(() => alice.online()).toEqual(['Alice']);
+  const gear = page.locator('aside.side .side-top button.gear');
+  await gear.click();
+  const menu = page.locator('#side-menu');
+  await expect(menu).toBeVisible();
+  // Placed from the ⚙ on screen: below it (there is more room there), right edges aligned, inside the window.
+  await expect.poll(async () => {
+    const g = (await gear.boundingBox())!, m = (await menu.boundingBox())!;
+    return m.y >= g.y + g.height && m.y - (g.y + g.height) < 20 && Math.abs(m.x + m.width - (g.x + g.width)) < 2 && m.y + m.height <= 780;
+  }).toBe(true);
+});
+
 test('a new name reaches everyone', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');

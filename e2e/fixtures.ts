@@ -595,7 +595,7 @@ export const test = base.extend<{ crowd: Crowd }>({
 /** Opens the sidebar's ⚙ menu (new room, join by link, theme, report a problem…), if it is not open already. */
 export async function openMenu(page: Page): Promise<void> {
   if (await page.locator('#side-menu:popover-open').count()) return;
-  await page.locator('aside.side .side-me button.gear').click();
+  await page.locator('aside.side button.gear[popovertarget="side-menu"]:visible').click(); // at the bottom on a desktop, at the top on a phone
   await expect(page.locator('#side-menu')).toBeVisible();
 }
 

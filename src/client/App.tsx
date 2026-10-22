@@ -546,6 +546,11 @@ function Workspace(props: WorkspaceProps) {
            onDrop={(e) => { endDrag(); if (!hasFiles(e)) return; e.preventDefault(); if ((privateFriend() ? !privateFriend()!.blocked : writable()) && !onTop(e.target)) for (const f of e.dataTransfer?.files ?? []) stageFile(f); }}>
         <div class="scroll">
           <aside class="side">
+            {/* On a phone only: dave, and ⚙ at the top, where a thumb finds it; my own row is in the room there, so no row of me at the bottom */}
+            <div class="side-top">
+              <span class="brand">dave</span>
+              <button class="gear" ref={gearMenu.anchor} popovertarget="side-menu" title="New room, join by link, theme, report a problem, and more" aria-label="Settings and more">⚙</button>
+            </div>
             {/* Friends online in my other rooms, not in a call: the room on screen lists its own at its top */}
             <Show when={elsewhere().length > 0}>
               <h2>In other rooms</h2>
@@ -821,11 +826,14 @@ function Avatar(props: { initial: string; picture?: string; speaking?: boolean; 
  */
 function sidebarMenu(opts: { width: number; prefer: 'above' | 'below'; onOpen?: () => void }) {
   let menu: HTMLDivElement | undefined;
-  let anchor: HTMLElement | undefined;
+  // Its buttons: the one on screen is the one it hangs from (the ⚙ has one for a phone and one for a desktop).
+  let anchors: HTMLElement[] = [];
+  const shownAnchor = () => { anchors = anchors.filter((a) => a.isConnected); return anchors.find((a) => a.getClientRects().length > 0); }; // a button gone from the page is let go
   let changed: MutationObserver | undefined;
   let placing = 0;
   const isOpen = () => !!menu?.isConnected && menu.matches(':popover-open');
   const place = () => {
+    const anchor = shownAnchor();
     if (!menu || !anchor) return;
     const a = anchor.getBoundingClientRect();
     const width = Math.min(opts.width, innerWidth - 16);
@@ -859,14 +867,14 @@ function sidebarMenu(opts: { width: number; prefer: 'above' | 'below'; onOpen?: 
     addEventListener('scroll', follow, true);
     document.fonts.addEventListener('loadingdone', follow);
     changed = new MutationObserver(follow);
-    const side = anchor?.closest('.side');
+    const side = shownAnchor()?.closest('.side');
     if (side) changed.observe(side, { childList: true, subtree: true, characterData: true });
     changed.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   };
   onCleanup(() => { watch(false); cancelAnimationFrame(placing); });
   return {
     menu: (el: HTMLDivElement) => { menu = el; },
-    anchor: (el: HTMLElement) => { anchor = el; },
+    anchor: (el: HTMLElement) => { if (!anchors.includes(el)) anchors.push(el); }, // refs run before the page has them: not filtered here
     close: () => { if (isOpen()) menu!.hidePopover(); },
     beforeToggle: (e: Event) => { if ((e as ToggleEvent).newState === 'open') place(); },
     toggle: (e: Event) => watch((e as ToggleEvent).newState === 'open'),
