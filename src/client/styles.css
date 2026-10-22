@@ -90,11 +90,14 @@ button.room-name { flex: 1; min-width: 0; display: flex; align-items: center; ga
 button.room-name:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .unread { flex: none; font-size: 10px; line-height: 16px; background: var(--acc); color: #fff; border-radius: 999px; padding: 0 6px; font-weight: 700; }
 /* The room on screen stands out on a ground of its own */
-:where(.room.selected) { margin: 10px -8px 0; padding: 0 8px 8px; border-radius: 12px; background: color-mix(in srgb, var(--fg) 6%, transparent); }
-:where(.room.selected) > .room-head { margin-top: 0; padding-top: 8px; } /* low specificity: a theme's head spacing wins */
+/* Every room a box of its own, in three shades: at rest, hovered (and the whole box brings it on screen), on screen */
+:where(.room) { margin: 8px -8px 0; padding: 0 8px 8px; border-radius: 12px; background: color-mix(in srgb, var(--fg) 2.5%, transparent); cursor: pointer; transition: background .15s; }
+:where(.room:not(.selected)):hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+:where(.room.selected) { background: color-mix(in srgb, var(--fg) 7.5%, transparent); cursor: default; }
+:where(.room) > .room-head { margin-top: 0; padding-top: 8px; } /* low specificity: a theme's head spacing wins */
+:where(.room:not(.selected)) > .room-head { margin-bottom: 0; }
 /* A room's ⋯ menu: invite, clear chat history, leave */
 .room:not(.selected) button.room-name { flex: 0 1 auto; } /* its faces right after its name */
-.room:not(.selected) .room-head { cursor: pointer; } /* all of it brings the room on screen */
 .room-more { flex: none; margin-left: auto; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--dim); font-size: 16px; line-height: 1; }
 .room-more:hover, .room-more:focus-visible { color: var(--fg); background: var(--panel2); }
 .room-menu[popover] { position: fixed; inset: auto; margin: 0; overflow: auto; padding: 8px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }

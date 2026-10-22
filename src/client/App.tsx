@@ -602,9 +602,11 @@ function Workspace(props: WorkspaceProps) {
               const menuId = `room-menu-${++roomMenus}`;
               const roomMenu = sidebarMenu({ width: ROOM_MENU_W, prefer: 'below' });
               return (
-                <section class={`room ${selected() ? 'selected' : ''} ${selected() && privates.openWith() ? 'behind' : ''} ${l.room.status().kind === 'connected' ? '' : 'frozen'}`}>
-                  {/* The whole head brings the room on screen, not only its name; its faces and ⋯ do their own */}
-                  <div class="room-head" onClick={(e) => { if (!(e.target as Element).closest('button, [popover], .roomfaces')) { privates.close(); props.onSelect(l.saved.secret); } }}>
+                // The whole box brings the room on screen (back from a private conversation too), not only its name; what in it
+                // does something of its own does that: a button, a field, a menu, a person's row, the faces, the invite panel.
+                <section class={`room ${selected() ? 'selected' : ''} ${selected() && privates.openWith() ? 'behind' : ''} ${l.room.status().kind === 'connected' ? '' : 'frozen'}`}
+                  onClick={(e) => { if (!(e.target as Element).closest('button, input, select, label, a, [popover], .roomfaces, .plist.visitors li, li.prow, .panel')) { privates.close(); props.onSelect(l.saved.secret); } }}>
+                  <div class="room-head">
                     <button class="room-name" onClick={() => { privates.close(); props.onSelect(l.saved.secret); }} title={selected() && !privates.openWith() ? 'This room is on screen' : `Read ${l.saved.name}`}>
                       <span class="room-title">{l.saved.name}</span>
                       <Show when={l.room.unread() > 0}><b class="unread" title="new messages">{l.room.unread()}</b></Show>
