@@ -597,7 +597,7 @@ function Workspace(props: WorkspaceProps) {
                       <div class="room-menu" id={menuId} popover="auto" ref={roomMenu.menu} onBeforeToggle={roomMenu.beforeToggle} onToggle={roomMenu.toggle}>
                         <button class="link" title="The link that gets a friend into this room" onClick={() => { roomMenu.close(); toggleInvite(l); }}>{inviteOpen() ? 'Hide invite link' : 'Invite'}</button>
                         <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { roomMenu.close(); if (confirm(`Clear this browser's chat history of ${l.saved.name}? Nothing is stored on the server, so this cannot be undone.`)) void l.room.clearHistory(); }}>Clear chat history</button>
-                        <button class="link" title="Forget this room in this browser" onClick={() => { roomMenu.close(); leaveRoom(l); }}>Leave {l.saved.name}</button>
+                        <button class="link danger" title="Forget this room in this browser" onClick={() => { roomMenu.close(); leaveRoom(l); }}>Leave {l.saved.name}</button>
                       </div>
                     </Show>
                   </div>

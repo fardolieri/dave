@@ -96,6 +96,7 @@ button.room-name:focus-visible { outline: 2px solid var(--acc); outline-offset: 
 .room-menu[popover]:popover-open { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
 .room-menu button.link { text-align: left; padding: 7px 10px; border-radius: 8px; color: var(--fg); font-size: 14px; text-decoration: none; }
 .room-menu button.link:hover { background: var(--panel2); }
+.room-menu button.link.danger { color: var(--bad); } /* Leave: this browser forgets the room and its history */
 /* that room's presence is stale while its socket is down (spec §8.1); the header stays clickable */
 .room.frozen .plist, .room.frozen .callfaces { opacity: .45; transition: opacity .2s; } /* stale, like the rest of the room, but still the way to a friend's private conversation */
 .room.frozen .actions { opacity: .45; pointer-events: none; transition: opacity .2s; }
