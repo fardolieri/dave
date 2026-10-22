@@ -86,7 +86,16 @@ button.room-name { flex: 1; min-width: 0; display: flex; align-items: center; ga
 .room.selected .room-title, button.room-name:hover .room-title { color: var(--fg); }
 button.room-name:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .unread { flex: none; font-size: 10px; line-height: 16px; background: var(--acc); color: #fff; border-radius: 999px; padding: 0 6px; font-weight: 700; }
-.room-head button.link.on { color: var(--fg); }
+/* The room on screen stands out on a ground of its own */
+:where(.room.selected) { margin: 10px -8px 0; padding: 0 8px 8px; border-radius: 12px; background: color-mix(in srgb, var(--fg) 6%, transparent); }
+:where(.room.selected) > .room-head { margin-top: 0; padding-top: 8px; } /* low specificity: a theme's head spacing wins */
+/* A room's ⋯ menu: invite, clear chat history, leave */
+.room-more { flex: none; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--dim); font-size: 16px; line-height: 1; }
+.room-more:hover, .room-more:focus-visible { color: var(--fg); background: var(--panel2); }
+.room-menu[popover] { position: fixed; inset: auto; margin: 0; overflow: auto; padding: 8px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.room-menu[popover]:popover-open { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
+.room-menu button.link { text-align: left; padding: 7px 10px; border-radius: 8px; color: var(--fg); font-size: 14px; text-decoration: none; }
+.room-menu button.link:hover { background: var(--panel2); }
 /* that room's presence is stale while its socket is down (spec §8.1); the header stays clickable */
 .room.frozen .plist, .room.frozen .callfaces { opacity: .45; transition: opacity .2s; } /* stale, like the rest of the room, but still the way to a friend's private conversation */
 .room.frozen .actions { opacity: .45; pointer-events: none; transition: opacity .2s; }
@@ -162,11 +171,17 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 /* A friend's row while my conversation with them is on screen, in the lists of people: the one way in to it */
 .plist li.on, .away li.on { background: color-mix(in srgb, var(--acc) 14%, transparent); border-radius: 8px; }
 .plist .pname .unread, .away .unread { margin-left: 2px; }
-/* Friends I have a conversation with, online in none of my rooms: after everyone who is, dimmed */
+/* Everyone I have a conversation with, folded away above me at the bottom of the sidebar; a friend offline dimmed */
+.dms { margin-top: auto; padding: 10px 0; }
+.dms + .side-me { margin-top: 0; }
+.dms > summary { cursor: pointer; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
+.dms > summary:hover { color: var(--fg); }
+.dms > summary .unread { margin-left: 6px; text-transform: none; letter-spacing: 0; }
 .away { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .away li { display: flex; align-items: center; gap: 8px; }
-.away .avatar { opacity: .55; }
-.away .pname { display: flex; align-items: baseline; gap: 6px; min-width: 0; color: var(--dim); }
+.away li.offline .avatar { opacity: .55; }
+.away .pname { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.away li.offline .pname { color: var(--dim); }
 .away .tname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .away .dim { font-size: 11px; }
 /* My own text the Room has not brought back yet. Dimmed only after a second, so the usual round trip shows no flicker. */

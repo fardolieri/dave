@@ -31,9 +31,11 @@ async function openFromOnline(f: Friend, name: string): Promise<void> {
   await expect(f.page.locator('.private-head')).toContainText(name);
 }
 
-/** Opens the conversation with a friend from their row in the sidebar, wherever it is: Online, a call, or offline. */
+/** Opens the conversation with a friend from their row under Direct messages, folded at the bottom of the sidebar, online or not. */
 async function openFromList(f: Friend, name: string): Promise<void> {
-  await f.page.locator('aside.side li', { hasText: name }).first().locator('button.avatar').click();
+  const dms = f.page.locator('aside.side details.dms');
+  await dms.evaluate((el: HTMLDetailsElement) => { el.open = true; }); // as a click on its summary, minus folding it if the app just unfolded it
+  await dms.locator('li', { hasText: name }).locator('button.avatar').click();
   await expect(f.page.locator('.private-head')).toContainText(name);
 }
 
@@ -139,8 +141,8 @@ test('a private text written while the server is away survives a reload, and rea
   await alice.composer.press('Enter');
   await expect(alice.page.locator('.chat.private .msg-pending .msg-text')).toHaveText(['kept for you']);
   await alice.page.reload();
-  // Waiting, as written, before the Room is back: sealed only once it lists Bob. Bob is offline to her meanwhile, listed
-  // after everyone online, his row still the way in.
+  // Waiting, as written, before the Room is back: sealed only once it lists Bob. Bob is offline to her meanwhile, his row
+  // under the folded Direct messages still the way in.
   await openFromList(alice, 'Bob');
   await expect(alice.page.locator('.chat.private .msg-pending .msg-text')).toHaveText(['kept for you']);
   alice.wire.restore();

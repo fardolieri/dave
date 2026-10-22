@@ -313,14 +313,11 @@ export class Friend {
   get selectedRoom(): Locator { return this.page.locator('section.room.selected'); }
   /**
    * Names of everyone online and in no call, as the sidebar lists them: friends in my other rooms, then those in the room on
-   * screen, newest first, then me (my own row at the bottom), unless I am in a call.
+   * screen, newest first, then me, unless I am in a call (or this tab holds no place in the room on screen).
    */
   async online(): Promise<string[]> {
-    const listed = (await this.page.locator('aside.side ul.plist.visitors .nm').allInnerTexts()).map(clean);
-    const self = this.page.locator('aside.side .side-me');
-    const inCall = (await self.getAttribute('data-in-call')) !== null;
     // Not deduplicated: a friend listed twice is a bug these lists must show.
-    return inCall ? listed : [...listed, clean(await self.locator('.nm').innerText())];
+    return (await this.page.locator('aside.side ul.plist.visitors .nm').allInnerTexts()).map(clean);
   }
   /**
    * Waits until the Online list holds these names and has stopped moving: a row slides in over 460 ms, after up to 400 ms
@@ -595,11 +592,18 @@ export const test = base.extend<{ crowd: Crowd }>({
   },
 });
 
-/** Opens the sidebar's ⚙ menu (new room, join by link, leave, theme, report a problem…), if it is not open already. */
+/** Opens the sidebar's ⚙ menu (new room, join by link, theme, report a problem…), if it is not open already. */
 export async function openMenu(page: Page): Promise<void> {
   if (await page.locator('#side-menu:popover-open').count()) return;
   await page.locator('aside.side .side-me button.gear').click();
   await expect(page.locator('#side-menu')).toBeVisible();
+}
+
+/** Opens the ⋯ menu of the room on screen (invite, clear chat history, leave), if it is not open already. */
+export async function openRoomMenu(page: Page): Promise<void> {
+  if (await page.locator('.room-menu:popover-open').count()) return;
+  await page.locator('aside.side section.room.selected button.room-more').click();
+  await expect(page.locator('.room-menu:popover-open')).toBeVisible();
 }
 
 /** Picks a theme from the ⚙ menu, then puts the menu away, so nothing of it is over what the test looks at next. */

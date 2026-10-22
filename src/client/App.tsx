@@ -334,69 +334,28 @@ function Workspace(props: WorkspaceProps) {
     return !active() ? [...others, self] : others;
   });
   /**
-   * Who is in a room and not in a call, ready to join: listed under the room on screen, below its call. A friend in a call
-   * elsewhere is shown in that call. In the order they came, the newest on top, as in the list of other rooms.
+   * Who is in a room and not in a call, ready to join: listed at the top of the room on screen, above its call; me last,
+   * unless I am in a call. A friend in a call elsewhere is shown in that call. In the order they came, the newest on top,
+   * as in the list of other rooms. Not me while this tab holds no place there (another tab has it, or the Room refused it).
    */
-  const hereIn = (l: Link): Person[] => online().filter((p) => p.publicKey !== me && l.room.people().some((q) => q.publicKey === p.publicKey));
+  const hereIn = (l: Link): Person[] => {
+    const holds = !['elsewhere', 'refused'].includes(l.room.status().kind);
+    return online().filter((p) => (p.publicKey === me ? holds : l.room.people().some((q) => q.publicKey === p.publicKey)));
+  };
   /** Everyone else online and not in a call, but in none of the room on screen's lists: they are in other rooms of mine. */
   const elsewhere = createMemo(() => {
     const here = current()?.room.people() ?? [];
     return online().filter((p) => p.publicKey !== me && !here.some((q) => q.publicKey === p.publicKey));
   });
   const elsewhereKeys = createMemo<string[]>(() => elsewhere().map((p) => p.publicKey), { equals: sameKeyList });
-  let sideMenu: HTMLDivElement | undefined;
-  let sideGear: HTMLButtonElement | undefined;
-  /** The ⚙ menu is put away by what moves the sidebar under it (a new room, one joined or left): it would cover it. */
-  const closeMenu = () => { if (sideMenu?.matches(':popover-open')) sideMenu.hidePopover(); };
-  /**
-   * The ⚙ menu opens above the gear, by its bottom edge, so it grows upward as a form in it opens (New room, Join by link)
-   * and never over the gear or past the window. Below it instead when there is more room there: on a phone the gear can be
-   * near the top of the screen. Set before it shows, so it never paints elsewhere first.
-   */
-  const placeMenu = () => {
-    if (!sideMenu || !sideGear) return;
-    const g = sideGear.getBoundingClientRect();
-    const width = Math.min(MENU_W, innerWidth - 16);
-    const above = g.top - 16;
-    const below = innerHeight - g.bottom - 16;
-    sideMenu.style.width = `${width}px`;
-    sideMenu.style.left = `${Math.max(8, Math.min(g.right - width, innerWidth - width - 8))}px`;
-    if (above >= below) {
-      sideMenu.style.top = 'auto';
-      sideMenu.style.bottom = `${Math.max(8, innerHeight - g.top + 8)}px`;
-      sideMenu.style.maxHeight = `${Math.max(0, Math.min(above, innerHeight - 16))}px`;
-    } else {
-      sideMenu.style.bottom = 'auto';
-      sideMenu.style.top = `${Math.max(8, g.bottom + 8)}px`;
-      sideMenu.style.maxHeight = `${Math.max(0, Math.min(below, innerHeight - 16))}px`;
-    }
-  };
-  // Open, it follows the gear: a turned phone, the column scrolled, a row added above it (a friend comes online), a theme
-  // picked from it and its fonts arriving. Placing only sets the menu's own style, which none of these watch, so it cannot
-  // loop; once a frame at most.
-  let sideChanged: MutationObserver | undefined;
-  let placing = 0;
   let menuOpenings = 0;
-  const followGear = () => {
-    if (placing || !sideMenu?.matches(':popover-open')) return;
-    placing = requestAnimationFrame(() => { placing = 0; placeMenu(); });
-  };
-  const followFrom = (open: boolean) => {
-    sideChanged?.disconnect();
-    removeEventListener('resize', followGear);
-    removeEventListener('scroll', followGear, true);
-    document.fonts.removeEventListener('loadingdone', followGear);
-    if (!open) return;
-    menuOpenings++;
-    addEventListener('resize', followGear);
-    addEventListener('scroll', followGear, true);
-    document.fonts.addEventListener('loadingdone', followGear);
-    sideChanged = new MutationObserver(followGear);
-    const side = sideGear?.closest('.side');
-    if (side) sideChanged.observe(side, { childList: true, subtree: true, characterData: true });
-    sideChanged.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-  };
-  onCleanup(() => { followFrom(false); cancelAnimationFrame(placing); });
+  /**
+   * The ⚙ menu opens above the gear, by its bottom edge, so it grows upward as a form in it opens (New room, Join by link).
+   * Below it instead when there is more room there: on a phone the gear can be near the top of the screen.
+   */
+  const gearMenu = sidebarMenu({ width: MENU_W, prefer: 'above', onOpen: () => menuOpenings++ });
+  /** The ⚙ menu is put away by what moves the sidebar under it (a new room, one joined or left): it would cover it. */
+  const closeMenu = gearMenu.close;
   const viewOf = (l: Link, key: string): PeerView | undefined => l.call.views().find((v) => v.publicKey === key);
   const [panel, setPanel] = createSignal<'audio' | 'share' | null>(null);
   // Sharers, from the staged room's presence (tiles render from signaling state, never from track events).
@@ -491,8 +450,11 @@ function Workspace(props: WorkspaceProps) {
   // Another room put on screen (a click, an invite link) ends the conversation on screen; the room behind it going away
   // (left, forgotten) does not: another simply takes its place behind.
   createEffect(() => current(), (now, prev) => { if (prev && now !== prev && untrack(links).includes(prev)) privates.close(); });
-  /** My conversations with friends online in none of my rooms: listed after everyone online, dimmed. */
-  const awayThreads = createMemo(() => privates.threads().filter((t) => !present(t.friend.publicKey)));
+  /** Unread private texts from friends online in none of my rooms: only the folded list of direct messages has a row for them. */
+  let dms: HTMLDetailsElement | undefined;
+  const unfoldDms = createMemo(() => { const k = privates.openWith(); return !!k && !present(k) && privates.threads().some((t) => t.friend.publicKey === k); });
+  createEffect(unfoldDms, (unfold) => { if (unfold && dms?.isConnected) dms.open = true; });
+  const awayUnread = createMemo(() => privates.threads().reduce((n, t) => n + (present(t.friend.publicKey) ? 0 : privates.unread(t.friend.publicKey)), 0));
   /** The private conversation on screen: the friend as presence has them now, else as I last saw them. */
   const privateFriend = createMemo(() => {
     const key = privates.openWith();
@@ -584,7 +546,7 @@ function Workspace(props: WorkspaceProps) {
            onDrop={(e) => { endDrag(); if (!hasFiles(e)) return; e.preventDefault(); if ((privateFriend() ? !privateFriend()!.blocked : writable()) && !onTop(e.target)) for (const f of e.dataTransfer?.files ?? []) stageFile(f); }}>
         <div class="scroll">
           <aside class="side">
-            {/* Friends online in my other rooms, not in a call: the room on screen lists its own below its call */}
+            {/* Friends online in my other rooms, not in a call: the room on screen lists its own at its top */}
             <Show when={elsewhere().length > 0}>
               <h2>In other rooms</h2>
               <ul class="plist visitors elsewhere">
@@ -594,21 +556,6 @@ function Workspace(props: WorkspaceProps) {
                   const p = () => (last = elsewhere().find((q) => q.publicKey === key) ?? last);
                   return <PersonRow p={p()} isMe={false} label={labelOf(p())} arrive={justCame(key)} onProfile={(el) => openProfile(p(), el)} unread={privates.unread(key)} on={privates.openWith() === key} />;
                 }}</For>
-              </ul>
-            </Show>
-            {/* Friends I have a conversation with who are online in none of my rooms: their row is where it is, as for anyone */}
-            <Show when={awayThreads().length > 0}>
-              <h2>Not online</h2>
-              <ul class="away ph-no-capture" aria-label="Not online">
-                <For each={awayThreads()}>{(t) => (
-                  <li class={privates.openWith() === t.friend.publicKey ? 'on' : ''}>
-                    <Avatar initial={labelOf(t.friend).shown[0]!} picture={labelOf(t.friend).picture} title={`Your private conversation with ${labelOf(t.friend).shown}`} onOpen={() => openPrivate(t.friend)} />
-                    <span class="pname" title={labelOf(t.friend).title}><span class="tname">{labelOf(t.friend).shown}</span>
-                      <Show when={!labelOf(t.friend).known}><b class="new">new</b></Show>
-                      <Show when={privates.unread(t.friend.publicKey) > 0}><b class="unread" title="New private messages">{privates.unread(t.friend.publicKey)}</b></Show>
-                    </span>
-                  </li>
-                )}</For>
               </ul>
             </Show>
             <For each={links()}>{(l) => {
@@ -630,6 +577,9 @@ function Workspace(props: WorkspaceProps) {
               // Another room's call faces, keyed by friend too: a face made anew on each presence frame would lose focus and its tooltip.
               const faceKeys = createMemo<string[]>(() => participants().others.map((p) => p.publicKey), { equals: sameKeyList });
               const inviteOpen = () => inviteFor() === l.saved.secret;
+              // The room's ⋯ menu: below its button, else above it when there is more room there.
+              const menuId = `room-menu-${++roomMenus}`;
+              const roomMenu = sidebarMenu({ width: ROOM_MENU_W, prefer: 'below' });
               return (
                 <section class={`room ${selected() ? 'selected' : ''} ${selected() && privates.openWith() ? 'behind' : ''} ${l.room.status().kind === 'connected' ? '' : 'frozen'}`}>
                   <div class="room-head">
@@ -637,9 +587,27 @@ function Workspace(props: WorkspaceProps) {
                       <span class="room-title">{l.saved.name}</span>
                       <Show when={l.room.unread() > 0}><b class="unread" title="new messages">{l.room.unread()}</b></Show>
                     </button>
-                    <Show when={selected()}><button class={`link ${inviteOpen() ? 'on' : ''}`} title="The link that gets a friend into this room" onClick={() => toggleInvite(l)}>invite</button></Show>
+                    <Show when={selected()}>
+                      <button class="room-more" ref={roomMenu.anchor} popovertarget={menuId} title="Invite, clear chat history, leave" aria-label={`More for ${l.saved.name}`}>⋯</button>
+                      <div class="room-menu" id={menuId} popover="auto" ref={roomMenu.menu} onBeforeToggle={roomMenu.beforeToggle} onToggle={roomMenu.toggle}>
+                        <button class="link" title="The link that gets a friend into this room" onClick={() => { roomMenu.close(); toggleInvite(l); }}>{inviteOpen() ? 'Hide invite link' : 'Invite'}</button>
+                        <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { roomMenu.close(); if (confirm(`Clear this browser's chat history of ${l.saved.name}? Nothing is stored on the server, so this cannot be undone.`)) void l.room.clearHistory(); }}>Clear chat history</button>
+                        <button class="link" title="Forget this room in this browser" onClick={() => { roomMenu.close(); leaveRoom(l); }}>Leave {l.saved.name}</button>
+                      </div>
+                    </Show>
                   </div>
-                  <Show when={selected() && inviteOpen()}><InvitePanel link={inviteLinkFor(l.saved)} name={l.saved.name} /></Show>
+                  <Show when={selected() && inviteOpen()}><InvitePanel link={inviteLinkFor(l.saved)} name={l.saved.name} onClose={() => setInviteFor(null)} /></Show>
+                  {/* Who is here and not in the call, me too, ready to join: at the top of the room on screen */}
+                  <Show when={selected() && hereKeys().length > 0}>
+                    <ul class="plist visitors here">
+                      {/* Keyed by friend, as the list of other rooms: a presence frame replaces every Person, and a row made anew slides in again */}
+                      <For each={hereKeys()}>{(key) => {
+                        let last = untrack(() => here().find((p) => p.publicKey === key)!);
+                        const p = () => (last = here().find((q) => q.publicKey === key) ?? last);
+                        return <PersonRow p={p()} isMe={key === me} label={labelOf(p())} arrive={key !== me && justCame(key)} onProfile={(el) => openProfile(p(), el)} unread={privates.unread(key)} on={privates.openWith() === key} />;
+                      }}</For>
+                    </ul>
+                  </Show>
                   {/* The room on screen, or the one whose call I am in: its call in full, in a box of its own */}
                   <Show when={selected() || inThis()} fallback={
                     <Show when={participants().others.length > 0}>
@@ -675,30 +643,41 @@ function Workspace(props: WorkspaceProps) {
                       <Show when={l.call.shareError()}>{(e) => <div class="warn">{e()}</div>}</Show>
                     </div>
                   </Show>
-                  {/* Who is here and not in the call, ready to join: under the room on screen */}
-                  <Show when={selected() && hereKeys().length > 0}>
-                    <ul class="plist visitors here">
-                      {/* Keyed by friend, as the list of other rooms: a presence frame replaces every Person, and a row made anew slides in again */}
-                      <For each={hereKeys()}>{(key) => {
-                        let last = untrack(() => here().find((p) => p.publicKey === key)!);
-                        const p = () => (last = here().find((q) => q.publicKey === key) ?? last);
-                        return <PersonRow p={p()} isMe={false} label={labelOf(p())} arrive={justCame(key)} onProfile={(el) => openProfile(p(), el)} unread={privates.unread(key)} on={privates.openWith() === key} />;
-                      }}</For>
-                    </ul>
-                  </Show>
                 </section>
               );
             }}</For>
+            {/* Everyone I have a private conversation with, folded away: the way back to older texts, to a friend offline too.
+                A friend online is also in a list above, with their unread count; here only an offline friend's count shows. */}
+            <Show when={privates.threads().length > 0}>
+              {/* Unfolded for the conversation on screen with a friend offline: their row there is the only one left in the sidebar */}
+              <details class="dms ph-no-capture" ref={(el) => { dms = el; if (untrack(unfoldDms)) el.open = true; }}>
+                <summary>Direct messages<Show when={awayUnread() > 0}><b class="unread" title="New private messages">{awayUnread()}</b></Show></summary>
+                <ul class="away" aria-label="Direct messages">
+                  <For each={privates.threads()}>{(t) => {
+                    // The friend as presence has them now, else as I last saw them
+                    const friend = () => present(t.friend.publicKey) ?? t.friend;
+                    return (
+                    <li class={present(t.friend.publicKey) ? '' : `offline ${privates.openWith() === t.friend.publicKey ? 'on' : ''}`}>
+                      <Avatar initial={labelOf(friend()).shown[0]!} picture={labelOf(friend()).picture} title={`Your private conversation with ${labelOf(friend()).shown}`} onOpen={() => openPrivate(friend())} />
+                      <span class="pname" title={labelOf(friend()).title}><span class="tname">{labelOf(friend()).shown}</span>
+                        <Show when={!labelOf(friend()).known}><b class="new">new</b></Show>
+                        <Show when={!present(t.friend.publicKey) && privates.unread(t.friend.publicKey) > 0}><b class="unread" title="New private messages">{privates.unread(t.friend.publicKey)}</b></Show>
+                      </span>
+                    </li>
+                    );
+                  }}</For>
+                </ul>
+              </details>
+            </Show>
             {/* Me, and what is mine to do: my profile from my avatar, the rest behind ⚙ */}
-            {/* `data-in-call`: whether I am in a call, as the lists go by it (I am not listed as online then); for the e2e helpers */}
-            <div class="side-me" data-in-call={active() ? '' : undefined}>
+            <div class="side-me">
               <Avatar initial={labelOf(localSelf()).shown[0]!} picture={labelOf(localSelf()).picture} title="Your profile" onOpen={(el) => openProfile(withMe().find((p) => p.publicKey === me)!, el)} />
               <span class={connected() ? 'nm' : 'nm pending'} title={connected() ? undefined : 'Connecting…'}>{labelOf(localSelf()).shown}</span>
-              <button class="gear" ref={sideGear} popovertarget="side-menu" title="New room, join by link, theme, report a problem, and more" aria-label="Settings and more">⚙</button>
+              <button class="gear" ref={gearMenu.anchor} popovertarget="side-menu" title="New room, join by link, theme, report a problem, and more" aria-label="Settings and more">⚙</button>
             </div>
-            <div class="side-foot" id="side-menu" popover="auto" ref={sideMenu} onBeforeToggle={(e) => { if ((e as ToggleEvent).newState === 'open') placeMenu(); }} onToggle={(e) => {
+            <div class="side-foot" id="side-menu" popover="auto" ref={gearMenu.menu} onBeforeToggle={gearMenu.beforeToggle} onToggle={(e) => {
+              gearMenu.toggle(e);
               const open = (e as ToggleEvent).newState === 'open';
-              followFrom(open);
               // Put away, a half-filled form goes with it: opened again for something else, it would take the focus (and a phone's keyboard).
               if (!open) { setCreating(false); setJoining(false); }
             }}>
@@ -712,10 +691,8 @@ function Workspace(props: WorkspaceProps) {
               <Show when={joining()} fallback={<button class="link" title="Enter a room from a pasted invite link" onClick={() => setJoining(true)}>Join by link</button>}>
                 <JoinLinkForm autofocus onJoin={(link) => { setJoining(false); closeMenu(); props.onJoin(link); }} onCancel={() => setJoining(false)} />
               </Show>
-              <button class="link" title="Forget this room in this browser" onClick={() => leaveRoom(cur())}>Leave {cur().saved.name}</button>
               <button class={`link ${askingConsent() ? 'on' : ''}`} title={telemetryOn() ? 'This browser sends usage events, errors and a masked screen recording to PostHog. Click to read what is sent, or to stop.' : 'Send usage events, errors and a masked screen recording to PostHog, so bugs can be found. Click to read what is sent.'} onClick={() => { setAskingConsent((a) => !a); closeMenu(); }}>{telemetryOn() ? 'Stop helping find bugs' : 'Help find bugs'}</button>
               <ReportDialog collect={() => collectReport({ status: () => cur().room.status().kind, people: everyone, me: () => me, call: (active() ?? cur()).call.diagnostics })} />
-              <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { if (confirm(`Clear this browser's chat history of ${cur().saved.name}? Nothing is stored on the server, so this cannot be undone.`)) void cur().room.clearHistory(); }}>Clear chat history</button>
               <VersionDialog />
               <Show when={THEMES.length > 0}>
                 <select class="theme-pick" aria-label="Theme" title="The look of dave in this browser" value={theme()} onChange={(e) => setTheme(e.currentTarget.value)}>
@@ -803,7 +780,7 @@ function CallControls(props: { call: Call; panel: 'audio' | 'share' | null; onPa
  * The invite link of a room, ready to copy, and as a QR code for a phone in the same room to scan. The link
  * is the whole secret: whoever has it is in, so the code is as private as the screen it is on.
  */
-function InvitePanel(props: { link: string; name: string }) {
+function InvitePanel(props: { link: string; name: string; onClose: () => void }) {
   let input: HTMLInputElement | undefined;
   const [state, setState] = createSignal<'idle' | 'copied' | 'failed'>('idle');
   const copy = async () => {
@@ -820,6 +797,7 @@ function InvitePanel(props: { link: string; name: string }) {
       )}</Show>
       <input ref={input} readonly value={props.link} onFocus={(e) => e.currentTarget.select()} aria-label="Invite link" />
       <button class="on" onClick={() => void copy()}>{state() === 'copied' ? 'Copied' : 'Copy link'}</button>
+      <button onClick={() => props.onClose()}>Done</button>
       <Show when={state() === 'failed'}><div class="warn">Could not access the clipboard. The link is selected above: copy it yourself.</div></Show>
     </div>
   );
@@ -835,10 +813,74 @@ function Avatar(props: { initial: string; picture?: string; speaking?: boolean; 
   return <button class={`avatar ph-no-capture ${props.picture ? 'pic' : ''} ${props.speaking ? 'speaking' : ''}`} title={props.title} onClick={(e) => { e.stopPropagation(); props.onOpen(e.currentTarget); }}>{props.picture ?? props.initial}</button>;
 }
 
+/**
+ * A menu of the sidebar's: a popover hanging from its button, on the side of it with more room (`prefer` on a tie), right
+ * edges aligned, never past the window. Placed before it shows, so it never paints elsewhere first. Open, it follows its
+ * button: a turned phone, the column scrolled, a row added above it (a friend comes online), a theme picked and its fonts
+ * arriving. Placing only sets the menu's own style, which none of these watch, so it cannot loop; once a frame at most.
+ */
+function sidebarMenu(opts: { width: number; prefer: 'above' | 'below'; onOpen?: () => void }) {
+  let menu: HTMLDivElement | undefined;
+  let anchor: HTMLElement | undefined;
+  let changed: MutationObserver | undefined;
+  let placing = 0;
+  const isOpen = () => !!menu?.isConnected && menu.matches(':popover-open');
+  const place = () => {
+    if (!menu || !anchor) return;
+    const a = anchor.getBoundingClientRect();
+    const width = Math.min(opts.width, innerWidth - 16);
+    const above = a.top - 16;
+    const below = innerHeight - a.bottom - 16;
+    menu.style.width = `${width}px`;
+    menu.style.left = `${Math.max(8, Math.min(a.right - width, innerWidth - width - 8))}px`;
+    if (opts.prefer === 'above' ? above >= below : above > below) {
+      menu.style.top = 'auto';
+      menu.style.bottom = `${Math.max(8, innerHeight - a.top + 8)}px`;
+      menu.style.maxHeight = `${Math.max(0, Math.min(above, innerHeight - 16))}px`;
+    } else {
+      menu.style.bottom = 'auto';
+      menu.style.top = `${Math.max(8, a.bottom + 8)}px`;
+      menu.style.maxHeight = `${Math.max(0, Math.min(below, innerHeight - 16))}px`;
+    }
+  };
+  const follow = () => {
+    // Gone from the page without a toggle (its room no longer on screen): nothing left to follow.
+    if (!isOpen()) { watch(false); return; }
+    if (!placing) placing = requestAnimationFrame(() => { placing = 0; place(); });
+  };
+  const watch = (open: boolean) => {
+    changed?.disconnect();
+    removeEventListener('resize', follow);
+    removeEventListener('scroll', follow, true);
+    document.fonts.removeEventListener('loadingdone', follow);
+    if (!open) return;
+    opts.onOpen?.();
+    addEventListener('resize', follow);
+    addEventListener('scroll', follow, true);
+    document.fonts.addEventListener('loadingdone', follow);
+    changed = new MutationObserver(follow);
+    const side = anchor?.closest('.side');
+    if (side) changed.observe(side, { childList: true, subtree: true, characterData: true });
+    changed.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  };
+  onCleanup(() => { watch(false); cancelAnimationFrame(placing); });
+  return {
+    menu: (el: HTMLDivElement) => { menu = el; },
+    anchor: (el: HTMLElement) => { anchor = el; },
+    close: () => { if (isOpen()) menu!.hidePopover(); },
+    beforeToggle: (e: Event) => { if ((e as ToggleEvent).newState === 'open') place(); },
+    toggle: (e: Event) => watch((e as ToggleEvent).newState === 'open'),
+  };
+}
+
 /** A friend's row slides in this soon after they came online (or out of a call); later, a row is only moving lists. */
 const ARRIVE_MS = 1500;
 /** The ⚙ menu's width, at most (the window's, less a margin, on a phone). */
 const MENU_W = 260;
+/** A room's ⋯ menu's width, at most. */
+const ROOM_MENU_W = 200;
+/** Numbers the rooms' ⋯ menus, for the ids their buttons point at (a room's secret is not for the page's markup). */
+let roomMenus = 0;
 /** Whether two lists of keys are the same, in the same order: rows keyed by friend are not made anew for an equal list. */
 const sameKeyList = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((k, i) => k === b[i]);
 /** How long the first connection may take before the room shows the "Connecting…" pill. */
