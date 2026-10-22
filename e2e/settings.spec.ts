@@ -1,4 +1,4 @@
-import { expect, needHooks, newSecret, test } from './fixtures';
+import { expect, needHooks, newSecret, test, openMenu } from './fixtures';
 
 // Audio settings, volumes, the problem report, and the phone layout.
 
@@ -327,6 +327,7 @@ test('regression: a volume set in one room survives one set in another', async (
 
 test('a problem report is sent to the error log, with the friend told so', async ({ crowd }) => {
   const alice = await crowd.open('Alice', { plainUserAgent: true });
+  await openMenu(alice.page);
   await alice.page.getByRole('button', { name: 'Report a problem' }).click();
   const dialog = alice.page.locator('dialog.report');
   await dialog.locator('select').selectOption('text');

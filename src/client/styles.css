@@ -46,8 +46,29 @@ input { background: var(--panel2); color: var(--fg); border: 1px solid var(--lin
 .scroll { display: contents; }
 .side { grid-column: 1; grid-row: 1 / -1; display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--line); padding: 0 14px 14px; overflow: auto; }
 .side > * { flex: none; }
-/* rare actions live at the very bottom of the sidebar, far from anything clicked often */
-.side-foot { margin-top: auto; padding-top: 18px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 14px; }
+/* Me at the bottom of the sidebar, after every room; the rare actions behind ⚙, far from anything clicked often. Not sticky:
+   a bar of its own colour would cover what a theme draws at the bottom of the sidebar. */
+.side-me { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 10px 0 0; border-top: 1px solid var(--line); }
+.side-me .nm { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-me .nm.pending { opacity: .45; }
+.side-me .gear { flex: none; width: 32px; height: 32px; padding: 0; border-radius: 50%; border: 0; background: none; color: var(--dim); font-size: 17px; line-height: 1; }
+.side-me .gear:hover, .side-me .gear:focus-visible { color: var(--fg); background: var(--panel2); }
+.side-foot[popover] { position: fixed; inset: auto; margin: 0; overflow: auto; padding: 10px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.side-foot[popover]:popover-open { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
+.side-foot > button.link, .side-foot .about-link button.link { text-align: left; padding: 7px 8px; border-radius: 8px; font-size: 14px; text-decoration: none; }
+.side-foot > button.link:hover, .side-foot .about-link button.link:hover { background: var(--panel2); }
+.side-foot .theme-pick { margin: 6px 8px 2px; }
+/* Another room's call, at a glance: the faces of who is in it, overlapping a little; nothing for a room without one */
+.callfaces { display: flex; padding: 0 0 4px 2px; }
+.callfaces .face { position: relative; display: inline-flex; margin-left: -6px; border-radius: 50%; }
+.callfaces .face:first-child { margin-left: 0; }
+.callfaces .face.on .avatar { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--acc); }
+.callfaces .face .unread { position: absolute; z-index: 1; top: -6px; right: -8px; font-size: 9px; line-height: 14px; padding: 0 4px; }
+.callfaces .avatar { width: 24px; height: 24px; font-size: 12px; box-shadow: 0 0 0 2px var(--panel); }
+.callfaces .avatar.pic { font-size: 14px; }
+/* The call of the room on screen, in a box of its own; who is here and not in it follows below, ready to join */
+.plist.callbox { padding: 8px; border-radius: 10px; background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.plist.here { margin-top: 8px; }
 .newroom { display: flex; gap: 6px; width: 100%; }
 .newroom input { flex: 1; min-width: 0; }
 /* the pasted link is long, so the field takes a line of its own and the buttons the next */
@@ -67,7 +88,8 @@ button.room-name:focus-visible { outline: 2px solid var(--acc); outline-offset: 
 .unread { flex: none; font-size: 10px; line-height: 16px; background: var(--acc); color: #fff; border-radius: 999px; padding: 0 6px; font-weight: 700; }
 .room-head button.link.on { color: var(--fg); }
 /* that room's presence is stale while its socket is down (spec §8.1); the header stays clickable */
-.room.frozen .plist, .room.frozen .actions { opacity: .45; pointer-events: none; transition: opacity .2s; }
+.room.frozen .plist, .room.frozen .callfaces { opacity: .45; transition: opacity .2s; } /* stale, like the rest of the room, but still the way to a friend's private conversation */
+.room.frozen .actions { opacity: .45; pointer-events: none; transition: opacity .2s; }
 .panel.invite input { width: 100%; font-size: 12px; font-family: monospace; }
 .panel.invite .hint { margin: 0; }
 /* Scanners want dark modules on light ground with a quiet zone, whatever the theme; the viewBox carries a 4-module margin. */
@@ -350,7 +372,7 @@ button.link { background: none; border: 0; color: var(--dim); font-size: 11px; p
 
 /* Profile card (issues #6, #7): a popover next to the avatar that was clicked. Placed by script, so the
    UA's centred inset is undone here; the top layer keeps it above shares and the composer. */
-.profile[popover] { position: fixed; inset: auto; margin: 0; width: 280px; max-width: calc(100vw - 16px); padding: 14px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); font-size: 14px; }
+.profile[popover] { position: fixed; inset: auto; margin: 0; width: 280px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: auto; padding: 14px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); font-size: 14px; }
 .profile-head { display: flex; align-items: center; gap: 12px; }
 .avatar.big { width: 56px; height: 56px; font-size: 22px; }
 .avatar.big.pic { font-size: 34px; }

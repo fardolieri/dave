@@ -311,8 +311,17 @@ export class Friend {
   /** The banner while the room's socket is away or not let in yet. */
   get away(): Locator { return this.banner.filter({ hasText: /Connecting|Reconnecting|Server unavailable/ }); }
   get selectedRoom(): Locator { return this.page.locator('section.room.selected'); }
-  /** Names in the Online list, "(you)" stripped. */
-  async online(): Promise<string[]> { return (await this.page.locator('aside.side > ul.plist .nm').allInnerTexts()).map(clean); }
+  /**
+   * Names of everyone online and in no call, as the sidebar lists them: friends in my other rooms, then those in the room on
+   * screen, newest first, then me (my own row at the bottom), unless I am in a call.
+   */
+  async online(): Promise<string[]> {
+    const listed = (await this.page.locator('aside.side ul.plist.visitors .nm').allInnerTexts()).map(clean);
+    const self = this.page.locator('aside.side .side-me');
+    const inCall = (await self.getAttribute('data-in-call')) !== null;
+    // Not deduplicated: a friend listed twice is a bug these lists must show.
+    return inCall ? listed : [...listed, clean(await self.locator('.nm').innerText())];
+  }
   /**
    * Waits until the Online list holds these names and has stopped moving: a row slides in over 460 ms, after up to 400 ms
    * (`open` in App.tsx), and a click that Playwright found stable can still land where the row pushed it from. Endless
@@ -320,7 +329,7 @@ export class Friend {
    */
   async settledOnline(...names: string[]): Promise<void> {
     await expect.poll(async () => { const online = await this.online(); return names.filter((n) => !online.includes(n)); }, { message: `${this.name} lists ${names.join(', ')}` }).toEqual([]);
-    await expect.poll(() => this.page.locator('aside.side > ul.plist').first().evaluate((ul) => ul.getAnimations({ subtree: true }).filter((a) => a.effect?.getTiming().iterations !== Infinity).length), { message: `${this.name}'s Online list stops moving` }).toBe(0);
+    await expect.poll(() => this.page.locator('aside.side').evaluate((side) => [...side.querySelectorAll('ul.plist.visitors')].flatMap((ul) => ul.getAnimations({ subtree: true })).filter((a) => a.effect?.getTiming().iterations !== Infinity).length), { message: `${this.name}'s Online list stops moving` }).toBe(0);
   }
 
   /** Names in the selected room's call list, "(you)" stripped. */
@@ -585,6 +594,21 @@ export const test = base.extend<{ crowd: Crowd }>({
     expect(problems, 'console warnings, errors or exceptions nobody expected').toEqual([]);
   },
 });
+
+/** Opens the sidebar's ⚙ menu (new room, join by link, leave, theme, report a problem…), if it is not open already. */
+export async function openMenu(page: Page): Promise<void> {
+  if (await page.locator('#side-menu:popover-open').count()) return;
+  await page.locator('aside.side .side-me button.gear').click();
+  await expect(page.locator('#side-menu')).toBeVisible();
+}
+
+/** Picks a theme from the ⚙ menu, then puts the menu away, so nothing of it is over what the test looks at next. */
+export async function pickTheme(page: Page, value: string): Promise<void> {
+  await openMenu(page);
+  await page.getByRole('combobox', { name: 'Theme', exact: true }).selectOption(value);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#side-menu')).toBeHidden();
+}
 
 /** Skips the current test when the app under test was built without the inspection hooks (a deployed copy). */
 export async function needHooks(friend: Friend): Promise<void> {

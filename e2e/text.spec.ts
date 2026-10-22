@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { expect, newSecret, test } from './fixtures';
+import { expect, newSecret, test, openMenu } from './fixtures';
 
 // Text chat as it works today (server relay, history per browser). These tests pin the behaviour friends see, so they
 // must keep passing through any change to the transport underneath.
@@ -90,6 +90,7 @@ test('received history survives a reload, and "Clear chat history" empties it', 
   await expect.poll(() => bob.chatTexts()).toEqual(['one', 'two']);
 
   bob.page.once('dialog', (d) => void d.accept());
+  await openMenu(bob.page);
   await bob.page.getByRole('button', { name: 'Clear chat history' }).click();
   await expect.poll(() => bob.chatTexts()).toEqual([]);
   await bob.page.reload();
@@ -108,6 +109,7 @@ test('leaving a room forgets its history: the link brings the room back, not the
   // Written first, so that the empty history waited for below is the delete's and not the write's still to come.
   await expect.poll(() => bob.storedTexts()).toEqual(['before']);
   bob.page.once('dialog', (d) => void d.accept());
+  await openMenu(bob.page);
   await bob.page.getByRole('button', { name: `Leave ${crowd.room.name}` }).click();
   await expect(bob.page.locator('button.room-name', { hasText: crowd.room.name })).toHaveCount(0);
   // The room goes from the list at once, its history a moment later; the room the link brings back loads its history

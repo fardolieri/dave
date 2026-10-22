@@ -36,10 +36,32 @@ test('rooms are separate: presence and text do not cross', async ({ crowd }) => 
   expect(await alice.online()).toEqual(['Alice']);
 });
 
+test('the sidebar says who is in the room on screen, who is in another room, and who is in another room\'s call', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
+  await crowd.open('Bob');
+  const carol = await crowd.open('Carol', { rooms: [other] });
+  const names = async (list: string) => (await alice.page.locator(`aside.side ul.plist.${list} .nm`).allInnerTexts()).map((t) => t.trim());
+  const faces = alice.page.locator('aside.side section.room:not(.selected) .callfaces button.avatar');
+  // Bob is here, ready to join the call; Carol is in Other alone.
+  await expect.poll(() => names('here')).toEqual(['Bob']);
+  await expect.poll(() => names('elsewhere')).toEqual(['Carol']);
+  await expect(faces).toHaveCount(0);
+  // In Other's call, Carol leaves the lists and shows as a face under that room.
+  await carol.join();
+  await expect(faces).toHaveCount(1);
+  await expect(faces).toHaveAttribute('title', 'Carol');
+  await expect.poll(() => names('elsewhere')).toEqual([]);
+  expect(await names('here')).toEqual(['Bob']);
+  await carol.leave();
+  await expect(faces).toHaveCount(0);
+  await expect.poll(() => names('elsewhere')).toEqual(['Carol']);
+});
+
 test('a new name reaches everyone', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
-  await alice.page.locator('aside.side > ul.plist li', { hasText: '(you)' }).locator('button.avatar').click();
+  await alice.page.locator('aside.side .side-me button.avatar').click();
   await alice.page.locator('.profile button.edit').click();
   await alice.page.locator('.profile-edit input').fill('Alicia');
   await alice.page.locator('.profile-edit button.on').click();

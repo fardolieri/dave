@@ -27,7 +27,7 @@ function png(width: number, height: number): Buffer {
 /** Opens the private conversation with a friend from their avatar in the Online list. */
 async function openFromOnline(f: Friend, name: string): Promise<void> {
   await f.settledOnline(name);
-  await f.page.locator('aside.side > ul.plist li', { hasText: name }).locator('button.avatar').click();
+  await f.page.locator('aside.side ul.plist.visitors li', { hasText: name }).first().locator('button.avatar').click();
   await expect(f.page.locator('.private-head')).toContainText(name);
 }
 

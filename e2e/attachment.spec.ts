@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import type { Locator, Route } from '@playwright/test';
-import { expect, needHooks, test, type Friend } from './fixtures';
+import { expect, needHooks, test, type Friend, openMenu } from './fixtures';
 
 // Attachments (ADR 0006): the announcement goes sealed through the Room, the bytes from friend to friend over a file
 // link. Bob stays a visitor throughout: file links do not need the call.
@@ -365,7 +365,7 @@ test('a file dropped on the text field or the sidebar waits above the composer, 
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   const hint = `Drop to send to ${await alice.page.locator('.room.selected .room-title').textContent()}`;
-  for (const [where, name] of [[alice.composer, 'field.png'], [alice.page.locator('aside.side h2').first(), 'side.png'], [alice.page.locator('.chat-log'), 'log.png']] as const) {
+  for (const [where, name] of [[alice.composer, 'field.png'], [alice.page.locator('aside.side .room-head').first(), 'side.png'], [alice.page.locator('.chat-log'), 'log.png']] as const) {
     expect(await dropFile(where, hint, name, png(16, 12), 'image/png')).toBe(true);
     await expect(alice.page.locator('.drop-hint')).toHaveCount(0); // gone once dropped
   }
@@ -373,7 +373,7 @@ test('a file dropped on the text field or the sidebar waits above the composer, 
   await expect(alice.composer).toHaveValue(''); // not the file's name typed into the field
   // A drag whose leave never reaches the page (the element under it was taken away) stops sending dragover: the
   // frame goes by itself.
-  await dropFile(alice.page.locator('aside.side h2').first(), hint, 'gone.png', png(16, 12), 'image/png', false);
+  await dropFile(alice.page.locator('aside.side .room-head').first(), hint, 'gone.png', png(16, 12), 'image/png', false);
   await expect(alice.page.locator('.drop-hint')).toHaveCount(0);
   await expect(alice.staged).toHaveCount(3);
   await alice.sendButton.click();
@@ -383,6 +383,7 @@ test('a file dropped on the text field or the sidebar waits above the composer, 
 
 test('a file dropped on the Report a problem dialog is not staged, unseen, for the room behind it', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
+  await openMenu(alice.page);
   await alice.page.getByRole('button', { name: 'Report a problem' }).click();
   const field = alice.page.locator('dialog.report textarea');
   await expect(field).toBeVisible();
