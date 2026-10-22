@@ -68,7 +68,7 @@ input { background: var(--panel2); color: var(--fg); border: 1px solid var(--lin
 .callfaces .avatar.pic { font-size: 14px; }
 /* The call of the room on screen, in a box of its own; who is here and not in it follows below, ready to join */
 .plist.callbox { padding: 8px; border-radius: 10px; background: color-mix(in srgb, var(--ok) 10%, transparent); }
-.plist.here { margin-top: 8px; }
+.plist.here { margin: 0 0 12px; } /* above the call box: a clear gap between who is ready to join and who is in the call */
 .newroom { display: flex; gap: 6px; width: 100%; }
 .newroom input { flex: 1; min-width: 0; }
 /* the pasted link is long, so the field takes a line of its own and the buttons the next */
