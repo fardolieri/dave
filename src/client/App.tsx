@@ -605,7 +605,7 @@ function Workspace(props: WorkspaceProps) {
               return (
                 // The whole box brings the room on screen (back from a private conversation too), not only its name; what in it
                 // does something of its own does that: a button, a field, a menu, a person's row, the faces, the invite panel.
-                <section class={`room ${selected() ? 'selected' : ''} ${selected() && privates.openWith() ? 'behind' : ''} ${l.room.status().kind === 'connected' ? '' : 'frozen'}`}
+                <section class={`room ${selected() ? 'selected' : ''} ${inThis() ? 'in-call' : ''} ${selected() && privates.openWith() ? 'behind' : ''} ${l.room.status().kind === 'connected' ? '' : 'frozen'}`}
                   onClick={(e) => { if (!(e.target as Element).closest('button, input, select, label, a, [popover], .roomfaces, .plist.visitors li, li.prow, .panel')) { privates.close(); props.onSelect(l.saved.secret); } }}>
                   <div class="room-head">
                     <button class="room-name" onClick={() => { privates.close(); props.onSelect(l.saved.secret); }} title={selected() && !privates.openWith() ? 'This room is on screen' : `Read ${l.saved.name}`}>
