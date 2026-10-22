@@ -62,7 +62,6 @@ input { background: var(--panel2); color: var(--fg); border: 1px solid var(--lin
 .callfaces { display: flex; padding: 0 0 4px 2px; }
 .callfaces .face { position: relative; display: inline-flex; margin-left: -6px; border-radius: 50%; }
 .callfaces .face:first-child { margin-left: 0; }
-.callfaces .face.on .avatar { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--acc); }
 .callfaces .face .unread { position: absolute; z-index: 1; top: -6px; right: -8px; font-size: 9px; line-height: 14px; padding: 0 4px; }
 .callfaces .avatar { width: 24px; height: 24px; font-size: 12px; box-shadow: 0 0 0 2px var(--panel); }
 .callfaces .avatar.pic { font-size: 14px; }
@@ -169,8 +168,8 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .chat-empty { align-self: center; margin: auto 0 12px; font-size: 13px; color: var(--dim); }
 /* The room on screen behind a private conversation: still the room the head's back link returns to, dimmed */
 .room.selected.behind .room-title { color: var(--dim); }
-/* A friend's row while my conversation with them is on screen, in the lists of people: the one way in to it */
-.plist li.on, .away li.on { background: color-mix(in srgb, var(--acc) 14%, transparent); border-radius: 8px; }
+/* The conversation on screen: its row under Direct messages, the one highlighted */
+.away li.on { background: color-mix(in srgb, var(--acc) 14%, transparent); border-radius: 8px; }
 .plist .pname .unread, .away .unread { margin-left: 2px; }
 /* Everyone I have a conversation with, folded away above me at the bottom of the sidebar; a friend offline dimmed */
 .dms { margin-top: auto; padding: 10px 0; }

@@ -450,10 +450,17 @@ function Workspace(props: WorkspaceProps) {
   // Another room put on screen (a click, an invite link) ends the conversation on screen; the room behind it going away
   // (left, forgotten) does not: another simply takes its place behind.
   createEffect(() => current(), (now, prev) => { if (prev && now !== prev && untrack(links).includes(prev)) privates.close(); });
-  /** Unread private texts from friends online in none of my rooms: only the folded list of direct messages has a row for them. */
+  // Direct messages unfolds for the conversation on screen, online friend or not: its row there is the one highlighted.
+  // Unfolded so, it folds again once the conversation closes; one I unfolded myself stays as I left it.
   let dms: HTMLDetailsElement | undefined;
-  const unfoldDms = createMemo(() => { const k = privates.openWith(); return !!k && !present(k) && privates.threads().some((t) => t.friend.publicKey === k); });
-  createEffect(unfoldDms, (unfold) => { if (unfold && dms?.isConnected) dms.open = true; });
+  let unfoldedForIt = false;
+  const unfoldDms = createMemo(() => { const k = privates.openWith(); return k && privates.threads().some((t) => t.friend.publicKey === k) ? k : null; });
+  createEffect(unfoldDms, (k) => {
+    if (!dms?.isConnected) return;
+    if (k && !dms.open) { dms.open = true; unfoldedForIt = true; }
+    else if (!k && unfoldedForIt) { dms.open = false; unfoldedForIt = false; }
+  });
+  /** Unread private texts from friends online in none of my rooms: only the folded list of direct messages has a row for them. */
   const awayUnread = createMemo(() => privates.threads().reduce((n, t) => n + (present(t.friend.publicKey) ? 0 : privates.unread(t.friend.publicKey)), 0));
   /** The private conversation on screen: the friend as presence has them now, else as I last saw them. */
   const privateFriend = createMemo(() => {
@@ -559,7 +566,7 @@ function Workspace(props: WorkspaceProps) {
                   // The latest entry; the last one seen while the row is on its way out.
                   let last = untrack(() => elsewhere().find((p) => p.publicKey === key)!);
                   const p = () => (last = elsewhere().find((q) => q.publicKey === key) ?? last);
-                  return <PersonRow p={p()} isMe={false} label={labelOf(p())} arrive={justCame(key)} onProfile={(el) => openProfile(p(), el)} unread={privates.unread(key)} on={privates.openWith() === key} />;
+                  return <PersonRow p={p()} isMe={false} label={labelOf(p())} arrive={justCame(key)} onProfile={(el) => openProfile(p(), el)} unread={privates.unread(key)} />;
                 }}</For>
               </ul>
             </Show>
@@ -609,7 +616,7 @@ function Workspace(props: WorkspaceProps) {
                       <For each={hereKeys()}>{(key) => {
                         let last = untrack(() => here().find((p) => p.publicKey === key)!);
                         const p = () => (last = here().find((q) => q.publicKey === key) ?? last);
-                        return <PersonRow p={p()} isMe={key === me} label={labelOf(p())} arrive={key !== me && justCame(key)} onProfile={(el) => openProfile(p(), el)} unread={privates.unread(key)} on={privates.openWith() === key} />;
+                        return <PersonRow p={p()} isMe={key === me} label={labelOf(p())} arrive={key !== me && justCame(key)} onProfile={(el) => openProfile(p(), el)} unread={privates.unread(key)} />;
                       }}</For>
                     </ul>
                   </Show>
@@ -623,7 +630,7 @@ function Workspace(props: WorkspaceProps) {
                           let last = untrack(() => participants().others.find((p) => p.publicKey === key)!);
                           const p = () => (last = participants().others.find((q) => q.publicKey === key) ?? last);
                           return (
-                            <span class={privates.openWith() === key ? 'face on' : 'face'}>
+                            <span class="face">
                               <Avatar initial={labelOf(p()).shown[0]!} picture={labelOf(p()).picture} title={labelOf(p()).shown} onOpen={(el) => openProfile(p(), el)} />
                               <Show when={privates.unread(key) > 0}><b class="unread" title="New private messages">{privates.unread(key)}</b></Show>
                             </span>
@@ -634,7 +641,7 @@ function Workspace(props: WorkspaceProps) {
                   }>
                   <ul class={`plist ${participants().self || participants().others.length || participants().lost.length ? 'callbox' : ''}`}>
                     <Show when={participants().self}>{(s) => <ParticipantRow p={s()} isMe label={labelOf(s())} onProfile={(el) => openProfile(s(), el)} speaking={l.call.speakingSelf()} />}</Show>
-                    <For each={participants().others}>{(p) => <ParticipantRow p={p} isMe={false} label={labelOf(p)} onProfile={(el) => openProfile(p, el)} unread={privates.unread(p.publicKey)} on={privates.openWith() === p.publicKey} view={inThis() ? viewOf(l, p.publicKey) : undefined} speaking={viewOf(l, p.publicKey)?.speaking ?? false} onVolume={inThis() ? (v) => l.call.setVolume(p.publicKey, v) : undefined} />}</For>
+                    <For each={participants().others}>{(p) => <ParticipantRow p={p} isMe={false} label={labelOf(p)} onProfile={(el) => openProfile(p, el)} unread={privates.unread(p.publicKey)} view={inThis() ? viewOf(l, p.publicKey) : undefined} speaking={viewOf(l, p.publicKey)?.speaking ?? false} onVolume={inThis() ? (v) => l.call.setVolume(p.publicKey, v) : undefined} />}</For>
                     <For each={participants().lost}>{(v) => <li class="lost"><span class="avatar">{displayName(v.name, contactOf(v.publicKey))[0]}</span><span class="pname">{displayName(v.name, contactOf(v.publicKey))} <em>connection to server lost</em></span></li>}</For>
                     <Show when={selected() && !participants().self && participants().others.length === 0 && participants().lost.length === 0}><li class="dim">nobody in the call</li></Show>
                   </ul>
@@ -654,15 +661,15 @@ function Workspace(props: WorkspaceProps) {
             {/* Everyone I have a private conversation with, folded away: the way back to older texts, to a friend offline too.
                 A friend online is also in a list above, with their unread count; here only an offline friend's count shows. */}
             <Show when={privates.threads().length > 0}>
-              {/* Unfolded for the conversation on screen with a friend offline: their row there is the only one left in the sidebar */}
-              <details class="dms ph-no-capture" ref={(el) => { dms = el; if (untrack(unfoldDms)) el.open = true; }}>
+              {/* Unfolded for the conversation on screen: its row here is the one highlighted, wherever else the friend is listed */}
+              <details class="dms ph-no-capture" ref={(el) => { dms = el; if (untrack(unfoldDms)) { el.open = true; unfoldedForIt = true; } }} onToggle={(e) => { if (!e.currentTarget.open) unfoldedForIt = false; }}>
                 <summary>Direct messages<Show when={awayUnread() > 0}><b class="unread" title="New private messages">{awayUnread()}</b></Show></summary>
                 <ul class="away" aria-label="Direct messages">
                   <For each={privates.threads()}>{(t) => {
                     // The friend as presence has them now, else as I last saw them
                     const friend = () => present(t.friend.publicKey) ?? t.friend;
                     return (
-                    <li class={present(t.friend.publicKey) ? '' : `offline ${privates.openWith() === t.friend.publicKey ? 'on' : ''}`}>
+                    <li class={`${present(t.friend.publicKey) ? '' : 'offline'} ${privates.openWith() === t.friend.publicKey ? 'on' : ''}`.trim() || undefined}>
                       <Avatar initial={labelOf(friend()).shown[0]!} picture={labelOf(friend()).picture} title={`Your private conversation with ${labelOf(friend()).shown}`} onOpen={() => openPrivate(friend())} />
                       <span class="pname" title={labelOf(friend()).title}><span class="tname">{labelOf(friend()).shown}</span>
                         <Show when={!labelOf(friend()).known}><b class="new">new</b></Show>
@@ -933,11 +940,11 @@ function open(el: HTMLElement, delay: number): void {
   opening.finished.then(() => { el.style.overflow = ''; }, () => {});
 }
 
-/** `unread`: private texts from this friend I have not read; `on`: my conversation with them is on screen (ADR 0007). */
-function PersonRow(props: { p: Person; isMe: boolean; label: Label; onProfile: (anchor: HTMLElement) => void; pending?: boolean; arrive?: boolean; unread?: number; on?: boolean }) {
+/** `unread`: private texts from this friend I have not read (ADR 0007). */
+function PersonRow(props: { p: Person; isMe: boolean; label: Label; onProfile: (anchor: HTMLElement) => void; pending?: boolean; arrive?: boolean; unread?: number }) {
   const acknowledge = () => { if (!props.label.known) { markKnown(props.p.publicKey, props.p.name); posthog.capture('new_key_acknowledged'); } };
   return (
-    <li ref={(el) => { if (untrack(() => props.arrive)) slideIn(el); }} class={[props.pending ? 'pending' : '', props.on ? 'on' : ''].join(' ').trim() || undefined} onClick={acknowledge} title={props.label.known ? props.label.title : `${props.label.title}. Click to acknowledge.`}>
+    <li ref={(el) => { if (untrack(() => props.arrive)) slideIn(el); }} class={props.pending ? 'pending' : undefined} onClick={acknowledge} title={props.label.known ? props.label.title : `${props.label.title}. Click to acknowledge.`}>
       <Avatar initial={props.label.shown[0]!} picture={props.label.picture} title={props.isMe ? 'Your profile' : `Your private conversation with ${props.label.shown}`} onOpen={props.onProfile} />
       <span class="pname"><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span>
         <Show when={!props.label.known}><b class="new">new</b></Show>
@@ -1252,7 +1259,7 @@ function badgesFitWhole(line: HTMLElement): boolean {
   return avatar.offsetWidth + floor + need + 2 * gap(line) <= line.clientWidth;
 }
 
-function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: PeerView; speaking: boolean; onVolume?: (v: number) => void; onProfile: (anchor: HTMLElement) => void; unread?: number; on?: boolean }) {
+function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: PeerView; speaking: boolean; onVolume?: (v: number) => void; onProfile: (anchor: HTMLElement) => void; unread?: number }) {
   const [sliderOpen, setSliderOpen] = createSignal(false);
   const volume = () => props.view?.volume ?? 1;
   const percent = () => Math.round(volume() * 100);
@@ -1267,7 +1274,7 @@ function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: 
     watcher = [resize, mutation];
   };
   return (
-    <li class={props.on ? 'prow on' : 'prow'}>
+    <li class="prow">
       <div class={`pline ${tight() ? 'tight' : ''}`} ref={watchFit}>
       <Avatar initial={props.label.shown[0]!} picture={props.label.picture} speaking={props.speaking} title={props.isMe ? 'Your profile' : `Your private conversation with ${props.label.shown}`} onOpen={props.onProfile} />
       <span class="pname" title={props.label.title}><span class="nm">{props.label.shown}{props.isMe ? ' (you)' : ''}</span>
