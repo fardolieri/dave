@@ -330,7 +330,7 @@ export class Friend {
    */
   async seen(): Promise<string[]> {
     const listed = (await this.page.locator('aside.side ul.plist .nm').allInnerTexts()).map(clean);
-    const faces = await this.page.locator('aside.side .roomfaces button.avatar').evaluateAll((els) => els.map((e) => (e.getAttribute('title') ?? '').split(/[.,]/)[0]!.trim()));
+    const faces = await this.page.locator('aside.side .roomfaces .avatar').evaluateAll((els) => els.map((e) => (e.getAttribute('title') ?? '').split(/[.,]/)[0]!.trim()));
     return [...listed, ...faces];
   }
   /** As settledOnline, for names shown anywhere in the sidebar (`seen`): a friend in another room only is a face there. */

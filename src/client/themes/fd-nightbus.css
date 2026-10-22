@@ -35,7 +35,7 @@
 :root[data-theme="fd-nightbus"] button.room-name { background: var(--sign); border: 1px solid #22365A; border-radius: 3px; padding: 5px 8px 3px; }
 :root[data-theme="fd-nightbus"] .room-title { font-family: 'Doto', 'Overpass', monospace; font-weight: 800; font-size: 19px; line-height: 1.1;
   text-transform: none; letter-spacing: .02em; color: var(--led-off); }
-:root[data-theme="fd-nightbus"] .room.selected .room-title, :root[data-theme="fd-nightbus"] button.room-name:hover .room-title { color: var(--led);
+:root[data-theme="fd-nightbus"] .room.selected .room-title, :root[data-theme="fd-nightbus"] .room:hover .room-title { color: var(--led);
   text-shadow: 0 0 6px rgba(255,158,27,.55); }
 :root[data-theme="fd-nightbus"] .room.selected button.room-name { border-color: #5A3A10; }
 :root[data-theme="fd-nightbus"] .unread { background: var(--acc); color: #04213A; font-family: 'Overpass', sans-serif; font-size: 11px; }

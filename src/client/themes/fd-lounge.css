@@ -36,7 +36,7 @@
 :root[data-theme="fd-lounge"] .side { background: var(--panel); border-right: 0; box-shadow: inset -1px 0 0 rgba(255,255,255,.04), 8px 0 24px rgba(0,0,0,.25); padding-left: 18px; padding-right: 18px; }
 :root[data-theme="fd-lounge"] .room { margin-top: 6px; }
 :root[data-theme="fd-lounge"] .room-title { font-family: var(--serif); font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 18px; color: var(--dim); }
-:root[data-theme="fd-lounge"] .room.selected .room-title, :root[data-theme="fd-lounge"] button.room-name:hover .room-title { color: var(--fg); }
+:root[data-theme="fd-lounge"] .room.selected .room-title, :root[data-theme="fd-lounge"] .room:hover .room-title { color: var(--fg); }
 :root[data-theme="fd-lounge"] .unread { background: var(--acc); color: #3A0F28; }
 :root[data-theme="fd-lounge"] .plist { gap: 9px; }
 :root[data-theme="fd-lounge"] .avatar { width: 32px; height: 32px; background: var(--panel2); color: var(--fg); }

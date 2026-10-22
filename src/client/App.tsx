@@ -603,24 +603,26 @@ function Workspace(props: WorkspaceProps) {
               const menuId = `room-menu-${++roomMenus}`;
               const roomMenu = sidebarMenu({ width: ROOM_MENU_W, prefer: 'below' });
               return (
-                // The whole box brings the room on screen (back from a private conversation too), not only its name; what in it
-                // does something of its own does that: a button, a field, a menu, a person's row, the faces, the invite panel.
+                // The whole box brings the room on screen (back from a private conversation too), its name (a button, for the keyboard)
+                // and its faces included; what in it
+                // does something of its own does that: another button, a field, a menu, a person's row, the invite panel.
                 <section class={`room ${selected() ? 'selected' : ''} ${inThis() ? 'in-call' : ''} ${selected() && privates.openWith() ? 'behind' : ''} ${l.room.status().kind === 'connected' ? '' : 'frozen'}`}
-                  onClick={(e) => { if (!(e.target as Element).closest('button, input, select, label, a, [popover], .roomfaces, .plist.visitors li, li.prow, .panel')) { privates.close(); props.onSelect(l.saved.secret); } }}>
+                  onClick={(e) => { if (!(e.target as Element).closest('button:not(.room-name), input, select, label, a, [popover], .plist.visitors li, li.prow, .panel')) { privates.close(); props.onSelect(l.saved.secret); } }}>
                   <div class="room-head">
-                    <button class="room-name" onClick={() => { privates.close(); props.onSelect(l.saved.secret); }} title={selected() && !privates.openWith() ? 'This room is on screen' : `Read ${l.saved.name}`}>
+                    <button class="room-name" title={selected() && !privates.openWith() ? 'This room is on screen' : `Read ${l.saved.name}`}>
                       <span class="room-title">{l.saved.name}</span>
                       <Show when={l.room.unread() > 0}><b class="unread" title="new messages">{l.room.unread()}</b></Show>
                     </button>
                     <Show when={!selected() && roomFaceKeys().length > 0}>
-                      {/* Out of PostHog's recordings with its names (`ph-no-capture`); a face carries its friend's unread private texts */}
+                      {/* Out of PostHog's recordings with its names (`ph-no-capture`); a face carries its friend's unread private texts.
+                          Only pictures, no buttons: a click on them is a click on the room, which opens it */}
                       <div class="roomfaces ph-no-capture" title={faces().map((p) => `${labelOf(p).shown}${p.role === 'participant' ? ' (in the call)' : ''}`).join(', ')}>
                         <For each={roomFaceKeys()}>{(key) => {
                           let last = untrack(() => faces().find((p) => p.publicKey === key)!);
                           const p = () => (last = faces().find((q) => q.publicKey === key) ?? last);
                           return (
                             <span class={p().role === 'participant' ? 'face in-call' : 'face'}>
-                              <Avatar initial={labelOf(p()).shown[0]!} picture={labelOf(p()).picture} title={`${labelOf(p()).shown}${p().role === 'participant' ? ', in the call' : ''}${labelOf(p()).known ? '' : '. A new key: opening their card acknowledges it.'}`} onOpen={(el) => openProfile(p(), el)} />
+                              <span class={`avatar ${labelOf(p()).picture ? 'pic' : ''}`} title={`${labelOf(p()).shown}${key === me ? ' (you)' : ''}${p().role === 'participant' ? ', in the call' : ''}${labelOf(p()).known || key === me ? '' : ', a new key'}`}>{labelOf(p()).picture ?? labelOf(p()).shown[0]}</span>
                               <Show when={privates.unread(key) > 0}><b class="unread" title="New private messages">{privates.unread(key)}</b></Show>
                               <Show when={!labelOf(p()).known}><b class="newdot" title="new" /></Show>
                             </span>

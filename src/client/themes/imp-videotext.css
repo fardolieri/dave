@@ -28,7 +28,7 @@
 :where(:root[data-theme="imp-videotext"]) .room-head { margin: 14px -14px 6px; padding: 3px 14px; background: var(--bar); }
 :where(:root[data-theme="imp-videotext"]) .room-title { color: var(--acc); font-size: 13px; letter-spacing: .04em; }
 :where(:root[data-theme="imp-videotext"]) .room.selected .room-title,
-:where(:root[data-theme="imp-videotext"]) button.room-name:hover .room-title { color: var(--warn); }
+:where(:root[data-theme="imp-videotext"]) .room:hover .room-title { color: var(--warn); }
 :where(:root[data-theme="imp-videotext"]) .room-head :is(button.link, .room-more) { color: #fff; }
 :where(:root[data-theme="imp-videotext"]) .room-head button.link.on { color: var(--warn); }
 :where(:root[data-theme="imp-videotext"]) button.room-name:focus-visible { outline-color: var(--warn); }

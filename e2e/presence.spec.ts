@@ -44,7 +44,7 @@ test('the sidebar lists who is in the room on screen, and shows another room\'s 
   const dave = await crowd.open('Dave', { rooms: [other] });
   const here = async () => (await alice.page.locator('aside.side ul.plist.here .nm').allInnerTexts()).map((t) => t.replace(/\s*\(you\)\s*$/, '').trim());
   const faces = () => alice.page.locator('aside.side section.room:not(.selected) .room-head .roomfaces .face').evaluateAll((els) =>
-    els.map((e) => `${e.querySelector('button.avatar')!.getAttribute('title')!.split(/[.,]/)[0]}${e.classList.contains('in-call') ? ' [call]' : ''}`));
+    els.map((e) => `${e.querySelector('.avatar')!.getAttribute('title')!.split(/[.,]/)[0]}${e.classList.contains('in-call') ? ' [call]' : ''}`));
   // Bob and I are here, ready to join the call; Carol and Dave are in Other, as faces beside its name, the newest first.
   await expect.poll(here).toEqual(['Bob', 'Alice']);
   await expect.poll(faces).toEqual(['Dave', 'Carol']);

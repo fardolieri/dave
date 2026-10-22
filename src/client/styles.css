@@ -86,7 +86,7 @@ aside.side .room-head .roomfaces .avatar.pic { font-size: 13px; } /* over any th
 .room-head { display: flex; align-items: center; gap: 6px; margin: 14px 0 6px; }
 button.room-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: none; border: 0; border-radius: 6px; padding: 2px 0; text-align: left; cursor: pointer; }
 .room-title { font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.room.selected .room-title, button.room-name:hover .room-title { color: var(--fg); }
+.room.selected .room-title, .room:hover .room-title { color: var(--fg); }
 button.room-name:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .unread { flex: none; font-size: 10px; line-height: 16px; background: var(--acc); color: #fff; border-radius: 999px; padding: 0 6px; font-weight: 700; }
 /* The room on screen stands out on a ground of its own */
