@@ -94,6 +94,7 @@ button.room-name:focus-visible { outline: 2px solid var(--acc); outline-offset: 
 :where(.room) { margin: 8px -8px 0; padding: 0 8px 8px; border-radius: 12px; background: color-mix(in srgb, var(--fg) 2.5%, transparent); cursor: pointer; transition: background .15s; }
 :where(.room:not(.selected)):hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
 :where(.room.selected) { background: color-mix(in srgb, var(--fg) 7.5%, transparent); cursor: default; }
+.room.selected:not(.behind) button.room-name { cursor: default; } /* already on screen: nothing to click; behind a private conversation, it brings the room back */
 :where(.room) > .room-head { margin-top: 0; padding-top: 8px; } /* low specificity: a theme's head spacing wins */
 :where(.room:not(.selected)) > .room-head { margin-bottom: 0; }
 /* A room's ⋯ menu: invite, clear chat history, leave */
