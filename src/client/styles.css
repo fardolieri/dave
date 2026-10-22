@@ -538,3 +538,40 @@ dialog.about dd { margin: 0; }
 
 /* The design-trial picker (theme.ts): as quiet as the links around it. */
 .theme-pick { background: none; color: var(--dim); border: 1px solid var(--line); border-radius: 6px; font-size: 11px; padding: 2px 4px; }
+
+/* ── The default look: porch light ──────────────────────────────────────────────────────────────────────────────────────
+   A few friends at someone's place after dark, the porch light on. Plum night for the ground, paper-warm white for text,
+   one amber for what wants a hand (links, badges, the picked button, focus) and mint for the call. A rounded face, sentence
+   case for names: people and rooms, not labels. The one bold thing: the room on screen is lit, light falling from the top
+   of its box. Only when no theme is picked (no `data-theme`), so every theme keeps the base rules it was made against. */
+:root:not([data-theme]) {
+  --bg:#17141d; --panel:#1e1a26; --panel2:#2a2433; --fg:#f1ebe4; --dim:#a397a8; --line:#382f43;
+  --ok:#6fd6a0; --warn:#ffd27a; --bad:#ff6f6f; --acc:#f6b25a; --on-acc:#21170c;
+  font-family: ui-rounded, 'SF Pro Rounded', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  accent-color: var(--acc);
+}
+:root:not([data-theme]) body { font-size: 14.5px; line-height: 1.4; }
+:root:not([data-theme]) ::selection { background: color-mix(in srgb, var(--acc) 35%, transparent); }
+/* Amber is light: what sits on it is dark */
+:root:not([data-theme]) :is(.unread, button.on, .update, select.picker option:checked) { color: var(--on-acc); }
+:root:not([data-theme]) button.join { color: #0d2b1c; }
+:root:not([data-theme]) :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+/* Names, not labels: rooms and the folded list in sentence case, a little larger, the room on screen in full white */
+:root:not([data-theme]) .room-title { font-size: 14px; font-weight: 650; text-transform: none; letter-spacing: 0; }
+:root:not([data-theme]) .dms > summary { font-size: 13px; font-weight: 600; text-transform: none; letter-spacing: 0; }
+:root:not([data-theme]) .side-top .brand { font-weight: 800; font-size: 20px; letter-spacing: -.02em; color: var(--acc); }
+/* The lit room: warm light from the box's top edge, fading by the middle; the rest stay in the dark ground */
+:root:not([data-theme]) :where(.room.selected) {
+  background:
+    linear-gradient(to bottom, color-mix(in srgb, var(--acc) 11%, transparent), transparent 75%),
+    color-mix(in srgb, var(--fg) 5%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--acc) 40%, transparent);
+}
+:root:not([data-theme]) :where(.room.selected.behind) { background: color-mix(in srgb, var(--fg) 5%, transparent); box-shadow: none; } /* a private conversation is on screen: the lamp is there */
+/* The call box: the mint of the call, a touch more present than a tint */
+:root:not([data-theme]) .plist.callbox { background: color-mix(in srgb, var(--ok) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 22%, transparent); }
+/* Pebbles, not discs: avatars a soft square, the room's faces too (their rings follow the shape) */
+:root:not([data-theme]) .avatar { border-radius: 38%; }
+:root:not([data-theme]) .roomfaces .face { border-radius: 38%; }
+/* The private conversation's head and the profile card: the friend's pebble in the lamp's light */
+:root:not([data-theme]) .avatar.big { box-shadow: 0 0 0 4px color-mix(in srgb, var(--acc) 22%, transparent); }
