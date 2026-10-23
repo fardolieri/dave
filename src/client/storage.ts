@@ -40,6 +40,27 @@ export async function idbSet(key: IdbKey, value: unknown): Promise<void> {
   });
 }
 
+/**
+ * Keeps `value` under `key` unless something is stored there already, in one transaction, and returns what is stored
+ * then: two tabs that race to make the same thing end up with the same one.
+ */
+export async function idbKeep<T>(key: IdbKey, value: T): Promise<T> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    let kept: T = value;
+    const req = store.get(key);
+    req.onsuccess = () => {
+      if (req.result === undefined) store.put(value, key);
+      else kept = req.result as T;
+    };
+    tx.oncomplete = () => resolve(kept);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new Error('transaction aborted')); // a full disk aborts at the commit
+  });
+}
+
 export async function idbDelete(key: IdbKey): Promise<void> {
   const db = await openDb();
   return new Promise((resolve, reject) => {
@@ -51,10 +72,10 @@ export async function idbDelete(key: IdbKey): Promise<void> {
 }
 
 /** The parsed IndexedDB keys; `identity` is read raw with idbGet. */
-export type ParsedIdbKey = 'history' | `history:${string}`;
+export type ParsedIdbKey = 'history' | `history:${string}` | `private:${string}`;
 /** Reads an IndexedDB key through its parser in the registry. */
 export async function idbRead(key: ParsedIdbKey): Promise<ReturnType<(typeof IDB)['history']['parse']>> {
-  const entry = key === 'history' ? IDB.history : IDB['history:<roomId>'];
+  const entry = key === 'history' ? IDB.history : key.startsWith('private:') ? IDB['private:<friendKey>'] : IDB['history:<roomId>'];
   return entry.parse(await idbGet<unknown>(key));
 }
 

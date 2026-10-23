@@ -24,6 +24,18 @@ _Avoid_: Room key, chat password
 A text as it travels: encrypted with the text key and signed by its writer, so the server passes it on without being able to read or forge it.
 _Avoid_: Encrypted message (in UI copy), ciphertext (fine in code)
 
+**Private text**:
+A text to one friend, sealed so that only the two of them can read it, and relayed by a Room the two share to that friend alone. Live, like any text (ADR 0007).
+_Avoid_: DM, whisper, direct message (in UI copy)
+
+**Private conversation**:
+All private texts and files between me and one friend, apart from every room, whichever room carried them. Opened from the friend's avatar in the sidebar, whose row carries its unread count, with their profile as its head.
+_Avoid_: DM, thread (in UI copy), chat
+
+**Private text key**:
+The second keypair of a browser, next to its identity, that private texts to it are sealed with. Published in presence, signed by the identity, so the server cannot slip in its own.
+_Avoid_: Encryption key, DM key
+
 **Attachment**:
 A file sent into the chat: a picture, a GIF, a video or anything else. Its announcement travels like a sealed text, with a small preview; its bytes go from friend to friend and never through the server (ADR 0006).
 _Avoid_: Upload, media, image (unless it is one)
@@ -97,7 +109,7 @@ A per-browser keypair that makes a friend's display name stable and unforgeable 
 _Avoid_: Account, login, profile
 
 **Profile card**:
-The popover that opens from an avatar: name, fingerprint, since when this browser knows the key, and the edits that fit, a nickname for a friend, or your own name and profile picture for everyone.
+Who someone is: name, fingerprint, since when this browser knows the key, and the edits that fit, a nickname for a friend, or your own name and profile picture for everyone. Mine is a popover from my own avatar; a friend's is the head of my private conversation with them.
 _Avoid_: Popup, tooltip, user details, modal
 
 **Profile picture**:
@@ -105,7 +117,7 @@ The one emoji a friend chose to fill their avatar instead of their initial. Self
 _Avoid_: Avatar (the circle itself, which shows either), icon, emoji (the picker's currency, not the role), image, photo
 
 **Avatar**:
-The circle beside a name in the lists: the profile picture when there is one, else the initial. Clicking it opens the profile card.
+The circle beside a name in the lists: the profile picture when there is one, else the initial. Clicking mine opens my profile card; clicking a friend's opens my private conversation with them.
 _Avoid_: Badge, bubble, icon
 
 **Acknowledged**:

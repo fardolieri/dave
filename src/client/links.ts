@@ -84,7 +84,7 @@ const candidateType = (line: string): string => /\btyp (\w+)/.exec(line)?.[1] ??
  * The file links of one room. `serves` says whether a file is one this room has seen announced: a friend can pull only
  * those, not whatever else this browser keeps from other rooms.
  */
-export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMessage) => boolean; serves: (hash: string) => Promise<boolean> }) {
+export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMessage) => boolean; serves: (hash: string, peer: string) => Promise<boolean> }) {
   const me = opts.identity.publicKey;
   const links = new Map<string, Link>();
   /** Friends whose offer is being answered, before its link exists. */
@@ -259,8 +259,8 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
     clearTimeout(link.idle);
     try {
       // A pieced file's list of piece hashes, asked first (ticket 03): sent like its bytes, from the start.
-      const list = frame.t === 'list' && (await opts.serves(frame.hash)) ? await listOf(frame.hash) : null;
-      const blob = frame.t === 'list' ? (list ? new Blob([list as BlobPart]) : null) : (await opts.serves(frame.hash)) ? await keptFile(frame.hash) : null;
+      const list = frame.t === 'list' && (await opts.serves(frame.hash, link.peer)) ? await listOf(frame.hash) : null;
+      const blob = frame.t === 'list' ? (list ? new Blob([list as BlobPart]) : null) : (await opts.serves(frame.hash, link.peer)) ? await keptFile(frame.hash) : null;
       const offset = frame.t === 'get' ? frame.offset : 0;
       if (!blob || offset > blob.size) { say({ t: 'none' }); return; }
       const chunk = Math.min(CHUNK_BYTES, link.pc.sctp?.maxMessageSize || CHUNK_BYTES);

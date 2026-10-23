@@ -17,9 +17,9 @@ import { parseContacts } from './names';
 import { normalisePicture } from './protocol';
 import { parseRejoinMarker } from './rejoin';
 import { parseStoredRooms } from './rooms';
-import { parseHistory } from './chatlog';
+import { parseHistory, parsePrivateThreads } from './chatlog';
 import { parseBigIndex, parseFileIndex, parsePartialPull } from './attachment';
-import { parseUnsent } from './unsent';
+import { parseUnsent, parseUnsentPrivate } from './unsent';
 import { parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes } from './settings';
 
 /** A stored key: what it holds, the parser every read goes through, and stored values from the wild. */
@@ -100,6 +100,12 @@ export const LOCAL = {
     map: true,
     fixtures: { '2026-10-14, unsent texts': '{"roomA":[{"id":"0a1b2c3d4e5f60718293a4b5","text":"hi","at":1760450000000}]}' },
   },
+  unsentPrivate: {
+    about: 'My own private texts (ADR 0007) the Room has not brought back yet, per room id, with their friend, sent again after a reload once the Room lists them (core/unsent.ts, client/history.ts).',
+    parse: parseUnsentPrivate,
+    map: true,
+    fixtures: { '2026-10-20, private texts': '{"roomA":[{"id":"0a1b2c3d4e5f60718293a4b5","to":{"publicKey":"pkB","fingerprint":"DEF456","name":"Ben","picture":"🦕"},"text":"hi","at":1760900000000},{"id":"1a1b2c3d4e5f60718293a4b5","to":{"publicKey":"pkC","fingerprint":"GHI789","name":"Cleo"},"text":"yo","at":1760900001000,"out":true}]}' },
+  },
   theme: { about: 'The look picked at the bottom of the sidebar, a file name in client/themes/; none is the default look (client/theme.ts).', parse: text, fixtures: { '2026-10-15': 'fd-walkie' } },
   viewerSettings: { about: 'Low latency for shares I watch (core/settings.ts, client/call.ts).', parse: parseViewerSettings, fixtures: { '2026-09-06, low latency': '{"jitterBufferTargetMs":100}' } },
 } satisfies Record<string, StoredKey<string | null>>;
@@ -109,6 +115,11 @@ export type LocalKey = keyof typeof LOCAL;
 export const IDB = {
   identity: {
     about: 'My identity keypair, a non-extractable CryptoKeyPair (client/identity.ts). Not parsed: a missing one means a new identity, by design.',
+    parse: null,
+    fixtures: {},
+  },
+  privateTextKey: {
+    about: 'My private text key (ADR 0007), a non-extractable ECDH CryptoKeyPair (client/identity.ts). Not parsed: a missing one means a new key, which friends learn from presence.',
     parse: null,
     fixtures: {},
   },
@@ -133,6 +144,50 @@ export const IDB = {
           file: { name: 'notes.zip', type: 'application/zip', size: 2048, hash: 'AAAAgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg' },
         },
         { from: { publicKey: 'pkB', fingerprint: 'DEF456', name: 'Ben' }, text: 'from an old client', at: 1760500003000 },
+      ],
+      '2026-10-19, private texts': [
+        { from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna', picture: '🦕' }, text: 'hi', at: 1760900000000, id: '0a1b2c3d4e5f60718293a4b5' },
+        { from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna' }, text: 'just between us', at: 1760900001000, id: '1a1b2c3d4e5f60718293a4b5', to: { publicKey: 'pkB', fingerprint: 'DEF456', name: 'Ben' } },
+        { from: { publicKey: 'pkB', fingerprint: 'DEF456', name: 'Ben' }, text: 'ok', at: 1760900001200, id: '5a1b2c3d4e5f60718293a4b5', to: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna', picture: '🦕' } },
+        {
+          from: { publicKey: 'pkB', fingerprint: 'DEF456', name: 'Ben' }, text: 'cat.jpg', at: 1760900001500, id: '3a1b2c3d4e5f60718293a4b5',
+          file: { name: 'cat.jpg', type: 'image/jpeg', size: 123456, hash: 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg', preview: 'data:image/webp;base64,UklGRg==', width: 4032, height: 3024 },
+        },
+        { from: { publicKey: 'pkB', fingerprint: 'DEF456', name: 'Ben' }, text: 'a stray to', at: 1760900002000, id: '2a1b2c3d4e5f60718293a4b5', to: { name: 'no key' } },
+        {
+          from: { publicKey: 'pkB', fingerprint: 'DEF456', name: 'Ben' }, text: 'notes.zip', at: 1760900003000, id: '4a1b2c3d4e5f60718293a4b5',
+          file: { name: 'notes.zip', type: 'application/zip', size: 2048, hash: 'AAAAgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg' },
+        },
+        { from: { publicKey: 'pkB', fingerprint: 'DEF456', name: 'Ben' }, text: 'from an old client', at: 1760900004000 },
+      ],
+    },
+  },
+  'private:<friendKey>': {
+    about: 'My private conversation with one friend (ADR 0007), texts and files both ways, whichever room carried them; like a room\'s history (core/chatlog.ts, client/history.ts).',
+    parse: parseHistory,
+    fixtures: {
+      '2026-10-21, private conversations': [
+        { from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna', picture: '🦕' }, text: 'just between us', at: 1761000000000, id: '0a1b2c3d4e5f60718293a4b5' },
+        { from: { publicKey: 'pkMe', fingerprint: 'XYZ789', name: 'Me' }, text: 'ok', at: 1761000001000, id: '1a1b2c3d4e5f60718293a4b5' },
+      ],
+      '2026-10-21, private files': [
+        { from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna', picture: '🦕' }, text: 'just between us', at: 1761000000000, id: '0a1b2c3d4e5f60718293a4b5' },
+        {
+          from: { publicKey: 'pkMe', fingerprint: 'XYZ789', name: 'Me' }, text: 'cat.jpg', at: 1761000001000, id: '1a1b2c3d4e5f60718293a4b5',
+          file: { name: 'cat.jpg', type: 'image/jpeg', size: 123456, hash: 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg', preview: 'data:image/webp;base64,UklGRg==', width: 4032, height: 3024 },
+        },
+        { from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna' }, text: 'notes.zip', at: 1761000002000, id: '2a1b2c3d4e5f60718293a4b5', file: { name: 'notes.zip', type: 'application/zip', size: 2048, hash: 'AAAAgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg' } },
+      ],
+    },
+  },
+  privateThreads: {
+    about: 'My private conversations, most recent first: the friend and when the last text came or went (core/chatlog.ts, client/history.ts).',
+    parse: parsePrivateThreads,
+    fixtures: {
+      '2026-10-21, private conversations': [
+        { friend: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna', picture: '🦕' }, at: 1761000001000 },
+        { friend: { publicKey: 'pkB', fingerprint: 'DEF456', name: 'Ben' }, at: 1760900000000 },
+        { friend: { name: 'no key' }, at: 1 },
       ],
     },
   },
@@ -167,7 +222,7 @@ export const IDB = {
     fixtures: { '2026-09-08, before rooms': [{ from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna' }, text: 'hi', at: 1757500000000 }] },
   },
 } satisfies Record<string, StoredKey<unknown>>;
-export type IdbKey = Exclude<keyof typeof IDB, 'history:<roomId>' | 'file:<hash>' | 'partial:<hash>' | 'pieces:<hash>'> | `history:${string}` | `file:${string}` | `partial:${string}` | `pieces:${string}`;
+export type IdbKey = Exclude<keyof typeof IDB, 'history:<roomId>' | 'private:<friendKey>' | 'file:<hash>' | 'partial:<hash>' | 'pieces:<hash>'> | `history:${string}` | `private:${string}` | `file:${string}` | `partial:${string}` | `pieces:${string}`;
 
 /** sessionStorage, per tab and gone with it, so a changed shape meets old values only across one reload. Read in place. */
 export const SESSION = {

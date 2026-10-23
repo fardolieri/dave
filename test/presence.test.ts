@@ -14,7 +14,7 @@ type Keys = Awaited<ReturnType<typeof generateIdentityKeyPair>>;
 type Client = { ws: WebSocket; you: Person; keys: Keys; inbox: ServerMessage[]; next: (pred?: (m: ServerMessage) => boolean) => Promise<ServerMessage> };
 
 /** Opens and authenticates a visitor (attaches a socket), returning a client whose inbox records everything after the welcome. `keys` reuses an identity. */
-async function attach(name: string, picture?: string, keys?: Keys, secret = SECRET): Promise<Client> {
+async function attach(name: string, picture?: string, keys?: Keys, secret = SECRET, extra: Record<string, unknown> = {}): Promise<Client> {
   const ws = await openRoomSocket(secret);
   const inbox: ServerMessage[] = [];
   const waiters: Array<{ pred: (m: ServerMessage) => boolean; resolve: (m: ServerMessage) => void }> = [];
@@ -32,7 +32,7 @@ async function attach(name: string, picture?: string, keys?: Keys, secret = SECR
     });
   const challenge = (await next((m) => m.t === 'challenge')) as Challenge;
   keys ??= await generateIdentityKeyPair();
-  ws.send(JSON.stringify(await authFrame(challenge, keys, secret, name, picture)));
+  ws.send(JSON.stringify({ ...(await authFrame(challenge, keys, secret, name, picture)), ...extra }));
   const welcome = (await next((m) => m.t === 'welcome')) as { you: Person };
   return { ws, you: welcome.you, keys, inbox, next };
 }
@@ -179,6 +179,33 @@ describe('text', () => {
     expect(seenByB.from.name).toBe('Bob');
     a.ws.close(1000, 'bye');
     b.ws.close(1000, 'bye');
+  });
+
+  it('relays a private text to its friend only, and back to its writer, with the private text key the writer published (ADR 0007)', async () => {
+    const privateTexts = { key: 'k'.repeat(87), sig: 's'.repeat(86) };
+    const a = await attach('Alice', undefined, undefined, SECRET, { privateTexts });
+    const b = await attach('Bob');
+    const c = await attach('Carol');
+    expect(a.you.privateTexts).toEqual(privateTexts);
+    a.ws.send(JSON.stringify({ t: 'private', to: b.you.publicKey, sealed: 'b3BhcXVl', id: 'c0ffee' }));
+    const toBob = await b.next((m) => m.t === 'private');
+    const back = await a.next((m) => m.t === 'private');
+    expect(toBob).toMatchObject({ t: 'private', from: { publicKey: a.you.publicKey, fingerprint: a.you.fingerprint, name: 'Alice' }, to: b.you.publicKey, key: privateTexts, sealed: 'b3BhcXVl', id: 'c0ffee' });
+    expect(back).toEqual(toBob);
+    // Carol hears of the next text to the room, and of nothing before it.
+    a.ws.send(sealed('after'));
+    await c.next((m) => m.t === 'sealed');
+    expect(c.inbox.some((m) => m.t === 'private')).toBe(false);
+    a.ws.close(1000, 'bye'); b.ws.close(1000, 'bye'); c.ws.close(1000, 'bye');
+  });
+
+  it('refuses a private text to a friend not here, or to oneself, by its id', async () => {
+    const a = await attach('Alice');
+    a.ws.send(JSON.stringify({ t: 'private', to: 'nobody', sealed: 'b3BhcXVl', id: 'c0ffee' }));
+    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'that friend is not here', ref: 'private', id: 'c0ffee' });
+    a.ws.send(JSON.stringify({ t: 'private', to: a.you.publicKey, sealed: 'b3BhcXVl', id: 'beef' }));
+    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'that friend is not here', ref: 'private', id: 'beef' });
+    a.ws.close(1000, 'bye');
   });
 
   it('refuses a plain text as from an app out of date, and relays it to nobody (ADR 0005)', async () => {

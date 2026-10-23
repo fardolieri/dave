@@ -1,6 +1,7 @@
 import { idbDelete, idbGet, idbRead, idbSet, local, type ParsedIdbKey } from './storage';
-import { MAX_HISTORY, type StoredText } from '../core/chatlog';
-import { UNSENT_MAX, type UnsentText } from '../core/unsent';
+import { MAX_HISTORY, type PrivateThread, type StoredText } from '../core/chatlog';
+import { IDB } from '../core/storedstate';
+import { UNSENT_MAX, type UnsentPrivate, type UnsentText } from '../core/unsent';
 import type { Identity } from '../core/protocol';
 
 /**
@@ -21,14 +22,62 @@ export function loadHistory(roomId: string): Promise<StoredText[]> {
 }
 
 let chain: Promise<void> = Promise.resolve();
-/** Appends one line, de-duplicated by key, trimming to the cap. Writes are serialised. */
+/**
+ * Appends one line, de-duplicated by key, and by writer and id: a text sent again (another tab of mine took it over, say)
+ * comes back with another time. Trims to the cap. Writes are serialised.
+ */
 export function appendHistory(roomId: string, m: StoredText): Promise<void> {
+  return appendTo(keyFor(roomId), m);
+}
+
+function appendTo(key: `history:${string}` | `private:${string}`, m: StoredText): Promise<void> {
   chain = chain.then(async () => {
-    const list = await read(keyFor(roomId));
-    if (list.some((x) => textKey(x) === textKey(m))) return;
+    const list = await read(key);
+    // A private conversation's texts come through several rooms, each with its own clock: by writer and id alone there.
+    const same = (x: StoredText) => (m.id !== undefined && x.id === m.id && x.from.publicKey === m.from.publicKey) || (!key.startsWith('private:') && textKey(x) === textKey(m));
+    if (list.some(same)) return;
     list.push(m);
-    await idbSet(keyFor(roomId), list.slice(-MAX_HISTORY));
+    await idbSet(key, list.slice(-MAX_HISTORY));
   }).catch((e) => console.warn('history write failed', e));
+  return chain;
+}
+
+/**
+ * My private conversation with a friend (ADR 0007), by their key: kept like a room's history, apart from every room.
+ * Read after the writes queued before it, so a conversation deleted a moment ago reads as empty.
+ */
+export function loadPrivate(friend: string): Promise<StoredText[]> {
+  const read_ = chain.then(() => read(`private:${friend}`));
+  chain = read_.then(() => {}, () => {});
+  return read_;
+}
+export const appendPrivate = (friend: string, m: StoredText): Promise<void> => appendTo(`private:${friend}`, m);
+
+/** Deletes a private conversation from this browser: its texts and its place in the list. */
+export function forgetPrivate(friend: string): Promise<void> {
+  chain = chain.then(async () => {
+    await idbDelete(`private:${friend}`);
+    await idbSet('privateThreads', (await readThreads()).filter((t) => t.friend.publicKey !== friend));
+  }).catch((e) => console.warn('private conversation delete failed', e));
+  return chain;
+}
+
+/** My private conversations, most recent first (core/chatlog.ts). */
+const readThreads = async (): Promise<PrivateThread[]> => IDB.privateThreads.parse(await idbGet<unknown>('privateThreads'));
+/** Read after the writes queued before it, like `loadPrivate`. */
+export function loadPrivateThreads(): Promise<PrivateThread[]> {
+  const read_ = chain.then(readThreads);
+  chain = read_.then(() => {}, () => {});
+  return read_;
+}
+/** A text came or went in the conversation with `friend`: it goes to the top of the list, with their latest name. */
+export function touchPrivateThread(friend: Identity, at: number): Promise<void> {
+  chain = chain.then(async () => {
+    const list = await readThreads();
+    const was = list.find((t) => t.friend.publicKey === friend.publicKey);
+    const next = [{ friend, at: Math.max(at, was?.at ?? 0) }, ...list.filter((t) => t !== was)].sort((a, b) => b.at - a.at);
+    await idbSet('privateThreads', next);
+  }).catch((e) => console.warn('private conversation list write failed', e));
   return chain;
 }
 
@@ -59,7 +108,18 @@ export function keepUnsent(roomId: string, texts: UnsentText[]): void {
   else local.remove('unsent');
 }
 
-export const forgetUnsent = (roomId: string): void => keepUnsent(roomId, []);
+export const forgetUnsent = (roomId: string): void => { keepUnsent(roomId, []); keepUnsentPrivate(roomId, []); };
+
+/** My private texts in a room not back from the Room yet (ADR 0007), as a reload finds them; kept like `unsent`. */
+export const loadUnsentPrivate = (roomId: string): UnsentPrivate[] => local.read('unsentPrivate')[roomId] ?? [];
+
+export function keepUnsentPrivate(roomId: string, texts: UnsentPrivate[]): void {
+  const all = local.read('unsentPrivate');
+  if (texts.length) all[roomId] = texts;
+  else delete all[roomId];
+  if (Object.keys(all).length) local.set('unsentPrivate', JSON.stringify(all));
+  else local.remove('unsentPrivate');
+}
 
 /** One-time: the history from before rooms belongs to the room the old single secret became. */
 export function adoptLegacyHistory(roomId: string): Promise<void> {
