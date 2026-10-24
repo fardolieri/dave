@@ -110,17 +110,17 @@ button.room-name:focus-visible { outline: 2px solid var(--acc); outline-offset: 
    inside a :has(): a browser drops such a selector whole.) */
 :where(.room) { margin: 8px -8px 0; padding: 0 8px 8px; border-radius: 12px; background: color-mix(in srgb, var(--fg) 2.5%, transparent); } /* no fade: a hover shows at once */
 :where(.room) > .room-head { cursor: pointer; }
-:where(.room:is(:not(.selected), .behind):has(> .room-head:hover):not(:has(.room-menu:hover, .room-leave:hover, .room-hear:hover))) { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+:where(.room:is(:not(.selected), .behind):has(> .room-head:hover):not(:has(.room-menu:hover, .room-leave:hover, .room-hear:hover, .room-unmute:hover))) { background: color-mix(in srgb, var(--fg) 5%, transparent); }
 :where(.room.selected:not(.behind)) { background: color-mix(in srgb, var(--fg) 7.5%, transparent); }
-:where(.room.selected:not(.behind):has(> .room-head:hover):not(:has(.room-menu:hover, .room-leave:hover, .room-hear:hover))) { background: color-mix(in srgb, var(--fg) 10%, transparent); }
-:where(.room:has(> .room-head:active):not(:has(.room-more:active, .room-menu:active, .room-leave:active, .room-hear:active))) { background: color-mix(in srgb, var(--fg) 12.5%, transparent); }
+:where(.room.selected:not(.behind):has(> .room-head:hover):not(:has(.room-menu:hover, .room-leave:hover, .room-hear:hover, .room-unmute:hover))) { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+:where(.room:has(> .room-head:active):not(:has(.room-more:active, .room-menu:active, .room-leave:active, .room-hear:active, .room-unmute:active))) { background: color-mix(in srgb, var(--fg) 12.5%, transparent); }
 :where(.room button.room-name:active) { translate: none; } /* pressed, the box brightens; its name does not move */
 /* The room of my call, folded (another room or a conversation on screen, or folded by a click): in the call's green, so
    it is found at a glance. After the shades above, which it follows in order (all at zero weight, so a theme's own
    rooms win: imp-olympia's green field, imp-freibad's lanes). */
 :where(.room.in-call.folded) { background: color-mix(in srgb, var(--ok) 9%, transparent); }
-:where(.room.in-call.folded:has(> .room-head:hover):not(:has(.room-leave:hover, .room-hear:hover))) { background: color-mix(in srgb, var(--ok) 14%, transparent); }
-:where(.room.in-call.folded:has(> .room-head:active):not(:has(.room-leave:active, .room-hear:active))) { background: color-mix(in srgb, var(--ok) 19%, transparent); } /* pressed, brighter, as any room */
+:where(.room.in-call.folded:has(> .room-head:hover):not(:has(.room-leave:hover, .room-hear:hover, .room-unmute:hover))) { background: color-mix(in srgb, var(--ok) 14%, transparent); }
+:where(.room.in-call.folded:has(> .room-head:active):not(:has(.room-leave:active, .room-hear:active, .room-unmute:active))) { background: color-mix(in srgb, var(--ok) 19%, transparent); } /* pressed, brighter, as any room */
 /* The first room (the one whose call I join goes there) at the top of the sidebar, the rest at its bottom, above Direct
    messages: the second room takes the free space above it. */
 aside.side > section.room:first-of-type + section.room { margin-top: auto; } /* the second only: the rest follow it. In full weight: it is the layout (my row at the bottom), a theme's room margins give way here */
@@ -340,8 +340,10 @@ button.leave { background: var(--bad); color: #fff; border-color: transparent; }
 /* The small Leave on the row of my call's folded room, at its end */
 button.room-leave { flex: none; margin-left: auto; padding: 2px 10px; font-size: 12px; font-weight: 600; line-height: 18px; border-radius: 999px; background: var(--bad); color: #fff; border-color: transparent; }
 /* Beside it, while the browser holds the call's sound back: the way to hear it, from the folded room too */
+button.room-unmute { flex: none; margin-left: auto; padding: 2px 10px; font-size: 12px; font-weight: 600; line-height: 18px; } /* as Hear: the small Leave's size, a theme button's look */
+button.room-unmute + button.room-hear { margin-left: 6px; }
 button.room-hear { flex: none; margin-left: auto; padding: 2px 10px; font-size: 12px; font-weight: 600; line-height: 18px; } /* the size of the small Leave beside it; its look (ground, frame, corners) a theme's own button's */
-button.room-hear + button.room-leave { margin-left: 6px; }
+button.room-hear + button.room-leave, button.room-unmute + button.room-leave { margin-left: 6px; }
 button.unblock { background: #4a3a12; color: var(--warn); border-color: transparent; font-weight: 600; }
 
 /* shares */

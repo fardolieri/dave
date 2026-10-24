@@ -31,7 +31,7 @@
 :where(:root[data-theme="imp-videotext"]) .room > .room-head { margin: 0 -14px 6px; padding: 3px 14px; background: var(--bar); border-radius: 0; }
 :where(:root[data-theme="imp-videotext"]) .room.folded { padding-bottom: 0; }
 :where(:root[data-theme="imp-videotext"]) .room.folded > .room-head { margin-bottom: 0; }
-:where(:root[data-theme="imp-videotext"]) .room > .room-head:active:not(:has(.room-more:active, .room-menu:active, .room-leave:active, .room-hear:active)) { background: var(--field); }
+:where(:root[data-theme="imp-videotext"]) .room > .room-head:active:not(:has(.room-more:active, .room-menu:active, .room-leave:active, .room-hear:active, .room-unmute:active)) { background: var(--field); }
 :where(:root[data-theme="imp-videotext"]) .room-title { color: var(--acc); font-size: 13px; letter-spacing: .04em; }
 :where(:root[data-theme="imp-videotext"]) .room.selected .room-title,
 :where(:root[data-theme="imp-videotext"]) .room-head:hover .room-title { color: var(--warn); }

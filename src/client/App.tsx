@@ -650,7 +650,7 @@ function Workspace(props: WorkspaceProps) {
                       for the keyboard) and its faces included, it opens the room, back from a private conversation too, or
                       folds the room on screen. The ⋯ and its menu do their own. */}
                   <div class="room-head" onClick={(e) => {
-                    if ((e.target as Element).closest('.room-more, .room-leave, .room-hear, [popover]')) return;
+                    if ((e.target as Element).closest('.room-more, .room-leave, .room-hear, .room-unmute, [popover]')) return;
                     if (expanded()) { setFolded(true); return; }
                     privates.close(); setFolded(false); props.onSelect(l.saved.secret);
                   }}>
@@ -679,6 +679,8 @@ function Workspace(props: WorkspaceProps) {
                     {/* The room of my call, folded: leaving it is one click from its row, without opening it */}
                     <Show when={inThis() && !expanded()}>
                       {/* The browser held the call's sound back (a reload, a tab woken up): without this, nothing here would say so */}
+                      {/* Muted, unmuting is one click from here too; muting is not, the call's room opened for that */}
+                      <Show when={l.call.muted()}><button class="room-unmute" title="Unmute your microphone" onClick={() => void l.call.setMuted(false)}>Unmute</button></Show>
                       <Show when={l.call.audioBlocked()}><button class="room-hear" title="The browser held back the call's sound until you click" onClick={() => l.call.unblockAudio()}>Hear</button></Show>
                       <button class="room-leave" title={`Leave the call in ${l.saved.name}`} onClick={() => l.call.leave()}>Leave</button>
                     </Show>

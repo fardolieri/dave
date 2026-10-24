@@ -101,8 +101,8 @@
 :where(:root[data-theme="imp-olympia"]) :is(.room:has(button.leave), .room.in-call.folded) { background: #a6e3bd; }
 :where(:root[data-theme="imp-olympia"]) .room:has(button.leave) .room-head { padding-top: 10px; margin-top: 0; }
 /* its row hovered and pressed, the green deepens, as any room's box shades; and leaving it folded is orange, as Leave is */
-:where(:root[data-theme="imp-olympia"]) :is(.room:has(button.leave), .room.in-call.folded):has(> .room-head:hover):not(:has(.room-menu:hover, .room-leave:hover, .room-hear:hover)) { background: #95dbaf; }
-:where(:root[data-theme="imp-olympia"]) :is(.room:has(button.leave), .room.in-call.folded):has(> .room-head:active):not(:has(.room-more:active, .room-menu:active, .room-leave:active, .room-hear:active)) { background: #84d3a1; }
+:where(:root[data-theme="imp-olympia"]) :is(.room:has(button.leave), .room.in-call.folded):has(> .room-head:hover):not(:has(.room-menu:hover, .room-leave:hover, .room-hear:hover, .room-unmute:hover)) { background: #95dbaf; }
+:where(:root[data-theme="imp-olympia"]) :is(.room:has(button.leave), .room.in-call.folded):has(> .room-head:active):not(:has(.room-more:active, .room-menu:active, .room-leave:active, .room-hear:active, .room-unmute:active)) { background: #84d3a1; }
 :where(:root[data-theme="imp-olympia"]) button.room-leave { background: var(--orange); color: #2b1300; border-radius: 2px; font-weight: 700; }
 
 /* shares and their bars */
