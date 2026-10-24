@@ -31,13 +31,22 @@
 :root[data-theme="fd-nightbus"] .panel .mictest button.recording { background-image: linear-gradient(#0B5A87, #0B5A87); }
 
 /* the destination sign: a black slot with the room's name in LEDs; the room on screen glows */
-:root[data-theme="fd-nightbus"] .room-head { margin-top: 16px; }
+/* the room is a box now and its sign row the handle, so the sign sits at the box's top, not 16px down inside it */
+:root[data-theme="fd-nightbus"] .room-head { margin-top: 0; }
 :root[data-theme="fd-nightbus"] button.room-name { background: var(--sign); border: 1px solid #22365A; border-radius: 3px; padding: 5px 8px 3px; }
 :root[data-theme="fd-nightbus"] .room-title { font-family: 'Doto', 'Overpass', monospace; font-weight: 800; font-size: 19px; line-height: 1.1;
   text-transform: none; letter-spacing: .02em; color: var(--led-off); }
 :root[data-theme="fd-nightbus"] .room.selected .room-title, :root[data-theme="fd-nightbus"] .room-head:hover .room-title { color: var(--led);
   text-shadow: 0 0 6px rgba(255,158,27,.55); }
 :root[data-theme="fd-nightbus"] .room.selected button.room-name { border-color: #5A3A10; }
+/* square-cornered like the rest of the bus: the room boxes, the call box, ⋯, ⚙ and their menus */
+:root[data-theme="fd-nightbus"] .room, :root[data-theme="fd-nightbus"] .room.folded > .room-head { border-radius: 4px; }
+:root[data-theme="fd-nightbus"] .room > .room-head { border-radius: 4px 4px 0 0; }
+:root[data-theme="fd-nightbus"] :is(.plist.callbox, .room-more, .side-me .gear, .side-top .gear, .who, .away li) { border-radius: 3px; }
+:root[data-theme="fd-nightbus"] :is(.room-menu, .side-foot)[popover] { border-radius: 4px; }
+:root[data-theme="fd-nightbus"] :is(.room-menu, .side-foot) button.link { border-radius: 2px; }
+/* the small Leave of my call's folded room as the big one: dark text on the red, which white is too faint on */
+:root[data-theme="fd-nightbus"] button.room-leave { border-radius: 3px; color: #2E0505; font-weight: 800; }
 :root[data-theme="fd-nightbus"] .unread { background: var(--acc); color: #04213A; font-family: 'Overpass', sans-serif; font-size: 11px; }
 
 :root[data-theme="fd-nightbus"] .side { border-right: 1px solid var(--line); }

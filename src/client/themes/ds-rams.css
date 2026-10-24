@@ -106,6 +106,15 @@
 :where(:root[data-theme="ds-rams"]) input:focus, :where(:root[data-theme="ds-rams"]) textarea:focus { border-color: var(--color-border-focus); }
 /* the room on screen gets the one orange dot, like a Braun power indicator */
 :where(:root[data-theme="ds-rams"]) .room-head { padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+/* a room is a panel of the housing with the same small radii as its keys; folded, it is all head, so the hairline
+   under the head would only underline the panel's own edge */
+:where(:root[data-theme="ds-rams"]) .room { border-radius: var(--border-radius-lg); }
+:where(:root[data-theme="ds-rams"]) .room > .room-head { border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0; }
+:where(:root[data-theme="ds-rams"]) .room.folded > .room-head { border-bottom: 0; border-radius: var(--border-radius-lg); }
+:where(:root[data-theme="ds-rams"]) .plist.callbox { border-radius: var(--border-radius-md); }
+:where(:root[data-theme="ds-rams"]) :is(.room-menu, .side-foot)[popover] { border-radius: var(--border-radius-lg); }
+:where(:root[data-theme="ds-rams"]) :is(.room-menu button.link, .side-foot > button.link) { border-radius: var(--border-radius-sm); }
+:where(:root[data-theme="ds-rams"]) button.room-leave { border-radius: var(--border-radius-sm); color: var(--color-text-on-error); font-weight: 600; }
 :where(:root[data-theme="ds-rams"]) .room.selected .room-title::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 8px 1px 0; border-radius: 50%; background: var(--acc); vertical-align: middle; }
 /* round dials for faces; speaking adds a green ring set off by a gap of housing */
 :where(:root[data-theme="ds-rams"]) .avatar { background: var(--panel2); box-shadow: inset 0 0 0 1px var(--line); }

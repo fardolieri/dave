@@ -140,6 +140,18 @@
 /* the phone moves the sidebar's rule to its bottom edge, as the app's own layout does */
 /* the gear button is narrow; the theme's wider padding would push the cog off centre */
 :where(:root[data-theme="ds-brutalist"]) .actions .gear { padding-inline: 0; }
+/* The sidebar's boxes are boxes too: a room square, its edge a rule (the top room open on screen stands on the bare
+   sidebar, as in the base, so it has none); the call box, the ⋯, ⚙, the small Leave and the menus square as well */
+:where(:root[data-theme="ds-brutalist"]) :is(.room, .room > .room-head, .plist.callbox, .room-more, :is(.side-me, .side-top) .gear, button.room-leave, .who, .away li, .room-menu[popover], .side-foot[popover], .side-foot > button.link, .room-menu button.link) { border-radius: 0; }
+:where(:root[data-theme="ds-brutalist"]) .room { box-shadow: inset 0 0 0 var(--border-width) var(--line); }
+:where(:root[data-theme="ds-brutalist"]) aside.side > section.room:first-of-type.selected:not(.folded) { box-shadow: none; }
+:where(:root[data-theme="ds-brutalist"]) .plist.callbox { box-shadow: inset 0 0 0 var(--border-width) var(--ok); }
+:where(:root[data-theme="ds-brutalist"]) :is(.room-menu, .side-foot)[popover] { border: 3px solid var(--line); box-shadow: var(--shadow-lg); }
+:where(:root[data-theme="ds-brutalist"]) button.room-leave { border: var(--border-width) solid var(--line); background: var(--bad); color: var(--color-text-on-error); text-transform: uppercase; }
+:where(:root[data-theme="ds-brutalist"]) .room-menu button.link.danger { color: var(--bad); font-weight: 700; }
+:where(:root[data-theme="ds-brutalist"]) aside.side .room-head .roomfaces .avatar { box-shadow: inset 0 0 0 var(--border-width) var(--line); }
+:where(:root[data-theme="ds-brutalist"]) aside.side .room-head .roomfaces .face.in-call .avatar { box-shadow: inset 0 0 0 var(--border-width) var(--line), 0 0 0 2px var(--color-ring); }
+:where(:root[data-theme="ds-brutalist"]) .roomfaces .face .newdot { border-radius: 0; }
 @media (max-width: 700px) {
   :where(:root[data-theme="ds-brutalist"]) .side { border-right: 0; border-bottom: var(--border-width) solid var(--line); }
 }

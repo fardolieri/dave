@@ -38,6 +38,16 @@
 :root[data-theme="fd-lounge"] .room-title { font-family: var(--serif); font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 18px; color: var(--dim); }
 :root[data-theme="fd-lounge"] .room.selected .room-title, :root[data-theme="fd-lounge"] .room-head:hover .room-title { color: var(--fg); }
 :root[data-theme="fd-lounge"] .unread { background: var(--acc); color: #3A0F28; }
+/* a room is a cushion of its own, as soft as the panels; its name, ⋯ and ⚙ are words on the velvet, not buttons, so
+   they go without the buttons' sheen of light on the top edge */
+:root[data-theme="fd-lounge"] .room, :root[data-theme="fd-lounge"] .room.folded > .room-head { border-radius: 18px; }
+:root[data-theme="fd-lounge"] .room > .room-head { border-radius: 18px 18px 0 0; }
+:root[data-theme="fd-lounge"] .plist.callbox { border-radius: 14px; }
+:root[data-theme="fd-lounge"] :is(button.room-name, .room-more, .side-me .gear, .side-top .gear) { box-shadow: none; }
+/* the small Leave of my call's folded room in the colours of the big one: the bare red under white would glare in a lamp-lit room */
+:root[data-theme="fd-lounge"] button.room-leave { background: #5A2430; color: #FFD3D3; }
+:root[data-theme="fd-lounge"] :is(.room-menu, .side-foot)[popover] { background: var(--panel); border: 0; border-radius: 18px; box-shadow: 0 18px 50px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06); }
+:root[data-theme="fd-lounge"] :is(.room-menu, .side-foot) button.link { border-radius: 12px; }
 :root[data-theme="fd-lounge"] .plist { gap: 9px; }
 :root[data-theme="fd-lounge"] .avatar { width: 32px; height: 32px; background: var(--panel2); color: var(--fg); }
 :root[data-theme="fd-lounge"] .avatar.big { width: 60px; height: 60px; }

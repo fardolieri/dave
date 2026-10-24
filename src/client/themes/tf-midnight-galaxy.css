@@ -30,7 +30,7 @@
 :root[data-theme="tf-midnight-galaxy"] .update button, :root[data-theme="tf-midnight-galaxy"] .update button:hover { background: var(--tf-on-acc); color: var(--acc); }
 :root[data-theme="tf-midnight-galaxy"] .unread, :root[data-theme="tf-midnight-galaxy"] button.on:not(.link), :root[data-theme="tf-midnight-galaxy"] select.picker option:checked { color: var(--tf-on-acc); }
 :root[data-theme="tf-midnight-galaxy"] button.join { color: var(--tf-on-ok); }
-:root[data-theme="tf-midnight-galaxy"] button.leave { color: var(--tf-on-bad); }
+:root[data-theme="tf-midnight-galaxy"] :is(button.leave, button.room-leave) { color: var(--tf-on-bad); }
 :root[data-theme="tf-midnight-galaxy"] button.unblock { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
 /* the mic test fills its button while recording: a deep lavender, so "Recording…" stays readable */
 :root[data-theme="tf-midnight-galaxy"] .panel .mictest button.recording { background-image: linear-gradient(#5e4a86, #5e4a86); }

@@ -30,6 +30,7 @@
 :where(:root[data-theme="imp-kino"]) button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #0d1a2b; }
 :where(:root[data-theme="imp-kino"]) button.join { background: var(--ok); color: #0a2a17; font-weight: 600; }
 :where(:root[data-theme="imp-kino"]) button.leave { background: var(--bad); color: #2a0806; font-weight: 600; }
+:where(:root[data-theme="imp-kino"]) button.room-leave { color: #2a0806; } /* the red here is light: dark on it, as on Leave */
 :where(:root[data-theme="imp-kino"]) button.unblock { background: #3d2a10; color: var(--warn); }
 :where(:root[data-theme="imp-kino"]) button.link { border-radius: 4px; padding: 2px 4px; text-underline-offset: 3px; }
 :where(:root[data-theme="imp-kino"]) button.link:hover { background: none; color: var(--fg); }

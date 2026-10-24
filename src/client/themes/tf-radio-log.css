@@ -24,6 +24,9 @@
 :where(:root[data-theme="tf-radio-log"]) :is(button:not(.avatar), input, select.picker, textarea) { border-radius: 0; }
 :root[data-theme="tf-radio-log"] :is(.panel, .share, .warn, dialog.report, dialog.about, .profile[popover], .emoji-picker[popover]) { border-radius: 0; }
 :root[data-theme="tf-radio-log"] .share.share-fs { border-radius: 0; }
+/* the sidebar is square too: the room boxes, their call box, the ⋯ and ⚙ menus and their items, and ⚙ itself */
+:root[data-theme="tf-radio-log"] :is(.room, .plist.callbox, .room-menu[popover], .side-foot[popover], .room-menu button.link, .side-foot button.link, .side-me .gear, .side-top .gear, .who, .away li.on) { border-radius: 0; }
+:root[data-theme="tf-radio-log"] :is(.room-menu[popover], .side-foot[popover]) { border-width: 1.5px; box-shadow: var(--tf-shadow-lg); }
 
 /* the colours styles.css writes for its dark page, each taken from this palette */
 :root[data-theme="tf-radio-log"] .update { color: var(--tf-on-acc); }

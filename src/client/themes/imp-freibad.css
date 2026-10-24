@@ -33,9 +33,15 @@
   --acc: #ffffff; --ok: #9df5bf; --warn: #ffd3a1; --bad: #ffd0d0; color: var(--fg); border-right: 0;
   color-scheme: dark; accent-color: var(--acc); }
 
-/* Lane ropes: each room is a lane, the rope runs across its top, as far from the list above as from the lane's name. */
-:where(:root[data-theme="imp-freibad"]) .room { margin-top: 12px; padding-top: 12px; background: repeating-linear-gradient(90deg, var(--rope) 0 12px, #ffffff 12px 24px) top / 100% 5px no-repeat; }
-:where(:root[data-theme="imp-freibad"]) .room-head { margin-top: 0; }
+/* Lane ropes: each room is a lane, the rope runs across its top, about as far from the list above as from the lane's name.
+   The rope is only the lane's image: the water under it still shades as any room's box does, and the lane of my call,
+   folded, still turns green. A folded lane's name sits as far from its bottom as from the rope. */
+:where(:root[data-theme="imp-freibad"]) .room { margin-top: 12px; padding-top: 5px; border-radius: 4px;
+  background-image: repeating-linear-gradient(90deg, var(--rope) 0 12px, #ffffff 12px 24px); background-position: top; background-size: 100% 5px; background-repeat: no-repeat; }
+:where(:root[data-theme="imp-freibad"]) .room > .room-head { margin-top: 0; padding-top: 10px; }
+:where(:root[data-theme="imp-freibad"]) .room.folded > .room-head { padding-bottom: 10px; }
+/* the small Leave on that lane is the red of Leave, white on it: the water's own red is pale */
+:where(:root[data-theme="imp-freibad"]) button.room-leave { background: #c8202f; color: #fff; border-radius: 4px; }
 
 /* controls: tiles with small radii */
 :where(:root[data-theme="imp-freibad"]) button { font: inherit; font-weight: 500; border-radius: 4px; border-color: var(--edge); transition: background-color .15s ease-out; }
@@ -66,7 +72,9 @@
 :where(:root[data-theme="imp-freibad"]) .chat-new { background: #fff; border-color: var(--edge); color: var(--fg); }
 
 /* people are tiles */
-:where(:root[data-theme="imp-freibad"]) .avatar { border-radius: 8px; background: #e3f0f2; color: #0d2b33; }
+:where(:root[data-theme="imp-freibad"]) .avatar { border-radius: 8px; }
+/* the button of a picture too: the base gives it the water's white text, which barely showed on the pale tile */
+:where(:root[data-theme="imp-freibad"]) :is(.avatar, button.avatar) { background: #e3f0f2; color: #0d2b33; }
 :where(:root[data-theme="imp-freibad"]) .avatar.big { border-radius: 14px; }
 :where(:root[data-theme="imp-freibad"]) .side .avatar.speaking { box-shadow: 0 0 0 3px var(--ok); }
 :where(:root[data-theme="imp-freibad"]) .plist em { border-color: var(--line); color: var(--dim); }

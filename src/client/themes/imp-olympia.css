@@ -91,10 +91,19 @@
 :where(:root[data-theme="imp-olympia"]) .msg-from { font-weight: 700; }
 :where(:root[data-theme="imp-olympia"]) .msg-at { font-variant-numeric: tabular-nums; }
 
-/* The colour code: the room whose call you are in is a green field, edge to edge of the sidebar. */
-:where(:root[data-theme="imp-olympia"]) .room { margin: 0 -14px; padding: 0 14px 12px; transition: background-color .2s ease-out; }
-:where(:root[data-theme="imp-olympia"]) .room:has(button.leave) { background: #a6e3bd; }
+/* The colour code: the room whose call you are in is a green field, edge to edge of the sidebar.
+   Every room is a square band of the same width, its row the band's full width; folded, the band is that row, the room
+   of my call in the green too. */
+:where(:root[data-theme="imp-olympia"]) .room { margin: 0 -14px 2px; padding: 0 14px 12px; border-radius: 0; }
+:where(:root[data-theme="imp-olympia"]) .plist.callbox { border-radius: 2px; }
+:where(:root[data-theme="imp-olympia"]) .room > .room-head { margin: 0 -14px; padding-inline: 14px; border-radius: 0; }
+:where(:root[data-theme="imp-olympia"]) .room.folded { padding-bottom: 0; }
+:where(:root[data-theme="imp-olympia"]) :is(.room:has(button.leave), .room.in-call.folded) { background: #a6e3bd; }
 :where(:root[data-theme="imp-olympia"]) .room:has(button.leave) .room-head { padding-top: 10px; margin-top: 0; }
+/* its row hovered and pressed, the green deepens, as any room's box shades; and leaving it folded is orange, as Leave is */
+:where(:root[data-theme="imp-olympia"]) :is(.room:has(button.leave), .room.in-call.folded):has(> .room-head:hover):not(:has(.room-menu:hover, .room-leave:hover, .room-hear:hover)) { background: #95dbaf; }
+:where(:root[data-theme="imp-olympia"]) :is(.room:has(button.leave), .room.in-call.folded):has(> .room-head:active):not(:has(.room-more:active, .room-menu:active, .room-leave:active, .room-hear:active)) { background: #84d3a1; }
+:where(:root[data-theme="imp-olympia"]) button.room-leave { background: var(--orange); color: #2b1300; border-radius: 2px; font-weight: 700; }
 
 /* shares and their bars */
 :where(:root[data-theme="imp-olympia"]) .share { --fg: #ffffff; --dim: #c1d6e8; --acc: #9fd3ff; --ok: #6fe3a3; --warn: #ffc069; --bad: #ff8f9f; color: var(--fg); background: #0b2338; border-color: #0b2338; border-radius: 2px; }
@@ -129,7 +138,7 @@
   :root[data-theme="imp-olympia"] .ambient { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  :where(:root[data-theme="imp-olympia"]) :is(button, .room) { transition: none; }
+  :where(:root[data-theme="imp-olympia"]) button { transition: none; }
 }
 
 /* the mic test fills its button while recording: a fill the label stays readable on */

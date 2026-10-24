@@ -38,7 +38,9 @@
 :root[data-theme="fd-walkie"] .emoji-tabs button, :root[data-theme="fd-walkie"] .emoji-grid button,
 :root[data-theme="fd-walkie"] .chat-input .emoji-open, :root[data-theme="fd-walkie"] .profile button.edit,
 :root[data-theme="fd-walkie"] .private-head button.edit,
-:root[data-theme="fd-walkie"] .chat-older { box-shadow: none; }
+:root[data-theme="fd-walkie"] .chat-older, :root[data-theme="fd-walkie"] .room-more, :root[data-theme="fd-walkie"] :is(.side-me, .side-top) .gear { box-shadow: none; }
+/* the small Leave of my call's folded room is a red key too, with its lip */
+:root[data-theme="fd-walkie"] button.room-leave { box-shadow: inset 0 -2px 0 rgba(0,0,0,.3); }
 :root[data-theme="fd-walkie"] button.avatar:hover:not(.speaking) { box-shadow: 0 0 0 2px var(--rubber); }
 :root[data-theme="fd-walkie"] .chat-input .emoji-open:hover:not(:disabled) { border-color: #7C7752; }
 
@@ -119,8 +121,12 @@
 :root[data-theme="fd-walkie"] .banner-bad { background: var(--bad); color: #fff; }
 :root[data-theme="fd-walkie"] .update { background: var(--rubber); color: var(--chassis); }
 :root[data-theme="fd-walkie"] .update button { background: var(--chassis); color: var(--rubber); }
+:root[data-theme="fd-walkie"] .room-menu[popover], :root[data-theme="fd-walkie"] .side-foot[popover],
 :root[data-theme="fd-walkie"] .profile[popover], :root[data-theme="fd-walkie"] .emoji-picker[popover],
 :root[data-theme="fd-walkie"] dialog.report, :root[data-theme="fd-walkie"] dialog.about { background: #F6F1DA; border: 2px solid var(--rubber); box-shadow: 0 6px 0 rgba(0,0,0,.2); }
+/* in the ⋯ and ⚙ menus a link is a line of the menu, in ink at reading size; Leave in alarm red */
+:root[data-theme="fd-walkie"] :is(.room-menu, .side-foot) button.link { color: var(--fg); font-size: 14px; }
+:root[data-theme="fd-walkie"] .room-menu button.link.danger { color: var(--bad); }
 :root[data-theme="fd-walkie"] .emoji-scroll h4 { background: #F6F1DA; text-transform: none; letter-spacing: 0; font-size: 13px; }
 :root[data-theme="fd-walkie"] .emoji-tabs button:hover, :root[data-theme="fd-walkie"] .emoji-grid button:hover { background: #E4DDB8; }
 :root[data-theme="fd-walkie"] select.picker, :root[data-theme="fd-walkie"] select.picker::picker(select) { background: #F6F1DA; border-color: #7C7752; }

@@ -24,13 +24,15 @@
 :where(:root[data-theme="tf-tech-innovation"]) :is(button:not(.avatar), input, select.picker, textarea) { border-radius: 4px; }
 :root[data-theme="tf-tech-innovation"] :is(.panel, .share, .warn, dialog.report, dialog.about, .profile[popover], .emoji-picker[popover]) { border-radius: 4px; }
 :root[data-theme="tf-tech-innovation"] .share.share-fs { border-radius: 0; }
+/* the room boxes, their call box and the sidebar's menus in the same small corners */
+:root[data-theme="tf-tech-innovation"] :is(.room, .plist.callbox, .room-menu[popover], .side-foot[popover]) { border-radius: 4px; }
 
 /* the colours styles.css writes for its dark page, each taken from this palette */
 :root[data-theme="tf-tech-innovation"] .update { color: var(--tf-on-acc); }
 :root[data-theme="tf-tech-innovation"] .update button, :root[data-theme="tf-tech-innovation"] .update button:hover { background: var(--tf-on-acc); color: var(--acc); }
 :root[data-theme="tf-tech-innovation"] .unread, :root[data-theme="tf-tech-innovation"] button.on:not(.link), :root[data-theme="tf-tech-innovation"] select.picker option:checked { color: var(--tf-on-acc); }
 :root[data-theme="tf-tech-innovation"] button.join { color: var(--tf-on-ok); }
-:root[data-theme="tf-tech-innovation"] button.leave { color: var(--tf-on-bad); }
+:root[data-theme="tf-tech-innovation"] :is(button.leave, button.room-leave) { color: var(--tf-on-bad); }
 :root[data-theme="tf-tech-innovation"] button.unblock { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
 :root[data-theme="tf-tech-innovation"] .new { background: var(--tf-new-bg); color: var(--tf-on-new); }
 :root[data-theme="tf-tech-innovation"] .warn, :root[data-theme="tf-tech-innovation"] .banner-warn { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }

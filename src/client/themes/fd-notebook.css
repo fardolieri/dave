@@ -32,7 +32,11 @@
 :root[data-theme="fd-notebook"] button.leave { background: var(--paper); color: var(--redpen); border-color: var(--redpen); font-weight: 700; }
 :root[data-theme="fd-notebook"] button.unblock { background: #FFE3BF; color: #6A3600; border-color: #D0811E; }
 :root[data-theme="fd-notebook"] button.link { color: var(--pencil); font-size: 12px; }
-:root[data-theme="fd-notebook"] button.link.on, :root[data-theme="fd-notebook"] .room-head button.link.on { background: var(--hl); color: var(--ink); }
+:root[data-theme="fd-notebook"] button.link.on { background: var(--hl); color: var(--ink); }
+/* in the ⋯ and ⚙ menus a link is a line of the note, in ink at reading size; Leave in red pen */
+:root[data-theme="fd-notebook"] :is(.room-menu, .side-foot) button.link { color: var(--ink); font-size: 14px; }
+:root[data-theme="fd-notebook"] .room-menu button.link.danger { color: var(--redpen); }
+:root[data-theme="fd-notebook"] :is(.room-menu, .side-foot) button.link:is(:hover, :focus-visible) { background: #FFF6BF; } /* the note is white: the base's white hover would not show */
 /* the mic test fills its button while recording: highlighter under the ink, so "Recording…" stays readable */
 :root[data-theme="fd-notebook"] .panel .mictest button.recording { background-image: linear-gradient(var(--hl), var(--hl)); }
 
@@ -51,6 +55,9 @@
 :root[data-theme="fd-notebook"] .warn { background: #FFF1DC; color: #6A3600; border-left: 3px solid #D0811E; border-radius: 2px; }
 :root[data-theme="fd-notebook"] .panel { background: #FFFFFF; border: 1px solid var(--line); border-radius: 2px; box-shadow: 2px 2px 0 #E2E8F3; }
 :root[data-theme="fd-notebook"] .theme-pick { background: #fff; color: var(--pencil); border-color: var(--line); }
+
+/* the small Leave of my call's folded room is the big one in small: red pen on paper */
+:root[data-theme="fd-notebook"] button.room-leave { background: var(--paper); color: var(--redpen); border: 1.5px solid var(--redpen); border-radius: var(--wobble); font-weight: 700; }
 
 /* the page: 6 mm squares and the red margin line the lines are written after */
 :root[data-theme="fd-notebook"] .chat-log { padding-left: 34px;
@@ -82,6 +89,7 @@
 :root[data-theme="fd-notebook"] .update { background: var(--hl); color: var(--ink); }
 :root[data-theme="fd-notebook"] .update button { background: var(--ink); color: #fff; }
 :root[data-theme="fd-notebook"] .update button:hover { background: var(--acc); }
+:root[data-theme="fd-notebook"] .room-menu[popover], :root[data-theme="fd-notebook"] .side-foot[popover],
 :root[data-theme="fd-notebook"] .profile[popover], :root[data-theme="fd-notebook"] .emoji-picker[popover],
 :root[data-theme="fd-notebook"] dialog.report, :root[data-theme="fd-notebook"] dialog.about { background: #FFFFFF; border: 1px solid var(--line); border-radius: 2px; box-shadow: 3px 4px 0 #D5DDEB; }
 :root[data-theme="fd-notebook"] .profile-name strong, :root[data-theme="fd-notebook"] dialog.report h3, :root[data-theme="fd-notebook"] dialog.about h3 { font-family: var(--hand); font-size: 20px; }

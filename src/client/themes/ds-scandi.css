@@ -117,6 +117,11 @@
 :where(:root[data-theme="ds-scandi"]) dialog.report, :where(:root[data-theme="ds-scandi"]) dialog.about { border-radius: var(--border-radius-lg); border-color: transparent; box-shadow: var(--shadow-lg); }
 :where(:root[data-theme="ds-scandi"]) .banner { border-radius: 0 0 var(--border-radius-md) var(--border-radius-md); }
 :where(:root[data-theme="ds-scandi"]) .warn { border-radius: var(--border-radius-sm); }
+/* the sidebar's round ⋯ and ⚙ are glyphs on the linen, not keys: no shadow under them, no lift; the ⋯ and ⚙ menus
+   float as the profile card does; the small Leave in clay with the palette's own text on clay */
+:where(:root[data-theme="ds-scandi"]) :is(button.room-more, :is(.side-me, .side-top) button.gear), :where(:root[data-theme="ds-scandi"]) :is(button.room-more, :is(.side-me, .side-top) button.gear):hover { box-shadow: none; transform: none; }
+:where(:root[data-theme="ds-scandi"]) :is(.room-menu, .side-foot)[popover] { border-radius: var(--border-radius-lg); border-color: transparent; box-shadow: var(--shadow-lg); }
+:where(:root[data-theme="ds-scandi"]) button.room-leave { color: var(--color-text-on-error); font-weight: 800; box-shadow: none; }
 /* chat: names in the heavy weight, the composer a soft pill */
 :where(:root[data-theme="ds-scandi"]) .chat-log { gap: 12px; }
 :where(:root[data-theme="ds-scandi"]) .msg-from { font-weight: 800; }

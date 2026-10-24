@@ -25,13 +25,23 @@
 
 /* Header rows: every room name is a full-width blue row, like the top lines of a teletext page. */
 :where(:root[data-theme="imp-videotext"]) .side { border-right: 2px solid var(--bar); }
-:where(:root[data-theme="imp-videotext"]) .room-head { margin: 14px -14px 6px; padding: 3px 14px; background: var(--bar); }
+/* A room is a square box the sidebar's width, its blue row at the box's top (the gap above it is the room's own margin),
+   so a folded room is the blue row alone; pressed, the row lights to the field blue. */
+:where(:root[data-theme="imp-videotext"]) .room { margin-top: 14px; margin-inline: -14px; padding: 0 14px 8px; border-radius: 0; }
+:where(:root[data-theme="imp-videotext"]) .room > .room-head { margin: 0 -14px 6px; padding: 3px 14px; background: var(--bar); border-radius: 0; }
+:where(:root[data-theme="imp-videotext"]) .room.folded { padding-bottom: 0; }
+:where(:root[data-theme="imp-videotext"]) .room.folded > .room-head { margin-bottom: 0; }
+:where(:root[data-theme="imp-videotext"]) .room > .room-head:active:not(:has(.room-more:active, .room-menu:active, .room-leave:active, .room-hear:active)) { background: var(--field); }
 :where(:root[data-theme="imp-videotext"]) .room-title { color: var(--acc); font-size: 13px; letter-spacing: .04em; }
 :where(:root[data-theme="imp-videotext"]) .room.selected .room-title,
 :where(:root[data-theme="imp-videotext"]) .room-head:hover .room-title { color: var(--warn); }
 :where(:root[data-theme="imp-videotext"]) .room-head :is(button.link, .room-more) { color: #fff; }
 :where(:root[data-theme="imp-videotext"]) .room-head button.link.on { color: var(--warn); }
 :where(:root[data-theme="imp-videotext"]) button.room-name:focus-visible { outline-color: var(--warn); }
+:where(:root[data-theme="imp-videotext"]) :is(.room-more, .side-me .gear, .side-top .gear) { border-radius: 0; }
+:where(:root[data-theme="imp-videotext"]) .room-head .room-more:is(:hover, :focus-visible) { background: var(--field); }
+/* the small Leave of my call's folded room, as Leave: black on the red */
+:where(:root[data-theme="imp-videotext"]) button.room-leave { background: var(--bad); color: #000; border-radius: 0; font-weight: 700; }
 
 /* controls: blue fields, square, no borders; the active state flips to cyan */
 :where(:root[data-theme="imp-videotext"]) button { font: inherit; background: var(--field); color: #fff; border: 0; border-radius: 0; padding: 7px 12px; }
@@ -84,7 +94,13 @@
 
 /* popovers and dialogs: black pages in a blue frame */
 :where(:root[data-theme="imp-videotext"]) .profile[popover],
-:where(:root[data-theme="imp-videotext"]) .emoji-picker[popover] { border: 2px solid var(--bar); border-radius: 0; box-shadow: 0 8px 24px rgba(0,0,0,.7); }
+:where(:root[data-theme="imp-videotext"]) .emoji-picker[popover],
+:where(:root[data-theme="imp-videotext"]) .room-menu[popover],
+:where(:root[data-theme="imp-videotext"]) .side-foot[popover] { border: 2px solid var(--bar); border-radius: 0; box-shadow: 0 8px 24px rgba(0,0,0,.7); }
+/* their items hovered turn yellow, as a link does; Leave, which stays red, flips to black on the red instead */
+:where(:root[data-theme="imp-videotext"]) :is(.room-menu, .side-foot) button.link { border-radius: 0; }
+:where(:root[data-theme="imp-videotext"]) .room-menu button.link.danger:is(:hover, :focus-visible) { background: var(--bad); color: #000; }
+:where(:root[data-theme="imp-videotext"]) :is(.plist.callbox, .who, .away li.on) { border-radius: 0; }
 :where(:root[data-theme="imp-videotext"]) .emoji-scroll h4 { color: var(--acc); }
 :where(:root[data-theme="imp-videotext"]) dialog.report,
 :where(:root[data-theme="imp-videotext"]) dialog.about { border: 2px solid var(--bar); border-radius: 0; }

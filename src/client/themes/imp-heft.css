@@ -38,6 +38,7 @@
 :where(:root[data-theme="imp-heft"]) .side button.on:not(.link) { background: #fff; border-color: #fff; color: #233f94; }
 :where(:root[data-theme="imp-heft"]) button.join { background: #8ef0b0; color: #0b3a1d; font-weight: 700; }
 :where(:root[data-theme="imp-heft"]) button.leave { background: #c41d33; color: #fff; font-weight: 700; }
+:where(:root[data-theme="imp-heft"]) button.room-leave { background: #c41d33; color: #fff; } /* the cover's own red is pale: white would not read on it */
 :where(:root[data-theme="imp-heft"]) button.unblock { background: #ffd27a; color: #3d2600; }
 :where(:root[data-theme="imp-heft"]) button.link { text-underline-offset: 3px; }
 :where(:root[data-theme="imp-heft"]) button.link:hover { color: var(--fg); }
@@ -55,7 +56,8 @@
 :where(:root[data-theme="imp-heft"]) .chat-new { background: #fff; border-color: var(--edge); color: var(--ink); }
 
 /* the people on the cover */
-:where(:root[data-theme="imp-heft"]) .avatar { background: #fff; color: #233f94; }
+/* the button of a picture too: the base gives it the white of the cover's text, which vanished on the white disc */
+:where(:root[data-theme="imp-heft"]) :is(.avatar, button.avatar) { background: #fff; color: #233f94; }
 :where(:root[data-theme="imp-heft"]) .side .avatar.speaking { box-shadow: 0 0 0 3px var(--ok); }
 :where(:root[data-theme="imp-heft"]) .plist em { border-color: var(--line); color: var(--dim); }
 :where(:root[data-theme="imp-heft"]) .panel { background: #2a489f; border-color: var(--line); }

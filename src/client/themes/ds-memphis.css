@@ -152,6 +152,19 @@
 :where(:root[data-theme="ds-memphis"]) .consent .bubble { border: 3px solid var(--line); }
 /* the gear button is narrow; the theme's wider padding would push the cog off centre */
 :where(:root[data-theme="ds-memphis"]) .actions .gear { padding-inline: 0; }
+/* the sidebar's round ⋯ and ⚙ are bare glyphs: no ink edge, no hard shadow, no lift */
+:where(:root[data-theme="ds-memphis"]) :is(button.room-more, :is(.side-me, .side-top) button.gear), :where(:root[data-theme="ds-memphis"]) :is(button.room-more, :is(.side-me, .side-top) button.gear):is(:hover, :active) { box-shadow: none; transform: none; }
+/* rooms are cut-out cards on the pink sheet, the ⋯ menu and ⚙ menu flyers of their own; the folded room's faces in candy colours too */
+:where(:root[data-theme="ds-memphis"]) .room { border-radius: var(--border-radius-md); }
+:where(:root[data-theme="ds-memphis"]) .room > .room-head { border-radius: var(--border-radius-md) var(--border-radius-md) 0 0; }
+:where(:root[data-theme="ds-memphis"]) .room.folded > .room-head { border-radius: var(--border-radius-md); }
+:where(:root[data-theme="ds-memphis"]) .plist.callbox { border-radius: var(--border-radius-sm); }
+:where(:root[data-theme="ds-memphis"]) :is(.room-menu, .side-foot)[popover] { border: 3px solid var(--line); border-radius: var(--border-radius-lg); box-shadow: var(--shadow-lg); }
+:where(:root[data-theme="ds-memphis"]) .room-menu button.link.danger { font-weight: 700; }
+:where(:root[data-theme="ds-memphis"]) button.room-leave { border-color: var(--line); color: var(--color-text-on-error); font-family: var(--font-family-display); font-weight: 800; }
+:where(:root[data-theme="ds-memphis"]) .roomfaces .face:nth-child(4n+1) .avatar { background: var(--color-pop-pink); }
+:where(:root[data-theme="ds-memphis"]) .roomfaces .face:nth-child(4n+2) .avatar { background: var(--color-pop-yellow); }
+:where(:root[data-theme="ds-memphis"]) .roomfaces .face:nth-child(4n+3) .avatar { background: var(--color-pop-teal); }
 @media (max-width: 700px) {
   :where(:root[data-theme="ds-memphis"]) .side { border-right: 0; border-bottom: 3px solid var(--line); }
 }
