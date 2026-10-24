@@ -20,7 +20,7 @@ import { parseStoredRooms } from './rooms';
 import { parseHistory, parsePrivateThreads } from './chatlog';
 import { parseBigIndex, parseFileIndex, parsePartialPull } from './attachment';
 import { parseUnsent, parseUnsentPrivate } from './unsent';
-import { parseCounts } from './unread';
+import { parseCounts, parseRoomThemes } from './unread';
 import { parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes } from './settings';
 
 /** A stored key: what it holds, the parser every read goes through, and stored values from the wild. */
@@ -119,7 +119,13 @@ export const LOCAL = {
     map: true,
     fixtures: { '2026-10-20, private texts': '{"roomA":[{"id":"0a1b2c3d4e5f60718293a4b5","to":{"publicKey":"pkB","fingerprint":"DEF456","name":"Ben","picture":"🦕"},"text":"hi","at":1760900000000},{"id":"1a1b2c3d4e5f60718293a4b5","to":{"publicKey":"pkC","fingerprint":"GHI789","name":"Cleo"},"text":"yo","at":1760900001000,"out":true}]}' },
   },
-  theme: { about: 'The look picked at the bottom of the sidebar, a file name in client/themes/; none is the default look (client/theme.ts).', parse: text, fixtures: { '2026-10-15': 'fd-walkie' } },
+  theme: { about: 'The look picked before rooms had their own, a file name in client/themes/; none is the default look. Now the look of every room with no pick of its own (client/theme.ts).', parse: text, fixtures: { '2026-10-15': 'fd-walkie' } },
+  roomThemes: {
+    about: "Each room's own look, by room id, picked from its ⋯ menu: a file name in client/themes/, '' for the default look (client/theme.ts).",
+    parse: parseRoomThemes,
+    map: true,
+    fixtures: { '2026-10-24, a look per room': '{"roomA":"fd-walkie","roomB":""}' },
+  },
   viewerSettings: { about: 'Low latency for shares I watch (core/settings.ts, client/call.ts).', parse: parseViewerSettings, fixtures: { '2026-09-06, low latency': '{"jitterBufferTargetMs":100}' } },
 } satisfies Record<string, StoredKey<string | null>>;
 export type LocalKey = keyof typeof LOCAL;

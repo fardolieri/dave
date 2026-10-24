@@ -106,7 +106,6 @@
 :root[data-theme="fd-lounge"] .new { background: var(--warn); color: #2B1B00; border-radius: 999px; padding: 0 6px; }
 :root[data-theme="fd-lounge"] .warn { background: #3E2F18; color: #FFD27A; border-radius: 14px; padding: 10px 12px; }
 :root[data-theme="fd-lounge"] .panel { background: var(--panel2); border: 0; border-radius: 18px; padding: 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,.06); }
-:root[data-theme="fd-lounge"] .theme-pick { border-radius: 999px; padding: 2px 8px; }
 
 :root[data-theme="fd-lounge"] .chat-log { gap: 14px; }
 :root[data-theme="fd-lounge"] .msg-from { font-family: var(--serif); font-weight: 400; font-size: 15px; }

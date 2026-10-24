@@ -81,7 +81,6 @@
 :root[data-theme="fd-riso"] .new { background: var(--pink); color: var(--ink); }
 :root[data-theme="fd-riso"] .warn { background: #FFE2C9; color: #6E3200; border: 2px solid var(--warn); border-radius: 4px; }
 :root[data-theme="fd-riso"] .panel { background: var(--panel2); border: 2px solid var(--blue); border-radius: 4px; box-shadow: var(--slip); }
-:root[data-theme="fd-riso"] .theme-pick { background: var(--panel2); color: var(--ink); border-color: var(--blue); }
 
 :root[data-theme="fd-riso"] .msg-from { font-weight: 800; }
 :root[data-theme="fd-riso"] .msg-at, :root[data-theme="fd-riso"] .msg-sys { color: var(--dim); }

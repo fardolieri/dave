@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { target } from './browsers';
-import { expect, test, openMenu, pickTheme } from './fixtures';
+import { expect, test, openMenu, pickTheme, themeNames } from './fixtures';
 
 // PostHog is opt-in (ticket 32): a browser that has not said yes sends nothing there and keeps nothing of it.
 
@@ -97,17 +97,19 @@ test('with the yes, every event says which theme is on screen, from the load and
     .map((k) => { try { return JSON.parse(localStorage.getItem(k)!) as Record<string, unknown>; } catch { return null; } })
     .find((v) => v && 'build_target' in v)?.['theme'] ?? null);
   await expect.poll(theme, { message: 'the default look, before any pick' }).toBe('default');
-  const pick = alice.page.getByRole('combobox', { name: 'Theme', exact: true, includeHidden: true }); // behind ⚙: read, not picked, while the menu is shut
-  const picked = (await pick.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value).filter(Boolean)))[0]!;
+  const looks = (await themeNames(alice.page)).filter(Boolean);
+  const picked = looks[0]!;
   await pickTheme(alice.page, picked);
   await expect.poll(theme, { message: 'the picked theme from the pick on' }).toBe(picked);
   // Another theme in this browser's store before a reload (the SDK's own state still says the first): the page registers
   // the stored one as it loads.
-  const other = (await pick.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value).filter(Boolean)))[1]!;
+  const other = looks[1]!;
   await alice.page.evaluate(async (t) => {
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); // the theme's fonts requested, then in:
     await document.fonts.ready; // a reload must not cut off a font download (themes.spec.ts)
-    localStorage.setItem('dave.theme', t);
+    // The room's own look, which the pick above stored: every room's, as the one on screen is the only one here
+    const rooms = JSON.parse(localStorage.getItem('dave.roomThemes') ?? '{}') as Record<string, string>;
+    localStorage.setItem('dave.roomThemes', JSON.stringify(Object.fromEntries(Object.keys(rooms).map((k) => [k, t]))));
   }, other);
   await alice.page.reload();
   await alice.connected();

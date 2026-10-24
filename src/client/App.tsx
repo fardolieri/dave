@@ -29,7 +29,7 @@ import { EmojiPicker } from './EmojiPicker';
 import { place } from './place';
 import { createTabLock } from './tablock';
 import { build, commitUrl, REPO_URL, shortCommit } from './version';
-import { THEMES, THEME_GROUPS, setTheme, theme } from './theme';
+import { THEMES, THEME_GROUPS, forgetRoomTheme, setRoomTheme, showRoomTheme, theme, themeOf } from './theme';
 import { applyUpdate, downloadProgress, holding, noteOffered, tabSettled, updateReady } from './update';
 
 export default function App() {
@@ -327,6 +327,11 @@ function Workspace(props: WorkspaceProps) {
     if (on && props.selected !== on.saved.secret) props.onSelect(on.saved.secret);
     props.onMove(from, to);
   };
+  // The themes card, opened from a room's ⋯ menu for that room's look, hanging beside the sidebar as a profile card does.
+  const [themesAt, setThemesAt] = createSignal<{ anchor: HTMLElement; roomId: string } | null>(null);
+  const openThemes = (anchor: HTMLElement, roomId: string) => setThemesAt({ anchor, roomId });
+  // The page wears the look of the room on screen (a private conversation, the room's behind it).
+  createEffect(() => current()?.saved.id, (id) => { if (id) showRoomTheme(id); });
   /** The room on screen folded in the sidebar by a click on its box; another room brought on screen opens again. */
   const [folded, setFolded] = createSignal(false);
   const openProfile = (p: Person, anchor: HTMLElement) => {
@@ -579,6 +584,7 @@ function Workspace(props: WorkspaceProps) {
     if (!confirm(`Leave ${l.saved.name}? This browser forgets the room and its chat history. The invite link gets you back in.`)) return;
     if (untrack(active) === l) l.call.leave(); // say goodbye while the socket is still open, so nobody waits out the grace period
     privates.strand(l.room); // my private texts waiting in it: through another room, else not sent
+    forgetRoomTheme(l.saved.id);
     l.room.forgetUnread();
     closeMenu();
     props.onForget(l.saved.secret); // disposing the room closes its socket
@@ -602,7 +608,7 @@ function Workspace(props: WorkspaceProps) {
             {/* On a phone only: dave, and ⚙ at the top, where a thumb finds it; my own row is in the room there, so no row of me at the bottom */}
             <div class="side-top">
               <span class="brand">dave</span>
-              <button class="gear" ref={gearMenu.anchor} popovertarget="side-menu" title="New room, join by link, theme, report a problem, and more" aria-label="Settings and more">⚙</button>
+              <button class="gear" ref={gearMenu.anchor} popovertarget="side-menu" title="New room, join by link, report a problem, and more" aria-label="Settings and more">⚙</button>
             </div>
             <For each={links()}>{(l) => {
               const selected = () => l === cur();
@@ -685,9 +691,10 @@ function Workspace(props: WorkspaceProps) {
                       <button class="room-leave" title={`Leave the call in ${l.saved.name}`} onClick={() => l.call.leave()}>Leave</button>
                     </Show>
                     <Show when={expanded()}>
-                      <button class="room-more" ref={roomMenu.anchor} popovertarget={menuId} title="Invite, clear chat history, leave" aria-label={`More for ${l.saved.name}`}>⋯</button>
+                      <button class="room-more" ref={roomMenu.anchor} popovertarget={menuId} title="Invite, themes, clear chat history, leave" aria-label={`More for ${l.saved.name}`}>⋯</button>
                       <div class="room-menu" id={menuId} popover="auto" ref={roomMenu.menu} onBeforeToggle={roomMenu.beforeToggle} onToggle={roomMenu.toggle}>
                         <button class="link" title="The link that gets a friend into this room" onClick={() => { roomMenu.close(); toggleInvite(l); }}>{inviteOpen() ? 'Hide invite link' : 'Invite'}</button>
+                        <Show when={THEMES.length > 0}><button class="link" title="This room's look, in this browser" onClick={(e) => { roomMenu.close(); openThemes(e.currentTarget.closest('section.room')?.querySelector<HTMLElement>('.room-more') ?? e.currentTarget, l.saved.id); }}>Themes</button></Show>
                         <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { roomMenu.close(); if (confirm(`Clear this browser's chat history of ${l.saved.name}? Nothing is stored on the server, so this cannot be undone.`)) void l.room.clearHistory(); }}>Clear chat history</button>
                         <button class="link danger" title="Forget this room in this browser" onClick={() => { roomMenu.close(); leaveRoom(l); }}>Leave {l.saved.name}</button>
                       </div>
@@ -764,7 +771,7 @@ function Workspace(props: WorkspaceProps) {
                 <Avatar initial={labelOf(localSelf()).shown[0]!} picture={labelOf(localSelf()).picture} title="Your profile" onOpen={(el) => openProfile(withMe().find((p) => p.publicKey === me)!, el.parentElement ?? el)} />
                 <span class={connected() ? 'nm' : 'nm pending'} title={connected() ? undefined : 'Connecting…'}>{labelOf(localSelf()).shown}</span>
               </span>
-              <button class="gear" ref={gearMenu.anchor} popovertarget="side-menu" title="New room, join by link, theme, report a problem, and more" aria-label="Settings and more">⚙</button>
+              <button class="gear" ref={gearMenu.anchor} popovertarget="side-menu" title="New room, join by link, report a problem, and more" aria-label="Settings and more">⚙</button>
             </div>
             <div class="side-foot" id="side-menu" popover="auto" ref={gearMenu.menu} onBeforeToggle={gearMenu.beforeToggle} onToggle={(e) => {
               gearMenu.toggle(e);
@@ -785,14 +792,9 @@ function Workspace(props: WorkspaceProps) {
               <button class={`link ${askingConsent() ? 'on' : ''}`} title={telemetryOn() ? 'This browser sends usage events, errors and a masked screen recording to PostHog. Click to read what is sent, or to stop.' : 'Send usage events, errors and a masked screen recording to PostHog, so bugs can be found. Click to read what is sent.'} onClick={() => { setAskingConsent((a) => !a); closeMenu(); }}>{telemetryOn() ? 'Stop helping find bugs' : 'Help find bugs'}</button>
               <ReportDialog collect={() => collectReport({ status: () => cur().room.status().kind, people: everyone, me: () => me, call: (active() ?? cur()).call.diagnostics })} />
               <VersionDialog />
-              <Show when={THEMES.length > 0}>
-                <select class="theme-pick" aria-label="Theme" title="The look of dave in this browser" value={theme()} onChange={(e) => setTheme(e.currentTarget.value)}>
-                  <option value="">Default look</option>
-                  <For each={THEME_GROUPS}>{(g) => <optgroup label={g.label}><For each={g.themes}>{(t) => <option value={t.name}>{t.label}</option>}</For></optgroup>}</For>
-                </select>
-              </Show>
             </div>
           </aside>
+          <ThemesCard open={themesAt()} onClose={() => setThemesAt(null)} />
           <ProfileCard open={profile()} people={withMe()} me={me} label={labelOf} onClose={() => setProfile(null)} onRenameSelf={renameSelf} onPictureSelf={pictureSelf} onMessage={(p) => { setProfile(null); openPrivate(p); }} />
           {/* The state of the room on screen; with a private conversation on screen, of the room that carries it, as its
               composer goes by: a room down behind it is not the conversation's */}
@@ -1040,6 +1042,39 @@ function PersonRow(props: { p: Person; isMe: boolean; label: Label; onProfile: (
       {/* In the call of another of my rooms: here too, and where they are talking */}
       <Show when={props.inCallOf}>{(room) => <span class="in-call-of" title={`In the call in ${room()}`}>in {room()}</span>}</Show>
     </li>
+  );
+}
+
+/**
+ * Every look of dave in one card, for one room, beside the sidebar where a profile card is: that room's look checked.
+ * A click picks one for it and leaves the card open, so the next is a click away; Escape or a click outside puts it away.
+ */
+function ThemesCard(props: { open: { anchor: HTMLElement; roomId: string } | null; onClose: () => void }) {
+  let card: HTMLDivElement | undefined;
+  const isOpen = () => card?.matches(':popover-open') ?? false;
+  createEffect(() => props.open, (o) => {
+    if (!card) return;
+    if (!o) { if (isOpen()) card.hidePopover(); return; }
+    if (!isOpen()) card.showPopover();
+    place(card, o.anchor, 'beside', o.anchor.closest<HTMLElement>('aside.side') ?? undefined);
+  });
+  const picked = () => (props.open ? themeOf(props.open.roomId) : theme());
+  const choice = (name: string, label: string) => (
+    <button type="button" class="theme-choice" data-theme-name={name} aria-pressed={picked() === name ? 'true' : 'false'} onClick={() => { if (props.open) setRoomTheme(props.open.roomId, name); }}>
+      <span class="check" aria-hidden="true">{picked() === name ? '✓' : ''}</span>{label}
+    </button>
+  );
+  return (
+    <div class="themes" popover="auto" ref={card} aria-label="Themes" onToggle={(e) => { if ((e as ToggleEvent).newState === 'closed') props.onClose(); }}>
+      <h3>Themes</h3>
+      <div class="theme-list">
+        {choice('', 'Default look')}
+        <For each={THEME_GROUPS}>{(g) => <>
+          <div class="theme-group">{g.label}</div>
+          <For each={g.themes}>{(t) => choice(t.name, t.label)}</For>
+        </>}</For>
+      </div>
+    </div>
   );
 }
 

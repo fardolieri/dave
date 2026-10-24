@@ -54,7 +54,6 @@
 :root[data-theme="fd-notebook"] .new { background: var(--hl); color: var(--ink); }
 :root[data-theme="fd-notebook"] .warn { background: #FFF1DC; color: #6A3600; border-left: 3px solid #D0811E; border-radius: 2px; }
 :root[data-theme="fd-notebook"] .panel { background: #FFFFFF; border: 1px solid var(--line); border-radius: 2px; box-shadow: 2px 2px 0 #E2E8F3; }
-:root[data-theme="fd-notebook"] .theme-pick { background: #fff; color: var(--pencil); border-color: var(--line); }
 
 /* the small Leave of my call's folded room is the big one in small: red pen on paper */
 :root[data-theme="fd-notebook"] button.room-leave { background: var(--paper); color: var(--redpen); border: 1.5px solid var(--redpen); border-radius: var(--wobble); font-weight: 700; }

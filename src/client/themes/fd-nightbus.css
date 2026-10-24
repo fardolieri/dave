@@ -56,7 +56,6 @@
 :root[data-theme="fd-nightbus"] .new { background: var(--warn); color: #2A2200; border-radius: 2px; }
 :root[data-theme="fd-nightbus"] .warn { background: #2E2A12; color: var(--warn); border-radius: 3px; border-left: 3px solid var(--warn); }
 :root[data-theme="fd-nightbus"] .panel { border-radius: 3px; background: #142848; }
-:root[data-theme="fd-nightbus"] .theme-pick { border-radius: 2px; }
 
 :root[data-theme="fd-nightbus"] .msg-from { font-weight: 700; }
 :root[data-theme="fd-nightbus"] .chat-new { background: rgba(24,48,86,.92); border-radius: 3px; }

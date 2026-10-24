@@ -624,12 +624,28 @@ export async function openRoomMenu(page: Page): Promise<void> {
   await expect(page.locator('.room-menu:popover-open')).toBeVisible();
 }
 
-/** Picks a theme from the ⚙ menu, then puts the menu away, so nothing of it is over what the test looks at next. */
+/**
+ * Picks the look of the room on screen from its ⋯ menu's themes card, then puts the card away, so nothing of it is over
+ * what the test looks at next.
+ */
 export async function pickTheme(page: Page, value: string): Promise<void> {
-  await openMenu(page);
-  await page.getByRole('combobox', { name: 'Theme', exact: true }).selectOption(value);
+  await openRoomMenu(page);
+  await page.locator('.room-menu:popover-open').getByRole('button', { name: 'Themes', exact: true }).click();
+  const card = page.locator('.themes:popover-open');
+  await card.locator(`.theme-choice[data-theme-name="${value}"]`).click();
+  await expect(card.locator(`.theme-choice[data-theme-name="${value}"]`)).toHaveAttribute('aria-pressed', 'true');
   await page.keyboard.press('Escape');
-  await expect(page.locator('#side-menu')).toBeHidden();
+  await expect(page.locator('.themes')).toBeHidden();
+}
+
+/** The looks the themes card offers, '' (the default look) first, whether the card is open or not. */
+export async function themeNames(page: Page): Promise<string[]> {
+  return page.locator('.themes .theme-choice').evaluateAll((els) => els.map((e) => e.getAttribute('data-theme-name') ?? ''));
+}
+
+/** The look the themes card has checked: the room on screen's, the card shut. */
+export async function pickedTheme(page: Page): Promise<string | null> {
+  return page.locator('.themes .theme-choice[aria-pressed="true"]').getAttribute('data-theme-name');
 }
 
 /** Skips the current test when the app under test was built without the inspection hooks (a deployed copy). */

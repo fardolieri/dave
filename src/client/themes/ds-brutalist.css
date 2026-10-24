@@ -136,7 +136,6 @@
 :where(:root[data-theme="ds-brutalist"]) .update { border-bottom: var(--border-width) solid var(--line); text-transform: uppercase; }
 :where(:root[data-theme="ds-brutalist"]) .update button { border-radius: 0; }
 :where(:root[data-theme="ds-brutalist"]) .consent .bubble { border-radius: 0; border: 3px solid var(--line); }
-:where(:root[data-theme="ds-brutalist"]) .theme-pick { border-radius: 0; }
 /* the phone moves the sidebar's rule to its bottom edge, as the app's own layout does */
 /* the gear button is narrow; the theme's wider padding would push the cog off centre */
 :where(:root[data-theme="ds-brutalist"]) .actions .gear { padding-inline: 0; }

@@ -1,4 +1,4 @@
-import { createSignal } from 'solid-js';
+import { createSignal, untrack } from 'solid-js';
 import posthog from './posthog';
 import { local } from './storage';
 
@@ -20,8 +20,17 @@ export const THEME_GROUPS: readonly { label: string; themes: { name: string; lab
     }),
   }));
 
+// Each room has its own look, picked from its ⋯ menu (`dave.roomThemes`, by room id); the page wears the look of the room
+// on screen. The look picked before rooms had their own (`dave.theme`) is the look of every room with no pick yet, so
+// nobody's look changes on the update. A stored name whose file is gone reads as the default look.
+const known = (name: string): string => (name === '' || THEMES.includes(name) ? name : '');
 const stored = local.read('theme');
-const [theme, setThemeSignal] = createSignal(stored !== null && THEMES.includes(stored) ? stored : '');
+const fallback = stored !== null ? known(stored) : '';
+const [picks, setPicks] = createSignal<Record<string, string>>(local.read('roomThemes'));
+/** The look of a room: its own pick, else the one from before rooms had their own. */
+export const themeOf = (roomId: string): string => { const p = picks()[roomId]; return p === undefined ? fallback : known(p); };
+const [theme, setThemeSignal] = createSignal(fallback);
+/** The look on screen: the room on screen's. */
 export { theme };
 
 // Which themes friends keep, not only try (the bake-off of PR #63, .scratch/themes/issues/01-keep-or-drop.md): every
@@ -34,10 +43,21 @@ const apply = (name: string): void => {
 apply(theme());
 /** When the theme on screen was picked in this page; null for one this browser had kept from an earlier visit. */
 let pickedAt: number | null = null;
+let shownRoom: string | null = null;
 
-export function setTheme(name: string): void {
-  const previous = theme();
-  if (name === previous) return;
+/** A room comes on screen: the page wears its look. */
+export function showRoomTheme(roomId: string): void {
+  shownRoom = roomId;
+  const name = untrack(() => themeOf(roomId));
+  if (name === untrack(theme) && (document.documentElement.dataset['theme'] ?? '') === name) return;
+  setThemeSignal(name);
+  apply(name);
+}
+
+/** Picks a room's look; on screen if the room is. */
+export function setRoomTheme(roomId: string, name: string): void {
+  const previous = untrack(() => themeOf(roomId));
+  if (name === previous && untrack(picks)[roomId] !== undefined) return;
   posthog.capture('theme_picked', {
     theme: name || 'default',
     previous: previous || 'default',
@@ -45,8 +65,16 @@ export function setTheme(name: string): void {
     $set: { theme: name || 'default' },
   });
   pickedAt = Date.now();
-  setThemeSignal(name);
-  apply(name);
-  if (name) local.set('theme', name);
-  else local.remove('theme');
+  const next = { ...untrack(picks), [roomId]: name };
+  setPicks(next);
+  local.set('roomThemes', JSON.stringify(next));
+  if (roomId === shownRoom) { setThemeSignal(name); apply(name); }
+}
+
+/** A room left: its look goes with it. */
+export function forgetRoomTheme(roomId: string): void {
+  const { [roomId]: _gone, ...rest } = untrack(picks);
+  if (_gone === undefined) return;
+  setPicks(rest);
+  local.set('roomThemes', JSON.stringify(rest));
 }

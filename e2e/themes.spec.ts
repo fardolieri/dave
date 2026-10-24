@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { target } from './browsers';
-import { expect, newSecret, test, pickTheme } from './fixtures';
+import { expect, newSecret, test, pickTheme, pickedTheme, themeNames } from './fixtures';
 
 // Every look of the theme picker (client/theme.ts), on one app in a lived-in state: a room with a friend in the call and
 // sharing a screen, a few chat lines, an unread count on another room. Each theme is picked the way a friend picks it and
@@ -107,8 +107,7 @@ test('every theme applies, loads its fonts and keeps the console quiet, at deskt
   await expect(alice.tile('Bob')).toHaveClass(/share-closed/);
 
   const page = alice.page;
-  const pick = page.getByRole('combobox', { name: 'Theme', exact: true, includeHidden: true }); // behind ⚙: read, not picked, while the menu is shut
-  const themes = await pick.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+  const themes = await themeNames(page);
   expect(themes.length, 'the picker offers the default look and at least one theme').toBeGreaterThan(1);
 
   // A font file the server does not have, or one the browser gives up on.
@@ -169,7 +168,24 @@ test('every theme applies, loads its fonts and keeps the console quiet, at deskt
   await page.reload();
   await alice.connected();
   await expect(page.locator('html')).toHaveAttribute('data-theme', kept);
-  await expect(pick).toHaveValue(kept);
+  await expect.poll(() => pickedTheme(page)).toBe(kept);
+});
+
+test('each room has its own look: the page wears the room on screen\'s, kept over a reload', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
+  const page = alice.page;
+  const look = (await themeNames(page)).filter(Boolean)[0]!;
+  await pickTheme(page, look); // for Room, on screen
+  await expect(page.locator('html')).toHaveAttribute('data-theme', look);
+  await alice.selectRoom('Other');
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+  await alice.selectRoom('Room');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', look);
+  await page.evaluate(async () => { await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); await document.fonts.ready; }); // a reload must not cut off a font download
+  await page.reload();
+  await alice.connected();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', look);
 });
 
 test('a stored theme whose file a later deploy dropped reads as the default look, and a theme picked then is kept', async ({ crowd }) => {
@@ -182,11 +198,10 @@ test('a stored theme whose file a later deploy dropped reads as the default look
   });
   await alice.open();
   const page = alice.page;
-  const pick = page.getByRole('combobox', { name: 'Theme', exact: true, includeHidden: true }); // behind ⚙: read, not picked, while the menu is shut
   await expect(page.locator('html')).not.toHaveAttribute('data-theme');
-  await expect(pick).toHaveValue('');
+  await expect.poll(() => pickedTheme(page)).toBe('');
 
-  const themes = await pick.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value).filter(Boolean));
+  const themes = (await themeNames(page)).filter(Boolean);
   const kept = themes[0]!;
   await pickTheme(page, kept);
   await expect(page.locator('html')).toHaveAttribute('data-theme', kept);
@@ -195,7 +210,7 @@ test('a stored theme whose file a later deploy dropped reads as the default look
   await page.reload();
   await alice.connected();
   await expect(page.locator('html')).toHaveAttribute('data-theme', kept);
-  await expect(pick).toHaveValue(kept);
+  await expect.poll(() => pickedTheme(page)).toBe(kept);
 });
 
 test('a theme\'s own fonts load with the server gone, from the service worker', async ({ crowd }) => {

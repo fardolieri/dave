@@ -68,7 +68,6 @@
 :where(:root[data-theme="imp-olympia"]) button.link { color: var(--dim); font-weight: 500; text-underline-offset: 3px; }
 :where(:root[data-theme="imp-olympia"]) button.link:hover { color: var(--fg); }
 :where(:root[data-theme="imp-olympia"]) select.picker option:checked { background: var(--acc); color: #fff; }
-:where(:root[data-theme="imp-olympia"]) .theme-pick { border-color: var(--field); }
 
 /* badges and notices */
 :where(:root[data-theme="imp-olympia"]) .unread { background: #0b3f7a; color: #fff; border-radius: 2px; }

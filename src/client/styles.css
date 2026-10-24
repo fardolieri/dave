@@ -71,7 +71,6 @@ input { background: var(--panel2); color: var(--fg); border: 1px solid var(--lin
 .side-foot[popover]:popover-open { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
 .side-foot > button.link, .side-foot .about-link button.link { text-align: left; padding: 7px 10px; border-radius: 8px; color: var(--fg); font-size: 14px; text-decoration: none; }
 .side-foot > button.link:is(:hover, :focus-visible), .side-foot .about-link button.link:is(:hover, :focus-visible) { background: var(--panel2); }
-.side-foot .theme-pick { margin: 6px 10px 4px; }
 /* Another room, at a glance beside its name: the faces of who is in it, overlapping a little; a green ring for those in
    its call, who come first, a plain one for the rest */
 .roomfaces { display: flex; flex: none; padding: 0 2px; }
@@ -454,6 +453,15 @@ button.link { background: none; border: 0; color: var(--dim); font-size: 11px; p
 
 /* Profile card (issues #6, #7): a popover next to the avatar that was clicked. Placed by script, so the
    UA's centred inset is undone here; the top layer keeps it above shares and the composer. */
+/* The themes card: beside the sidebar as a profile card, the looks in a list that scrolls, the one on screen checked */
+.themes[popover] { position: fixed; inset: auto; margin: 0; width: 260px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: auto; padding: 12px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.themes h3 { margin: 0 0 8px; font-size: 14px; }
+.themes .theme-list { display: flex; flex-direction: column; gap: 2px; }
+.themes .theme-group { margin: 8px 0 2px; font-size: 11px; font-weight: 600; color: var(--dim); }
+.themes .theme-choice { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 8px; border: 0; border-radius: 8px; background: none; color: var(--fg); text-align: left; font: inherit; }
+.themes .theme-choice:hover { background: var(--panel2); }
+.themes .theme-choice[aria-pressed='true'] { background: color-mix(in srgb, var(--acc) 18%, transparent); font-weight: 600; }
+.themes .theme-choice .check { flex: none; width: 1em; color: var(--acc); }
 .profile[popover] { position: fixed; inset: auto; margin: 0; width: 280px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: auto; padding: 14px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); font-size: 14px; }
 .profile-head { display: flex; align-items: center; gap: 12px; }
 .avatar.big { width: 56px; height: 56px; font-size: 22px; }
@@ -601,4 +609,3 @@ dialog.about dt { color: var(--dim); }
 dialog.about dd { margin: 0; }
 
 /* The design-trial picker (theme.ts): as quiet as the links around it. */
-.theme-pick { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; font-size: 11px; padding: 2px 4px; }
