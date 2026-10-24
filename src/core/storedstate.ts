@@ -119,7 +119,7 @@ export const LOCAL = {
     map: true,
     fixtures: { '2026-10-20, private texts': '{"roomA":[{"id":"0a1b2c3d4e5f60718293a4b5","to":{"publicKey":"pkB","fingerprint":"DEF456","name":"Ben","picture":"🦕"},"text":"hi","at":1760900000000},{"id":"1a1b2c3d4e5f60718293a4b5","to":{"publicKey":"pkC","fingerprint":"GHI789","name":"Cleo"},"text":"yo","at":1760900001000,"out":true}]}' },
   },
-  theme: { about: 'The look picked before rooms had their own, a file name in client/themes/; none is the default look. Now the look of every room with no pick of its own (client/theme.ts).', parse: text, fixtures: { '2026-10-15': 'fd-walkie' } },
+  theme: { about: 'The look picked before rooms had their own, a file name in client/themes/; none is the default look. Read once on the update: it becomes the pick of each room there is, in `roomThemes`, and is removed (client/theme.ts).', parse: text, fixtures: { '2026-10-15': 'fd-walkie' } },
   roomThemes: {
     about: "Each room's own look, by room id, picked from its ⋯ menu: a file name in client/themes/, '' for the default look (client/theme.ts).",
     parse: parseRoomThemes,

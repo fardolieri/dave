@@ -240,6 +240,61 @@ test('a stored theme whose file a later deploy dropped reads as the default look
   await expect.poll(() => pickedTheme(page)).toBe(kept);
 });
 
+test('the look picked before rooms had their own stays its room\'s, and a room joined later starts in the default look', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { connect: false });
+  const old = 'fd-walkie'; // picked in the ⚙ menu of before
+  await alice.context.addInitScript((name) => {
+    if (localStorage.getItem('dave.e2e-theme-seeded')) return;
+    localStorage.setItem('dave.e2e-theme-seeded', '1');
+    localStorage.setItem('dave.theme', name);
+  }, old);
+  await alice.open();
+  const page = alice.page;
+  await expect(page.locator('html')).toHaveAttribute('data-theme', old); // nobody's look changes on the update
+  // There is no picker left for the old look: a room new to this browser does not wear it.
+  const fresh = { secret: newSecret(), name: 'Fresh' };
+  await page.goto(`/#${fresh.secret}/${fresh.name}`);
+  await alice.connected();
+  const box = (name: string) => page.locator('aside.side section.room', { has: page.locator('.room-title', { hasText: name }) });
+  await expect(box('Fresh')).toHaveAttribute('data-theme', 'default');
+  await expect(box(crowd.room.name)).toHaveAttribute('data-theme', old);
+  await page.evaluate(async () => { await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); await document.fonts.ready; }); // a reload must not cut off a font download
+  await page.reload();
+  await alice.connected();
+  await expect(box('Fresh')).toHaveAttribute('data-theme', 'default');
+  await expect(box(crowd.room.name)).toHaveAttribute('data-theme', old);
+});
+
+test('a look picked in a second tab stays when the first tab takes the app back, and a pick there keeps it', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
+  const [look, next] = (await themeNames(alice.page)).filter(Boolean);
+  const box = (page: Page, name: string) => page.locator('aside.side section.room', { has: page.locator('.room-title', { hasText: name }) });
+  // A link tapped elsewhere opens a second tab; Alice uses dave there and picks a look for the top room.
+  const second = await alice.context.newPage();
+  alice.watch(second);
+  await second.goto('/');
+  await second.getByRole('button', { name: 'Use it here instead' }).click();
+  await expect(second.locator('.chat-field > input')).toBeEnabled();
+  await pickTheme(second, look!);
+  await expect(box(second, crowd.room.name)).toHaveAttribute('data-theme', look!);
+  // Back in the first tab, which takes the app back without a reload: the look is there too.
+  await alice.page.getByRole('button', { name: 'Use it here instead' }).click();
+  await alice.connected();
+  await expect(alice.page.locator('html')).toHaveAttribute('data-theme', look!);
+  await expect(box(alice.page, crowd.room.name)).toHaveAttribute('data-theme', look!);
+  // A pick for the other room there does not undo the one made in the second tab.
+  await alice.selectRoom('Other');
+  await pickTheme(alice.page, next!);
+  await expect(box(alice.page, 'Other')).toHaveAttribute('data-theme', next!);
+  await second.close();
+  await alice.page.evaluate(async () => { await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); await document.fonts.ready; }); // a reload must not cut off a font download
+  await alice.page.reload();
+  await alice.connected();
+  await expect(box(alice.page, crowd.room.name)).toHaveAttribute('data-theme', look!);
+  await expect(box(alice.page, 'Other')).toHaveAttribute('data-theme', next!);
+});
+
 test('a theme\'s own fonts load with the server gone, from the service worker', async ({ crowd }) => {
   // The outage is staged at the preview server (vite.config.ts), as in update.spec.ts.
   test.skip(!!target, 'needs the preview server (vite.config.ts): an outage is staged there, not in a deployed copy');

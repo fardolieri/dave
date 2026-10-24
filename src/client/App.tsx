@@ -29,7 +29,7 @@ import { EmojiPicker } from './EmojiPicker';
 import { place } from './place';
 import { createTabLock } from './tablock';
 import { build, commitUrl, REPO_URL, shortCommit } from './version';
-import { THEMES, THEME_GROUPS, forgetRoomTheme, lookApart, setRoomTheme, showTopTheme, theme, themeOf } from './theme';
+import { THEMES, THEME_GROUPS, adoptOldTheme, forgetRoomTheme, lookApart, setRoomTheme, showTopTheme, theme, themeOf } from './theme';
 import { applyUpdate, downloadProgress, holding, noteOffered, tabSettled, updateReady } from './update';
 
 export default function App() {
@@ -334,7 +334,9 @@ function Workspace(props: WorkspaceProps) {
   // one whose call I am in, if I am in one. Each room's box wears its own; the chat of the room on screen wears that
   // room's, marked only where it is not the page's (a mark of the page's own would cover the page's scenery behind it).
   // A private conversation belongs to no room: the page's.
-  createEffect(() => links()[0]?.saved.id, (id) => { if (id) showTopTheme(id); });
+  adoptOldTheme(untrack(links).map((l) => l.saved.id));
+  // The top room's look on the page, again when its look changes in another tab
+  createEffect(() => { const id = links()[0]?.saved.id; return id ? `${id} ${themeOf(id)}` : ''; }, (key) => { if (key) showTopTheme(key.split(' ')[0]!); });
   const chatLook = () => { const id = current()?.saved.id ?? ''; return lookApart(id) ? themeOf(id) || 'default' : undefined; };
   /** The room on screen folded in the sidebar by a click on its box; another room brought on screen opens again. */
   const [folded, setFolded] = createSignal(false);
@@ -620,6 +622,8 @@ function Workspace(props: WorkspaceProps) {
               const top = () => links()[0] === l;
               // Open in the sidebar: the room on screen, unless I folded it, or a private conversation is on screen in its place.
               const expanded = () => selected() && !folded() && !privates.openWith();
+              // Its ⋯ gone (folded, another room on screen, from a link or another tab too), its Themes card goes with it
+              createEffect(() => top() && expanded(), (hasMore) => { if (!hasMore && untrack(themesAt)?.roomId === l.saved.id) setThemesAt(null); });
               const inThis = () => l.call.inCall();
               // Call list: you first, then by join order. Participants whose server socket dropped stay listed, dimmed, for the grace period.
               // You are listed from this browser's call state, like in Online, so your row and the buttons change together.
