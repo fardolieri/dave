@@ -3,7 +3,7 @@ import { adoptLegacyHistory, forgetHistory } from './history';
 import { local } from './storage';
 
 /**
- * The rooms this browser has entered, oldest first (ADR 0004). Only the secret and the name from the
+ * The rooms this browser has entered, in the sidebar's order: as entered, unless moved since (ADR 0004). Only the secret and the name from the
  * invite link are stored; the id on the wire, the auth key and the text key are derived again at load. Which room is
  * selected is remembered too, so a reload lands where you were.
  */
@@ -50,6 +50,15 @@ export function forgetRoom(rooms: SavedRoom[], secret: string): SavedRoom[] {
   const next = rooms.filter((r) => r.secret !== secret);
   write(next);
   for (const r of rooms) if (r.secret === secret) void forgetHistory(r.id);
+  return next;
+}
+
+/** The rooms in a new order, the sidebar's: the room at `from` moved to `to`. Same stored shape, another order. */
+export function moveRoom(rooms: SavedRoom[], from: number, to: number): SavedRoom[] {
+  if (from === to || !rooms[from] || to < 0 || to >= rooms.length) return rooms;
+  const next = [...rooms];
+  next.splice(to, 0, next.splice(from, 1)[0]!);
+  write(next);
   return next;
 }
 

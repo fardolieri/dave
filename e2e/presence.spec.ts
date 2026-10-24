@@ -36,10 +36,75 @@ test('rooms are separate: presence and text do not cross', async ({ crowd }) => 
   expect(await alice.online()).toEqual(['Alice']);
 });
 
+test('the sidebar lists who is in the room on screen, and shows another room\'s people as faces beside its name, its call first', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
+  await crowd.open('Bob');
+  const carol = await crowd.open('Carol', { rooms: [other] });
+  const dave = await crowd.open('Dave', { rooms: [other] });
+  const here = async () => (await alice.page.locator('aside.side ul.plist.here .nm').allInnerTexts()).map((t) => t.replace(/\s*\(you\)\s*$/, '').trim());
+  const faces = () => alice.page.locator('aside.side section.room:not(.selected) .room-head .roomfaces .face').evaluateAll((els) =>
+    els.map((e) => `${e.querySelector('.avatar')!.getAttribute('title')!.split(/[.,]/)[0]}${e.classList.contains('in-call') ? ' [call]' : ''}`));
+  // Bob and I are here, ready to join the call; Carol and Dave are in Other, as faces beside its name, the newest first.
+  await expect.poll(here).toEqual(['Bob', 'Alice']);
+  await expect.poll(faces).toEqual(['Dave', 'Carol']);
+  await expect(alice.page.locator('aside.side h2'), 'no list of other rooms').toHaveCount(0);
+  // In Other's call, Carol comes first, in the call's ring.
+  await carol.join();
+  await expect.poll(faces).toEqual(['Carol [call]', 'Dave']);
+  expect(await here()).toEqual(['Bob', 'Alice']);
+  // Out of it, she is back as the newest.
+  await carol.leave();
+  await expect.poll(faces).toEqual(['Carol', 'Dave']);
+});
+
+test('on a phone, dave and ⚙ head the sidebar, my own row is only in the room, and the menu opens under the ⚙', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { viewport: { width: 390, height: 780 } });
+  const page = alice.page;
+  await expect(page.locator('aside.side .side-top .brand')).toHaveText('dave');
+  await expect(page.locator('aside.side .side-me')).toBeHidden();
+  await expect.poll(() => alice.online()).toEqual(['Alice']);
+  const gear = page.locator('aside.side .side-top button.gear');
+  await gear.click();
+  const menu = page.locator('#side-menu');
+  await expect(menu).toBeVisible();
+  // Placed from the ⚙ on screen: below it (there is more room there), right edges aligned, inside the window.
+  await expect.poll(async () => {
+    const g = (await gear.boundingBox())!, m = (await menu.boundingBox())!;
+    return m.y >= g.y + g.height && m.y - (g.y + g.height) < 20 && Math.abs(m.x + m.width - (g.x + g.width)) < 2 && m.y + m.height <= 780;
+  }).toBe(true);
+});
+
+test('the room whose call I join goes to the top of the list, and stays there after a reload', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
+  const names = () => alice.page.locator('aside.side section.room .room-title').allTextContents(); // not innerText: shown in capitals
+  await expect.poll(names).toEqual(['Room', 'Other']);
+  await alice.selectRoom('Other');
+  await alice.join();
+  await expect.poll(names).toEqual(['Other', 'Room']);
+  await expect(alice.selectedRoom.locator('.room-title')).toHaveText('Other');
+  await alice.page.reload();
+  await alice.connected();
+  await expect.poll(names).toEqual(['Other', 'Room']);
+});
+test('report of 2026-10-23: a friend in two of my rooms, in the call of the other one, is still listed in the room on screen', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice', { rooms: [crowd.room, other] }); // Room on screen
+  const bob = await crowd.open('Bob', { rooms: [other, crowd.room] }); // Other on screen
+  await bob.join();
+  const row = alice.selectedRoom.locator('ul.plist.here li', { hasText: 'Bob' });
+  await expect(row).toHaveCount(1);
+  await expect(row.locator('.in-call-of')).toHaveText('in Other');
+  // And stays: a moment later too, once every room's presence is in.
+  await alice.page.waitForTimeout(1500);
+  await expect(row).toHaveCount(1);
+});
+
 test('a new name reaches everyone', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
-  await alice.page.locator('aside.side > ul.plist li', { hasText: '(you)' }).locator('button.avatar').click();
+  await alice.page.locator('aside.side .side-me button.avatar').click();
   await alice.page.locator('.profile button.edit').click();
   await alice.page.locator('.profile-edit input').fill('Alicia');
   await alice.page.locator('.profile-edit button.on').click();

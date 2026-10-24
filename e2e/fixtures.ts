@@ -311,8 +311,29 @@ export class Friend {
   /** The banner while the room's socket is away or not let in yet. */
   get away(): Locator { return this.banner.filter({ hasText: /Connecting|Reconnecting|Server unavailable/ }); }
   get selectedRoom(): Locator { return this.page.locator('section.room.selected'); }
-  /** Names in the Online list, "(you)" stripped. */
-  async online(): Promise<string[]> { return (await this.page.locator('aside.side > ul.plist .nm').allInnerTexts()).map(clean); }
+  /**
+   * Names of everyone in the room on screen and not in its call, as the sidebar lists them (a friend in another room's call
+   * too): friends newest first, then me, unless I am in a call (or this tab holds no place in the room). Another room's
+   * people are faces beside its name, not listed.
+   */
+  async online(): Promise<string[]> {
+    // Not deduplicated: a friend listed twice is a bug these lists must show.
+    return (await this.page.locator('aside.side ul.plist.visitors .nm').allInnerTexts()).map(clean);
+  }
+  /**
+   * Names of everyone the sidebar shows, wherever: in the lists of the room on screen, its call box, or as a face beside
+   * the name of another room (a face's title starts with the name).
+   */
+  async seen(): Promise<string[]> {
+    const listed = (await this.page.locator('aside.side ul.plist .nm').allInnerTexts()).map(clean);
+    const faces = await this.page.locator('aside.side .roomfaces .avatar').evaluateAll((els) => els.map((e) => (e.getAttribute('title') ?? '').split(/[.,]/)[0]!.trim()));
+    return [...listed, ...faces];
+  }
+  /** As settledOnline, for names shown anywhere in the sidebar (`seen`): a friend in another room only is a face there. */
+  async settledSeen(...names: string[]): Promise<void> {
+    await expect.poll(async () => { const seen = await this.seen(); return names.filter((n) => !seen.includes(n)); }, { message: `${this.name} shows ${names.join(', ')}` }).toEqual([]);
+    await expect.poll(() => this.page.locator('aside.side').evaluate((side) => [...side.querySelectorAll('ul.plist.visitors')].flatMap((ul) => ul.getAnimations({ subtree: true })).filter((a) => a.effect?.getTiming().iterations !== Infinity).length), { message: `${this.name}'s lists stop moving` }).toBe(0);
+  }
   /**
    * Waits until the Online list holds these names and has stopped moving: a row slides in over 460 ms, after up to 400 ms
    * (`open` in App.tsx), and a click that Playwright found stable can still land where the row pushed it from. Endless
@@ -320,7 +341,7 @@ export class Friend {
    */
   async settledOnline(...names: string[]): Promise<void> {
     await expect.poll(async () => { const online = await this.online(); return names.filter((n) => !online.includes(n)); }, { message: `${this.name} lists ${names.join(', ')}` }).toEqual([]);
-    await expect.poll(() => this.page.locator('aside.side > ul.plist').first().evaluate((ul) => ul.getAnimations({ subtree: true }).filter((a) => a.effect?.getTiming().iterations !== Infinity).length), { message: `${this.name}'s Online list stops moving` }).toBe(0);
+    await expect.poll(() => this.page.locator('aside.side').evaluate((side) => [...side.querySelectorAll('ul.plist.visitors')].flatMap((ul) => ul.getAnimations({ subtree: true })).filter((a) => a.effect?.getTiming().iterations !== Infinity).length), { message: `${this.name}'s Online list stops moving` }).toBe(0);
   }
 
   /** Names in the selected room's call list, "(you)" stripped. */
@@ -394,9 +415,11 @@ export class Friend {
     await expect(this.staged).toHaveCount(0);
   }
 
+  /** Brings a room on screen, open in the sidebar; not a click on it when it is so already, which would fold it. */
   async selectRoom(name: string): Promise<void> {
-    await this.page.locator('button.room-name', { hasText: name }).click();
-    await expect(this.selectedRoom.locator('.room-title')).toHaveText(name);
+    const open = this.page.locator('section.room.selected:not(.folded) .room-title');
+    if (!(await open.allTextContents()).some((t) => t.trim() === name)) await this.page.locator('button.room-name', { hasText: name }).click();
+    await expect(open).toHaveText(name);
   }
 
   async join(): Promise<void> {
@@ -563,8 +586,9 @@ export const test = base.extend<{ crowd: Crowd }>({
             // A friend without a composer (a form, a step-back screen) is not in the room: isConnected would wait for one.
             if ((await o.friend.composer.count().catch(() => 0)) > 0 && (await o.friend.isConnected().catch(() => false))) peers.push(o.friend);
           }
-          for (const f of peers) await f.settledOnline(name);
-          await friend.settledOnline(...peers.map((f) => f.name));
+          // Shown, not only listed: a friend in a room of mine that is not on screen is a face beside its name.
+          for (const f of peers) await f.settledSeen(name);
+          await friend.settledSeen(...peers.map((f) => f.name));
           opened.push({ friend, secrets });
         }
         return friend;
@@ -585,6 +609,28 @@ export const test = base.extend<{ crowd: Crowd }>({
     expect(problems, 'console warnings, errors or exceptions nobody expected').toEqual([]);
   },
 });
+
+/** Opens the sidebar's ⚙ menu (new room, join by link, theme, report a problem…), if it is not open already. */
+export async function openMenu(page: Page): Promise<void> {
+  if (await page.locator('#side-menu:popover-open').count()) return;
+  await page.locator('aside.side button.gear[popovertarget="side-menu"]:visible').click(); // at the bottom on a desktop, at the top on a phone
+  await expect(page.locator('#side-menu')).toBeVisible();
+}
+
+/** Opens the ⋯ menu of the room on screen (invite, clear chat history, leave), if it is not open already. */
+export async function openRoomMenu(page: Page): Promise<void> {
+  if (await page.locator('.room-menu:popover-open').count()) return;
+  await page.locator('aside.side section.room.selected button.room-more').click();
+  await expect(page.locator('.room-menu:popover-open')).toBeVisible();
+}
+
+/** Picks a theme from the ⚙ menu, then puts the menu away, so nothing of it is over what the test looks at next. */
+export async function pickTheme(page: Page, value: string): Promise<void> {
+  await openMenu(page);
+  await page.getByRole('combobox', { name: 'Theme', exact: true }).selectOption(value);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#side-menu')).toBeHidden();
+}
 
 /** Skips the current test when the app under test was built without the inspection hooks (a deployed copy). */
 export async function needHooks(friend: Friend): Promise<void> {

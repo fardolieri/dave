@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { target } from './browsers';
-import { expect, newSecret, test } from './fixtures';
+import { expect, newSecret, test, pickTheme } from './fixtures';
 
 // Every look of the theme picker (client/theme.ts), on one app in a lived-in state: a room with a friend in the call and
 // sharing a screen, a few chat lines, an unread count on another room. Each theme is picked the way a friend picks it and
@@ -107,7 +107,7 @@ test('every theme applies, loads its fonts and keeps the console quiet, at deskt
   await expect(alice.tile('Bob')).toHaveClass(/share-closed/);
 
   const page = alice.page;
-  const pick = page.getByRole('combobox', { name: 'Theme', exact: true });
+  const pick = page.getByRole('combobox', { name: 'Theme', exact: true, includeHidden: true }); // behind ⚙: read, not picked, while the menu is shut
   const themes = await pick.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
   expect(themes.length, 'the picker offers the default look and at least one theme').toBeGreaterThan(1);
 
@@ -129,8 +129,7 @@ test('every theme applies, loads its fonts and keeps the console quiet, at deskt
   for (const value of themes) {
     const name = value || 'default';
     await page.setViewportSize(DESKTOP);
-    await pick.selectOption(value);
-    await pick.blur();
+    await pickTheme(page, value);
     if (value) await expect(page.locator('html')).toHaveAttribute('data-theme', value);
     else await expect(page.locator('html')).not.toHaveAttribute('data-theme');
     await expect.poll(() => fontTrouble(page), { message: `${name}: every font on screen loaded` }).toEqual({ failed: [], notLoaded: [] });
@@ -165,7 +164,7 @@ test('every theme applies, loads its fonts and keeps the console quiet, at deskt
   const kept = themes[themes.length - 1]!;
   await page.setViewportSize(DESKTOP);
   await alice.leave();
-  await pick.selectOption(kept);
+  await pickTheme(page, kept);
   await page.evaluate(async () => { await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); await document.fonts.ready; }); // as below: a reload must not cut off a font download
   await page.reload();
   await alice.connected();
@@ -183,13 +182,13 @@ test('a stored theme whose file a later deploy dropped reads as the default look
   });
   await alice.open();
   const page = alice.page;
-  const pick = page.getByRole('combobox', { name: 'Theme', exact: true });
+  const pick = page.getByRole('combobox', { name: 'Theme', exact: true, includeHidden: true }); // behind ⚙: read, not picked, while the menu is shut
   await expect(page.locator('html')).not.toHaveAttribute('data-theme');
   await expect(pick).toHaveValue('');
 
   const themes = await pick.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value).filter(Boolean));
   const kept = themes[0]!;
-  await pick.selectOption(kept);
+  await pickTheme(page, kept);
   await expect(page.locator('html')).toHaveAttribute('data-theme', kept);
   // Its fonts first: a reload cuts off a font still downloading, and Firefox logs that as an error (NS_BINDING_ABORTED).
   await page.evaluate(async () => { await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); await document.fonts.ready; });
@@ -209,7 +208,7 @@ test('a theme\'s own fonts load with the server gone, from the service worker', 
   // A theme with two families of its own, in our Worker's fonts/ (themes/fd-lounge.css).
   const theme = 'fd-lounge';
   const families = ['Figtree', 'Young Serif'];
-  await page.getByRole('combobox', { name: 'Theme', exact: true }).selectOption(theme);
+  await pickTheme(page, theme);
   /** Every font on screen loaded, the theme's two among them. */
   const fonts = async () => { const f = await fontState(page); return { ...f, used: families.filter((fam) => f.used.includes(fam)) }; };
   const loaded = { failed: [], notLoaded: [], used: families };
@@ -242,7 +241,7 @@ test('Kino\'s house lights are on with nobody sharing, go down under a share and
   await bob.join();
   await alice.connectedTo('Bob');
   const page = alice.page;
-  await page.getByRole('combobox', { name: 'Theme', exact: true }).selectOption('imp-kino');
+  await pickTheme(page, 'imp-kino');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'imp-kino');
   const ambient = page.locator('.ambient');
   const lit = () => ambient.evaluate((el) => ({

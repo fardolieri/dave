@@ -383,6 +383,8 @@ export function createPrivates(opts: { identity: LocalIdentity; name: () => stri
     },
     /** Whether a text to this friend would go out now: the room that would carry it is connected. */
     connected: (friend: string): boolean => carrier(friend)?.room.status().kind === 'connected',
+    /** The room a text to this friend would go through now, if any (`carrier`): its state is the conversation's. */
+    via: (friend: string): Room | null => carrier(friend)?.room ?? null,
     /** A room I am leaving hands its waiting texts back: through another room we share, else not sent. */
     strand: (room: Room): void => {
       // Taken out of it first: until it is gone it could still send them itself, and the friend would get two.

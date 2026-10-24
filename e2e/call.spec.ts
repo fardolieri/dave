@@ -1,4 +1,4 @@
-import { expect, needHooks, newSecret, test } from './fixtures';
+import { expect, needHooks, newSecret, test, openRoomMenu } from './fixtures';
 
 test('two friends join the call, connect directly and hear each other', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
@@ -98,6 +98,7 @@ test('regression: a room left takes its call off the device list, which it no lo
   const listeners = () => bob.page.evaluate(() => (window as unknown as { __deviceListeners: () => number }).__deviceListeners());
   await expect.poll(listeners).toBe(2);
   bob.page.once('dialog', (d) => void d.accept());
+  await openRoomMenu(bob.page);
   await bob.page.getByRole('button', { name: `Leave ${crowd.room.name}` }).click();
   await expect(bob.page.locator('button.room-name', { hasText: crowd.room.name })).toHaveCount(0);
   await expect.poll(listeners).toBe(1);

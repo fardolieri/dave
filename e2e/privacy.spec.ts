@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { target } from './browsers';
-import { expect, test } from './fixtures';
+import { expect, test, openMenu, pickTheme } from './fixtures';
 
 // PostHog is opt-in (ticket 32): a browser that has not said yes sends nothing there and keeps nothing of it.
 
@@ -32,8 +32,10 @@ test('a fresh browser is asked once, again only from the sidebar, and sends noth
   await alice.page.reload();
   await alice.connected();
   await expect(notice).not.toBeVisible(); // asked once on its own
+  await openMenu(alice.page);
   await alice.page.getByRole('button', { name: 'Help find bugs', exact: true }).click(); // and again from the sidebar
   await expect(notice).toContainText('Nothing is sent unless you say yes');
+  await openMenu(alice.page);
   await alice.page.getByRole('button', { name: 'Help find bugs', exact: true }).click(); // a second click puts it away
   await expect(notice).not.toBeVisible();
   await alice.say('after the no');
@@ -60,19 +62,23 @@ test('a yes starts PostHog and tells the server; stopping forgets it again', asy
   await expect.poll(() => alice.wire.frames('up', 'auth').at(-1)?.['telemetry']).toBe(true);
 
   // The sidebar asks again, with what is sent in view, rather than switching it off unread
+  await openMenu(alice.page);
   await alice.page.getByRole('button', { name: 'Stop helping find bugs' }).click();
   const notice = alice.page.getByRole('region', { name: 'Help find bugs' });
   await expect(notice).toContainText('You are helping right now');
   await answer(alice.page, 'Maybe later');
   await expect(notice).not.toBeVisible();
+  await openMenu(alice.page);
   await expect(alice.page.getByRole('button', { name: 'Help find bugs', exact: true })).toBeVisible();
   await expect.poll(() => alice.wire.frames('up', 'telemetry').at(-1)).toEqual({ t: 'telemetry', on: false });
   await expect.poll(() => posthogStorage(alice.page)).toEqual([]);
   // A yes again on the same page: the SDK is still loaded, and its reset on the no dropped the build, which comes back
+  await openMenu(alice.page);
   await alice.page.getByRole('button', { name: 'Help find bugs', exact: true }).click();
   await answer(alice.page, 'Sure!');
   await expect.poll(superProperties, { message: 'the build is registered again after a no and a yes' })
     .toMatchObject({ build_commit: expect.stringMatching(/^[0-9a-f]{40}$/), build_target: expect.stringMatching(/^(live|nightly|preview|e2e|local)$/) });
+  await openMenu(alice.page);
   await alice.page.getByRole('button', { name: 'Stop helping find bugs' }).click();
   await answer(alice.page, 'Maybe later');
   await expect.poll(() => posthogStorage(alice.page)).toEqual([]);
@@ -91,9 +97,9 @@ test('with the yes, every event says which theme is on screen, from the load and
     .map((k) => { try { return JSON.parse(localStorage.getItem(k)!) as Record<string, unknown>; } catch { return null; } })
     .find((v) => v && 'build_target' in v)?.['theme'] ?? null);
   await expect.poll(theme, { message: 'the default look, before any pick' }).toBe('default');
-  const pick = alice.page.getByRole('combobox', { name: 'Theme', exact: true });
+  const pick = alice.page.getByRole('combobox', { name: 'Theme', exact: true, includeHidden: true }); // behind ⚙: read, not picked, while the menu is shut
   const picked = (await pick.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value).filter(Boolean)))[0]!;
-  await pick.selectOption(picked);
+  await pickTheme(alice.page, picked);
   await expect.poll(theme, { message: 'the picked theme from the pick on' }).toBe(picked);
   // Another theme in this browser's store before a reload (the SDK's own state still says the first): the page registers
   // the stored one as it loads.
@@ -124,6 +130,7 @@ test('a yes during the handshake neither refuses the room nor gets lost', async 
 
 test('a problem report still goes without the opt-in, alone and saying where it goes', async ({ crowd }) => {
   const alice = await crowd.open('Alice', { telemetry: 'off', plainUserAgent: true });
+  await openMenu(alice.page);
   await alice.page.getByRole('button', { name: 'Report a problem' }).click();
   const dialog = alice.page.locator('dialog.report');
   await expect(dialog.locator('.hint')).toContainText('sent to PostHog');

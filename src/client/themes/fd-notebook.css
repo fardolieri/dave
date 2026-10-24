@@ -41,7 +41,7 @@
   background: radial-gradient(circle, var(--paper) 4px, #9FAFCB 4.5px, transparent 5.5px) right 2px top 10px / 14px 28px repeat-y, var(--panel); padding-right: 24px; }
 :root[data-theme="fd-notebook"] .room-title { font-family: var(--hand); text-transform: none; letter-spacing: 0; font-size: 18px; font-weight: 700; color: var(--pencil); }
 :root[data-theme="fd-notebook"] .room.selected .room-title { color: var(--ink); background: linear-gradient(transparent 35%, var(--hl) 35%, var(--hl) 88%, transparent 88%); padding: 0 3px; }
-:root[data-theme="fd-notebook"] button.room-name:hover .room-title { color: var(--ink); }
+:root[data-theme="fd-notebook"] .room-head:hover .room-title { color: var(--ink); }
 :root[data-theme="fd-notebook"] .unread { background: var(--ink); color: #fff; font-size: 11px; }
 :root[data-theme="fd-notebook"] .avatar { background: #FFFFFF; color: var(--ink); border: 1.5px solid var(--ink); font-family: var(--hand); font-size: 15px; }
 :root[data-theme="fd-notebook"] .avatar.pic { border-color: var(--line); }

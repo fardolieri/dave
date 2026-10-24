@@ -19,8 +19,21 @@ body { isolation: isolate; }
 a { color: var(--acc); }
 h1 { font-size: 20px; margin: 0 0 12px; }
 h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 14px 0 6px; }
-button { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+/* `font: inherit` as the field beside it has: the browser's own button font is smaller than the text around it, which
+   every theme already undoes for itself */
+button { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; cursor: pointer; font: inherit; }
 button:disabled { opacity: .5; cursor: default; }
+/* Every control answers the pointer and the keyboard, whatever it looks like at rest. Zero specificity: a theme's own
+   states, and the buttons below that set their own frame or colour, win. */
+:where(button:not(:disabled, .link, .avatar):hover) { border-color: color-mix(in srgb, var(--fg) 24%, var(--line)); }
+:where(button:is(.on, .join, .leave, .unblock):not(:disabled):hover) { filter: brightness(1.08); }
+:where(button:not(:disabled):active) { translate: 0 1px; }
+:where(button:focus-visible, a:focus-visible, summary:focus-visible, select:focus-visible) { outline: 2px solid var(--acc); outline-offset: 2px; }
+:where(input:focus-visible, textarea:focus-visible) { outline: 2px solid color-mix(in srgb, var(--acc) 60%, transparent); outline-offset: 0; border-color: var(--acc); }
+/* The parts the browser draws, in the palette too: placeholders, selected text, scrollbars */
+:where(input, textarea)::placeholder { color: var(--dim); opacity: 1; }
+::selection { background: color-mix(in srgb, var(--acc) 35%, transparent); }
+:where(:root) { scrollbar-color: var(--line) transparent; }
 input { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; }
 .dim { color: var(--dim); }
 .notice { width: 100%; max-width: 36rem; margin: 3rem auto; padding: 0 1rem; }
@@ -46,8 +59,33 @@ input { background: var(--panel2); color: var(--fg); border: 1px solid var(--lin
 .scroll { display: contents; }
 .side { grid-column: 1; grid-row: 1 / -1; display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--line); padding: 0 14px 14px; overflow: auto; }
 .side > * { flex: none; }
-/* rare actions live at the very bottom of the sidebar, far from anything clicked often */
-.side-foot { margin-top: auto; padding-top: 18px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 14px; }
+/* Me at the bottom of the sidebar, after every room; the rare actions behind ⚙, far from anything clicked often. Not sticky:
+   a bar of its own colour would cover what a theme draws at the bottom of the sidebar. */
+.side-me { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 10px 0 0; border-top: 1px solid var(--line); }
+.side-me .who { flex: 0 1 auto; margin-right: auto; } /* my picture and name, one handle; the ⚙ at the end */
+.side-me .nm { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-me .nm.pending { opacity: .45; }
+:is(.side-me, .side-top) .gear { flex: none; width: 32px; height: 32px; padding: 0; border-radius: 50%; border: 0; background: none; color: var(--dim); font-size: 17px; line-height: 1; }
+:is(.side-me, .side-top) .gear:is(:hover, :focus-visible) { color: var(--fg); background: var(--panel2); }
+.side-foot[popover] { position: fixed; inset: auto; margin: 0; overflow: auto; padding: 6px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.side-foot[popover]:popover-open { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
+.side-foot > button.link, .side-foot .about-link button.link { text-align: left; padding: 7px 10px; border-radius: 8px; color: var(--fg); font-size: 14px; text-decoration: none; }
+.side-foot > button.link:is(:hover, :focus-visible), .side-foot .about-link button.link:is(:hover, :focus-visible) { background: var(--panel2); }
+.side-foot .theme-pick { margin: 6px 10px 4px; }
+/* Another room, at a glance beside its name: the faces of who is in it, overlapping a little; a green ring for those in
+   its call, who come first, a plain one for the rest */
+.roomfaces { display: flex; flex: none; padding: 0 2px; }
+.roomfaces .face { position: relative; display: inline-flex; margin-left: -6px; border-radius: 50%; }
+.roomfaces .face:first-child { margin-left: 0; }
+.roomfaces .face .unread { position: absolute; z-index: 1; pointer-events: none; top: -6px; right: -8px; font-size: 9px; line-height: 14px; padding: 0 4px; }
+aside.side .room-head .roomfaces .avatar { width: 22px; height: 22px; font-size: 11px; box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--line); }
+aside.side .room-head .roomfaces .face.in-call .avatar { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--ok); }
+aside.side .room-head .roomfaces .avatar.pic { font-size: 13px; } /* over any theme's size for avatars: a busy room keeps its name */
+.roomfaces .face .newdot { position: absolute; z-index: 1; pointer-events: none; right: -1px; bottom: -1px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 2px var(--panel); }
+.roomfaces .more { align-self: center; margin-left: 4px; font-size: 11px; color: var(--dim); }
+/* The call of the room on screen, in a box of its own; who is here and not in it follows below, ready to join */
+.plist.callbox { padding: 8px; border-radius: 8px; background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.plist.here { margin: 0 0 12px; } /* above the call box: a clear gap between who is ready to join and who is in the call */
 .newroom { display: flex; gap: 6px; width: 100%; }
 .newroom input { flex: 1; min-width: 0; }
 /* the pasted link is long, so the field takes a line of its own and the buttons the next */
@@ -62,12 +100,55 @@ input { background: var(--panel2); color: var(--fg); border: 1px solid var(--lin
 .room-head { display: flex; align-items: center; gap: 6px; margin: 14px 0 6px; }
 button.room-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: none; border: 0; border-radius: 6px; padding: 2px 0; text-align: left; cursor: pointer; }
 .room-title { font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.room.selected .room-title, button.room-name:hover .room-title { color: var(--fg); }
+.room.selected .room-title, .room-head:hover .room-title { color: var(--fg); }
 button.room-name:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
-.unread { flex: none; font-size: 10px; line-height: 16px; background: var(--acc); color: #fff; border-radius: 999px; padding: 0 6px; font-weight: 700; }
-.room-head button.link.on { color: var(--fg); }
+.unread { flex: none; min-width: 1.6em; text-align: center; font-size: 10px; line-height: 16px; background: var(--acc); color: #fff; border-radius: 999px; padding: 0 6px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Every room a box of its own; its top row, the one with its name, is its handle: hovered or pressed, the whole box
+   shades, and a click there opens the room, or folds the room on screen. The rest of the box is only what it shows.
+   At rest 2.5%, hovered 5%; the room on screen 7.5%, hovered 10%; pressed 12.5%. A private conversation on screen makes
+   the room behind it a room at rest again. The row hovered is the row, not the ⋯ menu that hangs from it. (No :has()
+   inside a :has(): a browser drops such a selector whole.) */
+:where(.room) { margin: 8px -8px 0; padding: 0 8px 8px; border-radius: 12px; background: color-mix(in srgb, var(--fg) 2.5%, transparent); } /* no fade: a hover shows at once */
+:where(.room) > .room-head { cursor: pointer; }
+:where(.room:is(:not(.selected), .behind):has(> .room-head:hover):not(:has(.room-menu:hover, .room-leave:hover, .room-hear:hover))) { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+:where(.room.selected:not(.behind)) { background: color-mix(in srgb, var(--fg) 7.5%, transparent); }
+:where(.room.selected:not(.behind):has(> .room-head:hover):not(:has(.room-menu:hover, .room-leave:hover, .room-hear:hover))) { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+:where(.room:has(> .room-head:active):not(:has(.room-more:active, .room-menu:active, .room-leave:active, .room-hear:active))) { background: color-mix(in srgb, var(--fg) 12.5%, transparent); }
+:where(.room button.room-name:active) { translate: none; } /* pressed, the box brightens; its name does not move */
+/* The room of my call, folded (another room or a conversation on screen, or folded by a click): in the call's green, so
+   it is found at a glance. After the shades above, which it follows in order (all at zero weight, so a theme's own
+   rooms win: imp-olympia's green field, imp-freibad's lanes). */
+:where(.room.in-call.folded) { background: color-mix(in srgb, var(--ok) 9%, transparent); }
+:where(.room.in-call.folded:has(> .room-head:hover):not(:has(.room-leave:hover, .room-hear:hover))) { background: color-mix(in srgb, var(--ok) 14%, transparent); }
+:where(.room.in-call.folded:has(> .room-head:active):not(:has(.room-leave:active, .room-hear:active))) { background: color-mix(in srgb, var(--ok) 19%, transparent); } /* pressed, brighter, as any room */
+/* The first room (the one whose call I join goes there) at the top of the sidebar, the rest at its bottom, above Direct
+   messages: the second room takes the free space above it. */
+aside.side > section.room:first-of-type + section.room { margin-top: auto; } /* the second only: the rest follow it. In full weight: it is the layout (my row at the bottom), a theme's room margins give way here */
+:where(aside.side > section.room:first-of-type) { margin-bottom: 8px; } /* a gap left when there is no free space (many rooms, a long list) */
+@media (max-width: 700px) { aside.side > section.room:first-of-type + section.room { margin-top: 0; } } /* the first room's own 8px below it: a phone's sidebar has no height of its own to share: the gap between any two rooms */
+aside.side:has(> section.room + section.room) > :is(.dms, .side-me) { margin-top: 0; }
+aside.side:has(> section.room + section.room) > section.room + .side-me { margin-top: 10px; } /* no Direct messages between: a gap above my row's line, not the last room on it */
+/* The top room open on screen stands on the sidebar's own ground, no box at rest; hovered and pressed, it shades as the
+   room on screen does (10%, 12.5%), and a click folds it. Folded, or not on screen, it shades as any room. */
+:where(aside.side > section.room:first-of-type.selected:not(.folded):not(:has(> .room-head:is(:hover, :active)))) { background: none; }
+:where(aside.side > section.room:first-of-type.selected:not(.folded):has(.room-menu:hover)) { background: none; } /* its ⋯ menu hovered is not its row */
+/* The handle reaches the box's edges: the row takes the box's padding into itself, so a folded room (all row) is a click
+   anywhere, and an open one at its top and sides as far as its row goes. */
+:where(.room) > .room-head { margin: 0 -8px; padding: 8px 8px 6px; border-radius: 12px 12px 0 0; }
+:where(.room.folded) { padding-bottom: 0; }
+:where(.room.folded) > .room-head { padding-bottom: 8px; border-radius: 12px; }
+/* A room's ⋯ menu: invite, clear chat history, leave */
+.room.folded button.room-name { flex: 0 1 auto; } /* its faces right after its name */
+.room-more { flex: none; margin-left: auto; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--dim); font-size: 16px; line-height: 1; }
+.room-more:hover, .room-more:focus-visible { color: var(--fg); background: var(--panel2); }
+.room-menu[popover] { position: fixed; inset: auto; margin: 0; overflow: auto; padding: 6px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.room-menu[popover]:popover-open { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
+.room-menu button.link { text-align: left; padding: 7px 10px; border-radius: 8px; color: var(--fg); font-size: 14px; text-decoration: none; }
+.room-menu button.link:is(:hover, :focus-visible) { background: var(--panel2); }
+.room-menu button.link.danger { color: var(--bad); } /* Leave: this browser forgets the room and its history */
 /* that room's presence is stale while its socket is down (spec §8.1); the header stays clickable */
-.room.frozen .plist, .room.frozen .actions { opacity: .45; pointer-events: none; transition: opacity .2s; }
+.room.frozen .plist, .room.frozen .roomfaces { opacity: .45; transition: opacity .2s; } /* stale, like the rest of the room, but still the way to a friend's private conversation */
+.room.frozen .actions { opacity: .45; pointer-events: none; transition: opacity .2s; }
 .panel.invite input { width: 100%; font-size: 12px; font-family: monospace; }
 .panel.invite .hint { margin: 0; }
 /* Scanners want dark modules on light ground with a quiet zone, whatever the theme; the viewBox carries a 4-module margin. */
@@ -99,13 +180,14 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .chat-log { flex: 1; overflow: auto; overflow-anchor: none; display: flex; flex-direction: column; gap: 10px; min-height: 80px; }
 .chat-log > :first-child { margin-top: auto; }
 /* subtle pill over the log's bottom edge while new lines wait below the reader */
-.chat-new { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); font-size: 11px; color: var(--dim); background: rgba(34,38,47,.85); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
+.chat-new { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); font-size: 11px; color: var(--dim); background: color-mix(in srgb, var(--panel2) 88%, transparent); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; }
 .chat-new:hover { color: var(--fg); }
 /* the texts from more than 18 h before the room came on screen, folded above the first line shown: barely there, plain dim text (ticket 38) */
 .chat-older { align-self: center; flex: none; font-size: 11px; color: var(--dim); opacity: .6; background: none; border: 0; padding: 2px 6px; }
 .chat-older:hover, .chat-older:focus-visible { opacity: 1; }
-.msg-from { font-weight: 600; } .msg-at { color: var(--dim); font-size: 11px; margin-left: 6px; }
-.msg-text { white-space: pre-wrap; word-break: break-word; width: fit-content; } /* as wide as its words, so its time shows over them only */
+.msg-from { font-weight: 600; } .msg-at { color: var(--dim); font-size: 11px; margin-left: 6px; font-variant-numeric: tabular-nums; }
+/* As wide as its words, so its time shows over them only; on a wide screen no wider than a line the eye can follow back */
+.msg-text { white-space: pre-wrap; word-break: break-word; width: fit-content; max-width: 72ch; line-height: 1.45; }
 .msg-cont { margin-top: -8px; } /* a follow-on line from the same writer sits under their name: 2px apart instead of the log's 10px */
 .msg-sys { font-size: 12px; color: var(--dim); font-style: italic; } .msg-sys .msg-text { display: inline; }
 /* A private conversation (ADR 0007). One column, centred on a wide screen, the composer under it lined up the same: a
@@ -118,7 +200,7 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .chat-input.private { padding-inline: max(14px, calc((100% - 720px) / 2)); }
 /* It gives way to the log in a short row (a share on stage, a small window), scrolling itself, instead of spilling over the composer */
 .private-head { position: relative; flex: 0 1 auto; min-height: 0; max-height: 60%; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 18px; padding-bottom: 16px; margin-bottom: 4px; border-bottom: 1px solid var(--line); text-align: center; }
-.private-head .private-back { position: absolute; top: 0; left: max(0px, calc((100% - var(--col)) / 2)); padding: 0; font-size: 12px; }
+.private-head .private-back { position: absolute; top: 0; left: max(0px, calc((100% - var(--col)) / 2)); padding: 4px 0; font-size: 12px; }
 .private-who { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .private-who > .profile-head { flex-direction: column; gap: 8px; }
 .private-who .avatar.big { width: 64px; height: 64px; font-size: 26px; }
@@ -133,18 +215,26 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .private-where { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 14px; margin: 0; font-size: 12px; color: var(--dim); }
 .private-where .here::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--dim); vertical-align: 1px; }
 .private-where .here.on::before { background: var(--ok); }
-.private-where .link { font-size: 12px; padding: 0; }
+.private-where .link { font-size: 12px; padding: 4px 0; }
 .chat-empty { align-self: center; margin: auto 0 12px; font-size: 13px; color: var(--dim); }
 /* The room on screen behind a private conversation: still the room the head's back link returns to, dimmed */
 .room.selected.behind .room-title { color: var(--dim); }
-/* A friend's row while my conversation with them is on screen, in the lists of people: the one way in to it */
-.plist li.on, .away li.on { background: color-mix(in srgb, var(--acc) 14%, transparent); border-radius: 8px; }
-.plist .pname .unread, .away .unread { margin-left: 2px; }
-/* Friends I have a conversation with, online in none of my rooms: after everyone who is, dimmed */
-.away { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.away li { display: flex; align-items: center; gap: 8px; }
-.away .avatar { opacity: .55; }
-.away .pname { display: flex; align-items: baseline; gap: 6px; min-width: 0; color: var(--dim); }
+/* The conversation on screen: its row under Direct messages, the one highlighted. The ground reaches 4px past the row by
+   a shadow of its colour, so the face does not touch its edge and nothing moves. */
+.away li.on { background: color-mix(in srgb, var(--fg) 7.5%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--fg) 7.5%, transparent); border-radius: 4px; } /* the conversation on screen: active, as the room on screen is */
+.away li.on:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--fg) 10%, transparent); }
+/* Everyone I have a conversation with, folded away above me at the bottom of the sidebar; a friend offline dimmed */
+.dms { margin-top: auto; padding: 6px 0 10px; }
+.dms + .side-me { margin-top: 0; }
+.dms > summary { padding: 4px 0; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
+.dms > summary:hover { color: var(--fg); }
+.dms > summary .unread { margin-left: 6px; text-transform: none; letter-spacing: 0; }
+.dms[open] > summary .unread { display: none; } /* unfolded, each row has its own */
+.away { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.away li { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.away li.offline .avatar { opacity: .55; }
+.away .pname { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.away li.offline .pname { color: var(--dim); }
 .away .tname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .away .dim { font-size: 11px; }
 /* My own text the Room has not brought back yet. Dimmed only after a second, so the usual round trip shows no flicker. */
@@ -207,6 +297,7 @@ dialog.viewer img { display: block; max-width: 96vw; max-height: 96dvh; object-f
 
 /* call */
 .plist li { flex-wrap: nowrap; }
+.plist > li.dim { font-size: 13px; } /* "nobody in the call": the size of the chat's own empty line */
 /* A participant line: avatar, name, badges, all on one line; the volume slider opens on a line of its own below.
    While the badges fit whole beside a name of 8ch, only the name gives way. When they do not (the script sets
    .tight), the connection keeps its dot and drops its word, its title still naming it; if that is still too wide,
@@ -241,11 +332,16 @@ dialog.viewer img { display: block; max-width: 96vw; max-height: 96dvh; object-f
 .lag { font-size: 11px; font-variant-numeric: tabular-nums; }
 .lag-ok { color: var(--dim); } .lag-warn { color: var(--warn); } .lag-bad { color: var(--bad); font-weight: 600; }
 @keyframes pulse { 50% { opacity: .2; } }
-.actions { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.actions { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .actions button { width: 100%; }
 button.on { background: var(--acc); border-color: var(--acc); color: #fff; }
 button.join { background: var(--ok); color: #062; border-color: transparent; font-weight: 600; }
 button.leave { background: var(--bad); color: #fff; border-color: transparent; }
+/* The small Leave on the row of my call's folded room, at its end */
+button.room-leave { flex: none; margin-left: auto; padding: 2px 10px; font-size: 12px; font-weight: 600; line-height: 18px; border-radius: 999px; background: var(--bad); color: #fff; border-color: transparent; }
+/* Beside it, while the browser holds the call's sound back: the way to hear it, from the folded room too */
+button.room-hear { flex: none; margin-left: auto; padding: 2px 10px; font-size: 12px; font-weight: 600; line-height: 18px; } /* the size of the small Leave beside it; its look (ground, frame, corners) a theme's own button's */
+button.room-hear + button.room-leave { margin-left: 6px; }
 button.unblock { background: #4a3a12; color: var(--warn); border-color: transparent; font-weight: 600; }
 
 /* shares */
@@ -299,6 +395,12 @@ button.unblock { background: #4a3a12; color: var(--warn); border-color: transpar
 .actions .gear { width: 38px; flex: none; }
 .panel { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); font-size: 13px; }
 .panel label { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+/* Every select and its open list in the palette's own ground and text, so no theme gets a browser's white list with its
+   light text on it (or its dark one on a dark list): at zero weight, a theme's own select rules win. The list's frame
+   follows the theme's color-scheme. */
+:where(select) { background-color: var(--panel2); color: var(--fg); border: 1px solid var(--line); }
+:where(select option, select optgroup) { background-color: var(--panel2); color: var(--fg); }
+:where(select option:checked) { background-color: color-mix(in srgb, var(--acc) 30%, var(--panel2)); color: var(--fg); }
 /* Native selects (Firefox has no customizable select) size to their longest option; let them shrink instead of overflowing. */
 .panel select.picker { flex: 1 1 6em; min-width: 0; width: 6em; max-width: 100%; }
 .panel > button { width: 100%; }
@@ -350,7 +452,7 @@ button.link { background: none; border: 0; color: var(--dim); font-size: 11px; p
 
 /* Profile card (issues #6, #7): a popover next to the avatar that was clicked. Placed by script, so the
    UA's centred inset is undone here; the top layer keeps it above shares and the composer. */
-.profile[popover] { position: fixed; inset: auto; margin: 0; width: 280px; max-width: calc(100vw - 16px); padding: 14px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); font-size: 14px; }
+.profile[popover] { position: fixed; inset: auto; margin: 0; width: 280px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: auto; padding: 14px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); font-size: 14px; }
 .profile-head { display: flex; align-items: center; gap: 12px; }
 .avatar.big { width: 56px; height: 56px; font-size: 22px; }
 .avatar.big.pic { font-size: 34px; }
@@ -363,13 +465,26 @@ button.avatar.own:hover::after { color: var(--fg); }
 .profile-name { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .profile-name strong { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* the one edit the card offers sits right by the name it changes */
-:is(.profile, .private-head) button.edit { background: none; border: 0; padding: 2px 5px; color: var(--dim); font-size: 13px; line-height: 1; flex: none; }
-:is(.profile, .private-head) button.edit:hover { color: var(--fg); }
+:is(.profile, .private-head) button.edit { display: inline-grid; place-items: center; min-width: 24px; min-height: 24px; background: none; border: 0; border-radius: 6px; padding: 0 4px; color: var(--dim); font-size: 13px; line-height: 1; flex: none; }
+:is(.profile, .private-head) button.edit:is(:hover, :focus-visible) { color: var(--fg); background: var(--panel2); }
 .profile-names .dim { font-size: 12px; }
 .profile-head > input { flex: 1; min-width: 0; } /* the name field only; the emoji picker's search field lives in the head too */
 .profile-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 12px 0 0; font-size: 13px; }
 .profile-facts dt { color: var(--dim); }
 .profile-facts dd { margin: 0; }
+.profile-message { width: 100%; margin-top: 14px; }
+/* Who a person is (picture, unread count, name) opens their profile card, and presses as one, the picture's press; the
+   rest of their row is the room's. A row of Direct messages is a conversation, all of it, as a room is: hovered 5%, on
+   screen 7.5%. The ground spills 4px past by a shadow of its colour, into the gap and the box's padding, so nothing moves. */
+.who { display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex: 0 10 auto; cursor: pointer; border-radius: 4px; } /* short of room, the name gives way before the flags */
+.who .pname { flex: 0 1 auto; }
+.plist.visitors .who .pname .nm { min-width: 0; }
+.prow .pline .pflags { margin-left: auto; }
+.plist li .in-call-of { margin-left: auto; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--ok); }
+:where(.who button.avatar:active) { translate: none; } /* the picture does not move: the whole of who it is brightens instead */
+:where(.who:hover) { background: color-mix(in srgb, var(--fg) 6%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--fg) 6%, transparent); }
+:where(.who:active) { background: color-mix(in srgb, var(--fg) 12.5%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--fg) 12.5%, transparent); } /* pressed: brighter, as a room's box */
+:where(.away li:hover) { background: color-mix(in srgb, var(--fg) 5%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--fg) 5%, transparent); border-radius: 4px; }
 :is(.profile, .private-head) .row { display: flex; gap: 6px; margin-top: 12px; }
 :is(.profile, .private-head) .row button:first-child { flex: 1; }
 :is(.profile, .private-who) > form input { width: 100%; }
@@ -448,8 +563,13 @@ dialog.report .row button:first-child { flex: 1; }
   .consent .bubble { margin-bottom: 4px; padding: 14px 16px 8px; }
 }
 
+/* dave and ⚙ at the top of the sidebar: a phone's, where the row of me at the bottom is gone */
+.side-top { display: none; }
 @media (max-width: 700px) {
   #app { height: 100dvh; }
+  .side-top { display: flex; align-items: center; justify-content: space-between; padding: 10px 0 0; }
+  .side-top .brand { font-weight: 800; font-size: 18px; letter-spacing: -.01em; }
+  .side-me { display: none; }
   .app { --side-w: 0px; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
   .app.split { grid-template-rows: minmax(0, 1fr) auto; }
   /* everything above the composer scrolls as one; the composer is the app's last row and can never cover a line */
@@ -479,4 +599,4 @@ dialog.about dt { color: var(--dim); }
 dialog.about dd { margin: 0; }
 
 /* The design-trial picker (theme.ts): as quiet as the links around it. */
-.theme-pick { background: none; color: var(--dim); border: 1px solid var(--line); border-radius: 6px; font-size: 11px; padding: 2px 4px; }
+.theme-pick { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; font-size: 11px; padding: 2px 4px; }

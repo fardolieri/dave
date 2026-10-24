@@ -24,16 +24,19 @@ function png(width: number, height: number): Buffer {
 // friends can read it, through a room they share, and is relayed by the Room to that friend alone. These pin what each
 // friend sees, and what reaches Carol's browser at all.
 
-/** Opens the private conversation with a friend from their avatar in the Online list. */
+/** Opens the private conversation with a friend from their row in the sidebar's lists: their card, then Message. */
 async function openFromOnline(f: Friend, name: string): Promise<void> {
   await f.settledOnline(name);
-  await f.page.locator('aside.side > ul.plist li', { hasText: name }).locator('button.avatar').click();
+  await f.page.locator('aside.side ul.plist.visitors li', { hasText: name }).first().locator('.nm').click();
+  await f.page.locator('.profile .profile-message').click();
   await expect(f.page.locator('.private-head')).toContainText(name);
 }
 
-/** Opens the conversation with a friend from their row in the sidebar, wherever it is: Online, a call, or offline. */
+/** Opens the conversation with a friend from their row under Direct messages, folded at the bottom of the sidebar, online or not. */
 async function openFromList(f: Friend, name: string): Promise<void> {
-  await f.page.locator('aside.side li', { hasText: name }).first().locator('button.avatar').click();
+  const dms = f.page.locator('aside.side details.dms');
+  await dms.evaluate((el: HTMLDetailsElement) => { el.open = true; }); // as a click on its summary, minus folding it if the app just unfolded it
+  await dms.locator('li', { hasText: name }).locator('button.avatar').click();
   await expect(f.page.locator('.private-head')).toContainText(name);
 }
 
@@ -49,10 +52,10 @@ async function conversation(f: Friend): Promise<Array<{ from: string; text: stri
   });
 }
 
-/** The friends in the sidebar with private texts I have not read, as "Name (n)". One entry point per friend: their row. */
+/** The friends under Direct messages with private texts I have not read, as "Name (n)". */
 async function threads(f: Friend): Promise<string[]> {
-  return f.page.locator('aside.side li:has(.unread)').evaluateAll((els) => els.map((e) => {
-    const name = (e.querySelector('.nm, .tname')?.firstChild?.textContent ?? '').trim();
+  return f.page.locator('aside.side details.dms li:has(.unread)').evaluateAll((els) => els.map((e) => {
+    const name = (e.querySelector('.tname')?.firstChild?.textContent ?? '').trim();
     return `${name} (${e.querySelector('.unread')!.textContent!.trim()})`;
   }));
 }
@@ -83,6 +86,7 @@ test('a private text reaches only its friend, in a conversation of its own, and 
   await alice.say('hello everyone');
   await expect.poll(() => carol.chatTexts()).toEqual(['hello everyone']);
   expect(await threads(carol)).toEqual([]);
+  await expect(carol.page.locator('aside.side .unread'), 'no unread count anywhere in her sidebar').toHaveCount(0);
   expect(carol.wire.log.filter((f) => f.dir === 'down' && f.frame.startsWith('{"t":"private"'))).toEqual([]);
   // What the Room relayed holds neither text in the clear.
   for (const f of [...alice.wire.log, ...bob.wire.log]) expect(f.frame).not.toMatch(/between us|got it/);
@@ -139,8 +143,8 @@ test('a private text written while the server is away survives a reload, and rea
   await alice.composer.press('Enter');
   await expect(alice.page.locator('.chat.private .msg-pending .msg-text')).toHaveText(['kept for you']);
   await alice.page.reload();
-  // Waiting, as written, before the Room is back: sealed only once it lists Bob. Bob is offline to her meanwhile, listed
-  // after everyone online, his row still the way in.
+  // Waiting, as written, before the Room is back: sealed only once it lists Bob. Bob is offline to her meanwhile, his row
+  // under the folded Direct messages still the way in.
   await openFromList(alice, 'Bob');
   await expect(alice.page.locator('.chat.private .msg-pending .msg-text')).toHaveText(['kept for you']);
   alice.wire.restore();
@@ -169,4 +173,60 @@ test('a picture sent privately reaches only its friend, inline, and nobody else 
   // Nothing of it in the room, and Carol hears of no file: no announcement, and no file link to her.
   expect(await bob.page.locator('.chat:not(.private) .att-media').count()).toBe(0);
   expect(carol.wire.log.filter((f) => f.dir === 'down' && /^\{"t":"(private|file|link)"/.test(f.frame))).toEqual([]);
+});
+
+test('a friend\'s row opens their card beside the sidebar, the next row another card, and Message their conversation', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  await crowd.open('Bob');
+  const carol = await crowd.open('Carol');
+  await alice.settledOnline('Carol', 'Bob', 'Alice');
+  const card = alice.page.locator('.profile');
+  const row = (name: string) => alice.page.locator('aside.side ul.plist.visitors li', { hasText: name }).first();
+  await row('Bob').locator('.nm').click();
+  await expect(card.locator('.profile-name strong')).toHaveText('Bob');
+  // In the chat area, clear of the sidebar, so the next row is still there to click.
+  const side = (await alice.page.locator('aside.side').boundingBox())!;
+  expect((await card.boundingBox())!.x).toBeGreaterThanOrEqual(side.x + side.width);
+  await row('Carol').locator('.nm').click();
+  await expect(card.locator('.profile-name strong')).toHaveText('Carol');
+  // Her row again puts her card away; once more brings it back.
+  await row('Carol').locator('.nm').click();
+  await expect(card).toBeHidden();
+  await row('Carol').locator('.nm').click();
+  await expect(card.locator('.profile-name strong')).toHaveText('Carol');
+  // Carol into the call: her row here is gone, and the card with it; her row in the call box opens it again.
+  await carol.join();
+  await expect(card).toBeHidden();
+  await alice.selectedRoom.locator('li.prow', { hasText: 'Carol' }).locator('.nm').click();
+  await expect(card.locator('.profile-name strong')).toHaveText('Carol');
+  await card.locator('.profile-message').click();
+  await expect(card).toBeHidden();
+  await expect(alice.page.locator('.private-head')).toContainText('Carol');
+});
+
+test('the room on screen folds from its box and opens again, and a private conversation on screen folds it too', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  await crowd.open('Bob');
+  await alice.settledOnline('Bob', 'Alice');
+  const room = alice.page.locator('section.room').first();
+  // A click on the box (its name here) folds it: Bob's row goes, his face comes beside the name; again, it opens.
+  await room.locator('button.room-name').click();
+  await expect(room).toHaveClass(/folded/);
+  await expect(room.locator('ul.plist.here')).toHaveCount(0);
+  await expect(room.locator('.roomfaces .avatar')).toHaveCount(1);
+  await room.locator('button.room-name').click();
+  await expect(room).not.toHaveClass(/folded/);
+  // A click on Bob's name is his, not the box's: his card, and the room stays open.
+  await room.locator('ul.plist.here li', { hasText: 'Bob' }).locator('.nm').click();
+  await expect(alice.page.locator('.profile .profile-name strong')).toHaveText('Bob');
+  await expect(room).not.toHaveClass(/folded/);
+  // Our conversation on screen: the room behind it folds, and the conversation's row is the active one.
+  await alice.page.locator('.profile .profile-message').click();
+  await expect(room).toHaveClass(/folded/);
+  await alice.composer.fill('hi');
+  await alice.composer.press('Enter');
+  await expect(alice.page.locator('aside.side details.dms li.on')).toContainText('Bob');
+  // Back: the room is open again.
+  await alice.page.locator('.private-back').click();
+  await expect(room).not.toHaveClass(/folded/);
 });

@@ -59,7 +59,7 @@
 
 :root[data-theme="fd-riso"] .side { border-right: 2px solid var(--blue); box-shadow: 4px 0 0 var(--pink); }
 :root[data-theme="fd-riso"] .room-title { text-transform: none; letter-spacing: -.01em; font-size: 19px; font-weight: 800; color: var(--dim); }
-:root[data-theme="fd-riso"] .room.selected .room-title, :root[data-theme="fd-riso"] button.room-name:hover .room-title { color: var(--ink); }
+:root[data-theme="fd-riso"] .room.selected .room-title, :root[data-theme="fd-riso"] .room-head:hover .room-title { color: var(--ink); }
 :root[data-theme="fd-riso"] .unread { background: var(--pink); color: var(--ink); font-size: 11px; }
 
 /* faces in halftone: pink dots on paper, the initial printed over them in blue */

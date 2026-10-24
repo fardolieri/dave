@@ -51,7 +51,7 @@
     linear-gradient(90deg, #F5CB45, var(--chassis) 40%, #EDB925);
   --dim: #4A3E10; }
 :root[data-theme="fd-walkie"] .room-title { text-transform: none; letter-spacing: 0; font-size: 16px; color: #5A4A12; }
-:root[data-theme="fd-walkie"] .room.selected .room-title, :root[data-theme="fd-walkie"] button.room-name:hover .room-title { color: var(--rubber); }
+:root[data-theme="fd-walkie"] .room.selected .room-title, :root[data-theme="fd-walkie"] .room-head:hover .room-title { color: var(--rubber); }
 :root[data-theme="fd-walkie"] .side .panel { background: #F8E7A6; border-color: #9C7F1E; }
 :root[data-theme="fd-walkie"] .avatar { background: var(--rubber); color: var(--rubber-fg); }
 :root[data-theme="fd-walkie"] .avatar.speaking { box-shadow: 0 0 0 3px var(--chassis), 0 0 0 5px var(--ok); }
