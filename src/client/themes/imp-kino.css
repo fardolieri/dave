@@ -144,14 +144,17 @@ dialog.about details.change p { border-left-width: 1px; }
 }
 @scope ([data-theme="imp-kino"]) to ([data-theme]) {
 
-/* A room's box, wherever it sits, is a stretch of the curtain: the velvet hung in soft folds, the warm light of the
-   hall falling on it from above and fading into the pleats. Held still, with no edge anywhere, so a folded box is a
-   band of velvet and an open one a drape. The top room open on screen, at rest, is the sidebar's own velvet (styles.css), so it
-   gets no curtain. The chat of a room in this look, inside a page of another, is the dark hall with its glows of red
-   and one of amber where the house's drift through it, held still. */
+/* A room's box, wherever it sits, is the velvet with the house's glows on it: a few soft balls of its reds and one of
+   amber, each with a soft fade to nothing like the glows behind the chat, so none has an edge, held still. Sized by the box, so a folded box is a band with a glow or two in it and an open one the whole wash. The top
+   room open on screen, at rest, is the sidebar's own velvet (styles.css), so it gets none. The chat of a room in this
+   look, inside a page of another, is the dark hall with its glows of red and one of amber where the house's drift
+   through it, held still. */
 :scope.room {
-  --room-ground: radial-gradient(120% 90% at 50% 0, rgb(170 112 72 / .13), rgb(170 112 72 / .04) 55%, transparent 80%),
-    repeating-linear-gradient(90deg, rgb(0 0 0 / .22) 0, rgb(255 255 255 / .03) 8px, rgb(130 60 62 / .1) 11px, rgb(0 0 0 / .22) 19px),
+  --room-ground:
+    radial-gradient(closest-side circle, rgb(170 112 72 / .22), rgb(170 112 72 / .12) 45%, rgb(170 112 72 / .03) 80%, transparent) right -10px top -40px / 140px 140px no-repeat,
+    radial-gradient(closest-side circle, rgb(150 52 62 / .32), rgb(150 52 62 / .17) 45%, rgb(150 52 62 / .04) 80%, transparent) left -50px bottom -70px / 190px 190px no-repeat,
+    radial-gradient(closest-side circle, rgb(112 44 70 / .3), rgb(112 44 70 / .15) 45%, rgb(112 44 70 / .04) 80%, transparent) left 45% top -60px / 160px 160px no-repeat,
+    radial-gradient(closest-side circle, rgb(130 60 62 / .22), rgb(130 60 62 / .1) 45%, rgb(130 60 62 / .02) 80%, transparent) right 25% bottom -90px / 220px 220px no-repeat,
     var(--panel); }
 :scope:is(.chat, .chat-input) { --chat-ground:
     radial-gradient(60% 55% at 78% 12%, rgb(112 44 50 / .13), rgb(112 44 50 / .05) 50%, transparent),
