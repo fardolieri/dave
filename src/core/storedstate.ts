@@ -20,6 +20,7 @@ import { parseStoredRooms } from './rooms';
 import { parseHistory, parsePrivateThreads } from './chatlog';
 import { parseBigIndex, parseFileIndex, parsePartialPull } from './attachment';
 import { parseUnsent, parseUnsentPrivate } from './unsent';
+import { parseCounts } from './unread';
 import { parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes } from './settings';
 
 /** A stored key: what it holds, the parser every read goes through, and stored values from the wild. */
@@ -68,6 +69,18 @@ export const LOCAL = {
   secret: { about: 'The one room secret from before rooms; folded into `rooms` on load and removed (client/rooms.ts).', parse: text, fixtures: { '2026-09-06': 's3cr3t' } },
   emojiRecent: { about: 'Emoji picked last, newest first (client/EmojiPicker.tsx).', parse: parseRecentEmoji, fixtures: { '2026-09-10': '["🎉","😀"]' } },
   test: { about: 'Set by the e2e fixtures: this browser is a test account (client/posthog.ts).', parse: flag, fixtures: { '2026-09-10, e2e seed': 'true' } },
+  unreadRooms: {
+    about: "Texts that came while a room was not on screen, by room id, kept over a reload (core/unread.ts, client/room.ts).",
+    parse: parseCounts,
+    map: true,
+    fixtures: { '2026-10-24, unread kept': '{"roomA":3}' },
+  },
+  unreadPrivate: {
+    about: "Private texts that came while their conversation was not on screen, by friend key, kept over a reload (core/unread.ts, client/privates.ts).",
+    parse: parseCounts,
+    map: true,
+    fixtures: { '2026-10-24, unread kept': '{"pkA":2}' },
+  },
   telemetry: { about: 'The telemetry answer (client/posthog.ts).', parse: consent, fixtures: { '2026-09-27, yes': 'on', '2026-09-27, no': 'off' } },
   muted: { about: 'My microphone was muted when last in a call (client/call.ts).', parse: flag, fixtures: { '2026-09-06, muted': 'true', '2026-09-06, unmuted': 'false' } },
   rejoin: {

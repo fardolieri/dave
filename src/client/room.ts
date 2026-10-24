@@ -18,6 +18,7 @@ import {
 import { beat, heard, heartbeat } from '../core/heartbeat';
 import { tooOld, type UnsentPrivate } from '../core/unsent';
 import type { LocalIdentity } from './identity';
+import { keepUnread, keptUnread } from './unread';
 import { appendHistory, clearHistory, keepUnsent, keepUnsentPrivate, loadHistory, loadUnsent, loadUnsentPrivate, textKey, type StoredText } from './history';
 
 export type ServerStatus =
@@ -201,8 +202,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const [you, setYou] = createSignal<Person | null>(null);
   const [people, setPeople] = createSignal<Person[]>([]);
   const [lines, setLines] = createSignal<ChatLine[]>([]);
-  /** Texts from others that arrived live while this room was not the one on screen. */
-  const [unread, setUnread] = createSignal(0);
+  /** Texts from others that arrived live while this room was not the one on screen; kept over a reload (client/unread.ts). */
+  const [unread, setUnreadSignal] = createSignal(keptUnread('unreadRooms', opts.roomId));
+  // Once the room is left, nothing is kept for it any more: a text let in on its way out must not bring a count back.
+  let unreadLeft = false;
+  const setUnread = (next: (n: number) => number) => setUnreadSignal((n) => { const v = next(n); if (v !== n && !unreadLeft) keepUnread('unreadRooms', opts.roomId, v); return v; });
   const listeners = new Set<(m: ServerMessage) => void>();
   const textListeners = new Set<(m: Text) => void>();
   let nextId = 1;
@@ -1212,7 +1216,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     pull: (hash: string): void => { const a = attachmentNow.get(hash); if (a?.status === 'idle' || a?.status === 'failed') { stopRetry(hash); newRound(hash); notThere.delete(hash); setAttachment(hash, { status: 'idle' }); want(hash); } },
     unread,
     /** The room is on screen: nothing in it is unread. */
-    markRead: () => setUnread(0),
+    markRead: () => setUnread(() => 0),
     /** Sends an event (a text, a signal, a request for ICE servers) on the socket let in, if there is one. */
     send,
     declare: declareLatest,
@@ -1267,7 +1271,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       return true;
     },
     /** Empties the local history; the server never had it. */
-    clearHistory: async () => { await clearHistory(opts.roomId); setLines([]); },
+    clearHistory: async () => { await clearHistory(opts.roomId); setLines([]); setUnread(() => 0); },
+    /** The room is forgotten in this browser: nothing of it is unread any more. */
+    forgetUnread: () => { setUnread(() => 0); unreadLeft = true; },
     /** Dev aid for scripts/drive.mjs: drops the socket so the reconnect path runs. */
     dropSocket: () => ws?.close(),
     /** Change the name everyone sees; presence brings it back. A later reconnect authenticates with it too. */

@@ -230,3 +230,22 @@ test('the room on screen folds from its box and opens again, and a private conve
   await alice.page.locator('.private-back').click();
   await expect(room).not.toHaveClass(/folded/);
 });
+
+test('a private text not read yet is still unread after a reload', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await openFromOnline(alice, 'Bob');
+  await alice.composer.fill('call me when you see this');
+  await alice.composer.press('Enter');
+  await expect.poll(() => threads(bob)).toEqual(['Alice (1)']);
+  await bob.page.reload(); // the phone dropped the background tab
+  await bob.connected();
+  await expect.poll(() => threads(bob)).toEqual(['Alice (1)']);
+  await expect(bob.page.locator('aside.side details.dms > summary .unread')).toHaveText('1');
+  // Read, it stays read over the next reload.
+  await openFromList(bob, 'Alice');
+  await expect.poll(() => threads(bob)).toEqual([]);
+  await bob.page.reload();
+  await bob.connected();
+  await expect.poll(() => threads(bob)).toEqual([]);
+});

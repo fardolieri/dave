@@ -579,6 +579,7 @@ function Workspace(props: WorkspaceProps) {
     if (!confirm(`Leave ${l.saved.name}? This browser forgets the room and its chat history. The invite link gets you back in.`)) return;
     if (untrack(active) === l) l.call.leave(); // say goodbye while the socket is still open, so nobody waits out the grace period
     privates.strand(l.room); // my private texts waiting in it: through another room, else not sent
+    l.room.forgetUnread();
     closeMenu();
     props.onForget(l.saved.secret); // disposing the room closes its socket
   };

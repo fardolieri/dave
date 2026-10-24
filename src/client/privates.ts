@@ -4,6 +4,7 @@ import { MAX_TEXT_LENGTH, identityOf, type Identity, type Person } from '../core
 import type { PrivateThread } from '../core/chatlog';
 import { MAX_FILE_BYTES, formatSize, pullsByItself, type FileMeta } from '../core/attachment';
 import { appendPrivate, forgetPrivate, loadPrivate, loadPrivateThreads, textKey, touchPrivateThread } from './history';
+import { keepAll, keptAll } from './unread';
 import type { StoredText } from '../core/chatlog';
 import type { LocalIdentity } from './identity';
 import { PULL_HISTORY_MS, privateWhat, type ChatLine, type createRoom, type PreparedFile, type PrivateEvent } from './room';
@@ -98,7 +99,17 @@ export function createPrivates(opts: { identity: LocalIdentity; name: () => stri
   /** Files of mine said "Maybe not sent", by friend: they may have the announcement, so they may pull the bytes. */
   const mayHave = new Map<string, Set<string>>();
   const setOf = (all: Map<string, Set<string>>, friend: string): Set<string> => { let s = all.get(friend); if (!s) all.set(friend, (s = new Set())); return s; };
-  const [unread, setUnread] = createSignal<Record<string, number>>({});
+  // Kept over a reload (client/unread.ts): a text that came while its conversation was not on screen stays unread, though
+  // the history a reload reads back does not tell new from old.
+  const [unread, setUnreadSignal] = createSignal<Record<string, number>>(keptAll('unreadPrivate'));
+  // A notice (a text of mine that did not go) counts too, but is not kept: its line is gone after a reload, and a count
+  // of it would point at nothing.
+  const noticed: Record<string, number> = {};
+  const setUnread = (next: (u: Record<string, number>) => Record<string, number>) => setUnreadSignal((u) => {
+    const v = next(u);
+    keepAll('unreadPrivate', Object.fromEntries(Object.entries(v).map(([k, n]) => [k, n - Math.min(n, noticed[k] ?? 0)])));
+    return v;
+  });
   /** The friend whose conversation is on screen, by key; null while a room is. */
   let openNow: string | null = null;
   const [openWith, setOpenWithSignal] = createSignal<string | null>(null);
@@ -205,7 +216,7 @@ export function createPrivates(opts: { identity: LocalIdentity; name: () => stri
     addThread(friend, at);
     // Its place in the list is kept; the line itself is not, like a room's (a reload ends what it says).
     void touchPrivateThread(friend, at);
-    if (openNow !== key) setUnread((u) => ({ ...u, [key]: (u[key] ?? 0) + 1 }));
+    if (openNow !== key) { noticed[key] = (noticed[key] ?? 0) + 1; setUnread((u) => ({ ...u, [key]: (u[key] ?? 0) + 1 })); }
   };
   /**
    * Texts of mine a room could not carry (the friend left it, or I did): through another room we share, else not sent.
@@ -355,6 +366,7 @@ export function createPrivates(opts: { identity: LocalIdentity; name: () => stri
       if (!threadList.some((t) => t.friend.publicKey === key)) addThread(identityOf(friend), 0);
       void load(key);
       setOpenWith(key);
+      delete noticed[key];
       setUnread((u) => ({ ...u, [key]: 0 }));
       posthog.capture('private_opened');
     },
@@ -410,6 +422,7 @@ export function createPrivates(opts: { identity: LocalIdentity; name: () => stri
       for (const hash of hashes) leave(fileRoom.get(placed(friend, hash))!, friend, hash);
       for (const k of [...clicked]) if (k.startsWith(`${friend}:`)) clicked.delete(k);
       setFileRoomsChanged((n) => n + 1);
+      delete noticed[friend];
       setUnread((u) => { const { [friend]: _gone, ...rest } = u; return rest; });
       loading.delete(friend);
       for (const l of opts.rooms()) l.room.cancelPrivate(friend);

@@ -348,3 +348,21 @@ test('regression: the chat keeps its place when the share strip comes and goes',
   await expect.poll(gap).toBeLessThan(8);
   await expect(bob.page.locator('.chat-new')).toHaveCount(0);
 });
+
+test('a room\'s unread count is kept over a reload, and goes once the room is read', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
+  const bob = await crowd.open('Bob', { rooms: [other] });
+  await expect.poll(() => bob.online(), { message: 'Alice is in Other too' }).toContain('Alice');
+  await bob.say('while you were away');
+  const unread = alice.page.locator('button.room-name', { hasText: 'Other' }).locator('.unread');
+  await expect(unread).toHaveText('1');
+  await alice.page.reload(); // a phone dropped the tab in the background
+  await alice.connected();
+  await expect(unread).toHaveText('1');
+  await alice.selectRoom('Other');
+  await expect(unread).toHaveCount(0);
+  await alice.page.reload();
+  await alice.connected();
+  await expect(alice.page.locator('button.room-name .unread')).toHaveCount(0);
+});
