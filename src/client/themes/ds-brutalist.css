@@ -4,9 +4,10 @@
    green. Light and dark palettes following the system setting; the dark one is a terminal. */
 @font-face { font-family: "ds-JetBrains Mono"; font-style: normal; font-weight: 400 800; font-display: swap;
   src: url(./fonts/jetbrainsmono-tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.woff2) format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }@scope ([data-theme="ds-brutalist"]) to ([data-theme]) {
 
-:root[data-theme="ds-brutalist"] { color-scheme: light;
+
+:scope[data-theme="ds-brutalist"] { color-scheme: light;
   --color-bg-primary: #ffffff; --color-bg-secondary: #f0f0f0; --color-bg-tertiary: #ffffff;
   --color-text-primary: #000000; --color-text-secondary: #4a4a4a; --color-text-link: #0000ee;
   --color-border-primary: #000000; --color-border-focus: #0000ee;
@@ -23,8 +24,12 @@
   --font-family-body: "ds-JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --border-width: 2px; --shadow-sm: none; --shadow-md: none; --shadow-lg: none;
 }
+
+}
 @media (prefers-color-scheme: dark) {
-  :root[data-theme="ds-brutalist"] { color-scheme: dark;
+@scope ([data-theme="ds-brutalist"]) to ([data-theme]) {
+
+  :scope[data-theme="ds-brutalist"] { color-scheme: dark;
     --color-bg-primary: #000000; --color-bg-secondary: #0d0d0d; --color-bg-tertiary: #000000;
     --color-text-primary: #f2f2f2; --color-text-secondary: #a8a8a8; --color-text-link: #33ddff;
     --color-border-primary: #f2f2f2; --color-border-focus: #ffe600;
@@ -36,10 +41,14 @@
     --color-bubble: #000000; --color-bubble-fg: #f2f2f2; --color-bubble-dim: #a8a8a8; --color-bubble-link: #33ddff;
     --color-surface-overlay: rgba(0, 0, 0, .75);
   }
+
 }
 
+}@scope ([data-theme="ds-brutalist"]) to ([data-theme]) {
+
+
 /* ── Map the semantic tokens onto the app's own variables (styles.css :root) ─────────────────────────────── */
-:root[data-theme="ds-brutalist"] {
+:scope[data-theme="ds-brutalist"] {
   --bg: var(--color-bg-primary); --panel: var(--color-bg-secondary); --panel2: var(--color-bg-tertiary);
   --fg: var(--color-text-primary); --dim: var(--color-text-secondary); --line: var(--color-border-primary);
   --ok: var(--color-status-success); --warn: var(--color-status-warning); --bad: var(--color-status-error);
@@ -50,118 +59,171 @@
 /* ── Repairs: colours styles.css hard-codes for its dark page, read from the tokens instead. Every rule below has
    exactly the specificity of the rule it replaces (the theme prefix sits in :where), so the app's own variants
    (button.join over button, .share.share-fs over .share) still win where they did. ─────────────────────────── */
-:where(:root[data-theme="ds-brutalist"]) a { color: var(--color-text-link); }
-:where(:root[data-theme="ds-brutalist"]) :is(button, select, textarea) { font-family: inherit; }
-:where(:root[data-theme="ds-brutalist"]) :focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
-:where(:root[data-theme="ds-brutalist"]) .update { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
-:where(:root[data-theme="ds-brutalist"]) .update button { background: var(--color-text-on-accent); color: var(--color-accent-primary); }
-:where(:root[data-theme="ds-brutalist"]) .update button:hover { background: color-mix(in srgb, var(--color-text-on-accent) 88%, var(--color-accent-primary)); }
-:where(:root[data-theme="ds-brutalist"]) .unread { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
-:where(:root[data-theme="ds-brutalist"]) .new { background: var(--color-status-warning); color: var(--color-text-on-warning); }
-:where(:root[data-theme="ds-brutalist"]) .warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
-:where(:root[data-theme="ds-brutalist"]) .banner { box-shadow: var(--shadow-md); }
-:where(:root[data-theme="ds-brutalist"]) .banner-warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
-:where(:root[data-theme="ds-brutalist"]) .banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
-:where(:root[data-theme="ds-brutalist"]) .chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
-:where(:root[data-theme="ds-brutalist"]) .chat-new:hover { color: var(--fg); }
-:where(:root[data-theme="ds-brutalist"]) button.on:where(:not(.link)) { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
-:where(:root[data-theme="ds-brutalist"]) button.join { background: var(--ok); color: var(--color-text-on-success); }
-:where(:root[data-theme="ds-brutalist"]) button.leave { background: var(--bad); color: var(--color-text-on-error); }
-:where(:root[data-theme="ds-brutalist"]) button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
-:where(:root[data-theme="ds-brutalist"]) select.picker option:checked { background: var(--color-bg-on); color: var(--color-text-on-on); }
-:where(:root[data-theme="ds-brutalist"]) .avatar.speaking { box-shadow: 0 0 0 2px var(--color-ring); }
-:where(:root[data-theme="ds-brutalist"]) .share-head { background: color-mix(in srgb, var(--fg) 6%, transparent); }
-:where(:root[data-theme="ds-brutalist"]) .share-bar { background: color-mix(in srgb, var(--fg) 5%, transparent); }
-:where(:root[data-theme="ds-brutalist"]) .panel .mictest button.recording { background: var(--panel2) linear-gradient(color-mix(in srgb, var(--acc) 35%, var(--panel2)), color-mix(in srgb, var(--acc) 35%, var(--panel2))) left / 0% 100% no-repeat; }
-:where(:root[data-theme="ds-brutalist"]) .profile[popover], :where(:root[data-theme="ds-brutalist"]) .emoji-picker[popover] { box-shadow: var(--shadow-lg); }
-:where(:root[data-theme="ds-brutalist"]) dialog.report::backdrop, :where(:root[data-theme="ds-brutalist"]) dialog.about::backdrop { background: var(--color-surface-overlay); }
-:where(:root[data-theme="ds-brutalist"]) .consent { --bubble: var(--color-bubble); --bubble-fg: var(--color-bubble-fg); --bubble-dim: var(--color-bubble-dim); --bubble-link: var(--color-bubble-link); }
-:where(:root[data-theme="ds-brutalist"]) .consent .bubble { box-shadow: var(--shadow-lg); }
+a { color: var(--color-text-link); }
+:is(button, select, textarea) { font-family: inherit; }
+:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+.update { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+.update button { background: var(--color-text-on-accent); color: var(--color-accent-primary); }
+.update button:hover { background: color-mix(in srgb, var(--color-text-on-accent) 88%, var(--color-accent-primary)); }
+.unread { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+.new { background: var(--color-status-warning); color: var(--color-text-on-warning); }
+.warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+.banner { box-shadow: var(--shadow-md); }
+.banner-warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+.banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
+.chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
+.chat-new:hover { color: var(--fg); }
+button.on:where(:not(.link)) { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
+button.join { background: var(--ok); color: var(--color-text-on-success); }
+button.leave { background: var(--bad); color: var(--color-text-on-error); }
+button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+select.picker option:checked { background: var(--color-bg-on); color: var(--color-text-on-on); }
+.avatar.speaking { box-shadow: 0 0 0 2px var(--color-ring); }
+.share-head { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.share-bar { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.panel .mictest button.recording { background: var(--panel2) linear-gradient(color-mix(in srgb, var(--acc) 35%, var(--panel2)), color-mix(in srgb, var(--acc) 35%, var(--panel2))) left / 0% 100% no-repeat; }
+.profile[popover], .emoji-picker[popover] { box-shadow: var(--shadow-lg); }
+dialog.report::backdrop, dialog.about::backdrop { background: var(--color-surface-overlay); }
+.consent { --bubble: var(--color-bubble); --bubble-fg: var(--color-bubble-fg); --bubble-dim: var(--color-bubble-dim); --bubble-link: var(--color-bubble-link); }
+.consent .bubble { box-shadow: var(--shadow-lg); }
 /* a comfortable measure for reading on a wide screen; nothing is cut, long lines wrap */
-:where(:root[data-theme="ds-brutalist"]) .msg { max-width: 75ch; }
+.msg { max-width: 75ch; }
 /* Fullscreen keeps its black stage in both palettes: the overlays get the dark palette, so status dots and text stay
    legible on black even while the rest of the page is light. */
-:where(:root[data-theme="ds-brutalist"]) .share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
+.share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
   --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc);
   --bg: var(--fs-stage); --panel: var(--fs-button); color: var(--fg); }
 /* Phones (styles.css's 700px breakpoint): 16px text in fields so iOS does not zoom on focus, 16px messages, 44px call buttons. */
+
+}
 @media (max-width: 700px) {
-  :where(:root[data-theme="ds-brutalist"]) .chat-log { font-size: 16px; }
-  :where(:root[data-theme="ds-brutalist"]) :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
-  :where(:root[data-theme="ds-brutalist"]) .actions button, :where(:root[data-theme="ds-brutalist"]) .chat-input > button, :where(:root[data-theme="ds-brutalist"]) .chat-field > .emoji-open { min-height: 44px; }
+@scope ([data-theme="ds-brutalist"]) to ([data-theme]) {
+
+  .chat-log { font-size: 16px; }
+  :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
+  .actions button, .chat-input:where(:scope, :scope *) > button, .chat-field > .emoji-open { min-height: 44px; }
+
 }
 
+}@scope ([data-theme="ds-brutalist"]) to ([data-theme]) {
+
+
 /* ── Character: the box model, exposed ─────────────────────────────────────────────────────────────────── */
-:where(:root[data-theme="ds-brutalist"]) body { font-size: 13px; }
-:where(:root[data-theme="ds-brutalist"]) h1 { font-size: 22px; font-weight: 800; text-transform: uppercase; }
-:where(:root[data-theme="ds-brutalist"]) h2, :where(:root[data-theme="ds-brutalist"]) .room-title { font-weight: 800; letter-spacing: .04em; }
-:where(:root[data-theme="ds-brutalist"]) .room.selected .room-head { border-left: 6px solid var(--fg); padding-left: 8px; }
+body { font-size: 13px; }
+:scope:is([data-apart], .chat, .chat-input) { font-size: 13px; } /* the same type on a box or chat of this look inside another page */
+h1 { font-size: 22px; font-weight: 800; text-transform: uppercase; }
+h2, .room-title { font-weight: 800; letter-spacing: .04em; }
+.room:where(:scope).selected .room-head { border-left: 6px solid var(--fg); padding-left: 8px; }
 /* every box shows its edge; nothing is rounded, not even a face */
-:where(:root[data-theme="ds-brutalist"]) button { border: var(--border-width) solid var(--line); border-radius: 0; background: var(--panel2); font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
-:where(:root[data-theme="ds-brutalist"]) button:where(:hover:not(:disabled, .on, .join, .leave, .unblock, .link, .avatar, .room-name, .edit, .chat-older, .emoji-open, .recording)) { background: var(--fg); color: var(--bg); }
-:where(:root[data-theme="ds-brutalist"]) :is(.emoji-tabs, .emoji-grid) button:hover { background: var(--color-hazard); color: var(--color-text-on-hazard); }
-:where(:root[data-theme="ds-brutalist"]) button.on:where(:not(.link)) { border-color: var(--line); }
-:where(:root[data-theme="ds-brutalist"]) button.join, :where(:root[data-theme="ds-brutalist"]) button.leave, :where(:root[data-theme="ds-brutalist"]) button.unblock { border-color: var(--line); }
-:where(:root[data-theme="ds-brutalist"]) button.link { text-transform: none; font-weight: 400; }
-:where(:root[data-theme="ds-brutalist"]) input, :where(:root[data-theme="ds-brutalist"]) select.picker, :where(:root[data-theme="ds-brutalist"]) dialog.report textarea, :where(:root[data-theme="ds-brutalist"]) dialog.report .field select { border: var(--border-width) solid var(--line); border-radius: 0; }
-:where(:root[data-theme="ds-brutalist"]) select.picker::picker(select) { border: var(--border-width) solid var(--line); border-radius: 0; }
-:where(:root[data-theme="ds-brutalist"]) select.picker option { border-radius: 0; }
-:where(:root[data-theme="ds-brutalist"]) .avatar { border-radius: 0; background: var(--panel2); box-shadow: inset 0 0 0 var(--border-width) var(--line); }
-:where(:root[data-theme="ds-brutalist"]) .avatar.speaking { box-shadow: inset 0 0 0 var(--border-width) var(--line), 0 0 0 3px var(--color-ring); }
-:where(:root[data-theme="ds-brutalist"]) button.avatar.own::after { border-radius: 0; border: var(--border-width) solid var(--line); }
-:where(:root[data-theme="ds-brutalist"]) .conn i { border-radius: 0; }
-:where(:root[data-theme="ds-brutalist"]) .plist em { border-radius: 0; border-color: var(--fg); color: var(--fg); }
-:where(:root[data-theme="ds-brutalist"]) .unread { border-radius: 0; }
-:where(:root[data-theme="ds-brutalist"]) .new { border-radius: 0; background: var(--color-hazard); color: var(--color-text-on-hazard); outline: 1px solid #000; }
-:where(:root[data-theme="ds-brutalist"]) .warn, :where(:root[data-theme="ds-brutalist"]) button.unblock { border-radius: 0; font-weight: 700; }
-:where(:root[data-theme="ds-brutalist"]) .warn { border: var(--border-width) solid var(--line); }
+button { border: var(--border-width) solid var(--line); border-radius: 0; background: var(--panel2); font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+button:where(:hover:not(:disabled, .on, .join, .leave, .unblock, .link, .avatar, .room-name, .edit, .chat-older, .emoji-open, .recording)) { background: var(--fg); color: var(--bg); }
+:is(.emoji-tabs, .emoji-grid) button:hover { background: var(--color-hazard); color: var(--color-text-on-hazard); }
+button.on:where(:not(.link)) { border-color: var(--line); }
+button.join, button.leave, button.unblock { border-color: var(--line); }
+button.link { text-transform: none; font-weight: 400; }
+input, select.picker, dialog.report textarea, dialog.report .field select { border: var(--border-width) solid var(--line); border-radius: 0; }
+select.picker::picker(select) { border: var(--border-width) solid var(--line); border-radius: 0; }
+select.picker option { border-radius: 0; }
+.avatar { border-radius: 0; background: var(--panel2); box-shadow: inset 0 0 0 var(--border-width) var(--line); }
+.avatar.speaking { box-shadow: inset 0 0 0 var(--border-width) var(--line), 0 0 0 3px var(--color-ring); }
+button.avatar.own::after { border-radius: 0; border: var(--border-width) solid var(--line); }
+.conn i { border-radius: 0; }
+.plist em { border-radius: 0; border-color: var(--fg); color: var(--fg); }
+.unread { border-radius: 0; }
+.new { border-radius: 0; background: var(--color-hazard); color: var(--color-text-on-hazard); outline: 1px solid #000; }
+.warn, button.unblock { border-radius: 0; font-weight: 700; }
+.warn { border: var(--border-width) solid var(--line); }
 /* the grid lines themselves: sidebar and composer edges are thick rules */
-:where(:root[data-theme="ds-brutalist"]) .side { border-right: var(--border-width) solid var(--line); }
-:where(:root[data-theme="ds-brutalist"]) .chat-input { border-top: var(--border-width) solid var(--line); padding-top: 10px; }
-:where(:root[data-theme="ds-brutalist"]) .share { border: var(--border-width) solid var(--line); border-radius: 0; }
-:where(:root[data-theme="ds-brutalist"]) .share-live { border-color: var(--acc); border-width: 4px; }
-:where(:root[data-theme="ds-brutalist"]) .share-head { border-bottom: var(--border-width) solid var(--line); background: var(--panel); font-weight: 700; }
-:where(:root[data-theme="ds-brutalist"]) .share-bar { border-top: var(--border-width) solid var(--line); background: var(--panel); }
-:where(:root[data-theme="ds-brutalist"]) .share.share-fs .share-head, :where(:root[data-theme="ds-brutalist"]) .share.share-fs .share-bar { border: 0; }
-:where(:root[data-theme="ds-brutalist"]) .panel { border-radius: 0; }
-:where(:root[data-theme="ds-brutalist"]) .panel { border: var(--border-width) solid var(--line); }
-:where(:root[data-theme="ds-brutalist"]) .profile[popover], :where(:root[data-theme="ds-brutalist"]) .emoji-picker[popover],
-:where(:root[data-theme="ds-brutalist"]) dialog.report, :where(:root[data-theme="ds-brutalist"]) dialog.about { border: 3px solid var(--line); border-radius: 0; }
-:where(:root[data-theme="ds-brutalist"]) .emoji-tabs button, :where(:root[data-theme="ds-brutalist"]) .emoji-grid button { border: 0; border-radius: 0; background: none; }
-:where(:root[data-theme="ds-brutalist"]) .banner { border-radius: 0; border: var(--border-width) solid var(--line); border-top: 0; font-weight: 700; }
-:where(:root[data-theme="ds-brutalist"]) .chat-new { border: var(--border-width) solid var(--line); border-radius: 0; color: var(--fg); }
-:where(:root[data-theme="ds-brutalist"]) .chat-log { gap: 8px; }
-:where(:root[data-theme="ds-brutalist"]) .msg-from { font-weight: 800; text-transform: uppercase; }
-:where(:root[data-theme="ds-brutalist"]) .msg-cont { margin-top: -6px; }
-:where(:root[data-theme="ds-brutalist"]) .update { border-bottom: var(--border-width) solid var(--line); text-transform: uppercase; }
-:where(:root[data-theme="ds-brutalist"]) .update button { border-radius: 0; }
-:where(:root[data-theme="ds-brutalist"]) .consent .bubble { border-radius: 0; border: 3px solid var(--line); }
+.side { border-right: var(--border-width) solid var(--line); }
+.chat-input:where(:scope, :scope *) { border-top: var(--border-width) solid var(--line); padding-top: 10px; }
+.share { border: var(--border-width) solid var(--line); border-radius: 0; }
+.share-live { border-color: var(--acc); border-width: 4px; }
+.share-head { border-bottom: var(--border-width) solid var(--line); background: var(--panel); font-weight: 700; }
+.share-bar { border-top: var(--border-width) solid var(--line); background: var(--panel); }
+.share.share-fs .share-head, .share.share-fs .share-bar { border: 0; }
+.panel { border-radius: 0; }
+.panel { border: var(--border-width) solid var(--line); }
+.profile[popover], .emoji-picker[popover],
+dialog.report, dialog.about { border: 3px solid var(--line); border-radius: 0; }
+.emoji-tabs button, .emoji-grid button { border: 0; border-radius: 0; background: none; }
+.banner { border-radius: 0; border: var(--border-width) solid var(--line); border-top: 0; font-weight: 700; }
+.chat-new { border: var(--border-width) solid var(--line); border-radius: 0; color: var(--fg); }
+.chat-log { gap: 8px; }
+.msg-from { font-weight: 800; text-transform: uppercase; }
+.msg-cont { margin-top: -6px; }
+.update { border-bottom: var(--border-width) solid var(--line); text-transform: uppercase; }
+.update button { border-radius: 0; }
+.consent .bubble { border-radius: 0; border: 3px solid var(--line); }
 /* the phone moves the sidebar's rule to its bottom edge, as the app's own layout does */
 /* the gear button is narrow; the theme's wider padding would push the cog off centre */
-:where(:root[data-theme="ds-brutalist"]) .actions .gear { padding-inline: 0; }
+.actions .gear { padding-inline: 0; }
 /* The sidebar's boxes are boxes too: a room square, its edge a rule (the top room open on screen stands on the bare
-   sidebar, as in the base, so it has none); the call box, the ⋯, ⚙, the small Leave and the menus square as well */
-:where(:root[data-theme="ds-brutalist"]) :is(.room, .room > .room-head, .plist.callbox, .room-more, :is(.side-me, .side-top) .gear, button.room-leave, .who, .away li, .room-menu[popover], .side-foot[popover], .side-foot > button.link, .room-menu button.link) { border-radius: 0; }
-:where(:root[data-theme="ds-brutalist"]) .room { box-shadow: inset 0 0 0 var(--border-width) var(--line); }
-:where(:root[data-theme="ds-brutalist"]) aside.side > section.room:first-of-type.selected:not(.folded) { box-shadow: none; }
-:where(:root[data-theme="ds-brutalist"]) .plist.callbox { box-shadow: inset 0 0 0 var(--border-width) var(--ok); }
-:where(:root[data-theme="ds-brutalist"]) :is(.room-menu, .side-foot)[popover] { border: 3px solid var(--line); box-shadow: var(--shadow-lg); }
-:where(:root[data-theme="ds-brutalist"]) button.room-leave { border: var(--border-width) solid var(--line); background: var(--bad); color: var(--color-text-on-error); text-transform: uppercase; }
-:where(:root[data-theme="ds-brutalist"]) .room-menu button.link.danger { color: var(--bad); font-weight: 700; }
-:where(:root[data-theme="ds-brutalist"]) aside.side .room-head .roomfaces .avatar { box-shadow: inset 0 0 0 var(--border-width) var(--line); }
-:where(:root[data-theme="ds-brutalist"]) aside.side .room-head .roomfaces .face.in-call .avatar { box-shadow: inset 0 0 0 var(--border-width) var(--line), 0 0 0 2px var(--color-ring); }
-:where(:root[data-theme="ds-brutalist"]) .roomfaces .face .newdot { border-radius: 0; }
-@media (max-width: 700px) {
-  :where(:root[data-theme="ds-brutalist"]) .side { border-right: 0; border-bottom: var(--border-width) solid var(--line); }
+   sidebar, as in the base, so it has none); the call box, the ⋯, ↑, ⚙, the small Leave and the menus square as well.
+   A room's box is the root of its own look wherever it sits, so it is named as the root (`:where(:scope)`, no weight),
+   and what in it hangs from the sidebar names the sidebar outside the root (a `:scope` in the selector lets it). */
+:is(.room:where(:scope), .room:where(:scope) > .room-head, .plist.callbox, .room-more, .room-top, :is(.side-me, .side-top) .gear, button.room-leave, .who, .away li, .room-menu[popover], .side-foot[popover], .side-foot > button.link, .room-menu button.link) { border-radius: 0; }
+.room:where(:scope) { box-shadow: inset 0 0 0 var(--border-width) var(--line); }
+aside.side > section.room:where(:scope):first-of-type.selected:not(.folded) { box-shadow: none; }
+.plist.callbox { box-shadow: inset 0 0 0 var(--border-width) var(--ok); }
+:is(.room-menu, .side-foot)[popover] { border: 3px solid var(--line); box-shadow: var(--shadow-lg); }
+button.room-leave { border: var(--border-width) solid var(--line); background: var(--bad); color: var(--color-text-on-error); text-transform: uppercase; }
+.room-menu button.link.danger { color: var(--bad); font-weight: 700; }
+aside.side .room-head .roomfaces .avatar:where(:scope *) { box-shadow: inset 0 0 0 var(--border-width) var(--line); }
+aside.side .room-head .roomfaces .face.in-call .avatar:where(:scope *) { box-shadow: inset 0 0 0 var(--border-width) var(--line), 0 0 0 2px var(--color-ring); }
+.roomfaces .face .newdot { border-radius: 0; }
+
 }
+@media (max-width: 700px) {
+@scope ([data-theme="ds-brutalist"]) to ([data-theme]) {
+
+  .side { border-right: 0; border-bottom: var(--border-width) solid var(--line); }
+
+}
+
+}@scope ([data-theme="ds-brutalist"]) to ([data-theme]) {
+
 
 /* The page is a drafting board: faint registration crosses every 48px, the layout grid left showing under the work.
    Static, painted straight on the page background, so the opaque sidebar, fields and dialogs cover it. */
-:where(:root[data-theme="ds-brutalist"]) body {
+body {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Cpath d='M23 20h1v9h-1zM19 24h9v1h-9z' fill='%23000' fill-opacity='.12'/%3E%3C/svg%3E");
 }
+
+}
 @media (prefers-color-scheme: dark) {
-  :where(:root[data-theme="ds-brutalist"]) body {
+@scope ([data-theme="ds-brutalist"]) to ([data-theme]) {
+
+  body {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Cpath d='M23 20h1v9h-1zM19 24h9v1h-9z' fill='%23f2f2f2' fill-opacity='.16'/%3E%3C/svg%3E");
   }
+
+}
+
+}
+@scope ([data-theme="ds-brutalist"]) to ([data-theme]) {
+
+/* A room's box, wherever it sits, is a sheet off the same drafting board: registration crosses at half the page's
+   pitch, so a folded box still shows a row of them, and down its right edge a strip of hazard tape, black on
+   construction yellow. The top room open on screen, at rest, stands on the bare sidebar (styles.css), so it gets no sheet. The
+   chat of a room in this look, inside a page of another, is the board itself, as the page's body has it. */
+:scope[data-theme="ds-brutalist"] {
+  --brutalist-board: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Cpath d='M23 20h1v9h-1zM19 24h9v1h-9z' fill='%23000' fill-opacity='.12'/%3E%3C/svg%3E");
+  --brutalist-sheet: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M11 9h1v7h-1zM8 12h7v1H8z' fill='%23000' fill-opacity='.2'/%3E%3C/svg%3E");
+}
+:scope.room {
+  --room-ground: repeating-linear-gradient(-45deg, var(--color-hazard) 0 5px, #000 5px 10px) right top / 8px 100% no-repeat,
+    var(--brutalist-sheet) 0 0 / 24px 24px, var(--panel); }
+:scope:is(.chat, .chat-input) { --chat-ground: var(--brutalist-board), var(--bg); }
+
+}
+@media (prefers-color-scheme: dark) {
+@scope ([data-theme="ds-brutalist"]) to ([data-theme]) {
+
+  :scope[data-theme="ds-brutalist"] {
+    --brutalist-board: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Cpath d='M23 20h1v9h-1zM19 24h9v1h-9z' fill='%23f2f2f2' fill-opacity='.16'/%3E%3C/svg%3E");
+    --brutalist-sheet: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M11 9h1v7h-1zM8 12h7v1H8z' fill='%23f2f2f2' fill-opacity='.22'/%3E%3C/svg%3E");
+  }
+
+}
+
 }

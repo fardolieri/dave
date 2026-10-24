@@ -1,8 +1,9 @@
+@scope ([data-theme="tf-botanical-garden"]) to ([data-theme]) {
 /* Botanical Garden: theme-factory preset (anthropics/skills, skills/theme-factory).
    Fresh and organic on cream paper: fern green for what is on, marigold for news, terracotta names, serif headings.
    Palette: Fern Green #4a7c59, Marigold #f9a620, Terracotta #b7472a, Cream #f5f3ed. Fonts: DejaVu Serif Bold headers, DejaVu Sans body (Georgia / Verdana where DejaVu is missing).
    Every rule is scoped to this theme; the app's own look and the other themes are untouched. */
-:root[data-theme="tf-botanical-garden"] {
+:scope[data-theme="tf-botanical-garden"] {
   --bg: #f5f3ed; --panel: #e9ece0; --panel2: #fffdf8; --fg: #22301f; --dim: #566152; --line: #cfd3c1;
   --ok: #2a7036; --warn: #8a5600; --bad: #b03f22; --acc: #4a7c59; --tf-link: #3d6a4b;
   --tf-on-acc: #ffffff; --tf-on-ok: #ffffff; --tf-on-bad: #ffffff;
@@ -14,77 +15,87 @@
 }
 
 /* type: the theme's header face on headings, room names and the names on the profile card */
-:root[data-theme="tf-botanical-garden"] :is(h1, h2, h3, .room-title, .profile-name strong, .consent .hello) { font-family: var(--tf-head); font-weight: 700; }
-:where(:root[data-theme="tf-botanical-garden"]) :is(button, select, textarea) { font-family: inherit; }
-:root[data-theme="tf-botanical-garden"] a { color: var(--tf-link); }
-:root[data-theme="tf-botanical-garden"] .msg-from { color: #a23f25; }
-:root[data-theme="tf-botanical-garden"] :is(button.room-name, button.avatar):focus-visible { outline-color: var(--tf-link); }
+:is(h1, h2, h3, .room-title, .profile-name strong, .consent .hello):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { font-family: var(--tf-head); font-weight: 700; }
+:is(button, select, textarea) { font-family: inherit; }
+a:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { color: var(--tf-link); }
+.msg-from:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { color: #a23f25; }
+:is(button.room-name, button.avatar):focus-visible:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { outline-color: var(--tf-link); }
 
 /* shape: corners of the plain controls and boxes (:where keeps button.join, .link and the rest their own look; faces stay round) */
-:where(:root[data-theme="tf-botanical-garden"]) :is(button:not(.avatar), input, select.picker, textarea) { border-radius: 10px; }
-:root[data-theme="tf-botanical-garden"] :is(.panel, .share, .warn, dialog.report, dialog.about, .profile[popover], .emoji-picker[popover]) { border-radius: 10px; }
-:root[data-theme="tf-botanical-garden"] .share.share-fs { border-radius: 0; }
+:is(button:not(.avatar), input, select.picker, textarea) { border-radius: 10px; }
+:is(.panel, .share, .warn, dialog.report, dialog.about, .profile[popover], .emoji-picker[popover]):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { border-radius: 10px; }
+.share.share-fs:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { border-radius: 0; }
 
 /* the colours styles.css writes for its dark page, each taken from this palette */
-:root[data-theme="tf-botanical-garden"] .update { color: var(--tf-on-acc); }
-:root[data-theme="tf-botanical-garden"] .update button, :root[data-theme="tf-botanical-garden"] .update button:hover { background: var(--tf-on-acc); color: var(--acc); }
-:root[data-theme="tf-botanical-garden"] .unread, :root[data-theme="tf-botanical-garden"] button.on:not(.link), :root[data-theme="tf-botanical-garden"] select.picker option:checked { color: var(--tf-on-acc); }
-:root[data-theme="tf-botanical-garden"] button.join { color: var(--tf-on-ok); }
-:root[data-theme="tf-botanical-garden"] button.leave { color: var(--tf-on-bad); }
-:root[data-theme="tf-botanical-garden"] button.unblock { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+.update:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { color: var(--tf-on-acc); }
+.update button:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *), .update button:hover:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { background: var(--tf-on-acc); color: var(--acc); }
+.unread:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *), button.on:not(.link):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *), select.picker option:checked:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { color: var(--tf-on-acc); }
+button.join:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { color: var(--tf-on-ok); }
+button.leave:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { color: var(--tf-on-bad); }
+button.unblock:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
 /* the mic test fills its button while recording: a pale fern, so "Recording…" stays readable */
-:root[data-theme="tf-botanical-garden"] .panel .mictest button.recording { background-image: linear-gradient(#b9d3b0, #b9d3b0); }
-:root[data-theme="tf-botanical-garden"] .new { background: var(--tf-new-bg); color: var(--tf-on-new); }
-:root[data-theme="tf-botanical-garden"] .warn, :root[data-theme="tf-botanical-garden"] .banner-warn { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
-:root[data-theme="tf-botanical-garden"] .banner-bad { background: var(--tf-bad-bg); color: var(--tf-bad-fg); }
-:root[data-theme="tf-botanical-garden"] .banner { box-shadow: var(--tf-shadow); }
-:root[data-theme="tf-botanical-garden"] .chat-new { background: color-mix(in srgb, var(--panel2) 92%, transparent); }
-:root[data-theme="tf-botanical-garden"] .avatar { background: #d5e3cf; color: #22301f; }
-:root[data-theme="tf-botanical-garden"] .share-head { background: rgba(74,124,89,.10); }
-:root[data-theme="tf-botanical-garden"] .share-bar { background: rgba(74,124,89,.08); }
-:root[data-theme="tf-botanical-garden"] :is(.profile[popover], .emoji-picker[popover]) { box-shadow: var(--tf-shadow-lg); }
-:root[data-theme="tf-botanical-garden"] :is(dialog.report, dialog.about)::backdrop { background: rgba(34,48,31,.35); }
-:root[data-theme="tf-botanical-garden"] .consent { --bubble: #ffffff; --bubble-fg: #22301f; --bubble-dim: #566152; --bubble-link: #3d6a4b; }
-:root[data-theme="tf-botanical-garden"] .consent .bubble { box-shadow: var(--tf-shadow-lg); }
+.panel .mictest button.recording:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { background-image: linear-gradient(#b9d3b0, #b9d3b0); }
+.new:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { background: var(--tf-new-bg); color: var(--tf-on-new); }
+.warn:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *), .banner-warn:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+.banner-bad:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { background: var(--tf-bad-bg); color: var(--tf-bad-fg); }
+.banner:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { box-shadow: var(--tf-shadow); }
+.chat-new:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { background: color-mix(in srgb, var(--panel2) 92%, transparent); }
+.avatar:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { background: #d5e3cf; color: #22301f; }
+.share-head:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { background: rgba(74,124,89,.10); }
+.share-bar:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { background: rgba(74,124,89,.08); }
+:is(.profile[popover], .emoji-picker[popover]):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { box-shadow: var(--tf-shadow-lg); }
+:is(dialog.report, dialog.about):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *)::backdrop { background: rgba(34,48,31,.35); }
+.consent:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { --bubble: #ffffff; --bubble-fg: #22301f; --bubble-dim: #566152; --bubble-link: #3d6a4b; }
+.consent .bubble:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { box-shadow: var(--tf-shadow-lg); }
 
 /* fullscreen share: always the black stage, so header and bar take light text whatever the page is */
-:root[data-theme="tf-botanical-garden"] .share.share-fs { --fg: #f2f2f2; --dim: #c8c8c8; --panel2: #2b2b2b; --line: #4a4a4a; --ok: #3ddc84; --warn: #f5b642; --bad: #ff6b6b;
+.share.share-fs:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { --fg: #f2f2f2; --dim: #c8c8c8; --panel2: #2b2b2b; --line: #4a4a4a; --ok: #3ddc84; --warn: #f5b642; --bad: #ff6b6b;
   border: 0; background: #000; color: var(--fg); box-shadow: none; }
-:root[data-theme="tf-botanical-garden"] .share.share-fs :is(.share-head, .share-bar) { background: rgba(0,0,0,.55); }
+.share.share-fs :is(.share-head, .share-bar):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { background: rgba(0,0,0,.55); }
 
 /* the selected room is underlined in marigold, like a label stuck in a seed tray */
-:root[data-theme="tf-botanical-garden"] .room.selected .room-title { color: var(--fg); text-decoration: underline 3px #f9a620; text-underline-offset: 4px; }
-:root[data-theme="tf-botanical-garden"] .unread { background: #b7472a; color: #fff; }
-:root[data-theme="tf-botanical-garden"] .chat-field > input { border-radius: 999px; padding-left: 14px; background: #fffdf8; }
-:root[data-theme="tf-botanical-garden"] .share-live { border-color: #f9a620; box-shadow: 0 0 0 1px #f9a620; }
-:root[data-theme="tf-botanical-garden"] .side { box-shadow: inset -1px 0 0 var(--line); }
+.room:where(:scope).selected .room-title:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { color: var(--fg); text-decoration: underline 3px #f9a620; text-underline-offset: 4px; }
+.unread:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { background: #b7472a; color: #fff; }
+.chat-field > input:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { border-radius: 999px; padding-left: 14px; background: #fffdf8; }
+.share-live:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { border-color: #f9a620; box-shadow: 0 0 0 1px #f9a620; }
+.side:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { box-shadow: inset -1px 0 0 var(--line); }
 
 /* a fern frond leans into the chat from its top corner, faint as a shadow on the greenhouse glass, and stirs in a slow draft;
    it grows with the screen so a wide one is not left with a sprig, but is never taller than the chat, which on a phone can
    be short, so it does not lengthen the page */
-:root[data-theme="tf-botanical-garden"] .chat::before { content: ''; position: absolute; top: 0; right: 0; z-index: -1; width: min(clamp(150px, 22vmin, 330px), 34%); aspect-ratio: 170 / 250; pointer-events: none; opacity: .1;
+.chat:where(:scope, :scope *):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *)::before { content: ''; position: absolute; top: 0; right: 0; z-index: -1; width: min(clamp(150px, 22vmin, 330px), 34%); aspect-ratio: 170 / 250; pointer-events: none; opacity: .1;
   background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 170 250' fill='%234a7c59'><path d='M178,-6Q150,150 34,244' fill='none' stroke='%234a7c59' stroke-width='2'/><path d='M175 9q5 11 17 14q-5-11-17-14M175 9q-12-1-21 6q12 1 21-6M170 29q6 13 19 18q-6-13-19-18M170 29q-14-2-25 6q14 2 25-6M165 49q6 15 20 21q-6-15-20-21M165 49q-15-3-28 6q15 3 28-6M159 67q5 16 21 24q-5-16-21-24M159 67q-17-4-31 5q17 4 31-5M152 86q5 18 21 26q-5-18-21-26M152 86q-17-5-33 4q17 5 33-4M144 103q4 18 21 28q-4-18-21-28M144 103q-18-6-35 2q18 6 35-2M136 120q3 19 19 29q-3-19-19-29M136 120q-18-7-35 1q18 7 35-1M127 137q2 19 18 30q-2-19-18-30M127 137q-17-8-34-1q17 8 34 1M117 153q1 18 16 29q-1-18-16-29M117 153q-16-9-33-3q16 9 33 3M106 169q0 17 13 28q0-17-13-28M106 169q-15-9-31-4q15 9 31 4M94 184q0 15 11 26q0-15-11-26M94 184q-13-9-28-5q13 9 28 5M82 198q-1 14 8 23q1-14-8-23M82 198q-11-8-24-6q11 8 24 6M69 212q-1 11 6 20q1-11-6-20M69 212q-9-7-20-6q9 7 20 6M55 225q-1 9 4 16q1-9-4-16M55 225q-7-6-16-5q7 6 16 5M41 238q-1 6 2 12q1-6-2-12M41 238q-5-5-11-4q5 5 11 4'/></svg>") no-repeat top right / contain;
   max-height: 100%; transform-origin: 100% 0; animation: tf-botanical-garden-fern 13s ease-in-out infinite alternate; animation-play-state: var(--ambient-play); }
-@keyframes tf-botanical-garden-fern { to { transform: rotate(2deg); } }
+
+}
+@keyframes tf-botanical-garden-fern { to { transform: rotate(2deg); } }@scope ([data-theme="tf-botanical-garden"]) to ([data-theme]) {
+
 
 /* the same draft carries a few marigold petals, fern leaflets and one terracotta petal down past the glass, slowly and
    sideways, each on its own long cycle; four of the eight on a phone */
-:root[data-theme="tf-botanical-garden"] .ambient { display: block; }
-:root[data-theme="tf-botanical-garden"] .ambient > i { top: 0; width: clamp(7px, .9vmin, 14px); aspect-ratio: 1 / 1.7; border-radius: 0 100% 0 100%; background: #f9a620; opacity: 0;
+.ambient:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { display: block; }
+.ambient > i:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { top: 0; width: clamp(7px, .9vmin, 14px); aspect-ratio: 1 / 1.7; border-radius: 0 100% 0 100%; background: #f9a620; opacity: 0;
   animation: tf-botanical-garden-drift 64s linear infinite; animation-play-state: var(--ambient-play); }
-:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(n+9) { display: none; }
-:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(1) { left: 31%; animation-duration: 58s; animation-delay: -7s; }
-:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(2) { left: 47%; background: #4a7c59; animation-name: tf-botanical-garden-drift-b; animation-duration: 71s; animation-delay: -40s; }
-:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(3) { left: 62%; animation-duration: 66s; animation-delay: -25s; }
-:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(4) { left: 84%; background: #4a7c59; animation-duration: 77s; animation-delay: -60s; }
-:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(5) { left: 39%; background: #b7472a; animation-name: tf-botanical-garden-drift-b; animation-duration: 82s; animation-delay: -66s; }
-:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(6) { left: 73%; animation-name: tf-botanical-garden-drift-b; animation-duration: 61s; animation-delay: -15s; }
-:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(7) { left: 55%; background: #4a7c59; animation-duration: 69s; animation-delay: -52s; }
-:root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(8) { left: 92%; animation-name: tf-botanical-garden-drift-b; animation-duration: 74s; animation-delay: -33s; }
+.ambient > i:nth-child(n+9):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { display: none; }
+.ambient > i:nth-child(1):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { left: 31%; animation-duration: 58s; animation-delay: -7s; }
+.ambient > i:nth-child(2):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { left: 47%; background: #4a7c59; animation-name: tf-botanical-garden-drift-b; animation-duration: 71s; animation-delay: -40s; }
+.ambient > i:nth-child(3):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { left: 62%; animation-duration: 66s; animation-delay: -25s; }
+.ambient > i:nth-child(4):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { left: 84%; background: #4a7c59; animation-duration: 77s; animation-delay: -60s; }
+.ambient > i:nth-child(5):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { left: 39%; background: #b7472a; animation-name: tf-botanical-garden-drift-b; animation-duration: 82s; animation-delay: -66s; }
+.ambient > i:nth-child(6):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { left: 73%; animation-name: tf-botanical-garden-drift-b; animation-duration: 61s; animation-delay: -15s; }
+.ambient > i:nth-child(7):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { left: 55%; background: #4a7c59; animation-duration: 69s; animation-delay: -52s; }
+.ambient > i:nth-child(8):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { left: 92%; animation-name: tf-botanical-garden-drift-b; animation-duration: 74s; animation-delay: -33s; }
+
+}
 @media (max-width: 700px) {
-  :root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(n+5) { display: none; }
-  :root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(1) { left: 12%; }
-  :root[data-theme="tf-botanical-garden"] .ambient > i:nth-child(2) { left: 38%; }
+@scope ([data-theme="tf-botanical-garden"]) to ([data-theme]) {
+
+  .ambient > i:nth-child(n+5):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { display: none; }
+  .ambient > i:nth-child(1):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { left: 12%; }
+  .ambient > i:nth-child(2):is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { left: 38%; }
+
+}
+
 }
 @keyframes tf-botanical-garden-drift {
   0% { transform: translate(0, -5vh) rotate(0deg); opacity: 0; }
@@ -102,4 +113,20 @@
   65% { transform: translate(-2vw, 64vh) rotate(-120deg) scaleX(-1); }
   92% { opacity: .38; }
   100% { transform: translate(-8vw, 105vh) rotate(-200deg) scaleX(-1); opacity: 0; }
+}
+@scope ([data-theme="tf-botanical-garden"]) to ([data-theme]) {
+
+/* A room's box, wherever it sits, is a herbarium sheet: the sidebar's sage paper, paler where the greenhouse light
+   falls on it from the top, and a pressed fern sprig in its top corner, its leaflets as faint as the frond in the chat.
+   A folded box shows the sprig's first leaflets. The top room open on screen, at rest, is the sidebar's own paper (styles.css), so
+   it gets no sheet. The chat of a room in this look, inside a page of another, is the cream of the page with the warm
+   light through the glass in its top corner; the frond leans in over it as on its own page (above), which needs the chat
+   to keep its pseudo-element above its own ground. */
+:scope.room {
+  --room-ground: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 90 60'%3E%3Cpath d='M86 4Q58 26 8 56' fill='none' stroke='%234a7c59' stroke-opacity='.3' stroke-width='1.2'/%3E%3Cg fill='%234a7c59' fill-opacity='.22'%3E%3Cellipse cx='80.6' cy='11.9' rx='3.6' ry='1.4' transform='rotate(88 80.6 11.9)'/%3E%3Cellipse cx='77.0' cy='7.1' rx='3.6' ry='1.4' transform='rotate(198 77.0 7.1)'/%3E%3Cellipse cx='74.6' cy='16.5' rx='3.9' ry='1.5' transform='rotate(89 74.6 16.5)'/%3E%3Cellipse cx='70.9' cy='11.4' rx='3.9' ry='1.5' transform='rotate(199 70.9 11.4)'/%3E%3Cellipse cx='68.2' cy='21.3' rx='4.1' ry='1.6' transform='rotate(90 68.2 21.3)'/%3E%3Cellipse cx='64.4' cy='15.8' rx='4.1' ry='1.6' transform='rotate(200 64.4 15.8)'/%3E%3Cellipse cx='61.4' cy='26.3' rx='4.3' ry='1.7' transform='rotate(90 61.4 26.3)'/%3E%3Cellipse cx='57.4' cy='20.4' rx='4.3' ry='1.7' transform='rotate(200 57.4 20.4)'/%3E%3Cellipse cx='54.3' cy='31.2' rx='4.4' ry='1.8' transform='rotate(91 54.3 31.2)'/%3E%3Cellipse cx='50.2' cy='25.2' rx='4.4' ry='1.8' transform='rotate(201 50.2 25.2)'/%3E%3Cellipse cx='46.7' cy='36.0' rx='4.2' ry='1.7' transform='rotate(92 46.7 36.0)'/%3E%3Cellipse cx='42.9' cy='30.2' rx='4.2' ry='1.7' transform='rotate(202 42.9 30.2)'/%3E%3Cellipse cx='38.7' cy='40.8' rx='4.0' ry='1.6' transform='rotate(92 38.7 40.8)'/%3E%3Cellipse cx='35.2' cy='35.4' rx='4.0' ry='1.6' transform='rotate(202 35.2 35.4)'/%3E%3Cellipse cx='30.4' cy='45.9' rx='3.7' ry='1.5' transform='rotate(93 30.4 45.9)'/%3E%3Cellipse cx='27.1' cy='40.7' rx='3.7' ry='1.5' transform='rotate(203 27.1 40.7)'/%3E%3Cellipse cx='21.6' cy='51.1' rx='3.5' ry='1.4' transform='rotate(93 21.6 51.1)'/%3E%3Cellipse cx='18.6' cy='46.2' rx='3.5' ry='1.4' transform='rotate(203 18.6 46.2)'/%3E%3C/g%3E%3C/svg%3E") right 6px top 2px / 108px 72px no-repeat,
+    linear-gradient(#f1f2ea, var(--panel) 60px), var(--panel); }
+:scope.chat { isolation: isolate;
+  --chat-ground: radial-gradient(70% 60% at 100% 0, rgb(249 166 32 / .07), transparent), var(--bg); }
+:scope.chat-input { --chat-ground: var(--bg); }
+
 }

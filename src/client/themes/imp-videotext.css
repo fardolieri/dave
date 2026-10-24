@@ -5,123 +5,137 @@
 @font-face { font-family: "imp-Atkinson"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(./fonts/atkinsonhyperlegiblenext-NaPNcYPdHfdVxJw0IfIP0lvYFqijb-UxCtm5_wdGseiHn3qmpQ.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 @font-face { font-family: "imp-Atkinson"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(./fonts/atkinsonhyperlegiblenext-NaPNcYPdHfdVxJw0IfIP0lvYFqijb-UxCtm5_wdGseiJn3o.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 @font-face { font-family: "imp-AtkinsonMono"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(./fonts/atkinsonhyperlegiblemono-tss4AoFBci4C4gvhPXrt3wjT1MqSzhA4t7IIcncBiwKjhFyRHQ.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
-@font-face { font-family: "imp-AtkinsonMono"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(./fonts/atkinsonhyperlegiblemono-tss4AoFBci4C4gvhPXrt3wjT1MqSzhA4t7IIcncBiwKthFw.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "imp-AtkinsonMono"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(./fonts/atkinsonhyperlegiblemono-tss4AoFBci4C4gvhPXrt3wjT1MqSzhA4t7IIcncBiwKthFw.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }@scope ([data-theme="imp-videotext"]) to ([data-theme]) {
 
-:root[data-theme="imp-videotext"] {
+
+:scope[data-theme="imp-videotext"] {
   --bg: #000000; --panel: #000000; --panel2: #141414; --fg: #ffffff; --dim: #c0c0c0; --line: #2b2b2b;
   --ok: #33ff66; --warn: #ffff00; --bad: #ff4d4d; --acc: #00ffff;
   --bar: #0000c8; --field: #1c2fc4; --edge: #3a50ff; --magenta: #ff00ff;
   --mono: "imp-AtkinsonMono", ui-monospace, monospace;
+  /* the service name in separated mosaic blocks, for the corner of the page (the .ambient below) */
+  --vt-logo: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 109 35' shape-rendering='crispEdges'><path fill='%230000c8' fill-opacity='.8' d='M15 0h4v3h-4zM15 4h4v3h-4zM15 8h4v3h-4zM5 12h4v3h-4zM10 12h4v3h-4zM15 12h4v3h-4zM0 16h4v3h-4zM15 16h4v3h-4zM0 20h4v3h-4zM15 20h4v3h-4zM0 24h4v3h-4zM15 24h4v3h-4zM0 28h4v3h-4zM15 28h4v3h-4zM5 32h4v3h-4zM10 32h4v3h-4zM15 32h4v3h-4zM35 12h4v3h-4zM40 12h4v3h-4zM45 16h4v3h-4zM35 20h4v3h-4zM40 20h4v3h-4zM45 20h4v3h-4zM30 24h4v3h-4zM45 24h4v3h-4zM30 28h4v3h-4zM45 28h4v3h-4zM35 32h4v3h-4zM40 32h4v3h-4zM45 32h4v3h-4zM60 12h4v3h-4zM75 12h4v3h-4zM60 16h4v3h-4zM75 16h4v3h-4zM60 20h4v3h-4zM75 20h4v3h-4zM60 24h4v3h-4zM75 24h4v3h-4zM65 28h4v3h-4zM70 28h4v3h-4zM65 32h4v3h-4zM70 32h4v3h-4zM95 12h4v3h-4zM100 12h4v3h-4zM90 16h4v3h-4zM105 16h4v3h-4zM90 20h4v3h-4zM95 20h4v3h-4zM100 20h4v3h-4zM105 20h4v3h-4zM90 24h4v3h-4zM90 28h4v3h-4zM95 32h4v3h-4zM100 32h4v3h-4zM105 32h4v3h-4z'/></svg>");
   font-family: "imp-Atkinson", system-ui, sans-serif; color-scheme: dark;
   accent-color: var(--acc); scrollbar-color: var(--edge) #000;
 }
-:where(:root[data-theme="imp-videotext"]) body { line-height: 1.35; }
-:where(:root[data-theme="imp-videotext"]) ::selection { background: var(--acc); color: #000; }
-:where(:root[data-theme="imp-videotext"]) :is(input, textarea) { caret-color: var(--warn); }
-:where(:root[data-theme="imp-videotext"]) :focus-visible { outline: 2px solid var(--warn); outline-offset: 1px; }
-:where(:root[data-theme="imp-videotext"]) :is(h1, h2, .room-title, .msg-at, .unread, .conn, .lag, .share-bar) { font-family: var(--mono); }
-:where(:root[data-theme="imp-videotext"]) h1 { font-size: 30px; font-weight: 700; color: var(--warn); background: var(--bar); padding: 2px 10px; width: fit-content; }
-:where(:root[data-theme="imp-videotext"]) h2 { color: var(--acc); letter-spacing: .04em; }
+body { line-height: 1.35; }
+:scope:is([data-apart], .chat, .chat-input) { line-height: 1.35; } /* the same type on a box or chat of this look inside another page */
+::selection { background: var(--acc); color: #000; }
+:is(input, textarea) { caret-color: var(--warn); }
+:focus-visible { outline: 2px solid var(--warn); outline-offset: 1px; }
+:is(h1, h2, .room-title, .msg-at, .unread, .conn, .lag, .share-bar) { font-family: var(--mono); }
+h1 { font-size: 30px; font-weight: 700; color: var(--warn); background: var(--bar); padding: 2px 10px; width: fit-content; }
+h2 { color: var(--acc); letter-spacing: .04em; }
 
 /* Header rows: every room name is a full-width blue row, like the top lines of a teletext page. */
-:where(:root[data-theme="imp-videotext"]) .side { border-right: 2px solid var(--bar); }
+.side { border-right: 2px solid var(--bar); }
 /* A room is a square box the sidebar's width, its blue row at the box's top (the gap above it is the room's own margin),
-   so a folded room is the blue row alone; pressed, the row lights to the field blue. */
-:where(:root[data-theme="imp-videotext"]) .room { margin-top: 14px; margin-inline: -14px; padding: 0 14px 8px; border-radius: 0; }
-:where(:root[data-theme="imp-videotext"]) .room > .room-head { margin: 0 -14px 6px; padding: 3px 14px; background: var(--bar); border-radius: 0; }
-:where(:root[data-theme="imp-videotext"]) .room.folded { padding-bottom: 0; }
-:where(:root[data-theme="imp-videotext"]) .room.folded > .room-head { margin-bottom: 0; }
-:where(:root[data-theme="imp-videotext"]) .room > .room-head:active:not(:has(.room-more:active, .room-menu:active, .room-leave:active, .room-hear:active, .room-unmute:active)) { background: var(--field); }
-:where(:root[data-theme="imp-videotext"]) .room-title { color: var(--acc); font-size: 13px; letter-spacing: .04em; }
-:where(:root[data-theme="imp-videotext"]) .room.selected .room-title,
-:where(:root[data-theme="imp-videotext"]) .room-head:hover .room-title { color: var(--warn); }
-:where(:root[data-theme="imp-videotext"]) .room-head :is(button.link, .room-more) { color: #fff; }
-:where(:root[data-theme="imp-videotext"]) .room-head button.link.on { color: var(--warn); }
-:where(:root[data-theme="imp-videotext"]) button.room-name:focus-visible { outline-color: var(--warn); }
-:where(:root[data-theme="imp-videotext"]) :is(.room-more, .side-me .gear, .side-top .gear) { border-radius: 0; }
-:where(:root[data-theme="imp-videotext"]) .room-head .room-more:is(:hover, :focus-visible) { background: var(--field); }
+   so a folded room is the blue row alone; pressed, the row lights to the field blue. A room's box is the root of its
+   own look wherever it sits, so it is named as the root (`:where(:scope)`, no weight). */
+.room:where(:scope) { margin-top: 14px; margin-inline: -14px; padding: 0 14px 8px; border-radius: 0; }
+.room:where(:scope) > .room-head { margin: 0 -14px 6px; padding: 3px 14px; background: var(--bar); border-radius: 0; }
+.room:where(:scope).folded { padding-bottom: 0; }
+.room:where(:scope).folded > .room-head { margin-bottom: 0; }
+.room:where(:scope) > .room-head:active:not(:has(.room-more:active, .room-top:active, .room-menu:active, .room-leave:active, .room-hear:active, .room-unmute:active)) { background: var(--field); }
+.room-title { color: var(--acc); font-size: 13px; letter-spacing: .04em; }
+.room:where(:scope).selected .room-title,
+.room-head:hover .room-title { color: var(--warn); }
+.room-head :is(button.link, .room-more, .room-top) { color: #fff; }
+.room-head button.link.on { color: var(--warn); }
+button.room-name:focus-visible { outline-color: var(--warn); }
+:is(.room-more, .room-top, .side-me .gear, .side-top .gear) { border-radius: 0; }
+.room-head .room-more:is(:hover, :focus-visible),
+.room-head .room-top:not(:disabled):is(:hover, :focus-visible) { background: var(--field); }
 /* the small Leave of my call's folded room, as Leave: black on the red */
-:where(:root[data-theme="imp-videotext"]) button.room-leave { background: var(--bad); color: #000; border-radius: 0; font-weight: 700; }
+button.room-leave { background: var(--bad); color: #000; border-radius: 0; font-weight: 700; }
 
 /* controls: blue fields, square, no borders; the active state flips to cyan */
-:where(:root[data-theme="imp-videotext"]) button { font: inherit; background: var(--field); color: #fff; border: 0; border-radius: 0; padding: 7px 12px; }
-:where(:root[data-theme="imp-videotext"]) button:where(:hover:not(:disabled)) { background-color: #2c40e0; }
-:where(:root[data-theme="imp-videotext"]) input,
-:where(:root[data-theme="imp-videotext"]) textarea,
-:where(:root[data-theme="imp-videotext"]) select.picker { background-color: #000; border-color: var(--edge); border-radius: 0; }
-:where(:root[data-theme="imp-videotext"]) select.picker::picker(select) { border-radius: 0; background: #000; border-color: var(--edge); }
-:where(:root[data-theme="imp-videotext"]) select.picker option { border-radius: 0; }
-:where(:root[data-theme="imp-videotext"]) button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #000; }
-:where(:root[data-theme="imp-videotext"]) button.join { background: var(--ok); color: #000; font-weight: 700; }
-:where(:root[data-theme="imp-videotext"]) button.leave { background: var(--bad); color: #000; font-weight: 700; }
-:where(:root[data-theme="imp-videotext"]) button.unblock { background: var(--warn); color: #000; }
-:where(:root[data-theme="imp-videotext"]) button.link { color: var(--acc); text-underline-offset: 3px; }
-:where(:root[data-theme="imp-videotext"]) button.link:hover { color: var(--warn); }
-:where(:root[data-theme="imp-videotext"]) select.picker option:checked { background: var(--acc); color: #000; }
-:where(:root[data-theme="imp-videotext"]) .chat-input .emoji-open { background: none; }
-:where(:root[data-theme="imp-videotext"]) .emoji-tabs button,
-:where(:root[data-theme="imp-videotext"]) .emoji-grid button { border-radius: 0; }
+button { font: inherit; background: var(--field); color: #fff; border: 0; border-radius: 0; padding: 7px 12px; }
+button:where(:hover:not(:disabled)) { background-color: #2c40e0; }
+input,
+textarea,
+select.picker { background-color: #000; border-color: var(--edge); border-radius: 0; }
+select.picker::picker(select) { border-radius: 0; background: #000; border-color: var(--edge); }
+select.picker option { border-radius: 0; }
+button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #000; }
+button.join { background: var(--ok); color: #000; font-weight: 700; }
+button.leave { background: var(--bad); color: #000; font-weight: 700; }
+button.unblock { background: var(--warn); color: #000; }
+button.link { color: var(--acc); text-underline-offset: 3px; }
+button.link:hover { color: var(--warn); }
+select.picker option:checked { background: var(--acc); color: #000; }
+.chat-input:where(:scope, :scope *) .emoji-open { background: none; }
+.emoji-tabs button,
+.emoji-grid button { border-radius: 0; }
 
 /* badges and notices */
-:where(:root[data-theme="imp-videotext"]) .unread { background: var(--magenta); color: #000; border-radius: 0; }
-:where(:root[data-theme="imp-videotext"]) .new { background: var(--warn); color: #000; border-radius: 0; }
-:where(:root[data-theme="imp-videotext"]) .warn { background: #262600; color: var(--warn); border-radius: 0; }
-:where(:root[data-theme="imp-videotext"]) .banner { border-radius: 0; box-shadow: none; }
-:where(:root[data-theme="imp-videotext"]) .banner-warn { background: var(--warn); color: #000; }
-:where(:root[data-theme="imp-videotext"]) .banner-bad { background: var(--bad); color: #000; }
-:where(:root[data-theme="imp-videotext"]) .update { background: var(--bar); color: var(--warn); }
-:where(:root[data-theme="imp-videotext"]) .update button { background: var(--warn); color: #000; border-radius: 0; }
-:where(:root[data-theme="imp-videotext"]) .chat-new { background: var(--bar); border-color: var(--bar); color: #fff; border-radius: 0; }
+.unread { background: var(--magenta); color: #000; border-radius: 0; }
+.new { background: var(--warn); color: #000; border-radius: 0; }
+.warn { background: #262600; color: var(--warn); border-radius: 0; }
+.banner { border-radius: 0; box-shadow: none; }
+.banner-warn { background: var(--warn); color: #000; }
+.banner-bad { background: var(--bad); color: #000; }
+.update { background: var(--bar); color: var(--warn); }
+.update button { background: var(--warn); color: #000; border-radius: 0; }
+.chat-new { background: var(--bar); border-color: var(--bar); color: #fff; border-radius: 0; }
 
 /* people */
-:where(:root[data-theme="imp-videotext"]) .avatar { border-radius: 0; background: var(--field); color: #fff; }
-:where(:root[data-theme="imp-videotext"]) .avatar.pic { background: #141414; }
-:where(:root[data-theme="imp-videotext"]) .avatar.speaking { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--ok); }
-:where(:root[data-theme="imp-videotext"]) button.avatar.own::after { border-radius: 0; background: #000; border-color: var(--edge); }
-:where(:root[data-theme="imp-videotext"]) .plist em { border-color: var(--dim); border-radius: 0; }
-:where(:root[data-theme="imp-videotext"]) .panel { background: #000; border: 2px solid var(--bar); border-radius: 0; }
-:where(:root[data-theme="imp-videotext"]) .panel .vgate .vmeter { border-radius: 0; background: #262626; }
-:where(:root[data-theme="imp-videotext"]) .msg-from { color: var(--warn); font-weight: 700; }
-:where(:root[data-theme="imp-videotext"]) .msg-at { color: var(--acc); font-variant-numeric: tabular-nums; }
-:where(:root[data-theme="imp-videotext"]) .msg-sys { color: var(--dim); }
+.avatar { border-radius: 0; background: var(--field); color: #fff; }
+.avatar.pic { background: #141414; }
+.avatar.speaking { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--ok); }
+button.avatar.own::after { border-radius: 0; background: #000; border-color: var(--edge); }
+.plist em { border-color: var(--dim); border-radius: 0; }
+.panel { background: #000; border: 2px solid var(--bar); border-radius: 0; }
+.panel .vgate .vmeter { border-radius: 0; background: #262626; }
+.msg-from { color: var(--warn); font-weight: 700; }
+.msg-at { color: var(--acc); font-variant-numeric: tabular-nums; }
+.msg-sys { color: var(--dim); }
 
 /* shares: black stage in a blue frame, the header a blue row */
-:where(:root[data-theme="imp-videotext"]) .share { background: #000; border: 2px solid var(--bar); border-radius: 0; }
-:where(:root[data-theme="imp-videotext"]) .share-live { border-color: var(--acc); }
-:where(:root[data-theme="imp-videotext"]) .share-head { background: var(--bar); }
-:where(:root[data-theme="imp-videotext"]) .share-head .stop { background: #000; }
-:where(:root[data-theme="imp-videotext"]) .share-bar { background: #000; color: var(--acc); }
+.share { background: #000; border: 2px solid var(--bar); border-radius: 0; }
+.share-live { border-color: var(--acc); }
+.share-head { background: var(--bar); }
+.share-head .stop { background: #000; }
+.share-bar { background: #000; color: var(--acc); }
 
 /* popovers and dialogs: black pages in a blue frame */
-:where(:root[data-theme="imp-videotext"]) .profile[popover],
-:where(:root[data-theme="imp-videotext"]) .emoji-picker[popover],
-:where(:root[data-theme="imp-videotext"]) .room-menu[popover],
-:where(:root[data-theme="imp-videotext"]) .side-foot[popover] { border: 2px solid var(--bar); border-radius: 0; box-shadow: 0 8px 24px rgba(0,0,0,.7); }
+.profile[popover],
+.emoji-picker[popover],
+.room-menu[popover],
+.side-foot[popover] { border: 2px solid var(--bar); border-radius: 0; box-shadow: 0 8px 24px rgba(0,0,0,.7); }
 /* their items hovered turn yellow, as a link does; Leave, which stays red, flips to black on the red instead */
-:where(:root[data-theme="imp-videotext"]) :is(.room-menu, .side-foot) button.link { border-radius: 0; }
-:where(:root[data-theme="imp-videotext"]) .room-menu button.link.danger:is(:hover, :focus-visible) { background: var(--bad); color: #000; }
-:where(:root[data-theme="imp-videotext"]) :is(.plist.callbox, .who, .away li.on) { border-radius: 0; }
-:where(:root[data-theme="imp-videotext"]) .emoji-scroll h4 { color: var(--acc); }
-:where(:root[data-theme="imp-videotext"]) dialog.report,
-:where(:root[data-theme="imp-videotext"]) dialog.about { border: 2px solid var(--bar); border-radius: 0; }
-:where(:root[data-theme="imp-videotext"]) dialog.report::backdrop,
-:where(:root[data-theme="imp-videotext"]) dialog.about::backdrop { background: rgba(0,0,0,.75); }
-:where(:root[data-theme="imp-videotext"]) dialog.report .field select,
-:where(:root[data-theme="imp-videotext"]) dialog.report textarea { background: #000; border-color: var(--edge); border-radius: 0; }
-:where(:root[data-theme="imp-videotext"]) dialog.about details.change p { border-left: 1px solid var(--edge); }
-:where(:root[data-theme="imp-videotext"]) .consent { --bubble: #0000c8; --bubble-fg: #fff; --bubble-dim: #d6d6ff; --bubble-link: #ffff00; }
-:where(:root[data-theme="imp-videotext"]) .consent .bubble { border-radius: 0; box-shadow: 0 8px 24px rgba(0,0,0,.7); }
+:is(.room-menu, .side-foot) button.link { border-radius: 0; }
+.room-menu button.link.danger:is(:hover, :focus-visible) { background: var(--bad); color: #000; }
+:is(.plist.callbox, .who, .away li.on) { border-radius: 0; }
+.emoji-scroll h4 { color: var(--acc); }
+dialog.report,
+dialog.about { border: 2px solid var(--bar); border-radius: 0; }
+dialog.report::backdrop,
+dialog.about::backdrop { background: rgba(0,0,0,.75); }
+dialog.report .field select,
+dialog.report textarea { background: #000; border-color: var(--edge); border-radius: 0; }
+dialog.about details.change p { border-left: 1px solid var(--edge); }
+.consent { --bubble: #0000c8; --bubble-fg: #fff; --bubble-dim: #d6d6ff; --bubble-link: #ffff00; }
+.consent .bubble { border-radius: 0; box-shadow: 0 8px 24px rgba(0,0,0,.7); }
 
+
+}
 @media (max-width: 700px) {
-  :where(:root[data-theme="imp-videotext"]) .side { border-right: 0; border-bottom: 2px solid var(--bar); }
-  :where(:root[data-theme="imp-videotext"]) .chat-input { border-top: 2px solid var(--bar); }
+@scope ([data-theme="imp-videotext"]) to ([data-theme]) {
+
+  .side { border-right: 0; border-bottom: 2px solid var(--bar); }
+  .chat-input:where(:scope, :scope *) { border-top: 2px solid var(--bar); }
+
 }
 
-/* the mic test fills its button while recording: a fill the label stays readable on */
-:where(:root[data-theme="imp-videotext"]) .panel .mictest button.recording { background-color: var(--field); background-image: linear-gradient(#c00000, #c00000); outline: 2px solid var(--acc); outline-offset: -2px; }
+}@scope ([data-theme="imp-videotext"]) to ([data-theme]) {
 
-:where(:root[data-theme="imp-videotext"]) .banner button.link:hover { color: inherit; text-decoration-thickness: 2px; }
-:where(:root[data-theme="imp-videotext"]) .update button:hover { background: #ffff80; }
+
+/* the mic test fills its button while recording: a fill the label stays readable on */
+.panel .mictest button.recording { background-color: var(--field); background-image: linear-gradient(#c00000, #c00000); outline: 2px solid var(--acc); outline-offset: -2px; }
+
+.banner button.link:hover { color: inherit; text-decoration-thickness: 2px; }
+.update button:hover { background: #ffff80; }
 
 /* The service name in the top corner, the way a teletext page carries its own: "dave" in separated mosaic blocks in the
    header blue, sized to the screen so a wide one still sees it. Two touches of teletext keep it alive: four of its blocks
@@ -130,52 +144,78 @@
    each holds still on its row, then fades into the row above, so no block ever slides between pixels, as on a real
    teletext page. Each fade takes about three seconds, six rows half a minute or so, then a long rest. Opacity, and
    transform in whole rows only, spread by negative delays so the paused frame is a page in mid-broadcast. */
-:root[data-theme="imp-videotext"] .ambient { display: block; --vt-w: clamp(174px, 15vw, 400px); --vt-u: calc(var(--vt-w) / 109);
+.ambient:is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { display: block; --vt-w: clamp(174px, 15vw, 400px); --vt-u: calc(var(--vt-w) / 109);
   --vt-t: clamp(14px, 1.4vw, 36px); --vt-r: clamp(30px, 2.4vw, 64px);
-  background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 109 35' shape-rendering='crispEdges'><path fill='%230000c8' fill-opacity='.8' d='M15 0h4v3h-4zM15 4h4v3h-4zM15 8h4v3h-4zM5 12h4v3h-4zM10 12h4v3h-4zM15 12h4v3h-4zM0 16h4v3h-4zM15 16h4v3h-4zM0 20h4v3h-4zM15 20h4v3h-4zM0 24h4v3h-4zM15 24h4v3h-4zM0 28h4v3h-4zM15 28h4v3h-4zM5 32h4v3h-4zM10 32h4v3h-4zM15 32h4v3h-4zM35 12h4v3h-4zM40 12h4v3h-4zM45 16h4v3h-4zM35 20h4v3h-4zM40 20h4v3h-4zM45 20h4v3h-4zM30 24h4v3h-4zM45 24h4v3h-4zM30 28h4v3h-4zM45 28h4v3h-4zM35 32h4v3h-4zM40 32h4v3h-4zM45 32h4v3h-4zM60 12h4v3h-4zM75 12h4v3h-4zM60 16h4v3h-4zM75 16h4v3h-4zM60 20h4v3h-4zM75 20h4v3h-4zM60 24h4v3h-4zM75 24h4v3h-4zM65 28h4v3h-4zM70 28h4v3h-4zM65 32h4v3h-4zM70 32h4v3h-4zM95 12h4v3h-4zM100 12h4v3h-4zM90 16h4v3h-4zM105 16h4v3h-4zM90 20h4v3h-4zM95 20h4v3h-4zM100 20h4v3h-4zM105 20h4v3h-4zM90 24h4v3h-4zM90 28h4v3h-4zM95 32h4v3h-4zM100 32h4v3h-4zM105 32h4v3h-4z'/></svg>") no-repeat right var(--vt-r) top var(--vt-t) / var(--vt-w) auto; }
-:root[data-theme="imp-videotext"] .ambient > i { width: calc(4 * var(--vt-u)); height: calc(3 * var(--vt-u)); }
+  background: var(--vt-logo) no-repeat right var(--vt-r) top var(--vt-t) / var(--vt-w) auto; }
+.ambient > i:is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { width: calc(4 * var(--vt-u)); height: calc(3 * var(--vt-u)); }
 
 /* flashing blocks of the name: right and top in the logo's own units, so each lands on a block */
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(-n+4) { opacity: 0; background: var(--warn);
+.ambient > i:nth-child(-n+4):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { opacity: 0; background: var(--warn);
   animation: imp-videotext-flash 30s ease-in-out infinite; animation-play-state: var(--ambient-play); }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(1) { right: calc(var(--vt-r) + 90 * var(--vt-u)); top: var(--vt-t); background: var(--acc); animation-duration: 28s; animation-delay: -6s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(2) { right: calc(var(--vt-r) + 75 * var(--vt-u)); top: calc(var(--vt-t) + 24 * var(--vt-u)); animation-duration: 34s; animation-delay: -24s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(3) { right: calc(var(--vt-r) + 30 * var(--vt-u)); top: calc(var(--vt-t) + 16 * var(--vt-u)); background: var(--acc); animation-duration: 38s; animation-delay: -16s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(4) { right: var(--vt-r); top: calc(var(--vt-t) + 16 * var(--vt-u)); animation-duration: 32s; animation-delay: -2s; }
-@keyframes imp-videotext-flash { 0%, 45%, 100% { opacity: 0; } 68%, 80% { opacity: .7; } }
+.ambient > i:nth-child(1):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { right: calc(var(--vt-r) + 90 * var(--vt-u)); top: var(--vt-t); background: var(--acc); animation-duration: 28s; animation-delay: -6s; }
+.ambient > i:nth-child(2):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { right: calc(var(--vt-r) + 75 * var(--vt-u)); top: calc(var(--vt-t) + 24 * var(--vt-u)); animation-duration: 34s; animation-delay: -24s; }
+.ambient > i:nth-child(3):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { right: calc(var(--vt-r) + 30 * var(--vt-u)); top: calc(var(--vt-t) + 16 * var(--vt-u)); background: var(--acc); animation-duration: 38s; animation-delay: -16s; }
+.ambient > i:nth-child(4):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { right: var(--vt-r); top: calc(var(--vt-t) + 16 * var(--vt-u)); animation-duration: 32s; animation-delay: -2s; }
+
+}
+@keyframes imp-videotext-flash { 0%, 45%, 100% { opacity: 0; } 68%, 80% { opacity: .7; } }@scope ([data-theme="imp-videotext"]) to ([data-theme]) {
+
 
 /* loose mosaic characters, each a 2x3 cell drawn twice: by the element's ::before on its row and its ::after one row
    (4 units) above. Every step (--s) the ::before holds, then fades as the ::after lights; at the step's end the element
    jumps up that row, so the ::before lies where the ::after was and the next step starts lit. Six steps climb six rows
    (the first 40 % of the cycle, which is 15 steps long so the two clocks stay in time); the element's own opacity brings
    the character in and takes it out. The cell's first block is the pseudo-element, the rest its shadows */
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(n+5) { --o: .5; --vt-a: calc(5 * var(--vt-u)); --vt-b: calc(4 * var(--vt-u)); --vt-c: calc(8 * var(--vt-u));
+.ambient > i:nth-child(n+5):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { --o: .5; --vt-a: calc(5 * var(--vt-u)); --vt-b: calc(4 * var(--vt-u)); --vt-c: calc(8 * var(--vt-u));
   top: var(--y); right: var(--x); opacity: 0;
   animation: imp-videotext-rise calc(var(--s) * 15) linear var(--d) infinite, imp-videotext-in calc(var(--s) * 15) ease-in-out var(--d) infinite;
   animation-play-state: var(--ambient-play); }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(n+5)::before,
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(n+5)::after { content: ''; position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+.ambient > i:nth-child(n+5):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *)::before,
+.ambient > i:nth-child(n+5):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *)::after { content: ''; position: absolute; left: 0; top: 0; width: 100%; height: 100%;
   color: var(--edge); background: var(--fill, currentColor); box-shadow: var(--sh);
   animation: imp-videotext-hold var(--s) ease-in-out var(--d) infinite; animation-play-state: var(--ambient-play); }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(n+5)::after { top: calc(-4 * var(--vt-u)); animation-name: imp-videotext-take; }
+.ambient > i:nth-child(n+5):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *)::after { top: calc(-4 * var(--vt-u)); animation-name: imp-videotext-take; }
+
+}
 @keyframes imp-videotext-rise { 0% { transform: none; animation-timing-function: steps(6, end); } 40%, 100% { transform: translateY(calc(-24 * var(--vt-u))); } }
 @keyframes imp-videotext-in { 0%, 100% { opacity: 0; } 4%, 34% { opacity: var(--o); } 40% { opacity: 0; } }
 @keyframes imp-videotext-hold { 0%, 20% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes imp-videotext-take { 0%, 20% { opacity: 0; } 100% { opacity: 1; } }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(5) { --x: calc(var(--vt-r) + 8 * var(--vt-u)); --y: 64%; --sh: var(--vt-a) var(--vt-b), 0 var(--vt-c); --s: 4.2s; --d: -32s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(6) { --x: calc(var(--vt-r) + 41 * var(--vt-u)); --y: 58%; --fill: none; --sh: var(--vt-a) 0, 0 var(--vt-b), var(--vt-a) var(--vt-c); --s: 3.7s; --d: -5s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(7) { --x: calc(var(--vt-r) + 73 * var(--vt-u)); --y: 52%; --sh: var(--vt-a) 0, var(--vt-a) var(--vt-b); --s: 4.5s; --d: -50s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(8) { --x: calc(var(--vt-r) + 104 * var(--vt-u)); --y: 56%; --o: .4; --fill: none; --sh: 0 var(--vt-b), var(--vt-a) var(--vt-b), var(--vt-a) var(--vt-c); --s: 4s; --d: -22s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(9) { --x: calc(var(--vt-r) + 22 * var(--vt-u)); --y: 50%; --sh: var(--vt-a) var(--vt-b); --s: 3.8s; --d: -43s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(10) { --x: calc(var(--vt-r) + 58 * var(--vt-u)); --y: 72%; --fill: none; --sh: var(--vt-a) 0, 0 var(--vt-b), var(--vt-a) var(--vt-b), 0 var(--vt-c); --s: 4.3s; --d: -13s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(11) { --x: calc(var(--vt-r) + 124 * var(--vt-u)); --y: 68%; --o: .35; --sh: 0 var(--vt-b), var(--vt-a) var(--vt-c); --s: 4.6s; --d: -61s; }
-:root[data-theme="imp-videotext"] .ambient > i:nth-child(12) { --x: calc(var(--vt-r) + 90 * var(--vt-u)); --y: 46%; --fill: none; --sh: var(--vt-a) 0, var(--vt-a) var(--vt-c); --s: 3.5s; --d: -27s; }
+@keyframes imp-videotext-take { 0%, 20% { opacity: 0; } 100% { opacity: 1; } }@scope ([data-theme="imp-videotext"]) to ([data-theme]) {
+
+.ambient > i:nth-child(5):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { --x: calc(var(--vt-r) + 8 * var(--vt-u)); --y: 64%; --sh: var(--vt-a) var(--vt-b), 0 var(--vt-c); --s: 4.2s; --d: -32s; }
+.ambient > i:nth-child(6):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { --x: calc(var(--vt-r) + 41 * var(--vt-u)); --y: 58%; --fill: none; --sh: var(--vt-a) 0, 0 var(--vt-b), var(--vt-a) var(--vt-c); --s: 3.7s; --d: -5s; }
+.ambient > i:nth-child(7):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { --x: calc(var(--vt-r) + 73 * var(--vt-u)); --y: 52%; --sh: var(--vt-a) 0, var(--vt-a) var(--vt-b); --s: 4.5s; --d: -50s; }
+.ambient > i:nth-child(8):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { --x: calc(var(--vt-r) + 104 * var(--vt-u)); --y: 56%; --o: .4; --fill: none; --sh: 0 var(--vt-b), var(--vt-a) var(--vt-b), var(--vt-a) var(--vt-c); --s: 4s; --d: -22s; }
+.ambient > i:nth-child(9):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { --x: calc(var(--vt-r) + 22 * var(--vt-u)); --y: 50%; --sh: var(--vt-a) var(--vt-b); --s: 3.8s; --d: -43s; }
+.ambient > i:nth-child(10):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { --x: calc(var(--vt-r) + 58 * var(--vt-u)); --y: 72%; --fill: none; --sh: var(--vt-a) 0, 0 var(--vt-b), var(--vt-a) var(--vt-b), 0 var(--vt-c); --s: 4.3s; --d: -13s; }
+.ambient > i:nth-child(11):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { --x: calc(var(--vt-r) + 124 * var(--vt-u)); --y: 68%; --o: .35; --sh: 0 var(--vt-b), var(--vt-a) var(--vt-c); --s: 4.6s; --d: -61s; }
+.ambient > i:nth-child(12):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { --x: calc(var(--vt-r) + 90 * var(--vt-u)); --y: 46%; --fill: none; --sh: var(--vt-a) 0, var(--vt-a) var(--vt-c); --s: 3.5s; --d: -27s; }
 
 /* on a phone the name sits under the sidebar: three characters climb low in the chat */
+
+}
 @media (max-width: 700px) {
-  :root[data-theme="imp-videotext"] .ambient { --vt-w: 280px; }
-  :root[data-theme="imp-videotext"] .ambient > i:is(:nth-child(-n+4), :nth-child(6), :nth-child(8), :nth-child(10), :nth-child(11), :nth-child(12)) { display: none; }
-  :root[data-theme="imp-videotext"] .ambient > i:nth-child(5) { --y: 78%; }
-  :root[data-theme="imp-videotext"] .ambient > i:nth-child(7) { --y: 72%; }
-  :root[data-theme="imp-videotext"] .ambient > i:nth-child(9) { --y: 84%; }
+@scope ([data-theme="imp-videotext"]) to ([data-theme]) {
+
+  .ambient:is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { --vt-w: 280px; }
+  .ambient > i:is(:nth-child(-n+4), :nth-child(6), :nth-child(8), :nth-child(10), :nth-child(11), :nth-child(12)):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { display: none; }
+  .ambient > i:nth-child(5):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { --y: 78%; }
+  .ambient > i:nth-child(7):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { --y: 72%; }
+  .ambient > i:nth-child(9):is([data-theme="imp-videotext"][data-theme], [data-theme="imp-videotext"][data-theme] *) { --y: 84%; }
+
+}
+
+}
+@scope ([data-theme="imp-videotext"]) to ([data-theme]) {
+
+/* A room's box, wherever it sits, is a page of its own under its blue header row: the black of the screen with the
+   faint lines of the tube across it, and in its lower corner a few loose mosaic characters in the header blue. Folded,
+   the box is its row, as before. The top room open on screen, at rest, is the sidebar's own page (styles.css), so it gets no box.
+   The chat of a room in this look, inside a page of another, is the black page with the service name in the corner. */
+:scope.room {
+  --room-ground: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='22' shape-rendering='crispEdges'%3E%3Cpath fill='%230000c8' fill-opacity='.7' d='M0 0h4v3H0zM5 4h4v3H5zM0 8h4v3H0zM19 4h4v3h-4zM24 4h4v3h-4zM24 8h4v3h-4zM19 12h4v3h-4zM38 0h4v3h-4zM43 4h4v3h-4zM38 8h4v3h-4zM43 8h4v3h-4zM38 12h4v3h-4zM43 16h4v3h-4z'/%3E%3C/svg%3E") right 14px bottom 8px / 72px 33px no-repeat,
+    repeating-linear-gradient(transparent 0 2px, rgb(255 255 255 / .035) 2px 3px), #000; }
+:scope.chat { --chat-ground: var(--vt-logo) no-repeat right 24px top 14px / 174px auto, #000; }
+:scope.chat-input { --chat-ground: #000; }
+
 }

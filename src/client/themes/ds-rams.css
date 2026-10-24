@@ -4,9 +4,10 @@
    following the system setting (the dark one is the charcoal of the ET66 calculator). */
 @font-face { font-family: "ds-Hanken Grotesk"; font-style: normal; font-weight: 400 700; font-display: swap;
   src: url(./fonts/hankengrotesk-ieVn2YZDLWuGJpnzaiwFXS9tYtpd59A.woff2) format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }@scope ([data-theme="ds-rams"]) to ([data-theme]) {
 
-:root[data-theme="ds-rams"] { color-scheme: light;
+
+:scope[data-theme="ds-rams"] { color-scheme: light;
   --color-bg-primary: #efeeea; --color-bg-secondary: #e4e2dc; --color-bg-tertiary: #f9f8f5;
   --color-text-primary: #1c1c1a; --color-text-secondary: #575550; --color-text-link: #a33b08;
   --color-border-primary: #c6c3ba; --color-border-focus: #c4470a;
@@ -25,8 +26,12 @@
   --shadow-sm: 0 1px 0 rgba(0, 0, 0, .06); --shadow-md: 0 2px 6px rgba(0, 0, 0, .10); --shadow-lg: 0 6px 18px rgba(0, 0, 0, .14);
   --duration-fast: 150ms; --easing-default: cubic-bezier(.4, 0, .2, 1);
 }
+
+}
 @media (prefers-color-scheme: dark) {
-  :root[data-theme="ds-rams"] { color-scheme: dark;
+@scope ([data-theme="ds-rams"]) to ([data-theme]) {
+
+  :scope[data-theme="ds-rams"] { color-scheme: dark;
     --color-bg-primary: #1b1b1a; --color-bg-secondary: #232322; --color-bg-tertiary: #2d2d2b;
     --color-text-primary: #e9e7e2; --color-text-secondary: #a6a39c; --color-text-link: #ff8a47;
     --color-border-primary: #3f3e3a; --color-border-focus: #ff8a47;
@@ -40,10 +45,14 @@
     --color-grille: #0e0e0d; --color-dial: #34332f; --color-key: #4a2e1d;
     --shadow-sm: 0 1px 0 rgba(0, 0, 0, .3); --shadow-md: 0 2px 8px rgba(0, 0, 0, .45); --shadow-lg: 0 8px 24px rgba(0, 0, 0, .55);
   }
+
 }
 
+}@scope ([data-theme="ds-rams"]) to ([data-theme]) {
+
+
 /* ── Map the semantic tokens onto the app's own variables (styles.css :root) ─────────────────────────────── */
-:root[data-theme="ds-rams"] {
+:scope[data-theme="ds-rams"] {
   --bg: var(--color-bg-primary); --panel: var(--color-bg-secondary); --panel2: var(--color-bg-tertiary);
   --fg: var(--color-text-primary); --dim: var(--color-text-secondary); --line: var(--color-border-primary);
   --ok: var(--color-status-success); --warn: var(--color-status-warning); --bad: var(--color-status-error);
@@ -54,112 +63,162 @@
 /* ── Repairs: colours styles.css hard-codes for its dark page, read from the tokens instead. Every rule below has
    exactly the specificity of the rule it replaces (the theme prefix sits in :where), so the app's own variants
    (button.join over button, .share.share-fs over .share) still win where they did. ─────────────────────────── */
-:where(:root[data-theme="ds-rams"]) a { color: var(--color-text-link); }
-:where(:root[data-theme="ds-rams"]) :is(button, select, textarea) { font-family: inherit; }
-:where(:root[data-theme="ds-rams"]) :focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
-:where(:root[data-theme="ds-rams"]) .update { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
-:where(:root[data-theme="ds-rams"]) .update button { background: var(--color-text-on-accent); color: var(--color-accent-primary); }
-:where(:root[data-theme="ds-rams"]) .update button:hover { background: color-mix(in srgb, var(--color-text-on-accent) 88%, var(--color-accent-primary)); }
-:where(:root[data-theme="ds-rams"]) .unread { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
-:where(:root[data-theme="ds-rams"]) .new { background: var(--color-status-warning); color: var(--color-text-on-warning); }
-:where(:root[data-theme="ds-rams"]) .warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
-:where(:root[data-theme="ds-rams"]) .banner { box-shadow: var(--shadow-md); }
-:where(:root[data-theme="ds-rams"]) .banner-warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
-:where(:root[data-theme="ds-rams"]) .banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
-:where(:root[data-theme="ds-rams"]) .chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
-:where(:root[data-theme="ds-rams"]) .chat-new:hover { color: var(--fg); }
-:where(:root[data-theme="ds-rams"]) button.on:where(:not(.link)) { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
-:where(:root[data-theme="ds-rams"]) button.join { background: var(--ok); color: var(--color-text-on-success); }
-:where(:root[data-theme="ds-rams"]) button.leave { background: var(--bad); color: var(--color-text-on-error); }
-:where(:root[data-theme="ds-rams"]) button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
-:where(:root[data-theme="ds-rams"]) select.picker option:checked { background: var(--color-bg-on); color: var(--color-text-on-on); }
-:where(:root[data-theme="ds-rams"]) .avatar.speaking { box-shadow: 0 0 0 2px var(--color-ring); }
-:where(:root[data-theme="ds-rams"]) .share-head { background: color-mix(in srgb, var(--fg) 6%, transparent); }
-:where(:root[data-theme="ds-rams"]) .share-bar { background: color-mix(in srgb, var(--fg) 5%, transparent); }
-:where(:root[data-theme="ds-rams"]) .panel .mictest button.recording { background: var(--panel2) linear-gradient(color-mix(in srgb, var(--acc) 35%, var(--panel2)), color-mix(in srgb, var(--acc) 35%, var(--panel2))) left / 0% 100% no-repeat; }
-:where(:root[data-theme="ds-rams"]) .profile[popover], :where(:root[data-theme="ds-rams"]) .emoji-picker[popover] { box-shadow: var(--shadow-lg); }
-:where(:root[data-theme="ds-rams"]) dialog.report::backdrop, :where(:root[data-theme="ds-rams"]) dialog.about::backdrop { background: var(--color-surface-overlay); }
-:where(:root[data-theme="ds-rams"]) .consent { --bubble: var(--color-bubble); --bubble-fg: var(--color-bubble-fg); --bubble-dim: var(--color-bubble-dim); --bubble-link: var(--color-bubble-link); }
-:where(:root[data-theme="ds-rams"]) .consent .bubble { box-shadow: var(--shadow-lg); }
+a { color: var(--color-text-link); }
+:is(button, select, textarea) { font-family: inherit; }
+:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+.update { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+.update button { background: var(--color-text-on-accent); color: var(--color-accent-primary); }
+.update button:hover { background: color-mix(in srgb, var(--color-text-on-accent) 88%, var(--color-accent-primary)); }
+.unread { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+.new { background: var(--color-status-warning); color: var(--color-text-on-warning); }
+.warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+.banner { box-shadow: var(--shadow-md); }
+.banner-warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+.banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
+.chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
+.chat-new:hover { color: var(--fg); }
+button.on:where(:not(.link)) { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
+button.join { background: var(--ok); color: var(--color-text-on-success); }
+button.leave { background: var(--bad); color: var(--color-text-on-error); }
+button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+select.picker option:checked { background: var(--color-bg-on); color: var(--color-text-on-on); }
+.avatar.speaking { box-shadow: 0 0 0 2px var(--color-ring); }
+.share-head { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.share-bar { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.panel .mictest button.recording { background: var(--panel2) linear-gradient(color-mix(in srgb, var(--acc) 35%, var(--panel2)), color-mix(in srgb, var(--acc) 35%, var(--panel2))) left / 0% 100% no-repeat; }
+.profile[popover], .emoji-picker[popover] { box-shadow: var(--shadow-lg); }
+dialog.report::backdrop, dialog.about::backdrop { background: var(--color-surface-overlay); }
+.consent { --bubble: var(--color-bubble); --bubble-fg: var(--color-bubble-fg); --bubble-dim: var(--color-bubble-dim); --bubble-link: var(--color-bubble-link); }
+.consent .bubble { box-shadow: var(--shadow-lg); }
 /* a comfortable measure for reading on a wide screen; nothing is cut, long lines wrap */
-:where(:root[data-theme="ds-rams"]) .msg { max-width: 75ch; }
+.msg { max-width: 75ch; }
 /* Fullscreen keeps its black stage in both palettes: the overlays get the dark palette, so status dots and text stay
    legible on black even while the rest of the page is light. */
-:where(:root[data-theme="ds-rams"]) .share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
+.share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
   --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc);
   --bg: var(--fs-stage); --panel: var(--fs-button); color: var(--fg); }
 /* Phones (styles.css's 700px breakpoint): 16px text in fields so iOS does not zoom on focus, 16px messages, 44px call buttons. */
+
+}
 @media (max-width: 700px) {
-  :where(:root[data-theme="ds-rams"]) .chat-log { font-size: 16px; }
-  :where(:root[data-theme="ds-rams"]) :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
-  :where(:root[data-theme="ds-rams"]) .actions button, :where(:root[data-theme="ds-rams"]) .chat-input > button, :where(:root[data-theme="ds-rams"]) .chat-field > .emoji-open { min-height: 44px; }
+@scope ([data-theme="ds-rams"]) to ([data-theme]) {
+
+  .chat-log { font-size: 16px; }
+  :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
+  .actions button, .chat-input:where(:scope, :scope *) > button, .chat-field > .emoji-open { min-height: 44px; }
+
 }
 
+}@scope ([data-theme="ds-rams"]) to ([data-theme]) {
+
+
 /* ── Character: Braun ──────────────────────────────────────────────────────────────────────────────────── */
-:where(:root[data-theme="ds-rams"]) body { letter-spacing: -.005em; }
-:where(:root[data-theme="ds-rams"]) h1 { font-weight: 600; letter-spacing: -.02em; }
-:where(:root[data-theme="ds-rams"]) h2, :where(:root[data-theme="ds-rams"]) .room-title { font-size: 11px; font-weight: 600; letter-spacing: .14em; }
+body { letter-spacing: -.005em; }
+:scope:is([data-apart], .chat, .chat-input) { letter-spacing: -.005em; } /* the same type on a box or chat of this look inside another page */
+h1 { font-weight: 600; letter-spacing: -.02em; }
+h2, .room-title { font-size: 11px; font-weight: 600; letter-spacing: .14em; }
 /* keys: white, square-ish, a hairline; the label weight carries the hierarchy */
-:where(:root[data-theme="ds-rams"]) button { border-radius: var(--border-radius-sm); font-weight: 500; transition: border-color var(--duration-fast) var(--easing-default), background-color var(--duration-fast) var(--easing-default); }
-:where(:root[data-theme="ds-rams"]) button:where(:hover:not(:disabled, .on, .join, .leave, .unblock)) { border-color: var(--dim); }
-:where(:root[data-theme="ds-rams"]) input, :where(:root[data-theme="ds-rams"]) select.picker, :where(:root[data-theme="ds-rams"]) dialog.report textarea { border-radius: var(--border-radius-sm); }
-:where(:root[data-theme="ds-rams"]) input:focus, :where(:root[data-theme="ds-rams"]) textarea:focus { border-color: var(--color-border-focus); }
+button { border-radius: var(--border-radius-sm); font-weight: 500; transition: border-color var(--duration-fast) var(--easing-default), background-color var(--duration-fast) var(--easing-default); }
+button:where(:hover:not(:disabled, .on, .join, .leave, .unblock)) { border-color: var(--dim); }
+input, select.picker, dialog.report textarea { border-radius: var(--border-radius-sm); }
+input:focus, textarea:focus { border-color: var(--color-border-focus); }
 /* the room on screen gets the one orange dot, like a Braun power indicator */
-:where(:root[data-theme="ds-rams"]) .room-head { padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.room-head { padding-bottom: 6px; border-bottom: 1px solid var(--line); }
 /* a room is a panel of the housing with the same small radii as its keys; folded, it is all head, so the hairline
-   under the head would only underline the panel's own edge */
-:where(:root[data-theme="ds-rams"]) .room { border-radius: var(--border-radius-lg); }
-:where(:root[data-theme="ds-rams"]) .room > .room-head { border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0; }
-:where(:root[data-theme="ds-rams"]) .room.folded > .room-head { border-bottom: 0; border-radius: var(--border-radius-lg); }
-:where(:root[data-theme="ds-rams"]) .plist.callbox { border-radius: var(--border-radius-md); }
-:where(:root[data-theme="ds-rams"]) :is(.room-menu, .side-foot)[popover] { border-radius: var(--border-radius-lg); }
-:where(:root[data-theme="ds-rams"]) :is(.room-menu button.link, .side-foot > button.link) { border-radius: var(--border-radius-sm); }
-:where(:root[data-theme="ds-rams"]) button.room-leave { border-radius: var(--border-radius-sm); color: var(--color-text-on-error); font-weight: 600; }
-:where(:root[data-theme="ds-rams"]) .room.selected .room-title::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 8px 1px 0; border-radius: 50%; background: var(--acc); vertical-align: middle; }
+   under the head would only underline the panel's own edge. A room's box is the root of its own look wherever it
+   sits, so it is named as the root (`:where(:scope)`, no weight); so is the composer in a page of another look. */
+.room:where(:scope) { border-radius: var(--border-radius-lg); }
+.room:where(:scope) > .room-head { border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0; }
+.room:where(:scope).folded > .room-head { border-bottom: 0; border-radius: var(--border-radius-lg); }
+.plist.callbox { border-radius: var(--border-radius-md); }
+:is(.room-menu, .side-foot)[popover] { border-radius: var(--border-radius-lg); }
+:is(.room-menu button.link, .side-foot > button.link) { border-radius: var(--border-radius-sm); }
+button.room-leave { border-radius: var(--border-radius-sm); color: var(--color-text-on-error); font-weight: 600; }
+.room:where(:scope).selected .room-title::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 8px 1px 0; border-radius: 50%; background: var(--acc); vertical-align: middle; }
 /* round dials for faces; speaking adds a green ring set off by a gap of housing */
-:where(:root[data-theme="ds-rams"]) .avatar { background: var(--panel2); box-shadow: inset 0 0 0 1px var(--line); }
-:where(:root[data-theme="ds-rams"]) .avatar.speaking { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--color-ring); }
-:where(:root[data-theme="ds-rams"]) .share, :where(:root[data-theme="ds-rams"]) .panel { border-radius: var(--border-radius-md); }
-:where(:root[data-theme="ds-rams"]) .share-bar { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
-:where(:root[data-theme="ds-rams"]) .profile[popover], :where(:root[data-theme="ds-rams"]) .emoji-picker[popover],
-:where(:root[data-theme="ds-rams"]) dialog.report, :where(:root[data-theme="ds-rams"]) dialog.about { border-radius: var(--border-radius-lg); }
-:where(:root[data-theme="ds-rams"]) .msg-from { font-weight: 600; }
-:where(:root[data-theme="ds-rams"]) .msg-at { font-variant-numeric: tabular-nums; }
-:where(:root[data-theme="ds-rams"]) .chat-input { gap: 8px; }
-:where(:root[data-theme="ds-rams"]) .banner { border-radius: 0 0 var(--border-radius-lg) var(--border-radius-lg); }
-:where(:root[data-theme="ds-rams"]) .consent .bubble { border-radius: var(--border-radius-lg); border: 1px solid var(--line); }
+.avatar { background: var(--panel2); box-shadow: inset 0 0 0 1px var(--line); }
+.avatar.speaking { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--color-ring); }
+.share, .panel { border-radius: var(--border-radius-md); }
+.share-bar { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.profile[popover], .emoji-picker[popover],
+dialog.report, dialog.about { border-radius: var(--border-radius-lg); }
+.msg-from { font-weight: 600; }
+.msg-at { font-variant-numeric: tabular-nums; }
+.chat-input:where(:scope, :scope *) { gap: 8px; }
+.banner { border-radius: 0 0 var(--border-radius-lg) var(--border-radius-lg); }
+.consent .bubble { border-radius: var(--border-radius-lg); border: 1px solid var(--line); }
 /* the extra: the front of a T3 pocket radio in the page's top-right corner, behind the chat. The round speaker grille,
    holes a shade darker than the housing on the 8px grid (10px on a big screen), and beside it on the same axis the
    tuning wheel, a hairline circle with one index line. A big screen has room for more of the family: under the grille
    the T1000's volume slider, and low on the right the ET66 calculator's keys, hairline rings with the one coloured
    "=" key. All scale with the screen, so a 1440p page shows the objects and not specks; still (Rams: no decorative
    motion). On a phone only the grille, covered by the sidebar until you scroll. */
-:root[data-theme="ds-rams"] .ambient { display: block; --r: clamp(168px, 24vmin, 360px); --g: clamp(8px, .7vmin, 10px); }
-:where(:root[data-theme="ds-rams"]) .ambient > i:nth-child(1) { top: calc(var(--r) * -.45); right: calc(var(--r) * -.45); width: calc(var(--r) * 2); height: calc(var(--r) * 2);
+.ambient:is([data-theme="ds-rams"][data-theme], [data-theme="ds-rams"][data-theme] *) { display: block; --r: clamp(168px, 24vmin, 360px); --g: clamp(8px, .7vmin, 10px); }
+.ambient > i:nth-child(1) { top: calc(var(--r) * -.45); right: calc(var(--r) * -.45); width: calc(var(--r) * 2); height: calc(var(--r) * 2);
   background: radial-gradient(circle, var(--color-grille) calc(var(--g) * .2), transparent calc(var(--g) * .2 + .5px)) center / var(--g) var(--g);
   -webkit-mask: radial-gradient(closest-side, #000 calc(100% - var(--g)), transparent); mask: radial-gradient(closest-side, #000 calc(100% - var(--g)), transparent); }
-:where(:root[data-theme="ds-rams"]) .ambient > i:nth-child(2) { --d: calc(var(--r) * .44); top: calc(var(--r) * .55 - var(--d) / 2); right: calc(var(--r) * 1.75); width: var(--d); height: var(--d);
+.ambient > i:nth-child(2) { --d: calc(var(--r) * .44); top: calc(var(--r) * .55 - var(--d) / 2); right: calc(var(--r) * 1.75); width: var(--d); height: var(--d);
   border-radius: 50%; box-shadow: inset 0 0 0 1px var(--color-dial);
   background: linear-gradient(var(--color-dial), var(--color-dial)) 50% 12% / 1px 22% no-repeat; }
-:where(:root[data-theme="ds-rams"]) .ambient > i:is(:nth-child(3), :nth-child(4)) { display: none; }
-@media (min-width: 1500px) {
-  :where(:root[data-theme="ds-rams"]) .ambient > i:is(:nth-child(3), :nth-child(4)) { display: block; }
+.ambient > i:is(:nth-child(3), :nth-child(4)) { display: none; }
+
 }
+@media (min-width: 1500px) {
+@scope ([data-theme="ds-rams"]) to ([data-theme]) {
+
+  .ambient > i:is(:nth-child(3), :nth-child(4)) { display: block; }
+
+}
+
+}@scope ([data-theme="ds-rams"]) to ([data-theme]) {
+
 /* the slider: a hairline track and its square knob, two-thirds up */
-:where(:root[data-theme="ds-rams"]) .ambient > i:nth-child(3) { top: calc(var(--r) * 1.75); right: calc(var(--r) * .3); width: var(--r); height: calc(var(--r) * .12);
+.ambient > i:nth-child(3) { top: calc(var(--r) * 1.75); right: calc(var(--r) * .3); width: var(--r); height: calc(var(--r) * .12);
   background: linear-gradient(var(--color-dial), var(--color-dial)) center / 100% 1px no-repeat; }
-:where(:root[data-theme="ds-rams"]) .ambient > i:nth-child(3)::before { content: ''; position: absolute; left: 62%; width: 9%; height: 100%;
+.ambient > i:nth-child(3)::before { content: ''; position: absolute; left: 62%; width: 9%; height: 100%;
   border-radius: 2px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--color-dial); }
 /* the keys: four rows of three on one module, the bottom right one filled */
-:where(:root[data-theme="ds-rams"]) .ambient > i:nth-child(4) { --k: calc(var(--r) * .17); bottom: 9vh; right: 5vw; width: calc(var(--k) * 3); height: calc(var(--k) * 4);
+.ambient > i:nth-child(4) { --k: calc(var(--r) * .17); bottom: 9vh; right: 5vw; width: calc(var(--k) * 3); height: calc(var(--k) * 4);
   background:
     radial-gradient(circle, var(--color-key) calc(var(--k) * .32), transparent calc(var(--k) * .32 + .5px)) right bottom / var(--k) var(--k) no-repeat,
     radial-gradient(circle, transparent calc(var(--k) * .32 - 1px), var(--color-dial) calc(var(--k) * .32 - 1px) calc(var(--k) * .32), transparent calc(var(--k) * .32 + .5px)) 0 0 / var(--k) var(--k); }
+
+}
 @media (max-width: 700px) {
-  :root[data-theme="ds-rams"] .ambient { --r: 120px; --g: 8px; }
-  :root[data-theme="ds-rams"] .ambient > i:nth-child(1) { top: calc(var(--r) * -1); right: calc(var(--r) * -1); }
-  :root[data-theme="ds-rams"] .ambient > i:nth-child(2) { display: none; }
+@scope ([data-theme="ds-rams"]) to ([data-theme]) {
+
+  .ambient:is([data-theme="ds-rams"][data-theme], [data-theme="ds-rams"][data-theme] *) { --r: 120px; --g: 8px; }
+  .ambient > i:nth-child(1):is([data-theme="ds-rams"][data-theme], [data-theme="ds-rams"][data-theme] *) { top: calc(var(--r) * -1); right: calc(var(--r) * -1); }
+  .ambient > i:nth-child(2):is([data-theme="ds-rams"][data-theme], [data-theme="ds-rams"][data-theme] *) { display: none; }
+
+}
+
 }
 @media (prefers-reduced-motion: reduce) {
-  :where(:root[data-theme="ds-rams"]) button { transition: none; }
+@scope ([data-theme="ds-rams"]) to ([data-theme]) {
+
+  button { transition: none; }
+
+}
+
+}
+@scope ([data-theme="ds-rams"]) to ([data-theme]) {
+
+/* A room's box, wherever it sits, is a panel of the same radio: the corner of its round speaker grille behind the ⋯,
+   holes a shade darker than the housing on the 8px grid, cut by the box's edge as the page's is by the screen's, and
+   nothing else. The top room open on screen, at rest, stands on the bare sidebar (styles.css), so it gets no grille. The chat of
+   a room in this look, inside a page of another, is the page's corner: the grille and the tuning wheel beside it,
+   sized as the page sizes them; the composer is the bare housing. */
+:scope.room {
+  --room-ground: radial-gradient(circle at calc(100% - 22px) 14px, transparent 0 46px, var(--panel) 47px),
+    radial-gradient(circle, color-mix(in srgb, var(--color-grille), var(--fg) 8%) 1.6px, transparent 2.1px) right 2px top 2px / 8px 8px,
+    var(--panel); }
+:scope.chat { --rams-r: clamp(168px, 24vmin, 360px); --rams-g: clamp(8px, .7vmin, 10px);
+  --chat-ground:
+    radial-gradient(circle at calc(100% - var(--rams-r) * 1.97) calc(var(--rams-r) * .55), transparent calc(var(--rams-r) * .22 - 1px), var(--color-dial) calc(var(--rams-r) * .22 - 1px) calc(var(--rams-r) * .22), transparent calc(var(--rams-r) * .22 + .5px)),
+    radial-gradient(circle at calc(100% - var(--rams-r) * .55) calc(var(--rams-r) * .55), transparent 0 calc(var(--rams-r) - var(--rams-g)), var(--bg) var(--rams-r)),
+    radial-gradient(circle, var(--color-grille) calc(var(--rams-g) * .2), transparent calc(var(--rams-g) * .2 + .5px)) right top / var(--rams-g) var(--rams-g),
+    var(--bg); }
+:scope.chat-input { --chat-ground: var(--bg); }
+
 }

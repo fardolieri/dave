@@ -3,144 +3,183 @@
    Square corners, flat fields, a grotesk set tight. Rules are wrapped in :where() so each keeps the specificity of the
    app's own selector it restyles. */
 @font-face { font-family: "imp-Archivo"; font-style: normal; font-weight: 400 800; font-stretch: 62% 125%; font-display: swap; src: url(./fonts/archivo-k3kQo8UDI-1M0wlSfdfoLnnA.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
-@font-face { font-family: "imp-Archivo"; font-style: normal; font-weight: 400 800; font-stretch: 62% 125%; font-display: swap; src: url(./fonts/archivo-k3kQo8UDI-1M0wlSfdnoLg.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "imp-Archivo"; font-style: normal; font-weight: 400 800; font-stretch: 62% 125%; font-display: swap; src: url(./fonts/archivo-k3kQo8UDI-1M0wlSfdnoLg.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }@scope ([data-theme="imp-olympia"]) to ([data-theme]) {
 
-:root[data-theme="imp-olympia"] {
+
+:scope[data-theme="imp-olympia"] {
   --bg: #ffffff; --panel: #8ccbef; --panel2: #ffffff; --fg: #0b2338; --dim: #3d5f78; --line: #c9dfee;
   --ok: #00794a; --warn: #9a4f00; --bad: #b5122d; --acc: #0057a8;
   --field: #4f8fbf; --green: #4cc47a; --orange: #ff8a1f;
   font-family: "imp-Archivo", "Helvetica Neue", Arial, sans-serif; font-stretch: 96%; color-scheme: light;
   accent-color: var(--acc); scrollbar-color: #9fb9cc transparent;
 }
-:where(:root[data-theme="imp-olympia"]) body { line-height: 1.4; }
-:where(:root[data-theme="imp-olympia"]) ::selection { background: #8ccbef; color: #0b2338; }
-:where(:root[data-theme="imp-olympia"]) :is(input, textarea) { caret-color: var(--acc); }
-:where(:root[data-theme="imp-olympia"]) :focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
-:where(:root[data-theme="imp-olympia"]) h1 { font-size: 30px; font-weight: 800; font-stretch: 110%; letter-spacing: -.01em; }
-:where(:root[data-theme="imp-olympia"]) h2,
-:where(:root[data-theme="imp-olympia"]) .room-title { text-transform: none; letter-spacing: 0; font-size: 14px; font-weight: 700; }
+body { line-height: 1.4; }
+:scope:is([data-apart], .chat, .chat-input) { line-height: 1.4; } /* the same type on a box or chat of this look inside another page */
+::selection { background: #8ccbef; color: #0b2338; }
+:is(input, textarea) { caret-color: var(--acc); }
+:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+h1 { font-size: 30px; font-weight: 800; font-stretch: 110%; letter-spacing: -.01em; }
+h2,
+.room-title { text-transform: none; letter-spacing: 0; font-size: 14px; font-weight: 700; }
 
 /* the sidebar is the blue field; inside it the quiet text is a darker blue, not grey */
-:where(:root[data-theme="imp-olympia"]) .side { --dim: #1f4766; --acc: #0b3f7a; --ok: #004d2f; --warn: #5c2f00; --bad: #7d0b1e; --line: #6fb2dc; --field: #1f5f8f; border-right: 0; }
-:where(:root[data-theme="imp-olympia"]) .room-title { color: var(--dim); }
+.side { --dim: #1f4766; --acc: #0b3f7a; --ok: #004d2f; --warn: #5c2f00; --bad: #7d0b1e; --line: #6fb2dc; --field: #1f5f8f; border-right: 0; }
+/* a room's box is the root of its own look wherever it sits, and it always sits in the sidebar: it carries the field's
+   darker blues itself (its own palette, set again on it as a root, would give it the white column's) */
+:scope[data-theme="imp-olympia"].room { --dim: #1f4766; --acc: #0b3f7a; --ok: #004d2f; --warn: #5c2f00; --bad: #7d0b1e; --line: #6fb2dc; --field: #1f5f8f; }
+.room-title { color: var(--dim); }
 
 /* The extra: at the foot of the blue field hangs a faint white cable net, bay after bay, the roof Frei Otto drew over
    the same Games. Static, so it costs nothing; it sits where the sidebar is emptiest and only lightens what is behind text. */
-:where(:root[data-theme="imp-olympia"]) .side { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='120' fill='none' stroke='%23fff'%3E%3CclipPath id='c'%3E%3Cpath d='M0 6Q80 66 160 6V120H0z'/%3E%3C/clipPath%3E%3Cpath d='M0 22Q80 74 160 22M0 38Q80 82 160 38M0 54Q80 90 160 54M0 70Q80 98 160 70M0 86Q80 106 160 86M0 102Q80 114 160 102' stroke-opacity='.25'/%3E%3Cpath d='M8 0V120M24 0V120M40 0V120M56 0V120M72 0V120M88 0V120M104 0V120M120 0V120M136 0V120M152 0V120' stroke-opacity='.25' clip-path='url(%23c)'/%3E%3Cpath d='M0 6Q80 66 160 6' stroke-opacity='.45' stroke-width='1.5'/%3E%3C/svg%3E"); background-repeat: repeat-x; background-position: left bottom; background-size: clamp(160px, 9vw, 240px) auto; }
+.side { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='120' fill='none' stroke='%23fff'%3E%3CclipPath id='c'%3E%3Cpath d='M0 6Q80 66 160 6V120H0z'/%3E%3C/clipPath%3E%3Cpath d='M0 22Q80 74 160 22M0 38Q80 82 160 38M0 54Q80 90 160 54M0 70Q80 98 160 70M0 86Q80 106 160 86M0 102Q80 114 160 102' stroke-opacity='.25'/%3E%3Cpath d='M8 0V120M24 0V120M40 0V120M56 0V120M72 0V120M88 0V120M104 0V120M120 0V120M136 0V120M152 0V120' stroke-opacity='.25' clip-path='url(%23c)'/%3E%3Cpath d='M0 6Q80 66 160 6' stroke-opacity='.45' stroke-width='1.5'/%3E%3C/svg%3E"); background-repeat: repeat-x; background-position: left bottom; background-size: clamp(160px, 9vw, 240px) auto; }
 
 /* And across the top of the white column hang seven of the Games' tall banners, in the field's pale blues and silver. Their
    tails sag in the curve of the same roof, and each sways and turns a little in its own slow wind (23 to 34 s a swing).
    They stay pale enough that even the dim timestamps read on them, and the shares and panels cover them. */
-:root[data-theme="imp-olympia"] .ambient { display: block; }
-:root[data-theme="imp-olympia"] .ambient > i { --w: clamp(14px, 1.5vw, 40px); top: -2vh; right: var(--x); width: var(--w); height: var(--h); transform-origin: 50% 0;
+.ambient:is([data-theme="imp-olympia"][data-theme], [data-theme="imp-olympia"][data-theme] *) { display: block; }
+.ambient > i:is([data-theme="imp-olympia"][data-theme], [data-theme="imp-olympia"][data-theme] *) { --w: clamp(14px, 1.5vw, 40px); top: -2vh; right: var(--x); width: var(--w); height: var(--h); transform-origin: 50% 0;
   background: linear-gradient(var(--c) 0 74%, var(--b) 74% 87%, var(--c) 87%); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - var(--w) * .8), 0 100%);
   animation: imp-olympia-banner calc(var(--t) * 2.5) ease-in-out calc(var(--d) * 2.5) infinite; animation-play-state: var(--ambient-play); }
-:root[data-theme="imp-olympia"] .ambient > i:nth-child(n+8) { display: none; }
+.ambient > i:nth-child(n+8):is([data-theme="imp-olympia"][data-theme], [data-theme="imp-olympia"][data-theme] *) { display: none; }
 /* a share takes the top of the column, and the banners would only peek out above it */
-:root[data-theme="imp-olympia"]:has(.app.split) .ambient { display: none; }
-:root[data-theme="imp-olympia"] .ambient > i:nth-child(3n+1) { --c: #d6ecf9; --b: #b3dbf3; }
-:root[data-theme="imp-olympia"] .ambient > i:nth-child(3n+2) { --c: #e1e6ea; --b: #c4e3f6; }
-:root[data-theme="imp-olympia"] .ambient > i:nth-child(3n) { --c: #c4e3f6; --b: #e1e6ea; }
-:root[data-theme="imp-olympia"] .ambient > i:nth-child(1) { --x: 3vw; --h: 46vh; --t: 11.3s; --d: -2.1s; }
-:root[data-theme="imp-olympia"] .ambient > i:nth-child(2) { --x: 5.9vw; --h: 41.5vh; --t: 9.7s; --d: -7.4s; }
-:root[data-theme="imp-olympia"] .ambient > i:nth-child(3) { --x: 8.8vw; --h: 38.5vh; --t: 12.9s; --d: -4.6s; }
-:root[data-theme="imp-olympia"] .ambient > i:nth-child(4) { --x: 11.7vw; --h: 37.5vh; --t: 10.4s; --d: -9.8s; }
-:root[data-theme="imp-olympia"] .ambient > i:nth-child(5) { --x: 14.6vw; --h: 38.5vh; --t: 13.7s; --d: -1.3s; }
-:root[data-theme="imp-olympia"] .ambient > i:nth-child(6) { --x: 17.5vw; --h: 41.5vh; --t: 9.1s; --d: -5.9s; }
-:root[data-theme="imp-olympia"] .ambient > i:nth-child(7) { --x: 20.4vw; --h: 46vh; --t: 12.1s; --d: -10.2s; }
+:scope[data-theme="imp-olympia"]:has(.app.split) .ambient { display: none; }
+.ambient > i:nth-child(3n+1):is([data-theme="imp-olympia"][data-theme], [data-theme="imp-olympia"][data-theme] *) { --c: #d6ecf9; --b: #b3dbf3; }
+.ambient > i:nth-child(3n+2):is([data-theme="imp-olympia"][data-theme], [data-theme="imp-olympia"][data-theme] *) { --c: #e1e6ea; --b: #c4e3f6; }
+.ambient > i:nth-child(3n):is([data-theme="imp-olympia"][data-theme], [data-theme="imp-olympia"][data-theme] *) { --c: #c4e3f6; --b: #e1e6ea; }
+.ambient > i:nth-child(1):is([data-theme="imp-olympia"][data-theme], [data-theme="imp-olympia"][data-theme] *) { --x: 3vw; --h: 46vh; --t: 11.3s; --d: -2.1s; }
+.ambient > i:nth-child(2):is([data-theme="imp-olympia"][data-theme], [data-theme="imp-olympia"][data-theme] *) { --x: 5.9vw; --h: 41.5vh; --t: 9.7s; --d: -7.4s; }
+.ambient > i:nth-child(3):is([data-theme="imp-olympia"][data-theme], [data-theme="imp-olympia"][data-theme] *) { --x: 8.8vw; --h: 38.5vh; --t: 12.9s; --d: -4.6s; }
+.ambient > i:nth-child(4):is([data-theme="imp-olympia"][data-theme], [data-theme="imp-olympia"][data-theme] *) { --x: 11.7vw; --h: 37.5vh; --t: 10.4s; --d: -9.8s; }
+.ambient > i:nth-child(5):is([data-theme="imp-olympia"][data-theme], [data-theme="imp-olympia"][data-theme] *) { --x: 14.6vw; --h: 38.5vh; --t: 13.7s; --d: -1.3s; }
+.ambient > i:nth-child(6):is([data-theme="imp-olympia"][data-theme], [data-theme="imp-olympia"][data-theme] *) { --x: 17.5vw; --h: 41.5vh; --t: 9.1s; --d: -5.9s; }
+.ambient > i:nth-child(7):is([data-theme="imp-olympia"][data-theme], [data-theme="imp-olympia"][data-theme] *) { --x: 20.4vw; --h: 46vh; --t: 12.1s; --d: -10.2s; }
+
+}
 @keyframes imp-olympia-banner {
   0%, 100% { transform: rotate(-.6deg) scaleX(1); }
   50% { transform: rotate(.6deg) scaleX(.92); }
-}
+}@scope ([data-theme="imp-olympia"]) to ([data-theme]) {
+
 
 /* controls: flat fields with square corners */
-:where(:root[data-theme="imp-olympia"]) button { border-radius: 2px; border-color: var(--field); font: inherit; font-weight: 600; transition: background-color .15s ease-out; }
-:where(:root[data-theme="imp-olympia"]) button:where(:hover:not(:disabled)) { background-color: #e6f3fb; }
-:where(:root[data-theme="imp-olympia"]) input,
-:where(:root[data-theme="imp-olympia"]) textarea,
-:where(:root[data-theme="imp-olympia"]) select.picker { border-color: var(--field); border-radius: 2px; background-color: #fff; }
-:where(:root[data-theme="imp-olympia"]) .chat-field > input { border-width: 2px; padding: 9px 12px; }
-:where(:root[data-theme="imp-olympia"]) button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #fff; }
-:where(:root[data-theme="imp-olympia"]) .side button.on:not(.link) { background: #0b3f7a; border-color: #0b3f7a; }
-:where(:root[data-theme="imp-olympia"]) button.join { background: var(--green); color: #062b17; border-color: transparent; font-weight: 700; }
-:where(:root[data-theme="imp-olympia"]) button.leave { background: var(--orange); color: #2b1300; border-color: transparent; font-weight: 700; }
-:where(:root[data-theme="imp-olympia"]) button.unblock { background: #fff1df; color: #8a4700; border-color: #c97a1e; }
-:where(:root[data-theme="imp-olympia"]) button.link { color: var(--dim); font-weight: 500; text-underline-offset: 3px; }
-:where(:root[data-theme="imp-olympia"]) button.link:hover { color: var(--fg); }
-:where(:root[data-theme="imp-olympia"]) select.picker option:checked { background: var(--acc); color: #fff; }
+button { border-radius: 2px; border-color: var(--field); font: inherit; font-weight: 600; transition: background-color .15s ease-out; }
+button:where(:hover:not(:disabled)) { background-color: #e6f3fb; }
+input,
+textarea,
+select.picker { border-color: var(--field); border-radius: 2px; background-color: #fff; }
+.chat-field > input { border-width: 2px; padding: 9px 12px; }
+button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #fff; }
+.side button.on:not(.link):where(:scope *) { background: #0b3f7a; border-color: #0b3f7a; }
+button.join { background: var(--green); color: #062b17; border-color: transparent; font-weight: 700; }
+button.leave { background: var(--orange); color: #2b1300; border-color: transparent; font-weight: 700; }
+button.unblock { background: #fff1df; color: #8a4700; border-color: #c97a1e; }
+button.link { color: var(--dim); font-weight: 500; text-underline-offset: 3px; }
+button.link:hover { color: var(--fg); }
+select.picker option:checked { background: var(--acc); color: #fff; }
 
 /* badges and notices */
-:where(:root[data-theme="imp-olympia"]) .unread { background: #0b3f7a; color: #fff; border-radius: 2px; }
-:where(:root[data-theme="imp-olympia"]) .new { background: var(--orange); color: #2b1300; border-radius: 2px; }
-:where(:root[data-theme="imp-olympia"]) .warn { background: #fff1df; color: #8a4700; border-radius: 2px; }
-:where(:root[data-theme="imp-olympia"]) .banner { border-radius: 0; box-shadow: 0 3px 10px rgba(11,35,56,.18); }
-:where(:root[data-theme="imp-olympia"]) .banner-warn { background: #fff1df; color: #8a4700; }
-:where(:root[data-theme="imp-olympia"]) .banner-bad { background: #fde6ea; color: #a30f28; }
-:where(:root[data-theme="imp-olympia"]) .update { background: #0057a8; color: #fff; }
-:where(:root[data-theme="imp-olympia"]) .update button { background: #fff; color: #0b2338; border-radius: 2px; }
-:where(:root[data-theme="imp-olympia"]) .chat-new { background: #0b2338; border-color: #0b2338; color: #fff; border-radius: 2px; }
-:where(:root[data-theme="imp-olympia"]) .chat-new:hover { color: #fff; background: #0057a8; }
+.unread { background: #0b3f7a; color: #fff; border-radius: 2px; }
+.new { background: var(--orange); color: #2b1300; border-radius: 2px; }
+.warn { background: #fff1df; color: #8a4700; border-radius: 2px; }
+.banner { border-radius: 0; box-shadow: 0 3px 10px rgba(11,35,56,.18); }
+.banner-warn { background: #fff1df; color: #8a4700; }
+.banner-bad { background: #fde6ea; color: #a30f28; }
+.update { background: #0057a8; color: #fff; }
+.update button { background: #fff; color: #0b2338; border-radius: 2px; }
+.chat-new { background: #0b2338; border-color: #0b2338; color: #fff; border-radius: 2px; }
+.chat-new:hover { color: #fff; background: #0057a8; }
 
 /* the people: white discs on the blue field, the speaking ring in green */
-:where(:root[data-theme="imp-olympia"]) .avatar { background: #fff; color: var(--fg); }
-:where(:root[data-theme="imp-olympia"]) .side .avatar.speaking { box-shadow: 0 0 0 3px var(--ok); }
-:where(:root[data-theme="imp-olympia"]) .plist em { border-color: var(--field); border-radius: 2px; color: var(--dim); }
-:where(:root[data-theme="imp-olympia"]) .panel { border-radius: 2px; border: 0; background: #d7ecf9; }
-:where(:root[data-theme="imp-olympia"]) .panel .vgate .vmeter { background: #fff; }
-:where(:root[data-theme="imp-olympia"]) .msg-from { font-weight: 700; }
-:where(:root[data-theme="imp-olympia"]) .msg-at { font-variant-numeric: tabular-nums; }
+.avatar { background: #fff; color: var(--fg); }
+.side .avatar.speaking:where(:scope *) { box-shadow: 0 0 0 3px var(--ok); }
+.plist em { border-color: var(--field); border-radius: 2px; color: var(--dim); }
+.panel { border-radius: 2px; border: 0; background: #d7ecf9; }
+.panel .vgate .vmeter { background: #fff; }
+.msg-from { font-weight: 700; }
+.msg-at { font-variant-numeric: tabular-nums; }
 
 /* The colour code: the room whose call you are in is a green field, edge to edge of the sidebar.
    Every room is a square band of the same width, its row the band's full width; folded, the band is that row, the room
-   of my call in the green too. */
-:where(:root[data-theme="imp-olympia"]) .room { margin: 0 -14px 2px; padding: 0 14px 12px; border-radius: 0; }
-:where(:root[data-theme="imp-olympia"]) .plist.callbox { border-radius: 2px; }
-:where(:root[data-theme="imp-olympia"]) .room > .room-head { margin: 0 -14px; padding-inline: 14px; border-radius: 0; }
-:where(:root[data-theme="imp-olympia"]) .room.folded { padding-bottom: 0; }
-:where(:root[data-theme="imp-olympia"]) :is(.room:has(button.leave), .room.in-call.folded) { background: #a6e3bd; }
-:where(:root[data-theme="imp-olympia"]) .room:has(button.leave) .room-head { padding-top: 10px; margin-top: 0; }
+   of my call in the green too. A room's box is the root of its own look wherever it sits, so it is named as the root
+   (`:where(:scope)`, no weight). */
+.room:where(:scope) { margin: 0 -14px 2px; padding: 0 14px 12px; border-radius: 0; }
+.plist.callbox { border-radius: 2px; }
+.room:where(:scope) > .room-head { margin: 0 -14px; padding-inline: 14px; border-radius: 0; }
+.room:where(:scope).folded { padding-bottom: 0; }
+:is(.room:where(:scope):has(button.leave), .room:where(:scope).in-call.folded) { background: #a6e3bd; }
+.room:where(:scope):has(button.leave) .room-head { padding-top: 10px; margin-top: 0; }
 /* its row hovered and pressed, the green deepens, as any room's box shades; and leaving it folded is orange, as Leave is */
-:where(:root[data-theme="imp-olympia"]) :is(.room:has(button.leave), .room.in-call.folded):has(> .room-head:hover):not(:has(.room-menu:hover, .room-leave:hover, .room-hear:hover, .room-unmute:hover)) { background: #95dbaf; }
-:where(:root[data-theme="imp-olympia"]) :is(.room:has(button.leave), .room.in-call.folded):has(> .room-head:active):not(:has(.room-more:active, .room-menu:active, .room-leave:active, .room-hear:active, .room-unmute:active)) { background: #84d3a1; }
-:where(:root[data-theme="imp-olympia"]) button.room-leave { background: var(--orange); color: #2b1300; border-radius: 2px; font-weight: 700; }
+:is(.room:where(:scope):has(button.leave), .room:where(:scope).in-call.folded):has(> .room-head:hover):not(:has(.room-menu:hover, .room-top:hover, .room-leave:hover, .room-hear:hover, .room-unmute:hover)) { background: #95dbaf; }
+:is(.room:where(:scope):has(button.leave), .room:where(:scope).in-call.folded):has(> .room-head:active):not(:has(.room-more:active, .room-top:active, .room-menu:active, .room-leave:active, .room-hear:active, .room-unmute:active)) { background: #84d3a1; }
+button.room-leave { background: var(--orange); color: #2b1300; border-radius: 2px; font-weight: 700; }
 
 /* shares and their bars */
-:where(:root[data-theme="imp-olympia"]) .share { --fg: #ffffff; --dim: #c1d6e8; --acc: #9fd3ff; --ok: #6fe3a3; --warn: #ffc069; --bad: #ff8f9f; color: var(--fg); background: #0b2338; border-color: #0b2338; border-radius: 2px; }
-:where(:root[data-theme="imp-olympia"]) .share-live { border-color: #0057a8; border-width: 2px; }
-:where(:root[data-theme="imp-olympia"]) .share-head { background: #0b2338; color: #fff; }
-:where(:root[data-theme="imp-olympia"]) .share-head .stop { background: #fff; color: #0b2338; border-color: #fff; }
-:where(:root[data-theme="imp-olympia"]) .share-note { color: var(--dim); }
-:where(:root[data-theme="imp-olympia"]) .share-bar { background: #0b2338; color: #c1d6e8; font-family: inherit; font-variant-numeric: tabular-nums; }
-:where(:root[data-theme="imp-olympia"]) .share-bar .fs { background: #fff; color: #0b2338; }
+.share { --fg: #ffffff; --dim: #c1d6e8; --acc: #9fd3ff; --ok: #6fe3a3; --warn: #ffc069; --bad: #ff8f9f; color: var(--fg); background: #0b2338; border-color: #0b2338; border-radius: 2px; }
+.share-live { border-color: #0057a8; border-width: 2px; }
+.share-head { background: #0b2338; color: #fff; }
+.share-head .stop { background: #fff; color: #0b2338; border-color: #fff; }
+.share-note { color: var(--dim); }
+.share-bar { background: #0b2338; color: #c1d6e8; font-family: inherit; font-variant-numeric: tabular-nums; }
+.share-bar .fs { background: #fff; color: #0b2338; }
 
 /* popovers and dialogs: white sheets */
-:where(:root[data-theme="imp-olympia"]) .profile[popover],
-:where(:root[data-theme="imp-olympia"]) .emoji-picker[popover] { background: #fff; border: 1px solid var(--field); border-radius: 2px; box-shadow: 0 8px 24px rgba(11,35,56,.22); }
-:where(:root[data-theme="imp-olympia"]) .emoji-scroll h4 { background: #fff; }
-:where(:root[data-theme="imp-olympia"]) .emoji-tabs button:hover,
-:where(:root[data-theme="imp-olympia"]) .emoji-grid button:hover,
-:where(:root[data-theme="imp-olympia"]) .emoji-grid button:focus-visible { background: #d7ecf9; }
-:where(:root[data-theme="imp-olympia"]) button.avatar.own::after { background: #fff; border-color: var(--field); }
-:where(:root[data-theme="imp-olympia"]) dialog.report,
-:where(:root[data-theme="imp-olympia"]) dialog.about { background: #fff; border: 1px solid var(--field); border-radius: 2px; }
-:where(:root[data-theme="imp-olympia"]) dialog.report::backdrop,
-:where(:root[data-theme="imp-olympia"]) dialog.about::backdrop { background: rgba(11,35,56,.45); }
-:where(:root[data-theme="imp-olympia"]) dialog.report .field select { background: #fff; border-color: var(--field); border-radius: 2px; }
-:where(:root[data-theme="imp-olympia"]) dialog.about details.change p { border-left: 1px solid var(--field); }
-:where(:root[data-theme="imp-olympia"]) .consent { --bubble: #0b2338; --bubble-fg: #fff; --bubble-dim: #c1d6e8; --bubble-link: #9fd3ff; }
-:where(:root[data-theme="imp-olympia"]) .consent .bubble { box-shadow: 0 8px 22px rgba(11,35,56,.3); }
+.profile[popover],
+.emoji-picker[popover] { background: #fff; border: 1px solid var(--field); border-radius: 2px; box-shadow: 0 8px 24px rgba(11,35,56,.22); }
+.emoji-scroll h4 { background: #fff; }
+.emoji-tabs button:hover,
+.emoji-grid button:hover,
+.emoji-grid button:focus-visible { background: #d7ecf9; }
+button.avatar.own::after { background: #fff; border-color: var(--field); }
+dialog.report,
+dialog.about { background: #fff; border: 1px solid var(--field); border-radius: 2px; }
+dialog.report::backdrop,
+dialog.about::backdrop { background: rgba(11,35,56,.45); }
+dialog.report .field select { background: #fff; border-color: var(--field); border-radius: 2px; }
+dialog.about details.change p { border-left: 1px solid var(--field); }
+.consent { --bubble: #0b2338; --bubble-fg: #fff; --bubble-dim: #c1d6e8; --bubble-link: #9fd3ff; }
+.consent .bubble { box-shadow: 0 8px 22px rgba(11,35,56,.3); }
 
+
+}
 @media (max-width: 700px) {
-  :where(:root[data-theme="imp-olympia"]) .side { border-bottom: 0; background-size: 128px 96px; }
-  :where(:root[data-theme="imp-olympia"]) .chat-input { background: #fff; border-top: 2px solid var(--panel); }
+@scope ([data-theme="imp-olympia"]) to ([data-theme]) {
+
+  .side { border-bottom: 0; background-size: 128px 96px; }
+  .chat-input:where(:scope, :scope *) { background: #fff; border-top: 2px solid var(--panel); }
   /* the banners would hang behind the sidebar here and show only their tails, which looks broken: the net is enough */
-  :root[data-theme="imp-olympia"] .ambient { display: none; }
+  .ambient:is([data-theme="imp-olympia"][data-theme], [data-theme="imp-olympia"][data-theme] *) { display: none; }
+
+}
+
 }
 @media (prefers-reduced-motion: reduce) {
-  :where(:root[data-theme="imp-olympia"]) button { transition: none; }
+@scope ([data-theme="imp-olympia"]) to ([data-theme]) {
+
+  button { transition: none; }
+
 }
 
-/* the mic test fills its button while recording: a fill the label stays readable on */
-:where(:root[data-theme="imp-olympia"]) .panel .mictest button.recording { background-image: linear-gradient(#8ccbef, #8ccbef); border-color: var(--acc); }
+}@scope ([data-theme="imp-olympia"]) to ([data-theme]) {
 
-:where(:root[data-theme="imp-olympia"]) .update button:hover { background: #e6f3fb; }
+
+/* the mic test fills its button while recording: a fill the label stays readable on */
+.panel .mictest button.recording { background-image: linear-gradient(#8ccbef, #8ccbef); border-color: var(--acc); }
+
+.update button:hover { background: #e6f3fb; }
+
+}
+@scope ([data-theme="imp-olympia"]) to ([data-theme]) {
+
+/* A room's box, wherever it sits, is a stretch of the blue field with the roof's cable net hung low in it, smaller than
+   under the sidebar so a folded box still shows a bay or two of it; the room of my call stays the green field (above),
+   whole. The top room open on screen, at rest, is the sidebar's own field (styles.css), so it gets no net of its own. The chat of a
+   room in this look, inside a page of another, is the white column with the seven banners across its top, held still. */
+:scope[data-theme="imp-olympia"] {
+  --olympia-net: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='120' fill='none' stroke='%23fff'%3E%3CclipPath id='c'%3E%3Cpath d='M0 6Q80 66 160 6V120H0z'/%3E%3C/clipPath%3E%3Cpath d='M0 22Q80 74 160 22M0 38Q80 82 160 38M0 54Q80 90 160 54M0 70Q80 98 160 70M0 86Q80 106 160 86M0 102Q80 114 160 102' stroke-opacity='.25'/%3E%3Cpath d='M8 0V120M24 0V120M40 0V120M56 0V120M72 0V120M88 0V120M104 0V120M120 0V120M136 0V120M152 0V120' stroke-opacity='.25' clip-path='url(%23c)'/%3E%3Cpath d='M0 6Q80 66 160 6' stroke-opacity='.45' stroke-width='1.5'/%3E%3C/svg%3E");
+  --olympia-banners: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='270' height='300'%3E%3Cpath d='M214 0h20v300l-10-16-10 16z' fill='%23d6ecf9'/%3E%3Cpath d='M214 222h20v39h-20z' fill='%23b3dbf3'/%3E%3Cpath d='M179 0h20v271l-10-16-10 16z' fill='%23e1e6ea'/%3E%3Cpath d='M179 201h20v35h-20z' fill='%23c4e3f6'/%3E%3Cpath d='M144 0h20v251l-10-16-10 16z' fill='%23c4e3f6'/%3E%3Cpath d='M144 186h20v33h-20z' fill='%23e1e6ea'/%3E%3Cpath d='M110 0h20v245l-10-16-10 16z' fill='%23d6ecf9'/%3E%3Cpath d='M110 181h20v32h-20z' fill='%23b3dbf3'/%3E%3Cpath d='M75 0h20v251l-10-16-10 16z' fill='%23e1e6ea'/%3E%3Cpath d='M75 186h20v33h-20z' fill='%23c4e3f6'/%3E%3Cpath d='M40 0h20v271l-10-16-10 16z' fill='%23c4e3f6'/%3E%3Cpath d='M40 201h20v35h-20z' fill='%23e1e6ea'/%3E%3Cpath d='M5 0h20v300l-10-16-10 16z' fill='%23d6ecf9'/%3E%3Cpath d='M5 222h20v39h-20z' fill='%23b3dbf3'/%3E%3C/svg%3E"); }
+:scope.room {
+  --room-ground: var(--olympia-net) left bottom / 120px 90px repeat-x, var(--panel); }
+:scope.chat { --chat-ground: var(--olympia-banners) right top / 270px 300px no-repeat, var(--bg); }
+:scope.chat-input { --chat-ground: var(--bg); }
+
+}

@@ -8,130 +8,173 @@
 @font-face { font-family: 'Barlow Semi Condensed'; font-style: normal; font-weight: 500; font-display: swap;
   src: url(./fonts/barlowsemicondensed-wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfi6m_B2sl.woff2) format('woff2'); }
 @font-face { font-family: 'Barlow Semi Condensed'; font-style: normal; font-weight: 700; font-display: swap;
-  src: url(./fonts/barlowsemicondensed-wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfw6-_B2sl.woff2) format('woff2'); }
+  src: url(./fonts/barlowsemicondensed-wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfw6-_B2sl.woff2) format('woff2'); }@scope ([data-theme="fd-walkie"]) to ([data-theme]) {
 
-:root[data-theme="fd-walkie"] {
+
+:scope[data-theme="fd-walkie"] {
   --chassis: #F2C230; --chassis-dk: #D9A916; --rubber: #2B2D2A; --rubber-fg: #F4F1E4; --lcd: #C9D3B4; --lcd-ink: #1C261A;
   --bg: var(--lcd); --panel: var(--chassis); --panel2: #E4DDB8; --fg: var(--lcd-ink); --dim: #46503A; --line: #8C8A62;
   --ok: #1F6E35; --warn: #8A4E00; --bad: #A8231B; --acc: var(--rubber);
   font-family: 'Barlow Semi Condensed', 'Arial Narrow', system-ui, sans-serif; color-scheme: light;
 }
-:root[data-theme="fd-walkie"] body { font-size: 15px; font-weight: 500; }
-:where(:root[data-theme="fd-walkie"]) h2 { text-transform: none; letter-spacing: 0; font-size: 15px; font-weight: 700; color: var(--fg); }
-:where(:root[data-theme="fd-walkie"]) a { color: #13325E; }
+body:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { font-size: 15px; font-weight: 500; }
+:scope:is([data-apart], .chat, .chat-input) { font-size: 15px; font-weight: 500; } /* the same type on a box or chat of this look inside another page */
+h2 { text-transform: none; letter-spacing: 0; font-size: 15px; font-weight: 700; color: var(--fg); }
+a { color: #13325E; }
 
 /* rubber keys: a darker lower lip, sunk in when pressed */
-:where(:root[data-theme="fd-walkie"]) button { background: #E9E4C9; color: var(--fg); border: 1px solid #7C7752; border-radius: 9px; font: inherit; font-weight: 700;
+button { background: #E9E4C9; color: var(--fg); border: 1px solid #7C7752; border-radius: 9px; font: inherit; font-weight: 700;
   box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); }
-:where(:root[data-theme="fd-walkie"]) button:active:not(:disabled) { box-shadow: inset 0 2px 0 rgba(0,0,0,.2); }
-:where(:root[data-theme="fd-walkie"]) input { background: #EEF2E2; color: var(--fg); border: 1px solid #7C7752; border-radius: 6px; box-shadow: inset 0 2px 3px rgba(0,0,0,.12); }
-:root[data-theme="fd-walkie"] button.on { background: var(--rubber); border-color: var(--rubber); color: var(--rubber-fg); box-shadow: inset 0 2px 0 rgba(0,0,0,.5); }
-:root[data-theme="fd-walkie"] button.join { background: var(--ok); color: #fff; box-shadow: inset 0 -3px 0 rgba(0,0,0,.3); }
-:root[data-theme="fd-walkie"] button.leave { background: var(--bad); color: #fff; box-shadow: inset 0 -3px 0 rgba(0,0,0,.3); }
-:root[data-theme="fd-walkie"] button.unblock { background: #FBE3A6; color: #5E3500; border-color: var(--warn); }
-:root[data-theme="fd-walkie"] button.link { background: none; box-shadow: none; color: var(--dim); font-size: 13px; font-weight: 500; }
+button:active:not(:disabled) { box-shadow: inset 0 2px 0 rgba(0,0,0,.2); }
+input { background: #EEF2E2; color: var(--fg); border: 1px solid #7C7752; border-radius: 6px; box-shadow: inset 0 2px 3px rgba(0,0,0,.12); }
+button.on:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--rubber); border-color: var(--rubber); color: var(--rubber-fg); box-shadow: inset 0 2px 0 rgba(0,0,0,.5); }
+button.join:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--ok); color: #fff; box-shadow: inset 0 -3px 0 rgba(0,0,0,.3); }
+button.leave:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--bad); color: #fff; box-shadow: inset 0 -3px 0 rgba(0,0,0,.3); }
+button.unblock:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: #FBE3A6; color: #5E3500; border-color: var(--warn); }
+button.link:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: none; box-shadow: none; color: var(--dim); font-size: 13px; font-weight: 500; }
 /* an open link (the invite, the consent bubble) reads darker and heavier than a closed one, as the app's own look has it */
-:root[data-theme="fd-walkie"] button.link.on { color: var(--rubber); font-weight: 700; }
+button.link.on:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: var(--rubber); font-weight: 700; }
 /* the mic test fills its button while recording: the chassis yellow under the LCD ink, so "Recording…" stays readable */
-:root[data-theme="fd-walkie"] .panel .mictest button.recording { background-image: linear-gradient(var(--chassis-dk), var(--chassis-dk)); }
-:root[data-theme="fd-walkie"] button.room-name, :root[data-theme="fd-walkie"] button.avatar,
-:root[data-theme="fd-walkie"] .emoji-tabs button, :root[data-theme="fd-walkie"] .emoji-grid button,
-:root[data-theme="fd-walkie"] .chat-input .emoji-open, :root[data-theme="fd-walkie"] .profile button.edit,
-:root[data-theme="fd-walkie"] .private-head button.edit,
-:root[data-theme="fd-walkie"] .chat-older, :root[data-theme="fd-walkie"] .room-more, :root[data-theme="fd-walkie"] :is(.side-me, .side-top) .gear { box-shadow: none; }
+.panel .mictest button.recording:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background-image: linear-gradient(var(--chassis-dk), var(--chassis-dk)); }
+button.room-name:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), button.avatar:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *),
+.emoji-tabs button:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .emoji-grid button:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *),
+.chat-input:where(:scope, :scope *) .emoji-open:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .profile button.edit:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *),
+.private-head button.edit:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *),
+.chat-older:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .room-more:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .room-top:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), :is(.side-me, .side-top) .gear:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { box-shadow: none; }
 /* the small Leave of my call's folded room is a red key too, with its lip */
-:root[data-theme="fd-walkie"] button.room-leave { box-shadow: inset 0 -2px 0 rgba(0,0,0,.3); }
-:root[data-theme="fd-walkie"] button.avatar:hover:not(.speaking) { box-shadow: 0 0 0 2px var(--rubber); }
-:root[data-theme="fd-walkie"] .chat-input .emoji-open:hover:not(:disabled) { border-color: #7C7752; }
+button.room-leave:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { box-shadow: inset 0 -2px 0 rgba(0,0,0,.3); }
+button.avatar:hover:not(.speaking):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { box-shadow: 0 0 0 2px var(--rubber); }
+.chat-input:where(:scope, :scope *) .emoji-open:hover:not(:disabled):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { border-color: #7C7752; }
 
 /* the body: yellow plastic, four rows of grille holes across the top */
-:root[data-theme="fd-walkie"] .side { padding-top: 30px; border-right: 4px solid var(--chassis-dk);
+.side:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { padding-top: 30px; border-right: 4px solid var(--chassis-dk);
   background:
     radial-gradient(circle, rgba(43,45,42,.55) 1.6px, transparent 2.2px) 4px 6px / 9px 9px repeat-x,
     radial-gradient(circle, rgba(43,45,42,.55) 1.6px, transparent 2.2px) 8.5px 13px / 9px 9px repeat-x,
     radial-gradient(circle, rgba(43,45,42,.55) 1.6px, transparent 2.2px) 4px 20px / 9px 9px repeat-x,
     linear-gradient(90deg, #F5CB45, var(--chassis) 40%, #EDB925);
   --dim: #4A3E10; }
-:root[data-theme="fd-walkie"] .room-title { text-transform: none; letter-spacing: 0; font-size: 16px; color: #5A4A12; }
-:root[data-theme="fd-walkie"] .room.selected .room-title, :root[data-theme="fd-walkie"] .room-head:hover .room-title { color: var(--rubber); }
-:root[data-theme="fd-walkie"] .side .panel { background: #F8E7A6; border-color: #9C7F1E; }
-:root[data-theme="fd-walkie"] .avatar { background: var(--rubber); color: var(--rubber-fg); }
-:root[data-theme="fd-walkie"] .avatar.speaking { box-shadow: 0 0 0 3px var(--chassis), 0 0 0 5px var(--ok); }
-:root[data-theme="fd-walkie"] .plist em { border-color: #7C6A26; color: #3E3410; }
-:root[data-theme="fd-walkie"] .unread { background: var(--rubber); color: var(--chassis); }
-:root[data-theme="fd-walkie"] .new { background: var(--rubber); color: var(--chassis); }
-:root[data-theme="fd-walkie"] .warn { background: #FBE3A6; color: #5E3500; border: 1px solid #C78A1E; }
-:root[data-theme="fd-walkie"] .side .conn-direct, :root[data-theme="fd-walkie"] .side .lag-ok { color: #1A5C2C; }
-:root[data-theme="fd-walkie"] .side .conn-relayed, :root[data-theme="fd-walkie"] .side .conn-reconnecting, :root[data-theme="fd-walkie"] .side .lag-warn { color: #6B3A00; }
-:root[data-theme="fd-walkie"] .side .conn-unreachable, :root[data-theme="fd-walkie"] .side .lag-bad { color: #8C1A14; }
+/* a room's box is the root of its own look wherever it sits, so it is named as the root (`:where(:scope)`, no weight)
+   and carries the body's darker pencil itself (its palette, set again on it as a root, would give it the LCD's); what
+   in it hangs from the sidebar names the sidebar outside the root (a `:scope` in the selector lets it). The chat and
+   its composer are named as the root too, for when they wear this look in a page of another. */
+.room:where(:scope):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { --dim: #4A3E10; }
+.room-title:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { text-transform: none; letter-spacing: 0; font-size: 16px; color: #5A4A12; }
+.room:where(:scope).selected .room-title:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .room-head:hover .room-title:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: var(--rubber); }
+.side .panel:where(:scope *):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: #F8E7A6; border-color: #9C7F1E; }
+.avatar:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--rubber); color: var(--rubber-fg); }
+.avatar.speaking:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { box-shadow: 0 0 0 3px var(--chassis), 0 0 0 5px var(--ok); }
+.plist em:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { border-color: #7C6A26; color: #3E3410; }
+.unread:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--rubber); color: var(--chassis); }
+.new:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--rubber); color: var(--chassis); }
+.warn:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: #FBE3A6; color: #5E3500; border: 1px solid #C78A1E; }
+.side .conn-direct:where(:scope *):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .side .lag-ok:where(:scope *):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: #1A5C2C; }
+.side .conn-relayed:where(:scope *):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .side .conn-reconnecting:where(:scope *):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .side .lag-warn:where(:scope *):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: #6B3A00; }
+.side .conn-unreachable:where(:scope *):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .side .lag-bad:where(:scope *):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: #8C1A14; }
 
 /* the LCD: a recessed window with a soft inner shadow */
-:root[data-theme="fd-walkie"] .chat { box-shadow: inset 0 6px 10px -6px rgba(0,0,0,.25); }
-:root[data-theme="fd-walkie"] .msg-from { font-weight: 700; }
-:root[data-theme="fd-walkie"] .msg-at { color: var(--dim); }
-:root[data-theme="fd-walkie"] .chat-new { background: var(--rubber); color: var(--rubber-fg); border-color: var(--rubber); }
-:root[data-theme="fd-walkie"] .chat-new:hover { color: #fff; }
-:root[data-theme="fd-walkie"] .chat-input { background: var(--rubber); }
-:root[data-theme="fd-walkie"] .chat-field > input { background: var(--lcd); border-color: #000; }
-:root[data-theme="fd-walkie"] .chat-input > button:not(.emoji-open) { background: var(--chassis); border-color: var(--chassis-dk); color: var(--rubber); }
-:root[data-theme="fd-walkie"] .chat-input .emoji-open { color: var(--rubber-fg); }
+.chat:where(:scope, :scope *):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { box-shadow: inset 0 6px 10px -6px rgba(0,0,0,.25); }
+.msg-from:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { font-weight: 700; }
+.msg-at:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: var(--dim); }
+.chat-new:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--rubber); color: var(--rubber-fg); border-color: var(--rubber); }
+.chat-new:hover:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: #fff; }
+.chat-input:where(:scope, :scope *):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--rubber); }
+.chat-field > input:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--lcd); border-color: #000; }
+.chat-input:where(:scope, :scope *) > button:not(.emoji-open):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--chassis); border-color: var(--chassis-dk); color: var(--rubber); }
+.chat-input:where(:scope, :scope *) .emoji-open:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: var(--rubber-fg); }
 
 /* on air: from the corner where the handset's antenna stands, three rings of signal go out across the LCD, one after
    the other, and fade before they reach the chat's lines, as when someone keys the mic; then a long quiet, and the next
    call. Faint ink (13 % at most, 9 on a phone where they cross the lines), so the chat keeps its contrast; the room's glare drifts across the glass over half a
    minute. Transform and opacity only. On a phone the LCD is the lower half, so the calls come in from its right edge. */
-:root[data-theme="fd-walkie"] .ambient { display: block; --wr: clamp(220px, 42vmin, 640px); --oy: 0px; --wo: .13; }
-:root[data-theme="fd-walkie"] .ambient > i:nth-child(-n+3) { top: calc(var(--oy) - var(--wr)); right: calc(-1 * var(--wr)); width: calc(var(--wr) * 2); aspect-ratio: 1;
+.ambient:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { display: block; --wr: clamp(220px, 42vmin, 640px); --oy: 0px; --wo: .13; }
+.ambient > i:nth-child(-n+3):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { top: calc(var(--oy) - var(--wr)); right: calc(-1 * var(--wr)); width: calc(var(--wr) * 2); aspect-ratio: 1;
   border-radius: 50%; border: clamp(2px, .3vmin, 5px) solid var(--lcd-ink); opacity: 0; transform: scale(.12);
   animation: fd-walkie-wave 16s ease-out infinite; animation-play-state: var(--ambient-play); }
-:root[data-theme="fd-walkie"] .ambient > i:nth-child(1) { animation-delay: -5s; }
-:root[data-theme="fd-walkie"] .ambient > i:nth-child(2) { animation-delay: -3.8s; }
-:root[data-theme="fd-walkie"] .ambient > i:nth-child(3) { animation-delay: -2.6s; }
-:root[data-theme="fd-walkie"] .ambient > i:nth-child(n+4) { display: none; }
-@keyframes fd-walkie-wave { 0% { opacity: 0; transform: scale(.12); } 4% { opacity: var(--wo); } 36%, 100% { opacity: 0; transform: scale(1); } }
-:root[data-theme="fd-walkie"] .ambient::after { content: ''; position: absolute; inset: 0 -14% 0 0;
+.ambient > i:nth-child(1):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { animation-delay: -5s; }
+.ambient > i:nth-child(2):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { animation-delay: -3.8s; }
+.ambient > i:nth-child(3):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { animation-delay: -2.6s; }
+.ambient > i:nth-child(n+4):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { display: none; }
+
+}
+@keyframes fd-walkie-wave { 0% { opacity: 0; transform: scale(.12); } 4% { opacity: var(--wo); } 36%, 100% { opacity: 0; transform: scale(1); } }@scope ([data-theme="fd-walkie"]) to ([data-theme]) {
+
+.ambient:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *)::after { content: ''; position: absolute; inset: 0 -14% 0 0;
   background: linear-gradient(118deg, transparent 34%, rgba(255,255,255,.07) 41%, rgba(255,255,255,.2) 46%,
     rgba(255,255,255,.05) 49%, rgba(255,255,255,.1) 52%, transparent 58%);
   animation: fd-walkie-glare 30s ease-in-out -9s infinite alternate; animation-play-state: var(--ambient-play); }
+
+}
 @keyframes fd-walkie-glare { to { transform: translateX(-12%); } }
 @media (max-width: 700px) {
-  :root[data-theme="fd-walkie"] .ambient { --wr: 70vw; --oy: 62vh; --wo: .09; }
+@scope ([data-theme="fd-walkie"]) to ([data-theme]) {
+
+  .ambient:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { --wr: 70vw; --oy: 62vh; --wo: .09; }
+
 }
 
+}@scope ([data-theme="fd-walkie"]) to ([data-theme]) {
+
+
 /* shares sit in black rubber frames */
-:root[data-theme="fd-walkie"] .share { background: var(--rubber); border: 3px solid var(--rubber); border-radius: 12px; color: var(--rubber-fg); }
-:root[data-theme="fd-walkie"] .share-live { border-color: var(--chassis); }
-:root[data-theme="fd-walkie"] .share-note { color: #C9C6B4; }
-:root[data-theme="fd-walkie"] .share-head { background: #1E1F1D; }
-:root[data-theme="fd-walkie"] .share-bar { background: #1E1F1D; color: #C9C6B4; font-family: inherit; font-size: 12px; }
-:root[data-theme="fd-walkie"] .share .conn-direct { color: #6BD48A; }
-:root[data-theme="fd-walkie"] .share .conn-relayed, :root[data-theme="fd-walkie"] .share .conn-reconnecting { color: #F2C230; }
-:root[data-theme="fd-walkie"] .share .conn-unreachable { color: #FF8A80; }
-:root[data-theme="fd-walkie"] .share .conn-connecting { color: #C9C6B4; }
-:root[data-theme="fd-walkie"] .share-head .stop { background: #3B3E3A; color: var(--rubber-fg); border-color: #555; }
-:root[data-theme="fd-walkie"] .share-bar .fs { background: #3B3E3A; color: var(--rubber-fg); border-color: #555; }
-:root[data-theme="fd-walkie"] .share-vol input[type=range] { accent-color: var(--chassis); }
-:root[data-theme="fd-walkie"] .share.share-fs { border: 0; border-radius: 0; background: #000; }
-:root[data-theme="fd-walkie"] .share.share-fs .share-head, :root[data-theme="fd-walkie"] .share.share-fs .share-bar { background: rgba(30,31,29,.8); }
+.share:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--rubber); border: 3px solid var(--rubber); border-radius: 12px; color: var(--rubber-fg); }
+.share-live:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { border-color: var(--chassis); }
+.share-note:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: #C9C6B4; }
+.share-head:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: #1E1F1D; }
+.share-bar:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: #1E1F1D; color: #C9C6B4; font-family: inherit; font-size: 12px; }
+.share .conn-direct:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: #6BD48A; }
+.share .conn-relayed:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .share .conn-reconnecting:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: #F2C230; }
+.share .conn-unreachable:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: #FF8A80; }
+.share .conn-connecting:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: #C9C6B4; }
+.share-head .stop:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: #3B3E3A; color: var(--rubber-fg); border-color: #555; }
+.share-bar .fs:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: #3B3E3A; color: var(--rubber-fg); border-color: #555; }
+.share-vol input[type=range]:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { accent-color: var(--chassis); }
+.share.share-fs:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { border: 0; border-radius: 0; background: #000; }
+.share.share-fs .share-head:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .share.share-fs .share-bar:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: rgba(30,31,29,.8); }
 
 /* banners, pop-overs, dialogs */
-:root[data-theme="fd-walkie"] .banner { box-shadow: 0 3px 0 rgba(0,0,0,.25); font-weight: 700; }
-:root[data-theme="fd-walkie"] .banner-warn { background: var(--chassis); color: var(--rubber); }
-:root[data-theme="fd-walkie"] .banner-bad { background: var(--bad); color: #fff; }
-:root[data-theme="fd-walkie"] .update { background: var(--rubber); color: var(--chassis); }
-:root[data-theme="fd-walkie"] .update button { background: var(--chassis); color: var(--rubber); }
-:root[data-theme="fd-walkie"] .room-menu[popover], :root[data-theme="fd-walkie"] .side-foot[popover],
-:root[data-theme="fd-walkie"] .profile[popover], :root[data-theme="fd-walkie"] .emoji-picker[popover],
-:root[data-theme="fd-walkie"] dialog.report, :root[data-theme="fd-walkie"] dialog.about { background: #F6F1DA; border: 2px solid var(--rubber); box-shadow: 0 6px 0 rgba(0,0,0,.2); }
+.banner:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { box-shadow: 0 3px 0 rgba(0,0,0,.25); font-weight: 700; }
+.banner-warn:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--chassis); color: var(--rubber); }
+.banner-bad:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--bad); color: #fff; }
+.update:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--rubber); color: var(--chassis); }
+.update button:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--chassis); color: var(--rubber); }
+.room-menu[popover]:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .side-foot[popover]:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *),
+.profile[popover]:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .emoji-picker[popover]:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *),
+dialog.report:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), dialog.about:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: #F6F1DA; border: 2px solid var(--rubber); box-shadow: 0 6px 0 rgba(0,0,0,.2); }
 /* in the ⋯ and ⚙ menus a link is a line of the menu, in ink at reading size; Leave in alarm red */
-:root[data-theme="fd-walkie"] :is(.room-menu, .side-foot) button.link { color: var(--fg); font-size: 14px; }
-:root[data-theme="fd-walkie"] .room-menu button.link.danger { color: var(--bad); }
-:root[data-theme="fd-walkie"] .emoji-scroll h4 { background: #F6F1DA; text-transform: none; letter-spacing: 0; font-size: 13px; }
-:root[data-theme="fd-walkie"] .emoji-tabs button:hover, :root[data-theme="fd-walkie"] .emoji-grid button:hover { background: #E4DDB8; }
-:root[data-theme="fd-walkie"] select.picker, :root[data-theme="fd-walkie"] select.picker::picker(select) { background: #F6F1DA; border-color: #7C7752; }
-:root[data-theme="fd-walkie"] select.picker option:checked { background: var(--rubber); color: var(--rubber-fg); }
-:root[data-theme="fd-walkie"] .consent { --bubble: var(--rubber); --bubble-fg: var(--rubber-fg); --bubble-dim: #C9C6B4; --bubble-link: var(--chassis); }
+:is(.room-menu, .side-foot) button.link:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: var(--fg); font-size: 14px; }
+.room-menu button.link.danger:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: var(--bad); }
+.emoji-scroll h4:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: #F6F1DA; text-transform: none; letter-spacing: 0; font-size: 13px; }
+.emoji-tabs button:hover:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .emoji-grid button:hover:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: #E4DDB8; }
+select.picker:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), select.picker:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *)::picker(select) { background: #F6F1DA; border-color: #7C7752; }
+select.picker option:checked:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--rubber); color: var(--rubber-fg); }
+.consent:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { --bubble: var(--rubber); --bubble-fg: var(--rubber-fg); --bubble-dim: #C9C6B4; --bubble-link: var(--chassis); }
 
+
+}
 @media (max-width: 700px) {
-  :root[data-theme="fd-walkie"] .side { border-right: 0; border-bottom: 4px solid var(--chassis-dk); }
+@scope ([data-theme="fd-walkie"]) to ([data-theme]) {
+
+  .side:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { border-right: 0; border-bottom: 4px solid var(--chassis-dk); }
+
+}
+
+}
+@scope ([data-theme="fd-walkie"]) to ([data-theme]) {
+
+/* A room's box, wherever it sits, is a handset of its own: the moulded safety-yellow plastic, lit from the left as the
+   body is, and beside its name a patch of speaker grille, three staggered rows of holes. The top room open on screen, at rest,
+   sits on the bare body (styles.css), so it gets no handset. The chat of a room in this look, inside a page of another,
+   is the LCD: its grey-green, the glare across the glass and the faint rings of a call coming in from the antenna's
+   corner, held still; the composer is the rubber, as on its own page. */
+:scope.room {
+  --room-ground: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3Cpattern id='h' width='9' height='14' patternUnits='userSpaceOnUse'%3E%3Cg fill='%232B2D2A' fill-opacity='.55'%3E%3Ccircle cx='4.5' cy='3.5' r='1.9'/%3E%3Ccircle cy='10.5' r='1.9'/%3E%3Ccircle cx='9' cy='10.5' r='1.9'/%3E%3C/g%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' rx='5' fill='url(%23h)'/%3E%3C/svg%3E") right 40px top 11px / 54px 22px no-repeat,
+    linear-gradient(90deg, #F5CB45, var(--chassis) 40%, #EDB925), var(--chassis); }
+:scope.chat { --chat-ground:
+    linear-gradient(118deg, transparent 34%, rgba(255,255,255,.07) 41%, rgba(255,255,255,.2) 46%, rgba(255,255,255,.05) 49%, rgba(255,255,255,.1) 52%, transparent 58%),
+    radial-gradient(circle at 100% 0, transparent 0 157px, rgb(28 38 26 / .07) 157px 160px, transparent 160px 257px,
+      rgb(28 38 26 / .05) 257px 260px, transparent 260px 357px, rgb(28 38 26 / .035) 357px 360px, transparent 360px),
+    var(--lcd); }
+:scope.chat-input { --chat-ground: var(--rubber); }
+
 }

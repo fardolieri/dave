@@ -6,127 +6,159 @@
    Boldness spent on: the misregistered pink layer. Text is always blue ink, never pink. */
 
 @font-face { font-family: 'Bricolage Grotesque'; font-style: normal; font-weight: 400 800; font-display: swap;
-  src: url(./fonts/bricolagegrotesque-3y9K6as8bTXq_nANBjzKo3IeZx8z6up5BeSl9D4dj_x9PpZBMlGIInE.woff2) format('woff2'); }
+  src: url(./fonts/bricolagegrotesque-3y9K6as8bTXq_nANBjzKo3IeZx8z6up5BeSl9D4dj_x9PpZBMlGIInE.woff2) format('woff2'); }@scope ([data-theme="fd-riso"]) to ([data-theme]) {
 
-:root[data-theme="fd-riso"] {
+
+:scope[data-theme="fd-riso"] {
   --paper: #E6E8EA; --blue: #0F4C8A; --ink: #0F2A55; --pink: #FF48B0; --pink-soft: #FFB8DD;
   --bg: var(--paper); --panel: #DCE0E4; --panel2: #F3F4F5; --fg: var(--ink); --dim: #3E5272; --line: var(--blue);
   --ok: #00704A; --warn: #A34A00; --bad: #C8102E; --acc: var(--blue);
   --slip: 3px 3px 0 var(--pink);
   font-family: 'Bricolage Grotesque', system-ui, sans-serif; color-scheme: light;
 }
-:root[data-theme="fd-riso"] body { font-size: 15px; }
+body:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { font-size: 15px; }
+:scope:is([data-apart], .chat, .chat-input) { font-size: 15px; } /* the same type on a box or chat of this look inside another page */
 /* the paper behind the chat is a riso poster: halftone suns in the two inks, each screen at its own angle, drifting past
    each other (half a minute to a minute a way, slow enough to rest the eye on, quick enough to notice) so the inks overprint purple
    where they meet and the dots slip in and out of a moire. Only the paper shows
    them, never a panel; the dots stay light enough that ink text reads over them as it does on bare paper. */
-:root[data-theme="fd-riso"] .ambient { display: block; --dot: clamp(6px, .6vmin, 10px); }
-:root[data-theme="fd-riso"] .ambient > i { --ink-c: var(--pink); --o: .4; width: var(--s); height: var(--s); border-radius: 50%; mix-blend-mode: multiply;
+.ambient:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { display: block; --dot: clamp(6px, .6vmin, 10px); }
+.ambient > i:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --ink-c: var(--pink); --o: .4; width: var(--s); height: var(--s); border-radius: 50%; mix-blend-mode: multiply;
   background: radial-gradient(circle closest-side, var(--ink-c) 46%, transparent 58%) 0 0 / var(--dot) var(--dot); opacity: var(--o);
   -webkit-mask-image: radial-gradient(circle at 36% 34%, #000 16%, transparent 72%); mask-image: radial-gradient(circle at 36% 34%, #000 16%, transparent 72%);
   animation: fd-riso-drift var(--t) ease-in-out var(--d) infinite alternate; animation-play-state: var(--ambient-play); }
-:root[data-theme="fd-riso"] .ambient > i:nth-child(even) { --ink-c: var(--blue); --o: .34; }
-:root[data-theme="fd-riso"] .ambient > i:nth-child(n+9) { display: none; }
-:root[data-theme="fd-riso"] .ambient > i:nth-child(1) { --s: 46vmin; top: -10vmin; right: -6vmin; --t: 52s; --d: -20s; --x: -6vmin; --y: 5vmin; --r0: 15deg; --r1: 24deg; }
-:root[data-theme="fd-riso"] .ambient > i:nth-child(2) { --s: 30vmin; top: 18vh; right: 22vw; --t: 64s; --d: -41s; --x: 7vmin; --y: -5vmin; --r0: -15deg; --r1: -4deg; }
-:root[data-theme="fd-riso"] .ambient > i:nth-child(3) { --s: 22vmin; top: 47vh; left: calc(300px + 12vw); --t: 46s; --d: -9s; --x: 5vmin; --y: -6vmin; --r0: 15deg; --r1: 6deg; }
-:root[data-theme="fd-riso"] .ambient > i:nth-child(4) { --s: 13vmin; top: 7vh; left: calc(300px + 20vw); --t: 38s; --d: -30s; --x: -4vmin; --y: 6vmin; --r0: -15deg; --r1: -26deg; }
-:root[data-theme="fd-riso"] .ambient > i:nth-child(5) { --s: 40vmin; bottom: -16vmin; right: -10vmin; --t: 58s; --d: -12s; --x: -4vmin; --y: -5vmin; --r0: 15deg; --r1: 22deg; }
-:root[data-theme="fd-riso"] .ambient > i:nth-child(6) { --s: 9vmin; top: 60vh; right: 33vw; --t: 34s; --d: -6s; --x: 6vmin; --y: 4vmin; --r0: -15deg; --r1: -5deg; }
-:root[data-theme="fd-riso"] .ambient > i:nth-child(7) { --s: 7vmin; top: 31vh; left: calc(300px + 38vw); --t: 30s; --d: -22s; --x: -5vmin; --y: -4vmin; --r0: 15deg; --r1: 28deg; }
-:root[data-theme="fd-riso"] .ambient > i:nth-child(8) { --s: 15vmin; bottom: 20vh; right: 9vw; --t: 42s; --d: -35s; --x: -3vmin; --y: 6vmin; --r0: -15deg; --r1: -24deg; }
+.ambient > i:nth-child(even):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --ink-c: var(--blue); --o: .34; }
+.ambient > i:nth-child(n+9):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { display: none; }
+.ambient > i:nth-child(1):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 46vmin; top: -10vmin; right: -6vmin; --t: 52s; --d: -20s; --x: -6vmin; --y: 5vmin; --r0: 15deg; --r1: 24deg; }
+.ambient > i:nth-child(2):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 30vmin; top: 18vh; right: 22vw; --t: 64s; --d: -41s; --x: 7vmin; --y: -5vmin; --r0: -15deg; --r1: -4deg; }
+.ambient > i:nth-child(3):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 22vmin; top: 47vh; left: calc(300px + 12vw); --t: 46s; --d: -9s; --x: 5vmin; --y: -6vmin; --r0: 15deg; --r1: 6deg; }
+.ambient > i:nth-child(4):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 13vmin; top: 7vh; left: calc(300px + 20vw); --t: 38s; --d: -30s; --x: -4vmin; --y: 6vmin; --r0: -15deg; --r1: -26deg; }
+.ambient > i:nth-child(5):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 40vmin; bottom: -16vmin; right: -10vmin; --t: 58s; --d: -12s; --x: -4vmin; --y: -5vmin; --r0: 15deg; --r1: 22deg; }
+.ambient > i:nth-child(6):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 9vmin; top: 60vh; right: 33vw; --t: 34s; --d: -6s; --x: 6vmin; --y: 4vmin; --r0: -15deg; --r1: -5deg; }
+.ambient > i:nth-child(7):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 7vmin; top: 31vh; left: calc(300px + 38vw); --t: 30s; --d: -22s; --x: -5vmin; --y: -4vmin; --r0: 15deg; --r1: 28deg; }
+.ambient > i:nth-child(8):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 15vmin; bottom: 20vh; right: 9vw; --t: 42s; --d: -35s; --x: -3vmin; --y: 6vmin; --r0: -15deg; --r1: -24deg; }
+
+}
 @keyframes fd-riso-drift { from { transform: translate(0, 0) rotate(var(--r0)); }
-  to { transform: translate(calc(var(--x) * 1.6), calc(var(--y) * 1.6)) rotate(calc(var(--r1) * 1.5 - var(--r0) * .5)); opacity: calc(var(--o) * .75); } }
-:where(:root[data-theme="fd-riso"]) h1 { font-weight: 800; font-size: 30px; letter-spacing: -.01em; }
-:where(:root[data-theme="fd-riso"]) h2 { text-transform: none; letter-spacing: 0; font-size: 17px; font-weight: 800; color: var(--ink); }
-:where(:root[data-theme="fd-riso"]) button { background: var(--panel2); color: var(--ink); border: 2px solid var(--blue); border-radius: 4px; font: inherit; font-weight: 700; box-shadow: var(--slip); }
-:where(:root[data-theme="fd-riso"]) button:active:not(:disabled) { box-shadow: 1px 1px 0 var(--pink); }
-:where(:root[data-theme="fd-riso"]) input { background: #FAFAFB; color: var(--ink); border: 2px solid var(--blue); border-radius: 4px; }
-:where(:root[data-theme="fd-riso"]) a { color: var(--blue); }
+  to { transform: translate(calc(var(--x) * 1.6), calc(var(--y) * 1.6)) rotate(calc(var(--r1) * 1.5 - var(--r0) * .5)); opacity: calc(var(--o) * .75); } }@scope ([data-theme="fd-riso"]) to ([data-theme]) {
 
-:root[data-theme="fd-riso"] button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
-:root[data-theme="fd-riso"] button.join { background: var(--ok); border-color: var(--ok); color: #fff; font-weight: 800; }
-:root[data-theme="fd-riso"] button.leave { background: var(--bad); border-color: var(--bad); color: #fff; box-shadow: 3px 3px 0 var(--ink); }
-:root[data-theme="fd-riso"] button.unblock { background: #FFE2C9; color: #6E3200; border-color: var(--warn); }
-:root[data-theme="fd-riso"] button.link { color: var(--dim); box-shadow: none; font-weight: 500; font-size: 12px; }
-:root[data-theme="fd-riso"] button.link.on { background: var(--pink-soft); color: var(--ink); }
+h1 { font-weight: 800; font-size: 30px; letter-spacing: -.01em; }
+h2 { text-transform: none; letter-spacing: 0; font-size: 17px; font-weight: 800; color: var(--ink); }
+button { background: var(--panel2); color: var(--ink); border: 2px solid var(--blue); border-radius: 4px; font: inherit; font-weight: 700; box-shadow: var(--slip); }
+button:active:not(:disabled) { box-shadow: 1px 1px 0 var(--pink); }
+input { background: #FAFAFB; color: var(--ink); border: 2px solid var(--blue); border-radius: 4px; }
+a { color: var(--blue); }
+
+button.on:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--blue); border-color: var(--blue); color: #fff; }
+button.join:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--ok); border-color: var(--ok); color: #fff; font-weight: 800; }
+button.leave:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--bad); border-color: var(--bad); color: #fff; box-shadow: 3px 3px 0 var(--ink); }
+button.unblock:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: #FFE2C9; color: #6E3200; border-color: var(--warn); }
+button.link:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { color: var(--dim); box-shadow: none; font-weight: 500; font-size: 12px; }
+button.link.on:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--pink-soft); color: var(--ink); }
 /* the mic test fills its button while recording: the pink layer under the blue ink, so "Recording…" stays readable */
-:root[data-theme="fd-riso"] .panel .mictest button.recording { background-image: linear-gradient(var(--pink-soft), var(--pink-soft)); }
-:root[data-theme="fd-riso"] button.room-name, :root[data-theme="fd-riso"] button.avatar, :root[data-theme="fd-riso"] .emoji-tabs button,
-:root[data-theme="fd-riso"] .emoji-grid button, :root[data-theme="fd-riso"] .chat-input .emoji-open, :root[data-theme="fd-riso"] .profile button.edit,
-:root[data-theme="fd-riso"] .private-head button.edit,
-:root[data-theme="fd-riso"] .chat-older, :root[data-theme="fd-riso"] .room-more, :root[data-theme="fd-riso"] :is(.side-me, .side-top) .gear { box-shadow: none; }
+.panel .mictest button.recording:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background-image: linear-gradient(var(--pink-soft), var(--pink-soft)); }
+button.room-name:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), button.avatar:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), .emoji-tabs button:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *),
+.emoji-grid button:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), .chat-input:where(:scope, :scope *) .emoji-open:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), .profile button.edit:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *),
+.private-head button.edit:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *),
+.chat-older:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), .room-more:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), .room-top:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), :is(.side-me, .side-top) .gear:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { box-shadow: none; }
 /* the small Leave of my call's folded room printed as the big one, red over a blue slip */
-:root[data-theme="fd-riso"] button.room-leave { border: 2px solid var(--bad); border-radius: 4px; box-shadow: 2px 2px 0 var(--ink); }
+button.room-leave:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { border: 2px solid var(--bad); border-radius: 4px; box-shadow: 2px 2px 0 var(--ink); }
 /* rooms and the call box are cards with the cards' corners; the ⋯ and ⚙ menus are printed as the profile card is,
-   their links in ink at reading size and Leave in red */
-:root[data-theme="fd-riso"] .room, :root[data-theme="fd-riso"] .room.folded > .room-head { border-radius: 6px; }
-:root[data-theme="fd-riso"] .room > .room-head { border-radius: 6px 6px 0 0; }
-:root[data-theme="fd-riso"] .plist.callbox { border-radius: 4px; }
-:root[data-theme="fd-riso"] :is(.room-menu, .side-foot)[popover] { background: var(--panel2); border: 2px solid var(--blue); border-radius: 6px; box-shadow: 6px 6px 0 var(--pink); }
-:root[data-theme="fd-riso"] :is(.room-menu, .side-foot) button.link { color: var(--ink); font-size: 14px; border-radius: 4px; }
-:root[data-theme="fd-riso"] :is(.room-menu, .side-foot) button.link:is(:hover, :focus-visible) { background: var(--pink-soft); }
-:root[data-theme="fd-riso"] .room-menu button.link.danger { color: var(--bad); }
+   their links in ink at reading size and Leave in red. A room's box is the root of its own look wherever it sits, so
+   it is named as the root (`:where(:scope)`, no weight); so is the composer in a page of another look. */
+.room:where(:scope):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), .room:where(:scope).folded > .room-head:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { border-radius: 6px; }
+.room:where(:scope) > .room-head:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { border-radius: 6px 6px 0 0; }
+.plist.callbox:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { border-radius: 4px; }
+:is(.room-menu, .side-foot)[popover]:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--panel2); border: 2px solid var(--blue); border-radius: 6px; box-shadow: 6px 6px 0 var(--pink); }
+:is(.room-menu, .side-foot) button.link:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { color: var(--ink); font-size: 14px; border-radius: 4px; }
+:is(.room-menu, .side-foot) button.link:is(:hover, :focus-visible):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--pink-soft); }
+.room-menu button.link.danger:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { color: var(--bad); }
 
-:root[data-theme="fd-riso"] .side { border-right: 2px solid var(--blue); box-shadow: 4px 0 0 var(--pink); }
-:root[data-theme="fd-riso"] .room-title { text-transform: none; letter-spacing: -.01em; font-size: 19px; font-weight: 800; color: var(--dim); }
-:root[data-theme="fd-riso"] .room.selected .room-title, :root[data-theme="fd-riso"] .room-head:hover .room-title { color: var(--ink); }
-:root[data-theme="fd-riso"] .unread { background: var(--pink); color: var(--ink); font-size: 11px; }
+.side:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { border-right: 2px solid var(--blue); box-shadow: 4px 0 0 var(--pink); }
+.room-title:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { text-transform: none; letter-spacing: -.01em; font-size: 19px; font-weight: 800; color: var(--dim); }
+.room:where(:scope).selected .room-title:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), .room-head:hover .room-title:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { color: var(--ink); }
+.unread:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--pink); color: var(--ink); font-size: 11px; }
 
 /* faces in halftone: pink dots on paper, the initial printed over them in blue */
-:root[data-theme="fd-riso"] .avatar { color: var(--ink); font-weight: 800;
+.avatar:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { color: var(--ink); font-weight: 800;
   background: radial-gradient(circle, var(--pink-soft) 1.4px, transparent 1.9px) 0 0 / 5px 5px, #F3F4F5; border: 2px solid var(--blue); }
-:root[data-theme="fd-riso"] .avatar.speaking { box-shadow: 0 0 0 3px var(--ok); border-color: var(--ok); }
-:root[data-theme="fd-riso"] .plist em { border: 1.5px solid var(--blue); color: var(--ink); border-radius: 3px; }
-:root[data-theme="fd-riso"] .new { background: var(--pink); color: var(--ink); }
-:root[data-theme="fd-riso"] .warn { background: #FFE2C9; color: #6E3200; border: 2px solid var(--warn); border-radius: 4px; }
-:root[data-theme="fd-riso"] .panel { background: var(--panel2); border: 2px solid var(--blue); border-radius: 4px; box-shadow: var(--slip); }
+.avatar.speaking:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { box-shadow: 0 0 0 3px var(--ok); border-color: var(--ok); }
+.plist em:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { border: 1.5px solid var(--blue); color: var(--ink); border-radius: 3px; }
+.new:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--pink); color: var(--ink); }
+.warn:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: #FFE2C9; color: #6E3200; border: 2px solid var(--warn); border-radius: 4px; }
+.panel:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--panel2); border: 2px solid var(--blue); border-radius: 4px; box-shadow: var(--slip); }
 
-:root[data-theme="fd-riso"] .msg-from { font-weight: 800; }
-:root[data-theme="fd-riso"] .msg-at, :root[data-theme="fd-riso"] .msg-sys { color: var(--dim); }
-:root[data-theme="fd-riso"] .chat-new { background: var(--pink); color: var(--ink); border-color: var(--ink); font-weight: 700; }
-:root[data-theme="fd-riso"] .chat-new:hover { color: var(--ink); }
-:root[data-theme="fd-riso"] .chat-input { background: var(--panel); border-top: 2px solid var(--blue); }
+.msg-from:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { font-weight: 800; }
+.msg-at:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), .msg-sys:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { color: var(--dim); }
+.chat-new:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--pink); color: var(--ink); border-color: var(--ink); font-weight: 700; }
+.chat-new:hover:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { color: var(--ink); }
+.chat-input:where(:scope, :scope *):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--panel); border-top: 2px solid var(--blue); }
 
-:root[data-theme="fd-riso"] .share { background: var(--ink); border: 2px solid var(--blue); border-radius: 4px; box-shadow: 5px 5px 0 var(--pink); color: #fff; }
-:root[data-theme="fd-riso"] .share-live { border-color: var(--pink); box-shadow: 5px 5px 0 var(--blue); }
-:root[data-theme="fd-riso"] .share-note { color: #C7D3E8; }
-:root[data-theme="fd-riso"] .share-head { background: var(--blue); }
-:root[data-theme="fd-riso"] .share-bar { background: var(--blue); color: #DCE6F5; font-family: inherit; }
-:root[data-theme="fd-riso"] .share-head .stop, :root[data-theme="fd-riso"] .share-bar .fs { background: #fff; color: var(--ink); border-color: #fff; box-shadow: 2px 2px 0 var(--pink); }
-:root[data-theme="fd-riso"] .share .conn-direct { color: #7CF0BE; }
-:root[data-theme="fd-riso"] .share .conn-relayed, :root[data-theme="fd-riso"] .share .conn-reconnecting { color: #FFD27A; }
-:root[data-theme="fd-riso"] .share .conn-unreachable { color: #FFB3BF; }
-:root[data-theme="fd-riso"] .share .conn-connecting { color: #C7D3E8; }
-:root[data-theme="fd-riso"] .share-vol input[type=range] { accent-color: var(--pink); }
-:root[data-theme="fd-riso"] .share.share-fs { border: 0; border-radius: 0; box-shadow: none; background: #000; }
-:root[data-theme="fd-riso"] .share.share-fs .share-head, :root[data-theme="fd-riso"] .share.share-fs .share-bar { background: rgba(15,76,138,.85); }
+.share:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--ink); border: 2px solid var(--blue); border-radius: 4px; box-shadow: 5px 5px 0 var(--pink); color: #fff; }
+.share-live:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { border-color: var(--pink); box-shadow: 5px 5px 0 var(--blue); }
+.share-note:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { color: #C7D3E8; }
+.share-head:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--blue); }
+.share-bar:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--blue); color: #DCE6F5; font-family: inherit; }
+.share-head .stop:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), .share-bar .fs:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: #fff; color: var(--ink); border-color: #fff; box-shadow: 2px 2px 0 var(--pink); }
+.share .conn-direct:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { color: #7CF0BE; }
+.share .conn-relayed:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), .share .conn-reconnecting:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { color: #FFD27A; }
+.share .conn-unreachable:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { color: #FFB3BF; }
+.share .conn-connecting:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { color: #C7D3E8; }
+.share-vol input[type=range]:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { accent-color: var(--pink); }
+.share.share-fs:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { border: 0; border-radius: 0; box-shadow: none; background: #000; }
+.share.share-fs .share-head:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), .share.share-fs .share-bar:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: rgba(15,76,138,.85); }
 
-:root[data-theme="fd-riso"] .banner { border: 2px solid var(--ink); border-top: 0; border-radius: 0 0 6px 6px; box-shadow: 4px 4px 0 var(--pink); font-weight: 700; }
-:root[data-theme="fd-riso"] .banner-warn { background: #FFE2C9; color: #6E3200; }
-:root[data-theme="fd-riso"] .banner-bad { background: var(--bad); color: #fff; }
-:root[data-theme="fd-riso"] .update { background: var(--pink); color: var(--ink); }
-:root[data-theme="fd-riso"] .update button { background: var(--ink); color: #fff; box-shadow: none; }
-:root[data-theme="fd-riso"] .update button:hover { background: var(--blue); }
-:root[data-theme="fd-riso"] .profile[popover], :root[data-theme="fd-riso"] .emoji-picker[popover],
-:root[data-theme="fd-riso"] dialog.report, :root[data-theme="fd-riso"] dialog.about { background: var(--panel2); border: 2px solid var(--blue); border-radius: 6px; box-shadow: 6px 6px 0 var(--pink); }
-:root[data-theme="fd-riso"] .profile-name strong, :root[data-theme="fd-riso"] dialog.report h3, :root[data-theme="fd-riso"] dialog.about h3 { font-weight: 800; font-size: 19px; }
-:root[data-theme="fd-riso"] .emoji-scroll h4 { background: var(--panel2); text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 800; color: var(--ink); }
-:root[data-theme="fd-riso"] .emoji-tabs button:hover, :root[data-theme="fd-riso"] .emoji-grid button:hover { background: var(--pink-soft); }
-:root[data-theme="fd-riso"] select.picker, :root[data-theme="fd-riso"] select.picker::picker(select) { background: var(--panel2); border: 2px solid var(--blue); border-radius: 4px; }
-:root[data-theme="fd-riso"] select.picker option:checked { background: var(--blue); color: #fff; }
-:root[data-theme="fd-riso"] dialog.report textarea, :root[data-theme="fd-riso"] dialog.report .field select { background: #FAFAFB; border: 2px solid var(--blue); }
-:root[data-theme="fd-riso"] .consent { --bubble: var(--pink-soft); --bubble-fg: var(--ink); --bubble-dim: #2E3F5E; --bubble-link: var(--ink); }
-:root[data-theme="fd-riso"] .consent .bubble { box-shadow: 4px 4px 0 var(--blue); }
+.banner:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { border: 2px solid var(--ink); border-top: 0; border-radius: 0 0 6px 6px; box-shadow: 4px 4px 0 var(--pink); font-weight: 700; }
+.banner-warn:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: #FFE2C9; color: #6E3200; }
+.banner-bad:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--bad); color: #fff; }
+.update:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--pink); color: var(--ink); }
+.update button:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--ink); color: #fff; box-shadow: none; }
+.update button:hover:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--blue); }
+.profile[popover]:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), .emoji-picker[popover]:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *),
+dialog.report:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), dialog.about:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--panel2); border: 2px solid var(--blue); border-radius: 6px; box-shadow: 6px 6px 0 var(--pink); }
+.profile-name strong:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), dialog.report h3:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), dialog.about h3:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { font-weight: 800; font-size: 19px; }
+.emoji-scroll h4:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--panel2); text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 800; color: var(--ink); }
+.emoji-tabs button:hover:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), .emoji-grid button:hover:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--pink-soft); }
+select.picker:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), select.picker:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *)::picker(select) { background: var(--panel2); border: 2px solid var(--blue); border-radius: 4px; }
+select.picker option:checked:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--blue); color: #fff; }
+dialog.report textarea:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *), dialog.report .field select:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: #FAFAFB; border: 2px solid var(--blue); }
+.consent:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --bubble: var(--pink-soft); --bubble-fg: var(--ink); --bubble-dim: #2E3F5E; --bubble-link: var(--ink); }
+.consent .bubble:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { box-shadow: 4px 4px 0 var(--blue); }
 
+
+}
 @media (max-width: 700px) {
+@scope ([data-theme="fd-riso"]) to ([data-theme]) {
+
   /* the phone shows only the chat's own strip of paper, under the room's panel, and every line of it crosses a sun:
      three of them, low down and a shade lighter */
-  :root[data-theme="fd-riso"] .ambient > i { --o: .28; }
-  :root[data-theme="fd-riso"] .ambient > i:nth-child(even) { --o: .26; }
-  :root[data-theme="fd-riso"] .ambient > i:is(:nth-child(1), :nth-child(4), :nth-child(6), :nth-child(7), :nth-child(8)) { display: none; }
-  :root[data-theme="fd-riso"] .ambient > i:nth-child(2) { --s: 44vmin; top: 56vh; right: -10vw; }
-  :root[data-theme="fd-riso"] .ambient > i:nth-child(3) { --s: 30vmin; top: 64vh; left: 6vw; }
-  :root[data-theme="fd-riso"] .ambient > i:nth-child(5) { --s: 56vmin; bottom: -22vmin; right: -14vmin; }
-  :root[data-theme="fd-riso"] .side { border-right: 0; border-bottom: 2px solid var(--blue); box-shadow: 0 4px 0 var(--pink); }
+  .ambient > i:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --o: .28; }
+  .ambient > i:nth-child(even):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --o: .26; }
+  .ambient > i:is(:nth-child(1), :nth-child(4), :nth-child(6), :nth-child(7), :nth-child(8)):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { display: none; }
+  .ambient > i:nth-child(2):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 44vmin; top: 56vh; right: -10vw; }
+  .ambient > i:nth-child(3):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 30vmin; top: 64vh; left: 6vw; }
+  .ambient > i:nth-child(5):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 56vmin; bottom: -22vmin; right: -14vmin; }
+  .side:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { border-right: 0; border-bottom: 2px solid var(--blue); box-shadow: 0 4px 0 var(--pink); }
+
+}
+
+}
+@scope ([data-theme="fd-riso"]) to ([data-theme]) {
+
+/* A room's box, wherever it sits, is a scrap of the poster: two halftone suns on the newsprint, a big pink one cut by
+   its top right corner and a smaller blue one overprinting it a little off register, each screen at its own angle,
+   held still, light enough that ink reads over them. The top room open on screen, at rest, stands on the bare sidebar
+   (styles.css), so it gets no scrap. The chat of a room in this look, inside a page of another, is the poster: three
+   of its suns where the page has them, still; the composer is the page's own panel. */
+:scope[data-theme="fd-riso"] {
+  --riso-sun-pink: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3Cpattern id='d' width='7' height='7' patternUnits='userSpaceOnUse' patternTransform='rotate(15)'%3E%3Ccircle cx='3.5' cy='3.5' r='2.2' fill='%23FF48B0'/%3E%3C/pattern%3E%3CradialGradient id='g' cx='.4' cy='.38' r='.62'%3E%3Cstop offset='.25' stop-color='%23fff'/%3E%3Cstop offset='1' stop-color='%23fff' stop-opacity='0'/%3E%3C/radialGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23g)'/%3E%3C/mask%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23d)' mask='url(%23m)' opacity='.42'/%3E%3C/svg%3E");
+  --riso-sun-blue: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3Cpattern id='d' width='7' height='7' patternUnits='userSpaceOnUse' patternTransform='rotate(-15)'%3E%3Ccircle cx='3.5' cy='3.5' r='2.2' fill='%230F4C8A'/%3E%3C/pattern%3E%3CradialGradient id='g' cx='.4' cy='.38' r='.62'%3E%3Cstop offset='.25' stop-color='%23fff'/%3E%3Cstop offset='1' stop-color='%23fff' stop-opacity='0'/%3E%3C/radialGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23g)'/%3E%3C/mask%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23d)' mask='url(%23m)' opacity='.36'/%3E%3C/svg%3E"); }
+:scope.room {
+  --room-ground: var(--riso-sun-blue) right 40px top 4px / 64px 64px no-repeat,
+    var(--riso-sun-pink) right -20px top -30px / 100px 100px no-repeat, var(--panel); }
+:scope.chat { --chat-ground: var(--riso-sun-pink) right -6vmin top -10vmin / 46vmin 46vmin no-repeat,
+    var(--riso-sun-blue) right 22vw top 14% / 30vmin 30vmin no-repeat,
+    var(--riso-sun-pink) left 10vw top 45% / 22vmin 22vmin no-repeat, var(--bg); }
+:scope.chat-input { --chat-ground: var(--panel); }
+
 }

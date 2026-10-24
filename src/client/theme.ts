@@ -2,9 +2,8 @@ import { createSignal, untrack } from 'solid-js';
 import posthog from './posthog';
 import { local } from './storage';
 
-// Each file in themes/ is one look, every rule scoped under :root[data-theme="<file name>"], so the app's own look
-// stays the default and a theme only applies while picked. The pick is kept per browser; a stored name whose file is
-// gone (a theme dropped in a later deploy) reads as the default look.
+// Each file in themes/ is one look, its rules scoped to an element with data-theme="<file name>" up to the next element
+// with a data-theme in (`@scope`): the page, a room's box, a room's chat. The app's own look stays the default.
 const files = import.meta.glob('./themes/*.css', { eager: true });
 export const THEMES: readonly string[] = Object.keys(files).map((path) => path.replace(/^.*\/(.*)\.css$/, '$1')).sort();
 
@@ -30,7 +29,9 @@ const [picks, setPicks] = createSignal<Record<string, string>>(local.read('roomT
 /** The look of a room: its own pick, else the one from before rooms had their own. */
 export const themeOf = (roomId: string): string => { const p = picks()[roomId]; return p === undefined ? fallback : known(p); };
 const [theme, setThemeSignal] = createSignal(fallback);
-/** The look on screen: the room on screen's. */
+/** A room's look is not the page's: its box and its chat wear it apart (and the chat carries it only then). */
+export const lookApart = (roomId: string): boolean => themeOf(roomId) !== theme();
+/** The look of the page: the top room's (each room's box and the chat of the room on screen wear their own). */
 export { theme };
 
 // Which themes friends keep, not only try (the bake-off of PR #63, .scratch/themes/issues/01-keep-or-drop.md): every
@@ -41,30 +42,35 @@ const apply = (name: string): void => {
   posthog.register({ theme: name || 'default' });
 };
 apply(theme());
-/** When the theme on screen was picked in this page; null for one this browser had kept from an earlier visit. */
+/** Since when the page wears its look; null for one this browser had kept from an earlier visit. */
 let pickedAt: number | null = null;
 let shownRoom: string | null = null;
 
-/** A room comes on screen: the page wears its look. */
-export function showRoomTheme(roomId: string): void {
+/** A room is the top one (the first in the list): the page wears its look. */
+export function showTopTheme(roomId: string): void {
   shownRoom = roomId;
   const name = untrack(() => themeOf(roomId));
   if (name === untrack(theme) && (document.documentElement.dataset['theme'] ?? '') === name) return;
+  if (name !== untrack(theme)) pickedAt = Date.now(); // not a pick: the page wears another room's look from now on
   setThemeSignal(name);
   apply(name);
 }
 
-/** Picks a room's look; on screen if the room is. */
+/** Picks a room's look; the page's too if the room is the top one. */
 export function setRoomTheme(roomId: string, name: string): void {
-  const previous = untrack(() => themeOf(roomId));
-  if (name === previous && untrack(picks)[roomId] !== undefined) return;
-  posthog.capture('theme_picked', {
-    theme: name || 'default',
-    previous: previous || 'default',
-    previous_ms: pickedAt === null ? null : Date.now() - pickedAt,
-    $set: { theme: name || 'default' },
-  });
-  pickedAt = Date.now();
+  // Against the stored name, not the look: a pick of a dropped theme reads as the default look, and picking that is kept.
+  if (untrack(picks)[roomId] === name) return;
+  // Only the page's look is counted, which is the top room's (a pick for a room further down is not on screen):
+  // previous_ms is how long the look before had been on the page.
+  if (roomId === shownRoom && name !== untrack(theme)) {
+    posthog.capture('theme_picked', {
+      theme: name || 'default',
+      previous: untrack(theme) || 'default',
+      previous_ms: pickedAt === null ? null : Date.now() - pickedAt,
+      $set: { theme: name || 'default' },
+    });
+    pickedAt = Date.now();
+  }
   const next = { ...untrack(picks), [roomId]: name };
   setPicks(next);
   local.set('roomThemes', JSON.stringify(next));

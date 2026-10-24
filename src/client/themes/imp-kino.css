@@ -3,64 +3,66 @@
    keeps the specificity of the app's own selector it restyles: the app's variants (button.join, .share.share-fs, the
    phone rules) still win where they did. */
 @font-face { font-family: "imp-Jost"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(./fonts/jost-92zatBhPNqw73ord4iYl.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
-@font-face { font-family: "imp-Jost"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(./fonts/jost-92zatBhPNqw73oTd4g.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "imp-Jost"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(./fonts/jost-92zatBhPNqw73oTd4g.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }@scope ([data-theme="imp-kino"]) to ([data-theme]) {
 
-:root[data-theme="imp-kino"] {
+
+:scope[data-theme="imp-kino"] {
   --bg: #1c1412; --panel: #2b1216; --panel2: #3d1b21; --fg: #f3e9dc; --dim: #c4ab9c; --line: #5a2c33;
   --ok: #6fdc9c; --warn: #ffb547; --bad: #ff7b72; --acc: #9cc8ff;
   --field: #7a3d46; --stage: #050303;
   font-family: "imp-Jost", system-ui, sans-serif; color-scheme: dark;
   accent-color: var(--acc); scrollbar-color: var(--line) transparent;
 }
-:where(:root[data-theme="imp-kino"]) body { font-size: 15px; line-height: 1.4; }
-:where(:root[data-theme="imp-kino"]) ::selection { background: #9cc8ff; color: #0d1a2b; }
-:where(:root[data-theme="imp-kino"]) :is(input, textarea) { caret-color: var(--acc); }
-:where(:root[data-theme="imp-kino"]) :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
-:where(:root[data-theme="imp-kino"]) h1 { font-size: 28px; font-weight: 600; letter-spacing: .02em; }
-:where(:root[data-theme="imp-kino"]) h2,
-:where(:root[data-theme="imp-kino"]) .room-title { font-weight: 600; letter-spacing: .14em; font-size: 12px; }
+body { font-size: 15px; line-height: 1.4; }
+:scope:is([data-apart], .chat, .chat-input) { font-size: 15px; line-height: 1.4; } /* the same type on a box or chat of this look inside another page */
+::selection { background: #9cc8ff; color: #0d1a2b; }
+:is(input, textarea) { caret-color: var(--acc); }
+:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+h1 { font-size: 28px; font-weight: 600; letter-spacing: .02em; }
+h2,
+.room-title { font-weight: 600; letter-spacing: .14em; font-size: 12px; }
 
 /* controls: pills, like the rows of seats */
-:where(:root[data-theme="imp-kino"]) button { border-radius: 999px; padding: 8px 16px; font: inherit; font-weight: 500; transition: background-color .15s ease-out, border-color .15s ease-out; }
-:where(:root[data-theme="imp-kino"]) button:where(:hover:not(:disabled)) { border-color: var(--field); background-color: #4a2229; }
-:where(:root[data-theme="imp-kino"]) input,
-:where(:root[data-theme="imp-kino"]) textarea,
-:where(:root[data-theme="imp-kino"]) select.picker { border-color: var(--field); border-radius: 12px; }
-:where(:root[data-theme="imp-kino"]) .chat-field > input { border-radius: 999px; padding: 10px 16px; background: #1e1513; }
-:where(:root[data-theme="imp-kino"]) button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #0d1a2b; }
-:where(:root[data-theme="imp-kino"]) button.join { background: var(--ok); color: #0a2a17; font-weight: 600; }
-:where(:root[data-theme="imp-kino"]) button.leave { background: var(--bad); color: #2a0806; font-weight: 600; }
-:where(:root[data-theme="imp-kino"]) button.room-leave { color: #2a0806; } /* the red here is light: dark on it, as on Leave */
-:where(:root[data-theme="imp-kino"]) button.unblock { background: #3d2a10; color: var(--warn); }
-:where(:root[data-theme="imp-kino"]) button.link { border-radius: 4px; padding: 2px 4px; text-underline-offset: 3px; }
-:where(:root[data-theme="imp-kino"]) button.link:hover { background: none; color: var(--fg); }
-:where(:root[data-theme="imp-kino"]) .actions .gear { padding: 8px 0; }
-:where(:root[data-theme="imp-kino"]) select.picker option:checked { background: var(--acc); color: #0d1a2b; }
+button { border-radius: 999px; padding: 8px 16px; font: inherit; font-weight: 500; transition: background-color .15s ease-out, border-color .15s ease-out; }
+button:where(:hover:not(:disabled)) { border-color: var(--field); background-color: #4a2229; }
+input,
+textarea,
+select.picker { border-color: var(--field); border-radius: 12px; }
+.chat-field > input { border-radius: 999px; padding: 10px 16px; background: #1e1513; }
+button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #0d1a2b; }
+button.join { background: var(--ok); color: #0a2a17; font-weight: 600; }
+button.leave { background: var(--bad); color: #2a0806; font-weight: 600; }
+button.room-leave { color: #2a0806; } /* the red here is light: dark on it, as on Leave */
+button.unblock { background: #3d2a10; color: var(--warn); }
+button.link { border-radius: 4px; padding: 2px 4px; text-underline-offset: 3px; }
+button.link:hover { background: none; color: var(--fg); }
+.actions .gear { padding: 8px 0; }
+select.picker option:checked { background: var(--acc); color: #0d1a2b; }
 
 /* badges and notices */
-:where(:root[data-theme="imp-kino"]) .unread { color: #0d1a2b; }
-:where(:root[data-theme="imp-kino"]) .new { color: #2a1a00; border-radius: 999px; padding: 0 6px; }
-:where(:root[data-theme="imp-kino"]) .warn { background: #3d2a10; border-radius: 12px; }
-:where(:root[data-theme="imp-kino"]) .banner { box-shadow: 0 6px 18px rgba(0,0,0,.55); }
-:where(:root[data-theme="imp-kino"]) .banner-warn { background: #3d2a10; }
-:where(:root[data-theme="imp-kino"]) .banner-bad { background: #45161a; }
-:where(:root[data-theme="imp-kino"]) .update { background: var(--acc); color: #0d1a2b; }
-:where(:root[data-theme="imp-kino"]) .update button { background: #0d1a2b; color: #f3e9dc; border-radius: 999px; }
-:where(:root[data-theme="imp-kino"]) .update button:hover { background: #22324a; }
-:where(:root[data-theme="imp-kino"]) .chat-new { background: rgba(61,27,33,.92); border-color: var(--field); color: var(--fg); }
+.unread { color: #0d1a2b; }
+.new { color: #2a1a00; border-radius: 999px; padding: 0 6px; }
+.warn { background: #3d2a10; border-radius: 12px; }
+.banner { box-shadow: 0 6px 18px rgba(0,0,0,.55); }
+.banner-warn { background: #3d2a10; }
+.banner-bad { background: #45161a; }
+.update { background: var(--acc); color: #0d1a2b; }
+.update button { background: #0d1a2b; color: #f3e9dc; border-radius: 999px; }
+.update button:hover { background: #22324a; }
+.chat-new { background: rgba(61,27,33,.92); border-color: var(--field); color: var(--fg); }
 
 /* the shell: velvet sidebar, dark auditorium */
-:where(:root[data-theme="imp-kino"]) .side { padding: 4px 16px 16px; transition: background-color .25s ease-out; }
-:where(:root[data-theme="imp-kino"]) .avatar { background: var(--panel2); }
-:where(:root[data-theme="imp-kino"]) .plist em { border-color: var(--field); border-radius: 999px; padding: 0 6px; }
-:where(:root[data-theme="imp-kino"]) .panel { border-radius: 16px; border-color: var(--line); background: #341719; }
-:where(:root[data-theme="imp-kino"]) .msg-from { font-weight: 600; }
-:where(:root[data-theme="imp-kino"]) .msg-at { font-variant-numeric: tabular-nums; }
+.side { padding: 4px 16px 16px; transition: background-color .25s ease-out; }
+.avatar { background: var(--panel2); }
+.plist em { border-color: var(--field); border-radius: 999px; padding: 0 6px; }
+.panel { border-radius: 16px; border-color: var(--line); background: #341719; }
+.msg-from { font-weight: 600; }
+.msg-at { font-variant-numeric: tabular-nums; }
 
 /* House lights down: while anyone shares, the main area goes to stage black and the shares are the brightest thing. */
-:where(:root[data-theme="imp-kino"]) .app { transition: background-color .25s ease-out; }
-:where(:root[data-theme="imp-kino"]) .app.split { background: var(--stage); }
-:where(:root[data-theme="imp-kino"]) .app.split .side { background: #1e0c10; }
+.app { transition: background-color .25s ease-out; }
+.app.split { background: var(--stage); }
+.app.split .side { background: #1e0c10; }
 /* The house before the film: a few big, soft glows of the velvet's own reds, dimmed and greyed towards the dark of the hall, and one of
    warm amber, as if the light in
    the hall fell on folds of curtain, drifting and swelling very slowly behind the chat (a minute and more each way).
@@ -68,52 +70,92 @@
    a straight line, and are wide and faint: a straight fade peaks in the middle and stops dead at the rim, and the eye
    sees each glow as a disc of its own instead of one wash of light. The stage black of
    .app.split covers them: when someone shares, the house goes dark. */
-:root[data-theme="imp-kino"] .ambient { display: block; backdrop-filter: blur(1px); }
+.ambient:is([data-theme="imp-kino"][data-theme], [data-theme="imp-kino"][data-theme] *) { display: block; backdrop-filter: blur(1px); }
 /* nobody can see them under the stage, so they do not move there either */
-:root[data-theme="imp-kino"]:has(.app.split) .ambient { display: none; }
-:where(:root[data-theme="imp-kino"]) .ambient > i { width: var(--s); aspect-ratio: 1; margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+:scope[data-theme="imp-kino"]:has(.app.split) .ambient { display: none; }
+.ambient > i { width: var(--s); aspect-ratio: 1; margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
   background: radial-gradient(circle closest-side, rgb(var(--c) / var(--a)), rgb(var(--c) / calc(var(--a) * 0.959)) 10%, rgb(var(--c) / calc(var(--a) * 0.847)) 20%, rgb(var(--c) / calc(var(--a) * 0.687)) 30%, rgb(var(--c) / calc(var(--a) * 0.512)) 40%, rgb(var(--c) / calc(var(--a) * 0.349)) 50%, rgb(var(--c) / calc(var(--a) * 0.217)) 60%, rgb(var(--c) / calc(var(--a) * 0.120)) 70%, rgb(var(--c) / calc(var(--a) * 0.057)) 80%, rgb(var(--c) / calc(var(--a) * 0.020)) 90%, rgb(var(--c) / 0));
   animation: imp-kino-drift var(--t) ease-in-out var(--d) infinite alternate; animation-play-state: var(--ambient-play); }
-:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(n+6) { display: none; }
-:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(1) { left: 78%; top: 12%; --s: 105vmax; --c: 112 44 50; --a: .12; --dx: -6vmax; --dy: 5vmax; --t: 83s; --d: -30s; }
-:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(2) { left: 42%; top: 88%; --s: 93vmax; --c: 96 38 46; --a: .13; --dx: 7vmax; --dy: -4vmax; --t: 97s; --d: -61s; }
-:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(3) { left: 96%; top: 82%; --s: 66vmax; --c: 170 112 72; --a: .05; --dx: -5vmax; --dy: -6vmax; --t: 71s; --d: -12s; }
-:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(4) { left: 48%; top: 6%; --s: 69vmax; --c: 84 36 52; --a: .13; --dx: 5vmax; --dy: 4vmax; --t: 109s; --d: -77s; }
-:where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(5) { left: 66%; top: 52%; --s: 51vmax; --c: 130 60 62; --a: .06; --dx: -4vmax; --dy: -3vmax; --t: 89s; --d: -44s; }
+.ambient > i:nth-child(n+6) { display: none; }
+.ambient > i:nth-child(1) { left: 78%; top: 12%; --s: 105vmax; --c: 112 44 50; --a: .12; --dx: -6vmax; --dy: 5vmax; --t: 83s; --d: -30s; }
+.ambient > i:nth-child(2) { left: 42%; top: 88%; --s: 93vmax; --c: 96 38 46; --a: .13; --dx: 7vmax; --dy: -4vmax; --t: 97s; --d: -61s; }
+.ambient > i:nth-child(3) { left: 96%; top: 82%; --s: 66vmax; --c: 170 112 72; --a: .05; --dx: -5vmax; --dy: -6vmax; --t: 71s; --d: -12s; }
+.ambient > i:nth-child(4) { left: 48%; top: 6%; --s: 69vmax; --c: 84 36 52; --a: .13; --dx: 5vmax; --dy: 4vmax; --t: 109s; --d: -77s; }
+.ambient > i:nth-child(5) { left: 66%; top: 52%; --s: 51vmax; --c: 130 60 62; --a: .06; --dx: -4vmax; --dy: -3vmax; --t: 89s; --d: -44s; }
 /* A fine grain over the glows. The glows are so faint that the whole wash spans only a dozen or so of the screen's
    brightness steps, so each step shows as a wide band, a ring around each glow; no curve or colour space helps with that,
    only noise that breaks up the edge between two steps. It does not move, so it costs nothing per frame. */
-:where(:root[data-theme="imp-kino"]) .ambient::after { content: ''; position: absolute; inset: 0; opacity: .05;
+.ambient::after { content: ''; position: absolute; inset: 0; opacity: .05;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1.6 -.3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+}
 @keyframes imp-kino-drift { from { transform: translate(0, 0) scale(1); } to { transform: translate(var(--dx), var(--dy)) scale(1.15); } }
 /* a phone's chat is the lower half of the screen: the glows gather there */
 @media (max-width: 700px) {
-  :where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(1) { top: 62%; }
-  :where(:root[data-theme="imp-kino"]) .ambient > i:nth-child(4) { top: 70%; left: 10%; }
+@scope ([data-theme="imp-kino"]) to ([data-theme]) {
+
+  .ambient > i:nth-child(1) { top: 62%; }
+  .ambient > i:nth-child(4) { top: 70%; left: 10%; }
+
 }
-:where(:root[data-theme="imp-kino"]) .share { background: #1a1110; border-color: #3a2226; border-radius: 14px; }
-:where(:root[data-theme="imp-kino"]) .share-head { background: rgba(43,18,22,.85); }
-:where(:root[data-theme="imp-kino"]) .share-bar { background: rgba(0,0,0,.5); color: var(--dim); font-family: inherit; font-variant-numeric: tabular-nums; }
+
+}@scope ([data-theme="imp-kino"]) to ([data-theme]) {
+
+.share { background: #1a1110; border-color: #3a2226; border-radius: 14px; }
+.share-head { background: rgba(43,18,22,.85); }
+.share-bar { background: rgba(0,0,0,.5); color: var(--dim); font-family: inherit; font-variant-numeric: tabular-nums; }
 
 /* popovers and dialogs */
-:where(:root[data-theme="imp-kino"]) .profile[popover],
-:where(:root[data-theme="imp-kino"]) .emoji-picker[popover] { border-radius: 18px; border-color: var(--field); box-shadow: 0 14px 40px rgba(0,0,0,.6); }
-:where(:root[data-theme="imp-kino"]) dialog.report,
-:where(:root[data-theme="imp-kino"]) dialog.about { border-radius: 18px; border-color: var(--field); }
-:where(:root[data-theme="imp-kino"]) dialog.report::backdrop,
-:where(:root[data-theme="imp-kino"]) dialog.about::backdrop { background: rgba(7,5,5,.72); }
-:where(:root[data-theme="imp-kino"]) dialog.about details.change p { border-left-width: 1px; }
-:where(:root[data-theme="imp-kino"]) .consent { --bubble: #4a2229; --bubble-fg: #f3e9dc; --bubble-dim: #d9c3b5; --bubble-link: #9cc8ff; }
-:where(:root[data-theme="imp-kino"]) .consent .bubble { box-shadow: 0 10px 30px rgba(0,0,0,.55); }
+.profile[popover],
+.emoji-picker[popover] { border-radius: 18px; border-color: var(--field); box-shadow: 0 14px 40px rgba(0,0,0,.6); }
+dialog.report,
+dialog.about { border-radius: 18px; border-color: var(--field); }
+dialog.report::backdrop,
+dialog.about::backdrop { background: rgba(7,5,5,.72); }
+dialog.about details.change p { border-left-width: 1px; }
+.consent { --bubble: #4a2229; --bubble-fg: #f3e9dc; --bubble-dim: #d9c3b5; --bubble-link: #9cc8ff; }
+.consent .bubble { box-shadow: 0 10px 30px rgba(0,0,0,.55); }
 
+
+}
 @media (max-width: 700px) {
-  :where(:root[data-theme="imp-kino"]) .chat-input { background: var(--bg); border-top-color: var(--line); }
-  :where(:root[data-theme="imp-kino"]) .app.split .chat-input { background: var(--stage); }
+@scope ([data-theme="imp-kino"]) to ([data-theme]) {
+
+  .chat-input:where(:scope, :scope *) { background: var(--bg); border-top-color: var(--line); }
+  .app.split .chat-input:where(:scope, :scope *) { background: var(--stage); }
+
+}
+
 }
 @media (prefers-reduced-motion: reduce) {
-  :where(:root[data-theme="imp-kino"]) :is(.app, .side, button) { transition: none; }
+@scope ([data-theme="imp-kino"]) to ([data-theme]) {
+
+  :is(.app, .side, button) { transition: none; }
+
 }
 
-/* the mic test fills its button while recording: a fill the label stays readable on */
-:where(:root[data-theme="imp-kino"]) .panel .mictest button.recording { background-image: linear-gradient(#a3212f, #a3212f); border-color: var(--acc); }
+}@scope ([data-theme="imp-kino"]) to ([data-theme]) {
 
+
+/* the mic test fills its button while recording: a fill the label stays readable on */
+.panel .mictest button.recording { background-image: linear-gradient(#a3212f, #a3212f); border-color: var(--acc); }
+
+
+}
+@scope ([data-theme="imp-kino"]) to ([data-theme]) {
+
+/* A room's box, wherever it sits, is a stretch of the curtain: the velvet hung in soft folds, the warm light of the
+   hall falling on it from above and fading into the pleats. Held still, with no edge anywhere, so a folded box is a
+   band of velvet and an open one a drape. The top room open on screen, at rest, is the sidebar's own velvet (styles.css), so it
+   gets no curtain. The chat of a room in this look, inside a page of another, is the dark hall with its glows of red
+   and one of amber where the house's drift through it, held still. */
+:scope.room {
+  --room-ground: radial-gradient(120% 90% at 50% 0, rgb(170 112 72 / .13), rgb(170 112 72 / .04) 55%, transparent 80%),
+    repeating-linear-gradient(90deg, rgb(0 0 0 / .22) 0, rgb(255 255 255 / .03) 8px, rgb(130 60 62 / .1) 11px, rgb(0 0 0 / .22) 19px),
+    var(--panel); }
+:scope:is(.chat, .chat-input) { --chat-ground:
+    radial-gradient(60% 55% at 78% 12%, rgb(112 44 50 / .13), rgb(112 44 50 / .05) 50%, transparent),
+    radial-gradient(55% 50% at 42% 88%, rgb(96 38 46 / .14), rgb(96 38 46 / .05) 50%, transparent),
+    radial-gradient(35% 40% at 96% 82%, rgb(170 112 72 / .06), transparent), var(--bg); }
+
+}

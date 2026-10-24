@@ -7,9 +7,10 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 @font-face { font-family: "ds-Noto Sans"; font-style: normal; font-weight: 300 600; font-display: swap;
   src: url(./fonts/notosans-o-0bIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjc5a7duw.woff2) format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }@scope ([data-theme="ds-ma"]) to ([data-theme]) {
 
-:root[data-theme="ds-ma"] { color-scheme: light;
+
+:scope[data-theme="ds-ma"] { color-scheme: light;
   --color-bg-primary: #f3efe6; --color-bg-secondary: #ece7dc; --color-bg-tertiary: #f8f5ee;
   --color-text-primary: #2a2723; --color-text-secondary: #5f5a51; --color-text-link: #46624e;
   --color-border-primary: #d8d1c3; --color-border-focus: #46624e;
@@ -31,8 +32,12 @@
   --ma-fleck: rgba(255, 248, 228, .95);
   --texture-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .3 0 0 0 0 .22 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
+
+}
 @media (prefers-color-scheme: dark) {
-  :root[data-theme="ds-ma"] { color-scheme: dark;
+@scope ([data-theme="ds-ma"]) to ([data-theme]) {
+
+  :scope[data-theme="ds-ma"] { color-scheme: dark;
     --color-bg-primary: #191816; --color-bg-secondary: #1e1d1a; --color-bg-tertiary: #262421;
     --color-text-primary: #e2ddd2; --color-text-secondary: #a39c8f; --color-text-link: #a9c4ae;
     --color-border-primary: #36332d; --color-border-focus: #a9c4ae;
@@ -48,10 +53,14 @@
     --ma-fleck: rgba(226, 221, 210, .075);
     --texture-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .9 0 0 0 0 .87 0 0 0 0 .8 0 0 0 .035 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
+
 }
 
+}@scope ([data-theme="ds-ma"]) to ([data-theme]) {
+
+
 /* ── Map the semantic tokens onto the app's own variables (styles.css :root) ─────────────────────────────── */
-:root[data-theme="ds-ma"] {
+:scope[data-theme="ds-ma"] {
   --bg: var(--color-bg-primary); --panel: var(--color-bg-secondary); --panel2: var(--color-bg-tertiary);
   --fg: var(--color-text-primary); --dim: var(--color-text-secondary); --line: var(--color-border-primary);
   --ok: var(--color-status-success); --warn: var(--color-status-warning); --bad: var(--color-status-error);
@@ -62,144 +71,175 @@
 /* ── Repairs: colours styles.css hard-codes for its dark page, read from the tokens instead. Every rule below has
    exactly the specificity of the rule it replaces (the theme prefix sits in :where), so the app's own variants
    (button.join over button, .share.share-fs over .share) still win where they did. ─────────────────────────── */
-:where(:root[data-theme="ds-ma"]) a { color: var(--color-text-link); }
-:where(:root[data-theme="ds-ma"]) :is(button, select, textarea) { font-family: inherit; }
-:where(:root[data-theme="ds-ma"]) :focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
-:where(:root[data-theme="ds-ma"]) .update { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
-:where(:root[data-theme="ds-ma"]) .update button { background: var(--color-text-on-accent); color: var(--color-accent-primary); }
-:where(:root[data-theme="ds-ma"]) .update button:hover { background: color-mix(in srgb, var(--color-text-on-accent) 88%, var(--color-accent-primary)); }
-:where(:root[data-theme="ds-ma"]) .unread { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
-:where(:root[data-theme="ds-ma"]) .new { background: var(--color-status-warning); color: var(--color-text-on-warning); }
-:where(:root[data-theme="ds-ma"]) .warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
-:where(:root[data-theme="ds-ma"]) .banner { box-shadow: var(--shadow-md); }
-:where(:root[data-theme="ds-ma"]) .banner-warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
-:where(:root[data-theme="ds-ma"]) .banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
-:where(:root[data-theme="ds-ma"]) .chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
-:where(:root[data-theme="ds-ma"]) .chat-new:hover { color: var(--fg); }
-:where(:root[data-theme="ds-ma"]) button.on:where(:not(.link)) { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
-:where(:root[data-theme="ds-ma"]) button.join { background: var(--ok); color: var(--color-text-on-success); }
-:where(:root[data-theme="ds-ma"]) button.leave { background: var(--bad); color: var(--color-text-on-error); }
-:where(:root[data-theme="ds-ma"]) button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
-:where(:root[data-theme="ds-ma"]) select.picker option:checked { background: var(--color-bg-on); color: var(--color-text-on-on); }
-:where(:root[data-theme="ds-ma"]) .avatar.speaking { box-shadow: 0 0 0 2px var(--color-ring); }
-:where(:root[data-theme="ds-ma"]) .share-head { background: color-mix(in srgb, var(--fg) 6%, transparent); }
-:where(:root[data-theme="ds-ma"]) .share-bar { background: color-mix(in srgb, var(--fg) 5%, transparent); }
-:where(:root[data-theme="ds-ma"]) .panel .mictest button.recording { background: var(--panel2) linear-gradient(color-mix(in srgb, var(--acc) 35%, var(--panel2)), color-mix(in srgb, var(--acc) 35%, var(--panel2))) left / 0% 100% no-repeat; }
-:where(:root[data-theme="ds-ma"]) .profile[popover], :where(:root[data-theme="ds-ma"]) .emoji-picker[popover] { box-shadow: var(--shadow-lg); }
-:where(:root[data-theme="ds-ma"]) dialog.report::backdrop, :where(:root[data-theme="ds-ma"]) dialog.about::backdrop { background: var(--color-surface-overlay); }
-:where(:root[data-theme="ds-ma"]) .consent { --bubble: var(--color-bubble); --bubble-fg: var(--color-bubble-fg); --bubble-dim: var(--color-bubble-dim); --bubble-link: var(--color-bubble-link); }
-:where(:root[data-theme="ds-ma"]) .consent .bubble { box-shadow: var(--shadow-lg); }
+a { color: var(--color-text-link); }
+:is(button, select, textarea) { font-family: inherit; }
+:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+.update { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+.update button { background: var(--color-text-on-accent); color: var(--color-accent-primary); }
+.update button:hover { background: color-mix(in srgb, var(--color-text-on-accent) 88%, var(--color-accent-primary)); }
+.unread { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+.new { background: var(--color-status-warning); color: var(--color-text-on-warning); }
+.warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+.banner { box-shadow: var(--shadow-md); }
+.banner-warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+.banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
+.chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
+.chat-new:hover { color: var(--fg); }
+button.on:where(:not(.link)) { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
+button.join { background: var(--ok); color: var(--color-text-on-success); }
+button.leave { background: var(--bad); color: var(--color-text-on-error); }
+button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+select.picker option:checked { background: var(--color-bg-on); color: var(--color-text-on-on); }
+.avatar.speaking { box-shadow: 0 0 0 2px var(--color-ring); }
+.share-head { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.share-bar { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.panel .mictest button.recording { background: var(--panel2) linear-gradient(color-mix(in srgb, var(--acc) 35%, var(--panel2)), color-mix(in srgb, var(--acc) 35%, var(--panel2))) left / 0% 100% no-repeat; }
+.profile[popover], .emoji-picker[popover] { box-shadow: var(--shadow-lg); }
+dialog.report::backdrop, dialog.about::backdrop { background: var(--color-surface-overlay); }
+.consent { --bubble: var(--color-bubble); --bubble-fg: var(--color-bubble-fg); --bubble-dim: var(--color-bubble-dim); --bubble-link: var(--color-bubble-link); }
+.consent .bubble { box-shadow: var(--shadow-lg); }
 /* a comfortable measure for reading on a wide screen; nothing is cut, long lines wrap */
-:where(:root[data-theme="ds-ma"]) .msg { max-width: 75ch; }
+.msg { max-width: 75ch; }
 /* Fullscreen keeps its black stage in both palettes: the overlays get the dark palette, so status dots and text stay
    legible on black even while the rest of the page is light. */
-:where(:root[data-theme="ds-ma"]) .share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
+.share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
   --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc);
   --bg: var(--fs-stage); --panel: var(--fs-button); color: var(--fg); }
 /* Phones (styles.css's 700px breakpoint): 16px text in fields so iOS does not zoom on focus, 16px messages, 44px call buttons. */
+
+}
 @media (max-width: 700px) {
-  :where(:root[data-theme="ds-ma"]) .chat-log { font-size: 16px; }
-  :where(:root[data-theme="ds-ma"]) :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
-  :where(:root[data-theme="ds-ma"]) .actions button, :where(:root[data-theme="ds-ma"]) .chat-input > button, :where(:root[data-theme="ds-ma"]) .chat-field > .emoji-open { min-height: 44px; }
+@scope ([data-theme="ds-ma"]) to ([data-theme]) {
+
+  .chat-log { font-size: 16px; }
+  :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
+  .actions button, .chat-input:where(:scope, :scope *) > button, .chat-field > .emoji-open { min-height: 44px; }
+
 }
 
+}@scope ([data-theme="ds-ma"]) to ([data-theme]) {
+
+
 /* ── Character: paper and ink ──────────────────────────────────────────────────────────────────────────── */
-:where(:root[data-theme="ds-ma"]) body { background-image: var(--texture-grain), var(--ma-light); }
-:where(:root[data-theme="ds-ma"]) h1, :where(:root[data-theme="ds-ma"]) dialog.report h3, :where(:root[data-theme="ds-ma"]) dialog.about h3 { font-family: var(--font-family-display); font-weight: 600; font-size: 24px; letter-spacing: .01em; }
-:where(:root[data-theme="ds-ma"]) dialog.report h3, :where(:root[data-theme="ds-ma"]) dialog.about h3 { font-size: 20px; }
-:where(:root[data-theme="ds-ma"]) h2, :where(:root[data-theme="ds-ma"]) .emoji-scroll h4 { font-weight: 400; letter-spacing: .24em; }
+body { background-image: var(--texture-grain), var(--ma-light); }
+h1, dialog.report h3, dialog.about h3 { font-family: var(--font-family-display); font-weight: 600; font-size: 24px; letter-spacing: .01em; }
+dialog.report h3, dialog.about h3 { font-size: 20px; }
+h2, .emoji-scroll h4 { font-weight: 400; letter-spacing: .24em; }
 /* rooms are named in the serif, quietly, in their own case */
-/* the room's name row is its box's handle, so its breathing room is padding inside the box, not a margin above it */
-:where(:root[data-theme="ds-ma"]) .room > .room-head { margin: 0 -8px 6px; padding: 16px 8px 10px; border-radius: var(--border-radius-md) var(--border-radius-md) 0 0; }
-:where(:root[data-theme="ds-ma"]) .room.folded > .room-head { margin-bottom: 0; padding-bottom: 14px; border-radius: var(--border-radius-md); }
-:where(:root[data-theme="ds-ma"]) .room { border-radius: var(--border-radius-md); }
-:where(:root[data-theme="ds-ma"]) :is(.plist.callbox, .who, .away li) { border-radius: var(--border-radius-sm); }
-:where(:root[data-theme="ds-ma"]) :is(.room-menu, .side-foot)[popover] { border-radius: var(--border-radius-md); box-shadow: var(--shadow-lg); }
-:where(:root[data-theme="ds-ma"]) :is(.room-menu button.link, .side-foot > button.link) { border-radius: var(--border-radius-sm); }
-:where(:root[data-theme="ds-ma"]) button.room-leave { border-radius: var(--border-radius-sm); font-weight: 500; color: var(--color-text-on-error); }
-:where(:root[data-theme="ds-ma"]) .room-title { font-family: var(--font-family-display); font-size: 19px; font-weight: 600; text-transform: none; letter-spacing: .01em; }
-:where(:root[data-theme="ds-ma"]) .profile-name strong { font-family: var(--font-family-display); font-size: 21px; font-weight: 600; }
+/* the room's name row is its box's handle, so its breathing room is padding inside the box, not a margin above it.
+   A room's box is the root of its own look wherever it sits, so it is named as the root (`:where(:scope)`, no weight);
+   so is the chat and its composer, which are the root when they wear this look in a page of another. */
+.room:where(:scope) > .room-head { margin: 0 -8px 6px; padding: 16px 8px 10px; border-radius: var(--border-radius-md) var(--border-radius-md) 0 0; }
+.room:where(:scope).folded > .room-head { margin-bottom: 0; padding-bottom: 14px; border-radius: var(--border-radius-md); }
+.room:where(:scope) { border-radius: var(--border-radius-md); }
+:is(.plist.callbox, .who, .away li) { border-radius: var(--border-radius-sm); }
+:is(.room-menu, .side-foot)[popover] { border-radius: var(--border-radius-md); box-shadow: var(--shadow-lg); }
+:is(.room-menu button.link, .side-foot > button.link) { border-radius: var(--border-radius-sm); }
+button.room-leave { border-radius: var(--border-radius-sm); font-weight: 500; color: var(--color-text-on-error); }
+.room-title { font-family: var(--font-family-display); font-size: 19px; font-weight: 600; text-transform: none; letter-spacing: .01em; }
+.profile-name strong { font-family: var(--font-family-display); font-size: 21px; font-weight: 600; }
 /* ghost buttons: an outline until switched on, then a fill of ink */
-:where(:root[data-theme="ds-ma"]) button { background: transparent; border-radius: var(--border-radius-sm); font-weight: 400; letter-spacing: .02em; padding: 8px 14px; }
-:where(:root[data-theme="ds-ma"]) button:where(:hover:not(:disabled, .on, .join, .leave, .unblock)) { border-color: var(--dim); }
-:where(:root[data-theme="ds-ma"]) button.join, :where(:root[data-theme="ds-ma"]) button.leave { font-weight: 500; }
-:where(:root[data-theme="ds-ma"]) input, :where(:root[data-theme="ds-ma"]) select.picker, :where(:root[data-theme="ds-ma"]) dialog.report textarea { border-radius: var(--border-radius-sm); background: var(--panel2); }
-:where(:root[data-theme="ds-ma"]) input:focus, :where(:root[data-theme="ds-ma"]) textarea:focus { border-color: var(--dim); }
-:where(:root[data-theme="ds-ma"]) .avatar { background: var(--panel2); box-shadow: inset 0 0 0 1px var(--line); font-weight: 400; }
-:where(:root[data-theme="ds-ma"]) button.avatar { font-weight: 400; }
-:where(:root[data-theme="ds-ma"]) .avatar.speaking { box-shadow: 0 0 0 1px var(--panel), 0 0 0 3px var(--color-ring); }
-:where(:root[data-theme="ds-ma"]) .plist { gap: 10px; }
-:where(:root[data-theme="ds-ma"]) .plist em { border-radius: var(--border-radius-sm); }
-:where(:root[data-theme="ds-ma"]) .unread, :where(:root[data-theme="ds-ma"]) .new { font-weight: 500; }
+button { background: transparent; border-radius: var(--border-radius-sm); font-weight: 400; letter-spacing: .02em; padding: 8px 14px; }
+button:where(:hover:not(:disabled, .on, .join, .leave, .unblock)) { border-color: var(--dim); }
+button.join, button.leave { font-weight: 500; }
+input, select.picker, dialog.report textarea { border-radius: var(--border-radius-sm); background: var(--panel2); }
+input:focus, textarea:focus { border-color: var(--dim); }
+.avatar { background: var(--panel2); box-shadow: inset 0 0 0 1px var(--line); font-weight: 400; }
+button.avatar { font-weight: 400; }
+.avatar.speaking { box-shadow: 0 0 0 1px var(--panel), 0 0 0 3px var(--color-ring); }
+.plist { gap: 10px; }
+.plist em { border-radius: var(--border-radius-sm); }
+.unread, .new { font-weight: 500; }
 /* breathing room around the conversation */
-:where(:root[data-theme="ds-ma"]) .side { padding: 0 20px 20px; }
-:where(:root[data-theme="ds-ma"]) .chat { padding: 20px 32px 0; }
-:where(:root[data-theme="ds-ma"]) .chat-input { padding: 10px 32px 22px; gap: 10px; }
-:where(:root[data-theme="ds-ma"]) .chat-log { gap: 16px; }
-:where(:root[data-theme="ds-ma"]) .msg-text { line-height: 1.75; }
-:where(:root[data-theme="ds-ma"]) .msg-cont { margin-top: -12px; }
-:where(:root[data-theme="ds-ma"]) .msg-from { font-family: var(--font-family-display); font-size: 17px; font-weight: 600; }
-:where(:root[data-theme="ds-ma"]) .msg-at { margin-left: 10px; }
-:where(:root[data-theme="ds-ma"]) .shares { margin: 20px 32px 0; gap: 16px; }
-:where(:root[data-theme="ds-ma"]) .share { border-radius: var(--border-radius-sm); }
-:where(:root[data-theme="ds-ma"]) .share-head { background: transparent; border-bottom: 1px solid var(--line); }
-:where(:root[data-theme="ds-ma"]) .share-bar { background: transparent; border-top: 1px solid var(--line); }
-:where(:root[data-theme="ds-ma"]) .share.share-fs .share-head, :where(:root[data-theme="ds-ma"]) .share.share-fs .share-bar { border: 0; }
-:where(:root[data-theme="ds-ma"]) .panel { border-radius: var(--border-radius-sm); background: transparent; padding: 14px; gap: 10px; }
-:where(:root[data-theme="ds-ma"]) .profile[popover], :where(:root[data-theme="ds-ma"]) .emoji-picker[popover],
-:where(:root[data-theme="ds-ma"]) dialog.report, :where(:root[data-theme="ds-ma"]) dialog.about { border-radius: var(--border-radius-md); }
-:where(:root[data-theme="ds-ma"]) .profile[popover] { padding: 20px; }
-:where(:root[data-theme="ds-ma"]) .banner { border-radius: 0 0 var(--border-radius-md) var(--border-radius-md); }
-:where(:root[data-theme="ds-ma"]) .warn { border-radius: var(--border-radius-sm); }
-:where(:root[data-theme="ds-ma"]) .chat-new { border-radius: var(--border-radius-md); }
-:where(:root[data-theme="ds-ma"]) .consent .bubble { border-radius: 4px; border: 1px solid var(--line); }
+.side { padding: 0 20px 20px; }
+.chat:where(:scope, :scope *) { padding: 20px 32px 0; }
+.chat-input:where(:scope, :scope *) { padding: 10px 32px 22px; gap: 10px; }
+.chat-log { gap: 16px; }
+.msg-text { line-height: 1.75; }
+.msg-cont { margin-top: -12px; }
+.msg-from { font-family: var(--font-family-display); font-size: 17px; font-weight: 600; }
+.msg-at { margin-left: 10px; }
+.shares { margin: 20px 32px 0; gap: 16px; }
+.share { border-radius: var(--border-radius-sm); }
+.share-head { background: transparent; border-bottom: 1px solid var(--line); }
+.share-bar { background: transparent; border-top: 1px solid var(--line); }
+.share.share-fs .share-head, .share.share-fs .share-bar { border: 0; }
+.panel { border-radius: var(--border-radius-sm); background: transparent; padding: 14px; gap: 10px; }
+.profile[popover], .emoji-picker[popover],
+dialog.report, dialog.about { border-radius: var(--border-radius-md); }
+.profile[popover] { padding: 20px; }
+.banner { border-radius: 0 0 var(--border-radius-md) var(--border-radius-md); }
+.warn { border-radius: var(--border-radius-sm); }
+.chat-new { border-radius: var(--border-radius-md); }
+.consent .bubble { border-radius: 4px; border: 1px solid var(--line); }
 /* the phone keeps the app's own tighter edges and its bottom inset; the space goes into line height instead */
 /* the gear button is narrow; the theme's wider padding would push the cog off centre */
-:where(:root[data-theme="ds-ma"]) .actions .gear { padding-inline: 0; }
+.actions .gear { padding-inline: 0; }
+
+}
 @media (max-width: 700px) {
-  :where(:root[data-theme="ds-ma"]) .side { padding: 0 16px 16px; }
-  :where(:root[data-theme="ds-ma"]) .chat { padding: 16px 16px 8px; }
-  :where(:root[data-theme="ds-ma"]) .chat-input { padding: 8px 16px calc(8px + env(safe-area-inset-bottom)); }
-  :where(:root[data-theme="ds-ma"]) .shares { margin: 16px 16px 0; }
+@scope ([data-theme="ds-ma"]) to ([data-theme]) {
+
+  .side { padding: 0 16px 16px; }
+  .chat:where(:scope, :scope *) { padding: 16px 16px 8px; }
+  .chat-input:where(:scope, :scope *) { padding: 8px 16px calc(8px + env(safe-area-inset-bottom)); }
+  .shares { margin: 16px 16px 0; }
+
+}
+
 }
 /* slow fades, opacity and colour only, never position */
 @media (prefers-reduced-motion: no-preference) {
-  :where(:root[data-theme="ds-ma"]) button, :where(:root[data-theme="ds-ma"]) input { transition: border-color var(--duration-slow) var(--easing-default), background-color var(--duration-slow) var(--easing-default), color var(--duration-slow) var(--easing-default); }
-  :where(:root[data-theme="ds-ma"]) .msg { animation: ds-ma-ink .6s var(--easing-default) both; }
+@scope ([data-theme="ds-ma"]) to ([data-theme]) {
+
+  button, input { transition: border-color var(--duration-slow) var(--easing-default), background-color var(--duration-slow) var(--easing-default), color var(--duration-slow) var(--easing-default); }
+  .msg { animation: ds-ma-ink .6s var(--easing-default) both; }
   /* both animations at once, so the fade-in does not restart when the line stops being pending */
-  :where(:root[data-theme="ds-ma"]) .msg-pending { animation: ds-ma-ink .6s var(--easing-default) both, msg-pending 0s 1s forwards; }
+  .msg-pending { animation: ds-ma-ink .6s var(--easing-default) both, msg-pending 0s 1s forwards; }
+
 }
-@keyframes ds-ma-ink { from { opacity: 0; } }
+
+}
+@keyframes ds-ma-ink { from { opacity: 0; } }@scope ([data-theme="ds-ma"]) to ([data-theme]) {
+
 
 /* Light falls on the paper from the top right corner, and through it the soft shadow of a bamboo sprig that sways a
    little, as if outside a shoji. Moonlight in the dark palette. It lies in the empty corner beside the conversation,
    sized to the screen so a wide one keeps its share of it; the sprig moves by about a degree, slowly. */
-:where(:root[data-theme="ds-ma"]) body::before { content: ''; position: fixed; top: 0; right: 0; z-index: -1; pointer-events: none;
+body::before { content: ''; position: fixed; top: 0; right: 0; z-index: -1; pointer-events: none;
   width: clamp(260px, 36vw, 960px); aspect-ratio: 1; opacity: var(--ma-shade-opacity); transform-origin: 100% 0;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cdefs%3E%3Cfilter id='s'%3E%3CfeGaussianBlur stdDeviation='1.4'/%3E%3C/filter%3E%3Cpath id='l' d='M0 0C10-5 34-5 48 0C34 4 10 4 0 0Z'/%3E%3C/defs%3E%3Cg fill='%23100e0b' filter='url(%23s)'%3E%3Cpath d='M201-2C176 26 150 58 116 94' fill='none' stroke='%23100e0b' stroke-width='1.6'/%3E%3Cuse href='%23l' transform='translate(178 24) rotate(150)'/%3E%3Cuse href='%23l' transform='translate(178 24) rotate(118)'/%3E%3Cuse href='%23l' transform='translate(151 57) rotate(163)'/%3E%3Cuse href='%23l' transform='translate(151 57) rotate(128)'/%3E%3Cuse href='%23l' transform='translate(151 57) rotate(97)'/%3E%3Cuse href='%23l' transform='translate(117 93) rotate(143)'/%3E%3Cuse href='%23l' transform='translate(117 93) rotate(176)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat;
   animation: ds-ma-sway 14s ease-in-out infinite alternate; animation-play-state: var(--ambient-play); }
-@keyframes ds-ma-sway { from { transform: rotate(.6deg); } to { transform: rotate(1.8deg); } }
+
+}
+@keyframes ds-ma-sway { from { transform: rotate(.6deg); } to { transform: rotate(1.8deg); } }@scope ([data-theme="ds-ma"]) to ([data-theme]) {
+
 /* Below the sprig, the light that gets through its leaves lies on the paper in a few soft patches (komorebi) that
    brighten and fade as the wind moves; now and then a leaf comes loose, and its shadow drifts down the empty side of
    the room, turning, and fades. Fades over position, as Ma asks: everything moves slowly and nothing comes near the
    messages on a wide screen. A phone keeps one leaf. */
-:root[data-theme="ds-ma"] .ambient { display: block; }
-:where(:root[data-theme="ds-ma"]) .ambient > i:nth-child(-n+5) { width: clamp(64px, 8.5vw, 230px); aspect-ratio: 1.5; border-radius: 50%;
+.ambient:is([data-theme="ds-ma"][data-theme], [data-theme="ds-ma"][data-theme] *) { display: block; }
+.ambient > i:nth-child(-n+5) { width: clamp(64px, 8.5vw, 230px); aspect-ratio: 1.5; border-radius: 50%;
   background: radial-gradient(closest-side, var(--ma-fleck), transparent); opacity: .2;
   animation: ds-ma-fleck 9s ease-in-out infinite alternate; animation-play-state: var(--ambient-play); }
-:where(:root[data-theme="ds-ma"]) .ambient > i:nth-child(1) { right: 9vw; top: 31vh; animation-duration: 9s; animation-delay: -4s; }
-:where(:root[data-theme="ds-ma"]) .ambient > i:nth-child(2) { right: 20vw; top: 17vh; animation-duration: 12s; animation-delay: -9s; }
-:where(:root[data-theme="ds-ma"]) .ambient > i:nth-child(3) { right: 3vw; top: 47vh; animation-duration: 10.5s; animation-delay: -2s; }
-:where(:root[data-theme="ds-ma"]) .ambient > i:nth-child(4) { right: 26vw; top: 38vh; animation-duration: 13s; animation-delay: -11s; }
-:where(:root[data-theme="ds-ma"]) .ambient > i:nth-child(5) { right: 14vw; top: 57vh; animation-duration: 11s; animation-delay: -6s; }
-@keyframes ds-ma-fleck { from { opacity: .15; transform: scale(.9); } to { opacity: .9; transform: scale(1.06); } }
-:where(:root[data-theme="ds-ma"]) .ambient > i:is(:nth-child(6), :nth-child(7), :nth-child(8), :nth-child(9)) { width: clamp(40px, 4.6vw, 124px); aspect-ratio: 68 / 22; opacity: 0;
+.ambient > i:nth-child(1) { right: 9vw; top: 31vh; animation-duration: 9s; animation-delay: -4s; }
+.ambient > i:nth-child(2) { right: 20vw; top: 17vh; animation-duration: 12s; animation-delay: -9s; }
+.ambient > i:nth-child(3) { right: 3vw; top: 47vh; animation-duration: 10.5s; animation-delay: -2s; }
+.ambient > i:nth-child(4) { right: 26vw; top: 38vh; animation-duration: 13s; animation-delay: -11s; }
+.ambient > i:nth-child(5) { right: 14vw; top: 57vh; animation-duration: 11s; animation-delay: -6s; }
+
+}
+@keyframes ds-ma-fleck { from { opacity: .15; transform: scale(.9); } to { opacity: .9; transform: scale(1.06); } }@scope ([data-theme="ds-ma"]) to ([data-theme]) {
+
+.ambient > i:is(:nth-child(6), :nth-child(7), :nth-child(8), :nth-child(9)) { width: clamp(40px, 4.6vw, 124px); aspect-ratio: 68 / 22; opacity: 0;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 68 22'%3E%3Cfilter id='s' x='-20%25' y='-80%25' width='140%25' height='260%25'%3E%3CfeGaussianBlur stdDeviation='1.3'/%3E%3C/filter%3E%3Cpath d='M3 7C15 1 40 1 57 7C40 12 15 12 3 7Z' fill='%23100e0b' filter='url(%23s)'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
   animation: ds-ma-fall 44s ease-in-out infinite; animation-play-state: var(--ambient-play); }
-:where(:root[data-theme="ds-ma"]) .ambient > i:nth-child(6) { right: 12vw; top: 12vh; --dx: -12vw; --dy: 58vh; --r: 150deg; animation-duration: 44s; animation-delay: -6s; }
-:where(:root[data-theme="ds-ma"]) .ambient > i:nth-child(7) { right: 22vw; top: 8vh; --dx: -9vw; --dy: 52vh; --r: 120deg; animation-duration: 51s; animation-delay: -31s; }
-:where(:root[data-theme="ds-ma"]) .ambient > i:nth-child(8) { right: 5vw; top: 20vh; --dx: -14vw; --dy: 62vh; --r: 165deg; animation-duration: 47s; animation-delay: -19s; }
-:where(:root[data-theme="ds-ma"]) .ambient > i:nth-child(9) { right: 17vw; top: 24vh; --dx: -10vw; --dy: 50vh; --r: 135deg; animation-duration: 57s; animation-delay: -44s; }
+.ambient > i:nth-child(6) { right: 12vw; top: 12vh; --dx: -12vw; --dy: 58vh; --r: 150deg; animation-duration: 44s; animation-delay: -6s; }
+.ambient > i:nth-child(7) { right: 22vw; top: 8vh; --dx: -9vw; --dy: 52vh; --r: 120deg; animation-duration: 51s; animation-delay: -31s; }
+.ambient > i:nth-child(8) { right: 5vw; top: 20vh; --dx: -14vw; --dy: 62vh; --r: 165deg; animation-duration: 47s; animation-delay: -19s; }
+.ambient > i:nth-child(9) { right: 17vw; top: 24vh; --dx: -10vw; --dy: 50vh; --r: 135deg; animation-duration: 57s; animation-delay: -44s; }
+
+}
 @keyframes ds-ma-fall {
   0% { opacity: 0; transform: translate(0, 0) rotate(var(--r)); }
   7% { opacity: var(--ma-shade-opacity); }
@@ -209,6 +249,36 @@
   56%, 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(calc(var(--r) + 6deg)); }
 }
 @media (max-width: 700px) {
-  :where(:root[data-theme="ds-ma"]) .ambient > i:not(:nth-child(6)) { display: none; }
-  :where(:root[data-theme="ds-ma"]) .ambient > i:nth-child(6) { right: 8vw; top: 50vh; width: 56px; --dx: -18vw; --dy: 36vh; }
+@scope ([data-theme="ds-ma"]) to ([data-theme]) {
+
+  .ambient > i:not(:nth-child(6)) { display: none; }
+  .ambient > i:nth-child(6) { right: 8vw; top: 50vh; width: 56px; --dx: -18vw; --dy: 36vh; }
+
+}
+
+}
+@scope ([data-theme="ds-ma"]) to ([data-theme]) {
+
+/* A room's box, wherever it sits, is a sheet of the same washi: its grain, the light from the top right corner, and in
+   that corner the bamboo sprig's shadow, small, still and cut by the box's edge, so a folded box shows its top leaves.
+   The top room open on screen, at rest, stands on the bare sidebar (styles.css), so it gets no sheet. The chat of a room in this
+   look, inside a page of another, is the page: grain, light and the sprig's shadow at its top right, still; under the
+   composer only the grain. */
+:scope[data-theme="ds-ma"] { --ma-glow: rgba(255, 252, 245, .6);
+  --ma-sprig: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cdefs%3E%3Cfilter id='s'%3E%3CfeGaussianBlur stdDeviation='1.4'/%3E%3C/filter%3E%3Cpath id='l' d='M0 0C10-5 34-5 48 0C34 4 10 4 0 0Z'/%3E%3C/defs%3E%3Cg fill='%23100e0b' filter='url(%23s)' opacity='.08'%3E%3Cpath d='M201-2C176 26 150 58 116 94' fill='none' stroke='%23100e0b' stroke-width='1.6'/%3E%3Cuse href='%23l' transform='translate(178 24) rotate(150)'/%3E%3Cuse href='%23l' transform='translate(178 24) rotate(118)'/%3E%3Cuse href='%23l' transform='translate(151 57) rotate(163)'/%3E%3Cuse href='%23l' transform='translate(151 57) rotate(128)'/%3E%3Cuse href='%23l' transform='translate(151 57) rotate(97)'/%3E%3Cuse href='%23l' transform='translate(117 93) rotate(143)'/%3E%3Cuse href='%23l' transform='translate(117 93) rotate(176)'/%3E%3C/g%3E%3C/svg%3E"); }
+:scope.room {
+  --room-ground: var(--ma-sprig) right -14px top -18px / 132px 132px no-repeat,
+    radial-gradient(circle at 100% 0, var(--ma-glow), transparent 240px), var(--texture-grain), var(--panel); }
+:scope.chat { --chat-ground: var(--ma-sprig) right top / clamp(260px, 36vw, 960px) no-repeat, var(--texture-grain), var(--ma-light), var(--bg); }
+:scope.chat-input { --chat-ground: var(--texture-grain), var(--bg); }
+
+}
+@media (prefers-color-scheme: dark) {
+@scope ([data-theme="ds-ma"]) to ([data-theme]) {
+
+  :scope[data-theme="ds-ma"] { --ma-glow: rgba(226, 221, 210, .045);
+    --ma-sprig: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cdefs%3E%3Cfilter id='s'%3E%3CfeGaussianBlur stdDeviation='1.4'/%3E%3C/filter%3E%3Cpath id='l' d='M0 0C10-5 34-5 48 0C34 4 10 4 0 0Z'/%3E%3C/defs%3E%3Cg fill='%23100e0b' filter='url(%23s)' opacity='.8'%3E%3Cpath d='M201-2C176 26 150 58 116 94' fill='none' stroke='%23100e0b' stroke-width='1.6'/%3E%3Cuse href='%23l' transform='translate(178 24) rotate(150)'/%3E%3Cuse href='%23l' transform='translate(178 24) rotate(118)'/%3E%3Cuse href='%23l' transform='translate(151 57) rotate(163)'/%3E%3Cuse href='%23l' transform='translate(151 57) rotate(128)'/%3E%3Cuse href='%23l' transform='translate(151 57) rotate(97)'/%3E%3Cuse href='%23l' transform='translate(117 93) rotate(143)'/%3E%3Cuse href='%23l' transform='translate(117 93) rotate(176)'/%3E%3C/g%3E%3C/svg%3E"); }
+
+}
+
 }

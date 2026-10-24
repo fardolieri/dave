@@ -10,154 +10,209 @@
 @font-face { font-family: "imp-BarlowSC"; font-style: normal; font-weight: 600; font-display: swap; src: url(./fonts/barlowsemicondensed-wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfp66_CWslu50.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 @font-face { font-family: "imp-BarlowSC"; font-style: normal; font-weight: 600; font-display: swap; src: url(./fonts/barlowsemicondensed-wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfp66_B2sl.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 @font-face { font-family: "imp-BarlowSC"; font-style: normal; font-weight: 700; font-display: swap; src: url(./fonts/barlowsemicondensed-wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfw6-_CWslu50.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
-@font-face { font-family: "imp-BarlowSC"; font-style: normal; font-weight: 700; font-display: swap; src: url(./fonts/barlowsemicondensed-wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfw6-_B2sl.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "imp-BarlowSC"; font-style: normal; font-weight: 700; font-display: swap; src: url(./fonts/barlowsemicondensed-wlpigxjLBV1hqnzfr-F8sEYMB0Yybp0mudRfw6-_B2sl.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }@scope ([data-theme="imp-freibad"]) to ([data-theme]) {
 
-:root[data-theme="imp-freibad"] {
+
+:scope[data-theme="imp-freibad"] {
   --bg: #f2f8f9; --panel: #ffffff; --panel2: #e3f0f2; --fg: #0d2b33; --dim: #45656d; --line: #c3dade;
   --ok: #157a40; --warn: #8a5a00; --bad: #b3202f; --acc: #006d86;
   --edge: #5f8d97; --sign: #ffd23f; --rope: #e63946; --water: #0a6578;
   font-family: "imp-Barlow", "Segoe UI", system-ui, sans-serif; color-scheme: light;
   accent-color: var(--acc); scrollbar-color: #9cc3cb transparent;
 }
-:where(:root[data-theme="imp-freibad"]) body { font-size: 15px; line-height: 1.4; }
-:where(:root[data-theme="imp-freibad"]) ::selection { background: #aee6f0; color: #0d2b33; }
-:where(:root[data-theme="imp-freibad"]) :is(input, textarea) { caret-color: var(--acc); }
-:where(:root[data-theme="imp-freibad"]) :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
-:where(:root[data-theme="imp-freibad"]) :is(h1, h2, .room-title, dialog h3) { font-family: "imp-BarlowSC", "imp-Barlow", system-ui, sans-serif; font-weight: 700; }
-:where(:root[data-theme="imp-freibad"]) h1 { font-size: 30px; text-transform: uppercase; letter-spacing: .04em; }
-:where(:root[data-theme="imp-freibad"]) h2,
-:where(:root[data-theme="imp-freibad"]) .room-title { font-size: 14px; letter-spacing: .07em; }
+body { font-size: 15px; line-height: 1.4; }
+:scope:is([data-apart], .chat, .chat-input) { font-size: 15px; line-height: 1.4; } /* the same type on a box or chat of this look inside another page */
+::selection { background: #aee6f0; color: #0d2b33; }
+:is(input, textarea) { caret-color: var(--acc); }
+:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+:is(h1, h2, .room-title, dialog h3) { font-family: "imp-BarlowSC", "imp-Barlow", system-ui, sans-serif; font-weight: 700; }
+h1 { font-size: 30px; text-transform: uppercase; letter-spacing: .04em; }
+h2,
+.room-title { font-size: 14px; letter-spacing: .07em; }
 
 /* the water: the sidebar is pool blue and everything on it reads in white; the signs stay yellow */
-:where(:root[data-theme="imp-freibad"]) .side { --panel: var(--water); --panel2: #08525f; --fg: #ffffff; --dim: #c4e9f0; --line: #2f8396; --edge: #8fd0dd;
+.side { --panel: var(--water); --panel2: #08525f; --fg: #ffffff; --dim: #c4e9f0; --line: #2f8396; --edge: #8fd0dd;
   --acc: #ffffff; --ok: #9df5bf; --warn: #ffd3a1; --bad: #ffd0d0; color: var(--fg); border-right: 0;
   color-scheme: dark; accent-color: var(--acc); }
+/* A room's box is the root of its own look wherever it sits, and it always sits in the sidebar: it is the water too, so
+   it carries the water's palette itself (its own, set again on it as a root, would give it the deck's dark ink). It is
+   named as the root (`:scope`), and what in it hangs from the sidebar names the sidebar outside the root. */
+:scope[data-theme="imp-freibad"].room { --panel: var(--water); --panel2: #08525f; --fg: #ffffff; --dim: #c4e9f0; --line: #2f8396; --edge: #8fd0dd;
+  --acc: #ffffff; --ok: #9df5bf; --warn: #ffd3a1; --bad: #ffd0d0; color: var(--fg); color-scheme: dark; accent-color: var(--acc); }
 
 /* Lane ropes: each room is a lane, the rope runs across its top, about as far from the list above as from the lane's name.
    The rope is only the lane's image: the water under it still shades as any room's box does, and the lane of my call,
-   folded, still turns green. A folded lane's name sits as far from its bottom as from the rope. */
-:where(:root[data-theme="imp-freibad"]) .room { margin-top: 12px; padding-top: 5px; border-radius: 4px;
-  background-image: repeating-linear-gradient(90deg, var(--rope) 0 12px, #ffffff 12px 24px); background-position: top; background-size: 100% 5px; background-repeat: no-repeat; }
-:where(:root[data-theme="imp-freibad"]) .room > .room-head { margin-top: 0; padding-top: 10px; }
-:where(:root[data-theme="imp-freibad"]) .room.folded > .room-head { padding-bottom: 10px; }
+   folded, still turns green. A folded lane's name sits as far from its bottom as from the rope. The rope is the top
+   layer over the base's two (the shade over the lane's own water, `--room-ground`, below). */
+.room:where(:scope) { margin-top: 12px; padding-top: 5px; border-radius: 4px;
+  background: repeating-linear-gradient(90deg, var(--rope) 0 12px, #ffffff 12px 24px) top / 100% 5px no-repeat,
+    linear-gradient(var(--room-shade, transparent), var(--room-shade, transparent)), var(--room-ground, transparent); }
+.room:where(:scope) > .room-head { margin-top: 0; padding-top: 10px; }
+.room:where(:scope).folded > .room-head { padding-bottom: 10px; }
 /* the small Leave on that lane is the red of Leave, white on it: the water's own red is pale */
-:where(:root[data-theme="imp-freibad"]) button.room-leave { background: #c8202f; color: #fff; border-radius: 4px; }
+button.room-leave { background: #c8202f; color: #fff; border-radius: 4px; }
 
 /* controls: tiles with small radii */
-:where(:root[data-theme="imp-freibad"]) button { font: inherit; font-weight: 500; border-radius: 4px; border-color: var(--edge); transition: background-color .15s ease-out; }
-:where(:root[data-theme="imp-freibad"]) button:where(:hover:not(:disabled)) { background-color: #d3e9ed; }
-:where(:root[data-theme="imp-freibad"] .side) button:where(:hover:not(:disabled)) { background-color: #0e7389; }
-:where(:root[data-theme="imp-freibad"]) input,
-:where(:root[data-theme="imp-freibad"]) textarea,
-:where(:root[data-theme="imp-freibad"]) select.picker { border-color: var(--edge); border-radius: 4px; }
-:where(:root[data-theme="imp-freibad"]) .chat-field > input { background: #fff; }
-:where(:root[data-theme="imp-freibad"]) button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #fff; }
-:where(:root[data-theme="imp-freibad"]) .side button.on:not(.link) { background: var(--sign); border-color: var(--sign); color: #111; }
-:where(:root[data-theme="imp-freibad"]) button.join { background: #5fe39a; color: #062b17; font-weight: 600; }
-:where(:root[data-theme="imp-freibad"]) button.leave { background: #c8202f; color: #fff; font-weight: 600; }
-:where(:root[data-theme="imp-freibad"]) button.unblock { background: var(--sign); color: #111; }
-:where(:root[data-theme="imp-freibad"]) button.link { text-underline-offset: 3px; }
-:where(:root[data-theme="imp-freibad"]) button.link:hover { color: var(--fg); }
-:where(:root[data-theme="imp-freibad"]) select.picker option:checked { background: #006d86; color: #fff; }
+button { font: inherit; font-weight: 500; border-radius: 4px; border-color: var(--edge); transition: background-color .15s ease-out; }
+button:where(:hover:not(:disabled)) { background-color: #d3e9ed; }
+:where(.side) button:where(:scope *):where(:hover:not(:disabled)) { background-color: #0e7389; }
+input,
+textarea,
+select.picker { border-color: var(--edge); border-radius: 4px; }
+.chat-field > input { background: #fff; }
+button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #fff; }
+.side button.on:not(.link):where(:scope *) { background: var(--sign); border-color: var(--sign); color: #111; }
+button.join { background: #5fe39a; color: #062b17; font-weight: 600; }
+button.leave { background: #c8202f; color: #fff; font-weight: 600; }
+button.unblock { background: var(--sign); color: #111; }
+button.link { text-underline-offset: 3px; }
+button.link:hover { color: var(--fg); }
+select.picker option:checked { background: #006d86; color: #fff; }
 
 /* signage */
-:where(:root[data-theme="imp-freibad"]) .unread { background: var(--sign); color: #111; border-radius: 3px; }
-:where(:root[data-theme="imp-freibad"]) .new { background: var(--sign); color: #111; border-radius: 3px; }
-:where(:root[data-theme="imp-freibad"]) .warn { background: #fff4cc; color: #6b4500; border-radius: 4px; }
-:where(:root[data-theme="imp-freibad"]) .banner { border-radius: 0 0 6px 6px; box-shadow: 0 4px 12px rgba(13,43,51,.18); }
-:where(:root[data-theme="imp-freibad"]) .banner-warn { background: #fff4cc; color: #6b4500; }
-:where(:root[data-theme="imp-freibad"]) .banner-bad { background: #fde8ea; color: #a3162b; }
-:where(:root[data-theme="imp-freibad"]) .update { background: #08525f; color: #fff; }
-:where(:root[data-theme="imp-freibad"]) .update button { background: var(--sign); color: #111; }
-:where(:root[data-theme="imp-freibad"]) .chat-new { background: #fff; border-color: var(--edge); color: var(--fg); }
+.unread { background: var(--sign); color: #111; border-radius: 3px; }
+.new { background: var(--sign); color: #111; border-radius: 3px; }
+.warn { background: #fff4cc; color: #6b4500; border-radius: 4px; }
+.banner { border-radius: 0 0 6px 6px; box-shadow: 0 4px 12px rgba(13,43,51,.18); }
+.banner-warn { background: #fff4cc; color: #6b4500; }
+.banner-bad { background: #fde8ea; color: #a3162b; }
+.update { background: #08525f; color: #fff; }
+.update button { background: var(--sign); color: #111; }
+.chat-new { background: #fff; border-color: var(--edge); color: var(--fg); }
 
 /* people are tiles */
-:where(:root[data-theme="imp-freibad"]) .avatar { border-radius: 8px; }
+.avatar { border-radius: 8px; }
 /* the button of a picture too: the base gives it the water's white text, which barely showed on the pale tile */
-:where(:root[data-theme="imp-freibad"]) :is(.avatar, button.avatar) { background: #e3f0f2; color: #0d2b33; }
-:where(:root[data-theme="imp-freibad"]) .avatar.big { border-radius: 14px; }
-:where(:root[data-theme="imp-freibad"]) .side .avatar.speaking { box-shadow: 0 0 0 3px var(--ok); }
-:where(:root[data-theme="imp-freibad"]) .plist em { border-color: var(--line); color: var(--dim); }
-:where(:root[data-theme="imp-freibad"]) .panel { background: #085a6a; border-color: var(--line); border-radius: 4px; }
-:where(:root[data-theme="imp-freibad"]) .panel .vgate .vmeter { background: #2f8396; }
-:where(:root[data-theme="imp-freibad"]) .msg-from { font-weight: 600; }
-:where(:root[data-theme="imp-freibad"]) .msg-at { font-variant-numeric: tabular-nums; }
+:is(.avatar, button.avatar) { background: #e3f0f2; color: #0d2b33; }
+.avatar.big { border-radius: 14px; }
+.side .avatar.speaking:where(:scope *) { box-shadow: 0 0 0 3px var(--ok); }
+.plist em { border-color: var(--line); color: var(--dim); }
+.panel { background: #085a6a; border-color: var(--line); border-radius: 4px; }
+.panel .vgate .vmeter { background: #2f8396; }
+.msg-from { font-weight: 600; }
+.msg-at { font-variant-numeric: tabular-nums; }
 
 /* shares lie on the deck */
-:where(:root[data-theme="imp-freibad"]) .share { background: #fff; border-color: var(--line); border-radius: 6px; }
-:where(:root[data-theme="imp-freibad"]) .share-live { border-color: var(--acc); }
-:where(:root[data-theme="imp-freibad"]) .share-head { background: #e3f0f2; }
-:where(:root[data-theme="imp-freibad"]) .share-bar { background: #e3f0f2; color: var(--dim); font-family: inherit; font-variant-numeric: tabular-nums; }
+.share { background: #fff; border-color: var(--line); border-radius: 6px; }
+.share-live { border-color: var(--acc); }
+.share-head { background: #e3f0f2; }
+.share-bar { background: #e3f0f2; color: var(--dim); font-family: inherit; font-variant-numeric: tabular-nums; }
 
 /* popovers and dialogs */
-:where(:root[data-theme="imp-freibad"]) .profile[popover],
-:where(:root[data-theme="imp-freibad"]) .emoji-picker[popover] { border-color: var(--line); border-radius: 8px; box-shadow: 0 10px 28px rgba(13,43,51,.22); }
-:where(:root[data-theme="imp-freibad"]) dialog.report,
-:where(:root[data-theme="imp-freibad"]) dialog.about { border-color: var(--line); border-radius: 8px; }
-:where(:root[data-theme="imp-freibad"]) dialog.report::backdrop,
-:where(:root[data-theme="imp-freibad"]) dialog.about::backdrop { background: rgba(8,82,95,.45); }
-:where(:root[data-theme="imp-freibad"]) dialog.report .field select { border-color: var(--edge); }
-:where(:root[data-theme="imp-freibad"]) dialog.about details.change p { border-left: 1px solid var(--edge); }
-:where(:root[data-theme="imp-freibad"]) .consent { --bubble: #08525f; --bubble-fg: #fff; --bubble-dim: #c4e9f0; --bubble-link: #ffd23f; }
-:where(:root[data-theme="imp-freibad"]) .consent .bubble { box-shadow: 0 8px 22px rgba(13,43,51,.28); }
+.profile[popover],
+.emoji-picker[popover] { border-color: var(--line); border-radius: 8px; box-shadow: 0 10px 28px rgba(13,43,51,.22); }
+dialog.report,
+dialog.about { border-color: var(--line); border-radius: 8px; }
+dialog.report::backdrop,
+dialog.about::backdrop { background: rgba(8,82,95,.45); }
+dialog.report .field select { border-color: var(--edge); }
+dialog.about details.change p { border-left: 1px solid var(--edge); }
+.consent { --bubble: #08525f; --bubble-fg: #fff; --bubble-dim: #c4e9f0; --bubble-link: #ffd23f; }
+.consent .bubble { box-shadow: 0 8px 22px rgba(13,43,51,.28); }
 
+
+}
 @media (max-width: 700px) {
-  :where(:root[data-theme="imp-freibad"]) .side { border-bottom: 0; }
-  :where(:root[data-theme="imp-freibad"]) .chat-input { background: var(--bg); border-top: 3px solid var(--edge); }
+@scope ([data-theme="imp-freibad"]) to ([data-theme]) {
+
+  .side { border-bottom: 0; }
+  .chat-input:where(:scope, :scope *) { background: var(--bg); border-top: 3px solid var(--edge); }
+
+}
+
 }
 @media (prefers-reduced-motion: reduce) {
-  :where(:root[data-theme="imp-freibad"]) button { transition: none; }
+@scope ([data-theme="imp-freibad"]) to ([data-theme]) {
+
+  button { transition: none; }
+
 }
 
-/* the mic test fills its button while recording: a fill the label stays readable on */
-:where(:root[data-theme="imp-freibad"]) .panel .mictest button.recording { background-image: linear-gradient(#c8202f, #c8202f); border-color: var(--sign); }
+}@scope ([data-theme="imp-freibad"]) to ([data-theme]) {
 
-:where(:root[data-theme="imp-freibad"]) .side select.picker option:checked { background: var(--sign); color: #111; }
-:where(:root[data-theme="imp-freibad"]) .update button:hover { background: #ffe27a; }
+
+/* the mic test fills its button while recording: a fill the label stays readable on */
+.panel .mictest button.recording { background-image: linear-gradient(#c8202f, #c8202f); border-color: var(--sign); }
+
+.side select.picker option:checked:where(:scope *) { background: var(--sign); color: #111; }
+.update button:hover { background: #ffe27a; }
 /* a share in fullscreen sits on black whatever the page: its overlays read in white */
-:where(:root[data-theme="imp-freibad"]) .share.share-fs { --panel2: #2a2f3a; --line: #4a5160; --edge: #8a93a6; --acc: #ffffff; --fg: #ffffff; --dim: #c4e9f0; --ok: #9df5bf; --warn: #ffd3a1; --bad: #ffd0d0; color: var(--fg); }
-:where(:root[data-theme="imp-freibad"] .share.share-fs) button:where(:hover:not(:disabled)) { background-color: #3a404c; }
+.share.share-fs { --panel2: #2a2f3a; --line: #4a5160; --edge: #8a93a6; --acc: #ffffff; --fg: #ffffff; --dim: #c4e9f0; --ok: #9df5bf; --warn: #ffd3a1; --bad: #ffd0d0; color: var(--fg); }
+:where(:scope[data-theme="imp-freibad"] .share.share-fs) button:where(:hover:not(:disabled)) { background-color: #3a404c; }
 
 /* The light net on the pool floor: caustics in the lower part of the water. Still on a phone, and wherever the sidebar
    scrolls with the page; on a desktop they ripple (below). */
-:root[data-theme="imp-freibad"] { --caustics: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' fill='none' stroke='%23fff' stroke-opacity='.06' stroke-width='1.6'%3E%3Cpath d='M0 40C25 25 60 70 95 55S155 55 180 40M0 130C30 145 55 105 90 118S150 115 180 130M50 0C35 30 80 60 62 95S65 150 50 180M135 0C155 35 110 70 125 100S115 145 135 180'/%3E%3C/svg%3E");
+:scope[data-theme="imp-freibad"] { --caustics: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' fill='none' stroke='%23fff' stroke-opacity='.06' stroke-width='1.6'%3E%3Cpath d='M0 40C25 25 60 70 95 55S155 55 180 40M0 130C30 145 55 105 90 118S150 115 180 130M50 0C35 30 80 60 62 95S65 150 50 180M135 0C155 35 110 70 125 100S115 145 135 180'/%3E%3C/svg%3E");
   --ripple: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' fill='none' stroke='%23fff' stroke-opacity='.2' stroke-width='2'%3E%3Cpath d='M0 40C25 25 60 70 95 55S155 55 180 40M0 130C30 145 55 105 90 118S150 115 180 130M50 0C35 30 80 60 62 95S65 150 50 180M135 0C155 35 110 70 125 100S115 145 135 180'/%3E%3C/svg%3E");
   --leaves: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300' fill='%230d2b33'><filter id='b'><feGaussianBlur stdDeviation='2.5'/></filter><g filter='url(%23b)'><defs><path id='l' d='M0 0C8-11 26-11 38 0C26 11 8 11 0 0z'/></defs><path d='M400 0C330 60 250 90 130 170M300 72C280 120 250 160 215 230M380 20C370 70 350 110 330 190M200 125C170 120 120 110 70 120' fill='none' stroke='%230d2b33' stroke-width='3'/><use href='%23l' transform='translate(381 15)rotate(201)scale(0.86)'/><use href='%23l' transform='translate(362 29)rotate(105)scale(1.05)'/><use href='%23l' transform='translate(342 43)rotate(196)scale(1.32)'/><use href='%23l' transform='translate(321 56)rotate(95)scale(1.07)'/><use href='%23l' transform='translate(299 69)rotate(199)scale(1.34)'/><use href='%23l' transform='translate(276 82)rotate(99)scale(1.30)'/><use href='%23l' transform='translate(251 96)rotate(191)scale(1.38)'/><use href='%23l' transform='translate(226 111)rotate(97)scale(1.10)'/><use href='%23l' transform='translate(199 127)rotate(185)scale(1.30)'/><use href='%23l' transform='translate(170 144)rotate(101)scale(1.30)'/><use href='%23l' transform='translate(139 164)rotate(202)scale(1.45)'/><use href='%23l' transform='translate(130 170)rotate(146)'/><use href='%23l' transform='translate(290 94)rotate(164)scale(0.78)'/><use href='%23l' transform='translate(278 117)rotate(67)scale(1.19)'/><use href='%23l' transform='translate(265 139)rotate(170)scale(1.05)'/><use href='%23l' transform='translate(251 163)rotate(62)scale(1.19)'/><use href='%23l' transform='translate(236 190)rotate(162)scale(0.91)'/><use href='%23l' transform='translate(220 220)rotate(74)scale(1.15)'/><use href='%23l' transform='translate(215 230)rotate(117)'/><use href='%23l' transform='translate(375 43)rotate(148)scale(0.79)'/><use href='%23l' transform='translate(368 66)rotate(65)scale(0.94)'/><use href='%23l' transform='translate(360 90)rotate(157)scale(1.20)'/><use href='%23l' transform='translate(351 116)rotate(51)scale(1.09)'/><use href='%23l' transform='translate(342 145)rotate(148)scale(0.74)'/><use href='%23l' transform='translate(333 179)rotate(57)scale(1.01)'/><use href='%23l' transform='translate(330 190)rotate(104)'/><use href='%23l' transform='translate(184 122)rotate(-131)scale(0.93)'/><use href='%23l' transform='translate(166 120)rotate(-209)scale(1.19)'/><use href='%23l' transform='translate(146 117)rotate(-131)scale(0.90)'/><use href='%23l' transform='translate(124 116)rotate(-237)scale(1.06)'/><use href='%23l' transform='translate(101 116)rotate(216)scale(0.98)'/><use href='%23l' transform='translate(77 119)rotate(128)scale(0.92)'/><use href='%23l' transform='translate(70 120)rotate(169)'/></g></svg>"); }
-:root[data-theme="imp-freibad"] .side { background: linear-gradient(var(--water) 25%, transparent 75%), var(--caustics) 0 0 / 180px, var(--water); }
+.side:is([data-theme="imp-freibad"][data-theme], [data-theme="imp-freibad"][data-theme] *) { background: linear-gradient(var(--water) 25%, transparent 75%), var(--caustics) 0 0 / 180px, var(--water); }
 
 /* A summer afternoon at the pool, on the spare layer behind the page. On a desktop the water moves: the sidebar turns
    see-through and the layer paints the pool under it, where two nets of caustics drift across each other and swell
    and fade, as sunlight does through a slow swell. Across the deck, the shadow of a tree's branches sways in the top
    corner, far from where the chat's lines are. A phone keeps one small branch and the still water. */
+
+}
 @supports selector(:has(a)) {
-  :root[data-theme="imp-freibad"]:has(.side) .ambient { display: block; }
-  :root[data-theme="imp-freibad"] .ambient > i { display: none; }
-  @media (min-width: 701px) {
-    :root[data-theme="imp-freibad"] .side { background: transparent; }
-    :root[data-theme="imp-freibad"] .ambient > i { display: block; }
+@scope ([data-theme="imp-freibad"]) to ([data-theme]) {
+
+  :scope[data-theme="imp-freibad"]:has(.side) .ambient { display: block; }
+  .ambient > i:is([data-theme="imp-freibad"][data-theme], [data-theme="imp-freibad"][data-theme] *) { display: none; }
+  
+}
+@media (min-width: 701px) {
+@scope ([data-theme="imp-freibad"]) to ([data-theme]) {
+
+    .side:is([data-theme="imp-freibad"][data-theme], [data-theme="imp-freibad"][data-theme] *) { background: transparent; }
+    .ambient > i:is([data-theme="imp-freibad"][data-theme], [data-theme="imp-freibad"][data-theme] *) { display: block; }
     /* the pool under the sidebar, the nets in it, the water above them fading the nets out towards the room list,
        and the deck covering what of the nets runs past the edge */
-    :root[data-theme="imp-freibad"] .ambient > i:nth-child(1) { inset: 0 auto 0 0; width: 300px; background: var(--water); }
-    :root[data-theme="imp-freibad"] .ambient > i:nth-child(2),
-    :root[data-theme="imp-freibad"] .ambient > i:nth-child(3) { top: -400px; left: -400px; width: 1100px; height: calc(100% + 800px); }
-    :root[data-theme="imp-freibad"] .ambient > i:nth-child(2) { background: var(--ripple) 0 0 / 180px;
+    .ambient > i:nth-child(1):is([data-theme="imp-freibad"][data-theme], [data-theme="imp-freibad"][data-theme] *) { inset: 0 auto 0 0; width: 300px; background: var(--water); }
+    .ambient > i:nth-child(2):is([data-theme="imp-freibad"][data-theme], [data-theme="imp-freibad"][data-theme] *),
+    .ambient > i:nth-child(3):is([data-theme="imp-freibad"][data-theme], [data-theme="imp-freibad"][data-theme] *) { top: -400px; left: -400px; width: 1100px; height: calc(100% + 800px); }
+    .ambient > i:nth-child(2):is([data-theme="imp-freibad"][data-theme], [data-theme="imp-freibad"][data-theme] *) { background: var(--ripple) 0 0 / 180px;
       animation: imp-freibad-net-a 26s linear -9s infinite; animation-play-state: var(--ambient-play); }
-    :root[data-theme="imp-freibad"] .ambient > i:nth-child(3) { background: var(--ripple) 40px 90px / 250px;
+    .ambient > i:nth-child(3):is([data-theme="imp-freibad"][data-theme], [data-theme="imp-freibad"][data-theme] *) { background: var(--ripple) 40px 90px / 250px;
       animation: imp-freibad-net-b 37s linear -23s infinite; animation-play-state: var(--ambient-play); }
-    :root[data-theme="imp-freibad"] .ambient > i:nth-child(4) { inset: 0 auto 0 0; width: 300px; background: linear-gradient(var(--water) 280px, transparent 62%); }
-    :root[data-theme="imp-freibad"] .ambient > i:nth-child(5) { inset: 0 0 0 300px; background: var(--bg); }
-    :root[data-theme="imp-freibad"] .ambient > i:nth-child(7) { top: calc(-1vw - 30px); right: 27vw; width: clamp(220px, 20vw, 540px); aspect-ratio: 4 / 3;
+    .ambient > i:nth-child(4):is([data-theme="imp-freibad"][data-theme], [data-theme="imp-freibad"][data-theme] *) { inset: 0 auto 0 0; width: 300px; background: linear-gradient(var(--water) 280px, transparent 62%); }
+    .ambient > i:nth-child(5):is([data-theme="imp-freibad"][data-theme], [data-theme="imp-freibad"][data-theme] *) { inset: 0 0 0 300px; background: var(--bg); }
+    .ambient > i:nth-child(7):is([data-theme="imp-freibad"][data-theme], [data-theme="imp-freibad"][data-theme] *) { top: calc(-1vw - 30px); right: 27vw; width: clamp(220px, 20vw, 540px); aspect-ratio: 4 / 3;
       background: var(--leaves) center / contain no-repeat; opacity: .055; transform-origin: 50% 0;
       animation: imp-freibad-sway-b 8.5s ease-in-out -3s infinite alternate; animation-play-state: var(--ambient-play); }
-  }
-  :root[data-theme="imp-freibad"] .ambient > i:nth-child(6) { display: block; top: calc(-3vw - 20px); right: calc(-2vw - 20px); width: clamp(200px, 36vw, 960px); aspect-ratio: 4 / 3;
+  
+}
+
+}@scope ([data-theme="imp-freibad"]) to ([data-theme]) {
+
+  .ambient > i:nth-child(6):is([data-theme="imp-freibad"][data-theme], [data-theme="imp-freibad"][data-theme] *) { display: block; top: calc(-3vw - 20px); right: calc(-2vw - 20px); width: clamp(200px, 36vw, 960px); aspect-ratio: 4 / 3;
     background: var(--leaves) center / contain no-repeat; opacity: .08; transform-origin: 100% 0;
     animation: imp-freibad-sway-a 11s ease-in-out -4s infinite alternate; animation-play-state: var(--ambient-play); }
-  @media (max-width: 700px) {
-    :root[data-theme="imp-freibad"] .ambient > i:nth-child(6) { top: auto; bottom: calc(60px + env(safe-area-inset-bottom)); right: -40px; width: 190px; opacity: .06; }
-  }
+  
+}
+@media (max-width: 700px) {
+@scope ([data-theme="imp-freibad"]) to ([data-theme]) {
+
+    .ambient > i:nth-child(6):is([data-theme="imp-freibad"][data-theme], [data-theme="imp-freibad"][data-theme] *) { top: auto; bottom: calc(60px + env(safe-area-inset-bottom)); right: -40px; width: 190px; opacity: .06; }
+  
+}
+
+}
+
 }
 @keyframes imp-freibad-net-a { 0% { transform: translate(0, 0); opacity: .35; } 50% { opacity: .8; } 100% { transform: translate(180px, 180px); opacity: .35; } }
 @keyframes imp-freibad-net-b { 0% { transform: translate(0, 0); opacity: .7; } 50% { opacity: .25; } 100% { transform: translate(-250px, 250px); opacity: .7; } }
 @keyframes imp-freibad-sway-a { from { transform: rotate(-1.6deg); } to { transform: rotate(2.2deg) translate(-6px, 4px); } }
 @keyframes imp-freibad-sway-b { from { transform: scale(-1, 1) rotate(-2deg); } to { transform: scale(-1, 1) rotate(1.4deg) translate(6px, 3px); } }
+@scope ([data-theme="imp-freibad"]) to ([data-theme]) {
+
+/* A room's box, wherever it sits, is a lane of the pool: its water a shade deeper towards the floor, the light net of
+   the caustics held still in it, the rope across its top (above). The top room open on screen, at rest, is the sidebar's own
+   water (styles.css), so it gets no lane of its own. The chat of a room in this look, inside a page of another, is the
+   deck: white tiles and their grout, one grid across the log and the composer. */
+:scope.room {
+  --room-ground: var(--caustics) 0 0 / 180px, linear-gradient(#0b6c80, #085a6a), var(--water); }
+:scope:is(.chat, .chat-input) { --chat-ground:
+    linear-gradient(90deg, rgba(95,141,151,.13) 1px, transparent 1px) 0 0 / 28px 28px fixed,
+    linear-gradient(rgba(95,141,151,.13) 1px, transparent 1px) 0 0 / 28px 28px fixed, var(--bg); }
+
+}

@@ -136,6 +136,21 @@ test('every theme applies, loads its fonts and keeps the console quiet, at deskt
     expect(await endless(page), `${name}: nothing moves on its own with reduced motion`).toEqual([]);
     await toTop();
     await shoot(`${name}-desktop`);
+    // Each room and the chat of a room wear their own look inside the page's: the next look on the folded room and the
+    // chat, for this one's page around them (so every look is seen in a box once). Set on the elements for the shot only.
+    const next = themes[(themes.indexOf(value) + 1) % themes.length] || 'default';
+    const was = await page.evaluate((n) => {
+      const els = [document.querySelector<HTMLElement>('aside.side section.room:not(.selected)'), document.querySelector<HTMLElement>('.chat:not(.private)'), document.querySelector<HTMLElement>('form.chat-input')];
+      const before = els.map((e) => e?.getAttribute('data-theme') ?? null);
+      for (const e of els) e?.setAttribute('data-theme', n);
+      return before;
+    }, next);
+    await page.evaluate(async () => { await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); await document.fonts.ready; });
+    await shoot(`${name}-desktop-around-${next}`);
+    await page.evaluate((before) => {
+      const els = [document.querySelector<HTMLElement>('aside.side section.room:not(.selected)'), document.querySelector<HTMLElement>('.chat:not(.private)'), document.querySelector<HTMLElement>('form.chat-input')];
+      els.forEach((e, i) => { if (!e) return; if (before[i] === null) e.removeAttribute('data-theme'); else e.setAttribute('data-theme', before[i]!); });
+    }, was);
 
     // Phone width (styles.css, max-width: 700px): one column that scrolls as a whole, the composer pinned below it.
     await page.setViewportSize(PHONE);
@@ -171,23 +186,35 @@ test('every theme applies, loads its fonts and keeps the console quiet, at deskt
   await expect.poll(() => pickedTheme(page)).toBe(kept);
 });
 
-test('each room has its own look: the page wears the room on screen\'s, kept over a reload', async ({ crowd }) => {
+test('each room wears its own look: the page the top room\'s, a room\'s box and its chat their own, kept over a reload', async ({ crowd }) => {
   const other = { secret: newSecret(), name: 'Other' };
   const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
   const page = alice.page;
   const look = (await themeNames(page)).filter(Boolean)[0]!;
-  await pickTheme(page, look); // for Room, on screen
+  const box = (name: string) => page.locator('aside.side section.room', { has: page.locator('.room-title', { hasText: name }) });
+  await pickTheme(page, look); // for Room, the top one
   await expect(page.locator('html')).toHaveAttribute('data-theme', look);
+  await expect(box('Room')).toHaveAttribute('data-theme', look);
+  await expect(box('Other')).toHaveAttribute('data-theme', 'default');
+  // Other on screen: its chat in its own look, the page still the top room's.
   await alice.selectRoom('Other');
-  await expect(page.locator('html')).not.toHaveAttribute('data-theme');
-  await alice.selectRoom('Room');
   await expect(page.locator('html')).toHaveAttribute('data-theme', look);
+  await expect(page.locator('.chat:not(.private)')).toHaveAttribute('data-theme', 'default');
+  // Other to the top, from Room on screen: Other on screen too and open, the page in its look now, Room's box in its own.
+  await alice.selectRoom('Room');
+  await box('Other').locator('button.room-top').click();
+  await expect(page.locator('aside.side section.room').first()).toContainText('Other');
+  await expect(box('Other')).toHaveClass(/\bselected\b/);
+  await expect(box('Other')).not.toHaveClass(/\bfolded\b/);
+  await expect(page.locator('.chat:not(.private)')).not.toHaveAttribute('data-theme');
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+  await expect(box('Room')).toHaveAttribute('data-theme', look);
   await page.evaluate(async () => { await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); await document.fonts.ready; }); // a reload must not cut off a font download
   await page.reload();
   await alice.connected();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', look);
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+  await expect(box('Room')).toHaveAttribute('data-theme', look);
 });
-
 test('a stored theme whose file a later deploy dropped reads as the default look, and a theme picked then is kept', async ({ crowd }) => {
   const alice = await crowd.open('Alice', { connect: false });
   // Before the app reads it, and once: the reload below keeps what the app stores.

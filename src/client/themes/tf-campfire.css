@@ -1,8 +1,9 @@
+@scope ([data-theme="tf-campfire"]) to ([data-theme]) {
 /* Campfire Circle: generated with theme-factory (custom theme) (anthropics/skills, skills/theme-factory).
    Friends around a fire at night: charcoal dark, ember-orange light, smoke-grey quiet text, old-style serif for names.
    Palette: Charcoal Night #1c1714, Ember #ff8a3d, Smoke #b3a594, Firelight #f3e6d3. Fonts: Palatino/Iowan old-style serif headers, system sans body.
    Every rule is scoped to this theme; the app's own look and the other themes are untouched. */
-:root[data-theme="tf-campfire"] {
+:scope[data-theme="tf-campfire"] {
   --bg: #1c1714; --panel: #241d19; --panel2: #322823; --fg: #f3e6d3; --dim: #b3a594; --line: #4a3c33;
   --ok: #9bd56f; --warn: #f5d04a; --bad: #ff6b7f; --acc: #ff8a3d; --tf-link: #ffa463;
   --tf-on-acc: #1c1714; --tf-on-ok: #142007; --tf-on-bad: #26070c;
@@ -14,43 +15,43 @@
 }
 
 /* type: the theme's header face on headings, room names and the names on the profile card */
-:root[data-theme="tf-campfire"] :is(h1, h2, h3, .room-title, .profile-name strong, .consent .hello) { font-family: var(--tf-head); font-weight: 700; }
-:where(:root[data-theme="tf-campfire"]) :is(button, select, textarea) { font-family: inherit; }
-:root[data-theme="tf-campfire"] a { color: var(--tf-link); }
-:root[data-theme="tf-campfire"] .msg-from { color: #ffb27a; }
-:root[data-theme="tf-campfire"] :is(button.room-name, button.avatar):focus-visible { outline-color: var(--tf-link); }
+:is(h1, h2, h3, .room-title, .profile-name strong, .consent .hello):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { font-family: var(--tf-head); font-weight: 700; }
+:is(button, select, textarea) { font-family: inherit; }
+a:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { color: var(--tf-link); }
+.msg-from:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { color: #ffb27a; }
+:is(button.room-name, button.avatar):focus-visible:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { outline-color: var(--tf-link); }
 
 /* shape: corners of the plain controls and boxes (:where keeps button.join, .link and the rest their own look; faces stay round) */
-:where(:root[data-theme="tf-campfire"]) :is(button:not(.avatar), input, select.picker, textarea) { border-radius: 14px; }
-:root[data-theme="tf-campfire"] :is(.panel, .share, .warn, dialog.report, dialog.about, .profile[popover], .emoji-picker[popover]) { border-radius: 14px; }
-:root[data-theme="tf-campfire"] .share.share-fs { border-radius: 0; }
+:is(button:not(.avatar), input, select.picker, textarea) { border-radius: 14px; }
+:is(.panel, .share, .warn, dialog.report, dialog.about, .profile[popover], .emoji-picker[popover]):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { border-radius: 14px; }
+.share.share-fs:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { border-radius: 0; }
 
 /* the colours styles.css writes for its dark page, each taken from this palette */
-:root[data-theme="tf-campfire"] .update { color: var(--tf-on-acc); }
-:root[data-theme="tf-campfire"] .update button, :root[data-theme="tf-campfire"] .update button:hover { background: var(--tf-on-acc); color: var(--acc); }
-:root[data-theme="tf-campfire"] .unread, :root[data-theme="tf-campfire"] button.on:not(.link), :root[data-theme="tf-campfire"] select.picker option:checked { color: var(--tf-on-acc); }
-:root[data-theme="tf-campfire"] button.join { color: var(--tf-on-ok); }
-:root[data-theme="tf-campfire"] :is(button.leave, button.room-leave) { color: var(--tf-on-bad); }
-:root[data-theme="tf-campfire"] button.unblock { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+.update:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { color: var(--tf-on-acc); }
+.update button:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *), .update button:hover:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { background: var(--tf-on-acc); color: var(--acc); }
+.unread:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *), button.on:not(.link):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *), select.picker option:checked:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { color: var(--tf-on-acc); }
+button.join:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { color: var(--tf-on-ok); }
+:is(button.leave, button.room-leave):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { color: var(--tf-on-bad); }
+button.unblock:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
 /* the mic test fills its button while recording: a deep ember, so "Recording…" stays readable */
-:root[data-theme="tf-campfire"] .panel .mictest button.recording { background-image: linear-gradient(#8a3a12, #8a3a12); }
-:root[data-theme="tf-campfire"] .new { background: var(--tf-new-bg); color: var(--tf-on-new); }
-:root[data-theme="tf-campfire"] .warn, :root[data-theme="tf-campfire"] .banner-warn { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
-:root[data-theme="tf-campfire"] .banner-bad { background: var(--tf-bad-bg); color: var(--tf-bad-fg); }
-:root[data-theme="tf-campfire"] .banner { box-shadow: var(--tf-shadow); }
-:root[data-theme="tf-campfire"] .chat-new { background: color-mix(in srgb, var(--panel2) 92%, transparent); }
-:root[data-theme="tf-campfire"] .avatar { background: #3d312a; color: #ffc9a0; }
-:root[data-theme="tf-campfire"] .share-head { background: rgba(0,0,0,.28); }
-:root[data-theme="tf-campfire"] .share-bar { background: rgba(0,0,0,.38); }
-:root[data-theme="tf-campfire"] :is(.profile[popover], .emoji-picker[popover]) { box-shadow: var(--tf-shadow-lg); }
-:root[data-theme="tf-campfire"] :is(dialog.report, dialog.about)::backdrop { background: rgba(10,6,4,.65); }
-:root[data-theme="tf-campfire"] .consent { --bubble: #3d312a; --bubble-fg: #f3e6d3; --bubble-dim: #cdbfae; --bubble-link: #ffb27a; }
-:root[data-theme="tf-campfire"] .consent .bubble { box-shadow: var(--tf-shadow-lg); }
+.panel .mictest button.recording:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { background-image: linear-gradient(#8a3a12, #8a3a12); }
+.new:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { background: var(--tf-new-bg); color: var(--tf-on-new); }
+.warn:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *), .banner-warn:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+.banner-bad:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { background: var(--tf-bad-bg); color: var(--tf-bad-fg); }
+.banner:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { box-shadow: var(--tf-shadow); }
+.chat-new:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { background: color-mix(in srgb, var(--panel2) 92%, transparent); }
+.avatar:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { background: #3d312a; color: #ffc9a0; }
+.share-head:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { background: rgba(0,0,0,.28); }
+.share-bar:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { background: rgba(0,0,0,.38); }
+:is(.profile[popover], .emoji-picker[popover]):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { box-shadow: var(--tf-shadow-lg); }
+:is(dialog.report, dialog.about):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::backdrop { background: rgba(10,6,4,.65); }
+.consent:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { --bubble: #3d312a; --bubble-fg: #f3e6d3; --bubble-dim: #cdbfae; --bubble-link: #ffb27a; }
+.consent .bubble:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { box-shadow: var(--tf-shadow-lg); }
 
 /* fullscreen share: always the black stage, so header and bar take light text whatever the page is */
-:root[data-theme="tf-campfire"] .share.share-fs { --fg: #f2f2f2; --dim: #c8c8c8; --panel2: #2b2b2b; --line: #4a4a4a; --ok: #3ddc84; --warn: #f5b642; --bad: #ff6b6b;
+.share.share-fs:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { --fg: #f2f2f2; --dim: #c8c8c8; --panel2: #2b2b2b; --line: #4a4a4a; --ok: #3ddc84; --warn: #f5b642; --bad: #ff6b6b;
   border: 0; background: #000; color: var(--fg); box-shadow: none; }
-:root[data-theme="tf-campfire"] .share.share-fs :is(.share-head, .share-bar) { background: rgba(0,0,0,.55); }
+.share.share-fs :is(.share-head, .share-bar):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { background: rgba(0,0,0,.55); }
 
 /* a warm soup of embers: five big glows of the fire's colours, from deep red to amber, each wider than a third of
    the screen, so they run into one another, with darker patches of the night between the warmer ones. They lie
@@ -60,48 +61,78 @@
    clock. Dim on purpose: no glow is more than 8 % of its colour where it is strongest, the sparks under half strength.
    Only transform and opacity move, on two screen-sized layers and the sparks; a burst is one pseudo-element whose
    box-shadows are its sparks, scaled out from the glow's heart and moving with its layer. */
-:root[data-theme="tf-campfire"] .ambient { display: block; }
-:root[data-theme="tf-campfire"] .ambient::before,
-:root[data-theme="tf-campfire"] .ambient::after { content: ''; position: absolute; inset: -15%;
+.ambient:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { display: block; }
+.ambient:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::before,
+.ambient:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::after { content: ''; position: absolute; inset: -15%;
   animation: tf-campfire-drift-a 150s ease-in-out -50s infinite alternate; animation-play-state: var(--ambient-play); }
-:root[data-theme="tf-campfire"] .ambient::before { background:
+.ambient:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::before { background:
     radial-gradient(circle 40vmax at 30% 30%, rgb(255 138 61 / 0.07), rgb(255 138 61 / 0.025) 45%, rgb(255 138 61 / 0)),
     radial-gradient(circle 38vmax at 75% 62%, rgb(190 58 40 / 0.08), rgb(190 58 40 / 0.028) 45%, rgb(190 58 40 / 0)),
     radial-gradient(circle 34vmax at 22% 85%, rgb(255 178 96 / 0.06), rgb(255 178 96 / 0.021) 45%, rgb(255 178 96 / 0)); }
-:root[data-theme="tf-campfire"] .ambient::after { background:
+.ambient:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::after { background:
     radial-gradient(circle 36vmax at 78% 18%, rgb(160 46 42 / 0.075), rgb(160 46 42 / 0.026) 45%, rgb(160 46 42 / 0)),
     radial-gradient(circle 40vmax at 55% 88%, rgb(235 112 54 / 0.065), rgb(235 112 54 / 0.023) 45%, rgb(235 112 54 / 0));
   animation-name: tf-campfire-drift-b; animation-duration: 180s; animation-delay: -90s; }
+
+}
 @keyframes tf-campfire-drift-a { to { transform: translate(8vmin, 5vmin); } }
-@keyframes tf-campfire-drift-b { to { transform: translate(-9vmin, -4vmin); } }
+@keyframes tf-campfire-drift-b { to { transform: translate(-9vmin, -4vmin); } }@scope ([data-theme="tf-campfire"]) to ([data-theme]) {
+
 /* the hearts the sparks fly from, each moving with its glow's layer */
-:root[data-theme="tf-campfire"] .ambient > i { width: 0; height: 0; --r: clamp(90px, 12vmin, 260px);
+.ambient > i:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { width: 0; height: 0; --r: clamp(90px, 12vmin, 260px);
   animation: tf-campfire-drift-a 150s ease-in-out -50s infinite alternate; animation-play-state: var(--ambient-play); }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(n+6) { display: none; }
-:root[data-theme="tf-campfire"] .ambient > i::before,
-:root[data-theme="tf-campfire"] .ambient > i::after { content: ''; position: absolute; left: 50%; top: 50%; --p: clamp(2px, .22vmin, 4px);
+.ambient > i:nth-child(n+6):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { display: none; }
+.ambient > i:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::before,
+.ambient > i:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::after { content: ''; position: absolute; left: 50%; top: 50%; --p: clamp(2px, .22vmin, 4px);
   width: var(--p); aspect-ratio: 1; margin: calc(var(--p) / -2) 0 0 calc(var(--p) / -2); border-radius: 50%; opacity: 0; color: #ffa463;
   animation: tf-campfire-burst var(--bt) linear var(--bd) infinite; animation-play-state: var(--ambient-play); }
-:root[data-theme="tf-campfire"] .ambient > i::before { box-shadow: calc(var(--r) * 0.62) calc(var(--r) * 0.0) 1px currentColor, calc(var(--r) * 0.43) calc(var(--r) * 0.39) 1px currentColor, calc(var(--r) * 0.23) calc(var(--r) * 0.68) 1px currentColor, calc(var(--r) * -0.01) calc(var(--r) * 0.78) 1px currentColor, calc(var(--r) * -0.41) calc(var(--r) * 0.63) 1px currentColor, calc(var(--r) * -0.54) calc(var(--r) * 0.23) 1px currentColor, calc(var(--r) * -0.87) calc(var(--r) * -0.3) 1px currentColor, calc(var(--r) * -0.47) calc(var(--r) * -0.45) 1px currentColor, calc(var(--r) * 0.01) calc(var(--r) * -0.98) 1px currentColor, calc(var(--r) * 0.38) calc(var(--r) * -0.62) 1px currentColor, calc(var(--r) * 0.55) calc(var(--r) * -0.14) 1px currentColor; }
-:root[data-theme="tf-campfire"] .ambient > i::after { --r: clamp(60px, 8vmin, 170px); box-shadow: calc(var(--r) * 0.52) calc(var(--r) * 0.44) 1px currentColor, calc(var(--r) * 0.19) calc(var(--r) * 0.57) 1px currentColor, calc(var(--r) * -0.56) calc(var(--r) * 0.73) 1px currentColor, calc(var(--r) * -0.81) calc(var(--r) * 0.07) 1px currentColor, calc(var(--r) * -0.36) calc(var(--r) * -0.62) 1px currentColor, calc(var(--r) * 0.18) calc(var(--r) * -0.55) 1px currentColor, calc(var(--r) * 0.53) calc(var(--r) * -0.36) 1px currentColor;
+.ambient > i:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::before { box-shadow: calc(var(--r) * 0.62) calc(var(--r) * 0.0) 1px currentColor, calc(var(--r) * 0.43) calc(var(--r) * 0.39) 1px currentColor, calc(var(--r) * 0.23) calc(var(--r) * 0.68) 1px currentColor, calc(var(--r) * -0.01) calc(var(--r) * 0.78) 1px currentColor, calc(var(--r) * -0.41) calc(var(--r) * 0.63) 1px currentColor, calc(var(--r) * -0.54) calc(var(--r) * 0.23) 1px currentColor, calc(var(--r) * -0.87) calc(var(--r) * -0.3) 1px currentColor, calc(var(--r) * -0.47) calc(var(--r) * -0.45) 1px currentColor, calc(var(--r) * 0.01) calc(var(--r) * -0.98) 1px currentColor, calc(var(--r) * 0.38) calc(var(--r) * -0.62) 1px currentColor, calc(var(--r) * 0.55) calc(var(--r) * -0.14) 1px currentColor; }
+.ambient > i:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::after { --r: clamp(60px, 8vmin, 170px); box-shadow: calc(var(--r) * 0.52) calc(var(--r) * 0.44) 1px currentColor, calc(var(--r) * 0.19) calc(var(--r) * 0.57) 1px currentColor, calc(var(--r) * -0.56) calc(var(--r) * 0.73) 1px currentColor, calc(var(--r) * -0.81) calc(var(--r) * 0.07) 1px currentColor, calc(var(--r) * -0.36) calc(var(--r) * -0.62) 1px currentColor, calc(var(--r) * 0.18) calc(var(--r) * -0.55) 1px currentColor, calc(var(--r) * 0.53) calc(var(--r) * -0.36) 1px currentColor;
   animation-delay: calc(var(--bd) + .5s); }
 /* where the glows' hearts are on screen (each layer is the screen and 15 % more on every side) */
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(1) { left: 24%; top: 24%; --bt: 37s; --bd: -9s; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(2) { left: 82%; top: 66%; --bt: 53s; --bd: -30s; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(3) { left: 14%; top: 88%; --bt: 43s; --bd: -21s; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(4) { left: 86%; top: 12%; --bt: 61s; --bd: -44s;
+.ambient > i:nth-child(1):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { left: 24%; top: 24%; --bt: 37s; --bd: -9s; }
+.ambient > i:nth-child(2):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { left: 82%; top: 66%; --bt: 53s; --bd: -30s; }
+.ambient > i:nth-child(3):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { left: 14%; top: 88%; --bt: 43s; --bd: -21s; }
+.ambient > i:nth-child(4):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { left: 86%; top: 12%; --bt: 61s; --bd: -44s;
   animation-name: tf-campfire-drift-b; animation-duration: 180s; animation-delay: -90s; }
-:root[data-theme="tf-campfire"] .ambient > i:nth-child(5) { left: 56%; top: 86%; --bt: 47s; --bd: -2s;
+.ambient > i:nth-child(5):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { left: 56%; top: 86%; --bt: 47s; --bd: -2s;
   animation-name: tf-campfire-drift-b; animation-duration: 180s; animation-delay: -90s; }
 /* a burst: out fast and slowing, rising a little as it cools; four to six seconds, then dark for the rest of the cycle */
+
+}
 @keyframes tf-campfire-burst {
   0% { opacity: 0; transform: translateY(0) scale(.08); animation-timing-function: cubic-bezier(.2, .7, .35, 1); }
   .8% { opacity: .5; }
   5% { opacity: .35; }
   10%, 100% { opacity: 0; transform: translateY(calc(var(--r) * -.3)) scale(1); }
+}@scope ([data-theme="tf-campfire"]) to ([data-theme]) {
+
+:is(.msg-from, .profile-name strong):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { font-family: var(--tf-head); font-size: 1.07em; }
+.room:where(:scope).selected .room-title:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { color: var(--tf-link); }
+.avatar.speaking:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { box-shadow: 0 0 0 2px var(--ok), 0 0 14px rgba(255,138,61,.45); }
+.share-live:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { border-color: var(--acc); box-shadow: 0 0 20px rgba(255,138,61,.25); }
+.chat-field > input:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { border-radius: 999px; padding-left: 14px; }
+
 }
-:root[data-theme="tf-campfire"] :is(.msg-from, .profile-name strong) { font-family: var(--tf-head); font-size: 1.07em; }
-:root[data-theme="tf-campfire"] .room.selected .room-title { color: var(--tf-link); }
-:root[data-theme="tf-campfire"] .avatar.speaking { box-shadow: 0 0 0 2px var(--ok), 0 0 14px rgba(255,138,61,.45); }
-:root[data-theme="tf-campfire"] .share-live { border-color: var(--acc); box-shadow: 0 0 20px rgba(255,138,61,.25); }
-:root[data-theme="tf-campfire"] .chat-field > input { border-radius: 999px; padding-left: 14px; }
+@scope ([data-theme="tf-campfire"]) to ([data-theme]) {
+
+/* A room's box, wherever it sits, is a seat at the fire: the charcoal of the night, warming towards its bottom edge
+   where the embers glow, and a few sparks caught in mid-flight above them, held still. A folded box is the warm band
+   with a spark or two. The top room open on screen, at rest, is the sidebar's own night (styles.css), so it gets no fire. The chat
+   of a room in this look, inside a page of another, is the night with its soup of embers, the glows held where they lie. */
+:scope.room {
+  --room-ground: radial-gradient(circle at 82% 62%, rgb(255 164 99 / .55) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 64% 30%, rgb(255 178 96 / .4) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 91% 22%, rgb(255 138 61 / .35) 0 .8px, transparent 1.4px),
+    radial-gradient(circle at 47% 70%, rgb(255 164 99 / .3) 0 .8px, transparent 1.4px),
+    radial-gradient(120% 100% at 70% 135%, rgb(255 138 61 / .2), rgb(190 58 40 / .09) 50%, transparent 80%),
+    var(--panel); }
+:scope:is(.chat, .chat-input) { --chat-ground:
+    radial-gradient(circle 40vmax at 30% 30%, rgb(255 138 61 / 0.07), rgb(255 138 61 / 0.025) 45%, rgb(255 138 61 / 0)),
+    radial-gradient(circle 38vmax at 75% 62%, rgb(190 58 40 / 0.08), rgb(190 58 40 / 0.028) 45%, rgb(190 58 40 / 0)),
+    radial-gradient(circle 34vmax at 22% 85%, rgb(255 178 96 / 0.06), rgb(255 178 96 / 0.021) 45%, rgb(255 178 96 / 0)),
+    radial-gradient(circle 36vmax at 78% 18%, rgb(160 46 42 / 0.075), rgb(160 46 42 / 0.026) 45%, rgb(160 46 42 / 0)),
+    radial-gradient(circle 40vmax at 55% 88%, rgb(235 112 54 / 0.065), rgb(235 112 54 / 0.023) 45%, rgb(235 112 54 / 0)),
+    var(--bg) fixed; }
+
+}

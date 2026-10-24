@@ -4,9 +4,10 @@
    palettes following the system setting; the dark one is warm charcoal, not blue-black. */
 @font-face { font-family: "ds-Nunito"; font-style: normal; font-weight: 400 800; font-display: swap;
   src: url(./fonts/nunito-XRXV3I6Li01BKofINeaB.woff2) format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }@scope ([data-theme="ds-scandi"]) to ([data-theme]) {
 
-:root[data-theme="ds-scandi"] { color-scheme: light;
+
+:scope[data-theme="ds-scandi"] { color-scheme: light;
   --color-bg-primary: #f6f2ec; --color-bg-secondary: #ede6dc; --color-bg-tertiary: #fffdf9;
   --color-text-primary: #2f2a25; --color-text-secondary: #655c53; --color-text-link: #2c5d7d;
   --color-border-primary: #ddd3c6; --color-border-focus: #3d7299;
@@ -25,8 +26,12 @@
   --shadow-lg: 0 4px 8px rgba(80, 55, 30, .06), 0 16px 40px rgba(80, 55, 30, .14);
   --duration-normal: 250ms; --easing-out: cubic-bezier(0, 0, .2, 1);
 }
+
+}
 @media (prefers-color-scheme: dark) {
-  :root[data-theme="ds-scandi"] { color-scheme: dark;
+@scope ([data-theme="ds-scandi"]) to ([data-theme]) {
+
+  :scope[data-theme="ds-scandi"] { color-scheme: dark;
     --color-bg-primary: #23201d; --color-bg-secondary: #2b2825; --color-bg-tertiary: #35312d;
     --color-text-primary: #f0e9df; --color-text-secondary: #b8ad9f; --color-text-link: #9cc3e0;
     --color-border-primary: #48423b; --color-border-focus: #9cc3e0;
@@ -40,10 +45,14 @@
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, .25); --shadow-md: 0 2px 4px rgba(0, 0, 0, .2), 0 6px 18px rgba(0, 0, 0, .3);
     --shadow-lg: 0 4px 8px rgba(0, 0, 0, .25), 0 16px 40px rgba(0, 0, 0, .45);
   }
+
 }
 
+}@scope ([data-theme="ds-scandi"]) to ([data-theme]) {
+
+
 /* ── Map the semantic tokens onto the app's own variables (styles.css :root) ─────────────────────────────── */
-:root[data-theme="ds-scandi"] {
+:scope[data-theme="ds-scandi"] {
   --bg: var(--color-bg-primary); --panel: var(--color-bg-secondary); --panel2: var(--color-bg-tertiary);
   --fg: var(--color-text-primary); --dim: var(--color-text-secondary); --line: var(--color-border-primary);
   --ok: var(--color-status-success); --warn: var(--color-status-warning); --bad: var(--color-status-error);
@@ -54,90 +63,108 @@
 /* ── Repairs: colours styles.css hard-codes for its dark page, read from the tokens instead. Every rule below has
    exactly the specificity of the rule it replaces (the theme prefix sits in :where), so the app's own variants
    (button.join over button, .share.share-fs over .share) still win where they did. ─────────────────────────── */
-:where(:root[data-theme="ds-scandi"]) a { color: var(--color-text-link); }
-:where(:root[data-theme="ds-scandi"]) :is(button, select, textarea) { font-family: inherit; }
-:where(:root[data-theme="ds-scandi"]) :focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
-:where(:root[data-theme="ds-scandi"]) .update { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
-:where(:root[data-theme="ds-scandi"]) .update button { background: var(--color-text-on-accent); color: var(--color-accent-primary); }
-:where(:root[data-theme="ds-scandi"]) .update button:hover { background: color-mix(in srgb, var(--color-text-on-accent) 88%, var(--color-accent-primary)); }
-:where(:root[data-theme="ds-scandi"]) .unread { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
-:where(:root[data-theme="ds-scandi"]) .new { background: var(--color-status-warning); color: var(--color-text-on-warning); }
-:where(:root[data-theme="ds-scandi"]) .warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
-:where(:root[data-theme="ds-scandi"]) .banner { box-shadow: var(--shadow-md); }
-:where(:root[data-theme="ds-scandi"]) .banner-warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
-:where(:root[data-theme="ds-scandi"]) .banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
-:where(:root[data-theme="ds-scandi"]) .chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
-:where(:root[data-theme="ds-scandi"]) .chat-new:hover { color: var(--fg); }
-:where(:root[data-theme="ds-scandi"]) button.on:where(:not(.link)) { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
-:where(:root[data-theme="ds-scandi"]) button.join { background: var(--ok); color: var(--color-text-on-success); }
-:where(:root[data-theme="ds-scandi"]) button.leave { background: var(--bad); color: var(--color-text-on-error); }
-:where(:root[data-theme="ds-scandi"]) button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
-:where(:root[data-theme="ds-scandi"]) select.picker option:checked { background: var(--color-bg-on); color: var(--color-text-on-on); }
-:where(:root[data-theme="ds-scandi"]) .avatar.speaking { box-shadow: 0 0 0 2px var(--color-ring); }
-:where(:root[data-theme="ds-scandi"]) .share-head { background: color-mix(in srgb, var(--fg) 6%, transparent); }
-:where(:root[data-theme="ds-scandi"]) .share-bar { background: color-mix(in srgb, var(--fg) 5%, transparent); }
-:where(:root[data-theme="ds-scandi"]) .panel .mictest button.recording { background: var(--panel2) linear-gradient(color-mix(in srgb, var(--acc) 35%, var(--panel2)), color-mix(in srgb, var(--acc) 35%, var(--panel2))) left / 0% 100% no-repeat; }
-:where(:root[data-theme="ds-scandi"]) .profile[popover], :where(:root[data-theme="ds-scandi"]) .emoji-picker[popover] { box-shadow: var(--shadow-lg); }
-:where(:root[data-theme="ds-scandi"]) dialog.report::backdrop, :where(:root[data-theme="ds-scandi"]) dialog.about::backdrop { background: var(--color-surface-overlay); }
-:where(:root[data-theme="ds-scandi"]) .consent { --bubble: var(--color-bubble); --bubble-fg: var(--color-bubble-fg); --bubble-dim: var(--color-bubble-dim); --bubble-link: var(--color-bubble-link); }
-:where(:root[data-theme="ds-scandi"]) .consent .bubble { box-shadow: var(--shadow-lg); }
+a { color: var(--color-text-link); }
+:is(button, select, textarea) { font-family: inherit; }
+:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+.update { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+.update button { background: var(--color-text-on-accent); color: var(--color-accent-primary); }
+.update button:hover { background: color-mix(in srgb, var(--color-text-on-accent) 88%, var(--color-accent-primary)); }
+.unread { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+.new { background: var(--color-status-warning); color: var(--color-text-on-warning); }
+.warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+.banner { box-shadow: var(--shadow-md); }
+.banner-warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+.banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
+.chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
+.chat-new:hover { color: var(--fg); }
+button.on:where(:not(.link)) { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
+button.join { background: var(--ok); color: var(--color-text-on-success); }
+button.leave { background: var(--bad); color: var(--color-text-on-error); }
+button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+select.picker option:checked { background: var(--color-bg-on); color: var(--color-text-on-on); }
+.avatar.speaking { box-shadow: 0 0 0 2px var(--color-ring); }
+.share-head { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.share-bar { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.panel .mictest button.recording { background: var(--panel2) linear-gradient(color-mix(in srgb, var(--acc) 35%, var(--panel2)), color-mix(in srgb, var(--acc) 35%, var(--panel2))) left / 0% 100% no-repeat; }
+.profile[popover], .emoji-picker[popover] { box-shadow: var(--shadow-lg); }
+dialog.report::backdrop, dialog.about::backdrop { background: var(--color-surface-overlay); }
+.consent { --bubble: var(--color-bubble); --bubble-fg: var(--color-bubble-fg); --bubble-dim: var(--color-bubble-dim); --bubble-link: var(--color-bubble-link); }
+.consent .bubble { box-shadow: var(--shadow-lg); }
 /* a comfortable measure for reading on a wide screen; nothing is cut, long lines wrap */
-:where(:root[data-theme="ds-scandi"]) .msg { max-width: 75ch; }
+.msg { max-width: 75ch; }
 /* Fullscreen keeps its black stage in both palettes: the overlays get the dark palette, so status dots and text stay
    legible on black even while the rest of the page is light. */
-:where(:root[data-theme="ds-scandi"]) .share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
+.share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
   --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc);
   --bg: var(--fs-stage); --panel: var(--fs-button); color: var(--fg); }
 /* Phones (styles.css's 700px breakpoint): 16px text in fields so iOS does not zoom on focus, 16px messages, 44px call buttons. */
+
+}
 @media (max-width: 700px) {
-  :where(:root[data-theme="ds-scandi"]) .chat-log { font-size: 16px; }
-  :where(:root[data-theme="ds-scandi"]) :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
-  :where(:root[data-theme="ds-scandi"]) .actions button, :where(:root[data-theme="ds-scandi"]) .chat-input > button, :where(:root[data-theme="ds-scandi"]) .chat-field > .emoji-open { min-height: 44px; }
+@scope ([data-theme="ds-scandi"]) to ([data-theme]) {
+
+  .chat-log { font-size: 16px; }
+  :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
+  .actions button, .chat-input:where(:scope, :scope *) > button, .chat-field > .emoji-open { min-height: 44px; }
+
 }
 
+}@scope ([data-theme="ds-scandi"]) to ([data-theme]) {
+
+
 /* ── Character: cabin ──────────────────────────────────────────────────────────────────────────────────── */
-:where(:root[data-theme="ds-scandi"]) body { font-size: 15px; }
-:where(:root[data-theme="ds-scandi"]) h1 { font-weight: 800; }
+body { font-size: 15px; }
+:scope:is([data-apart], .chat, .chat-input) { font-size: 15px; } /* the same type on a box or chat of this look inside another page */
+h1 { font-weight: 800; }
 /* friendly sentence-case room names instead of tracked capitals */
-:where(:root[data-theme="ds-scandi"]) .room-title { font-size: 14px; font-weight: 800; text-transform: none; letter-spacing: 0; }
-:where(:root[data-theme="ds-scandi"]) h2 { font-weight: 800; letter-spacing: .06em; }
-:where(:root[data-theme="ds-scandi"]) button { border-radius: var(--border-radius-sm); font-weight: 700; box-shadow: var(--shadow-sm); }
-:where(:root[data-theme="ds-scandi"]) button:where(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open), :where(:root[data-theme="ds-scandi"]) :is(.emoji-tabs, .emoji-grid) button { box-shadow: none; }
-:where(:root[data-theme="ds-scandi"]) .avatar.speaking { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--color-ring); }
-:where(:root[data-theme="ds-scandi"]) input, :where(:root[data-theme="ds-scandi"]) select.picker, :where(:root[data-theme="ds-scandi"]) dialog.report textarea { border-radius: var(--border-radius-sm); }
-:where(:root[data-theme="ds-scandi"]) input:focus, :where(:root[data-theme="ds-scandi"]) textarea:focus { border-color: var(--color-border-focus); }
-:where(:root[data-theme="ds-scandi"]) .unread { line-height: 18px; padding: 0 7px; }
-:where(:root[data-theme="ds-scandi"]) .new { border-radius: var(--border-radius-full); padding: 0 6px; }
-:where(:root[data-theme="ds-scandi"]) .plist em { border-radius: var(--border-radius-full); padding: 0 6px; background: var(--bg); }
-:where(:root[data-theme="ds-scandi"]) .avatar { background: var(--bg); }
+.room-title { font-size: 14px; font-weight: 800; text-transform: none; letter-spacing: 0; }
+h2 { font-weight: 800; letter-spacing: .06em; }
+button { border-radius: var(--border-radius-sm); font-weight: 700; box-shadow: var(--shadow-sm); }
+button:where(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open), :is(.emoji-tabs, .emoji-grid) button { box-shadow: none; }
+.avatar.speaking { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--color-ring); }
+input, select.picker, dialog.report textarea { border-radius: var(--border-radius-sm); }
+input:focus, textarea:focus { border-color: var(--color-border-focus); }
+.unread { line-height: 18px; padding: 0 7px; }
+.new { border-radius: var(--border-radius-full); padding: 0 6px; }
+.plist em { border-radius: var(--border-radius-full); padding: 0 6px; background: var(--bg); }
+.avatar { background: var(--bg); }
 /* cards: shares, settings panels and popovers float on soft shadows */
-:where(:root[data-theme="ds-scandi"]) .share { border-radius: var(--border-radius-md); box-shadow: var(--shadow-md); }
-:where(:root[data-theme="ds-scandi"]) .panel { border-radius: var(--border-radius-md); box-shadow: var(--shadow-sm); }
-:where(:root[data-theme="ds-scandi"]) .profile[popover], :where(:root[data-theme="ds-scandi"]) .emoji-picker[popover],
-:where(:root[data-theme="ds-scandi"]) dialog.report, :where(:root[data-theme="ds-scandi"]) dialog.about { border-radius: var(--border-radius-lg); border-color: transparent; box-shadow: var(--shadow-lg); }
-:where(:root[data-theme="ds-scandi"]) .banner { border-radius: 0 0 var(--border-radius-md) var(--border-radius-md); }
-:where(:root[data-theme="ds-scandi"]) .warn { border-radius: var(--border-radius-sm); }
-/* the sidebar's round ⋯ and ⚙ are glyphs on the linen, not keys: no shadow under them, no lift; the ⋯ and ⚙ menus
+.share { border-radius: var(--border-radius-md); box-shadow: var(--shadow-md); }
+.panel { border-radius: var(--border-radius-md); box-shadow: var(--shadow-sm); }
+.profile[popover], .emoji-picker[popover],
+dialog.report, dialog.about { border-radius: var(--border-radius-lg); border-color: transparent; box-shadow: var(--shadow-lg); }
+.banner { border-radius: 0 0 var(--border-radius-md) var(--border-radius-md); }
+.warn { border-radius: var(--border-radius-sm); }
+/* the sidebar's round ⋯, ↑ and ⚙ are glyphs on the linen, not keys: no shadow under them, no lift; the ⋯ and ⚙ menus
    float as the profile card does; the small Leave in clay with the palette's own text on clay */
-:where(:root[data-theme="ds-scandi"]) :is(button.room-more, :is(.side-me, .side-top) button.gear), :where(:root[data-theme="ds-scandi"]) :is(button.room-more, :is(.side-me, .side-top) button.gear):hover { box-shadow: none; transform: none; }
-:where(:root[data-theme="ds-scandi"]) :is(.room-menu, .side-foot)[popover] { border-radius: var(--border-radius-lg); border-color: transparent; box-shadow: var(--shadow-lg); }
-:where(:root[data-theme="ds-scandi"]) button.room-leave { color: var(--color-text-on-error); font-weight: 800; box-shadow: none; }
-/* chat: names in the heavy weight, the composer a soft pill */
-:where(:root[data-theme="ds-scandi"]) .chat-log { gap: 12px; }
-:where(:root[data-theme="ds-scandi"]) .msg-from { font-weight: 800; }
-:where(:root[data-theme="ds-scandi"]) .msg-text { line-height: 1.5; }
-:where(:root[data-theme="ds-scandi"]) .chat-field > input { border-radius: var(--border-radius-full); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
-:where(:root[data-theme="ds-scandi"]) .chat-input > button:not(.emoji-open) { border-radius: var(--border-radius-full); padding: 8px 18px; background: var(--acc); border-color: var(--acc); color: var(--color-text-on-accent); }
-:where(:root[data-theme="ds-scandi"]) .chat-new { border-radius: var(--border-radius-full); }
-:where(:root[data-theme="ds-scandi"]) .consent .bubble { border: 1px solid var(--line); }
+:is(button.room-more, button.room-top, :is(.side-me, .side-top) button.gear), :is(button.room-more, button.room-top, :is(.side-me, .side-top) button.gear):hover { box-shadow: none; transform: none; }
+:is(.room-menu, .side-foot)[popover] { border-radius: var(--border-radius-lg); border-color: transparent; box-shadow: var(--shadow-lg); }
+button.room-leave { color: var(--color-text-on-error); font-weight: 800; box-shadow: none; }
+/* chat: names in the heavy weight, the composer a soft pill (named as the root too, for when it wears this look in a
+   page of another: `:where(:scope)`, no weight) */
+.chat-log { gap: 12px; }
+.msg-from { font-weight: 800; }
+.msg-text { line-height: 1.5; }
+.chat-field > input { border-radius: var(--border-radius-full); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
+.chat-input:where(:scope, :scope *) > button:not(.emoji-open) { border-radius: var(--border-radius-full); padding: 8px 18px; background: var(--acc); border-color: var(--acc); color: var(--color-text-on-accent); }
+.chat-new { border-radius: var(--border-radius-full); }
+.consent .bubble { border: 1px solid var(--line); }
 /* gentle lifts, only for those who want motion */
-@media (prefers-reduced-motion: no-preference) {
-  :where(:root[data-theme="ds-scandi"]) button { transition: transform var(--duration-normal) var(--easing-out), box-shadow var(--duration-normal) var(--easing-out), background-color var(--duration-normal) var(--easing-out); }
-  :where(:root[data-theme="ds-scandi"]) button:where(:not(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open, :disabled)):hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
-  :where(:root[data-theme="ds-scandi"]) :is(.emoji-tabs, .emoji-grid) button:hover { transform: none; box-shadow: none; }
-  :where(:root[data-theme="ds-scandi"]) .share { transition: box-shadow var(--duration-normal) var(--easing-out); }
-  :where(:root[data-theme="ds-scandi"]) .share:hover { box-shadow: var(--shadow-lg); }
+
 }
+@media (prefers-reduced-motion: no-preference) {
+@scope ([data-theme="ds-scandi"]) to ([data-theme]) {
+
+  button { transition: transform var(--duration-normal) var(--easing-out), box-shadow var(--duration-normal) var(--easing-out), background-color var(--duration-normal) var(--easing-out); }
+  button:where(:not(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open, :disabled)):hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+  :is(.emoji-tabs, .emoji-grid) button:hover { transform: none; box-shadow: none; }
+  .share { transition: box-shadow var(--duration-normal) var(--easing-out); }
+  .share:hover { box-shadow: var(--shadow-lg); }
+
+}
+
+}@scope ([data-theme="ds-scandi"]) to ([data-theme]) {
+
 
 /* ── Ambient: light through a curtain ─────────────────────────────────────────────────────────────────────────────── */
 /* Low Nordic sun through the linen curtain of a cabin window, cast soft and golden on the wall beside the chat: no
@@ -147,41 +174,89 @@
    wide monitor gets a real window, a phone a small one low above the composer with half the dust. Light makes the wall
    paler and moonlight barely lifts it, so text keeps its contrast; the sidebar's panel covers it. Moving: the cloud
    (transform, 64 s) and eight motes (transform and opacity, 17 to 29 s). */
-:root[data-theme="ds-scandi"] { --scandi-window: rgba(255, 238, 200, .8); --scandi-mote: rgba(222, 172, 84, .75); --scandi-mote-glow: rgba(240, 204, 140, .3); }
-@media (prefers-color-scheme: dark) { :root[data-theme="ds-scandi"] { --scandi-window: rgba(143, 185, 216, .085); --scandi-mote: rgba(214, 230, 242, .65); --scandi-mote-glow: rgba(143, 185, 216, .2); } }
-:root[data-theme="ds-scandi"] .ambient { display: block;
+:scope[data-theme="ds-scandi"] { --scandi-window: rgba(255, 238, 200, .8); --scandi-mote: rgba(222, 172, 84, .75); --scandi-mote-glow: rgba(240, 204, 140, .3); }
+
+}
+@media (prefers-color-scheme: dark) {
+@scope ([data-theme="ds-scandi"]) to ([data-theme]) {
+ :scope[data-theme="ds-scandi"] { --scandi-window: rgba(143, 185, 216, .085); --scandi-mote: rgba(214, 230, 242, .65); --scandi-mote-glow: rgba(143, 185, 216, .2); } 
+}
+
+}@scope ([data-theme="ds-scandi"]) to ([data-theme]) {
+
+.ambient:is([data-theme="ds-scandi"][data-theme], [data-theme="ds-scandi"][data-theme] *) { display: block;
   --pw: clamp(240px, 27vw, 760px); --ph: calc(var(--pw) * .833); --pr: 5vw; --pt: 24vh; }
 /* the light on the wall, and the cloud's shadow inside it (the mask cuts both to the curtain's folds) */
-:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(1) { top: var(--pt); right: var(--pr); width: var(--pw); height: var(--ph);
+.ambient > i:nth-child(1) { top: var(--pt); right: var(--pr); width: var(--pw); height: var(--ph);
   background: var(--scandi-window); overflow: hidden;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 360 300'%3E%3Cfilter id='b'%3E%3CfeGaussianBlur stdDeviation='8'/%3E%3C/filter%3E%3Cg filter='url(%23b)' transform='translate(118 34) skewX(-22)'%3E%3Crect x='0' width='36' height='234' fill-opacity='1'/%3E%3Crect x='36' width='36' height='234' fill-opacity='.7'/%3E%3Crect x='72' width='36' height='234' fill-opacity='.9'/%3E%3Crect x='108' width='36' height='234' fill-opacity='.62'/%3E%3Crect x='144' width='36' height='234' fill-opacity='.94'/%3E%3Crect x='180' width='36' height='234' fill-opacity='.74'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 360 300'%3E%3Cfilter id='b'%3E%3CfeGaussianBlur stdDeviation='8'/%3E%3C/filter%3E%3Cg filter='url(%23b)' transform='translate(118 34) skewX(-22)'%3E%3Crect x='0' width='36' height='234' fill-opacity='1'/%3E%3Crect x='36' width='36' height='234' fill-opacity='.7'/%3E%3Crect x='72' width='36' height='234' fill-opacity='.9'/%3E%3Crect x='108' width='36' height='234' fill-opacity='.62'/%3E%3Crect x='144' width='36' height='234' fill-opacity='.94'/%3E%3Crect x='180' width='36' height='234' fill-opacity='.74'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat; }
-:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(1)::before { content: ''; position: absolute; top: -15%; bottom: -15%; left: 0; width: 70%;
+.ambient > i:nth-child(1)::before { content: ''; position: absolute; top: -15%; bottom: -15%; left: 0; width: 70%;
   background: radial-gradient(closest-side, var(--color-bg-primary) 25%, transparent); opacity: .8;
   animation: ds-scandi-cloud 64s linear -20s infinite; animation-play-state: var(--ambient-play); }
-@keyframes ds-scandi-cloud { 0% { transform: translateX(-110%); } 50%, 100% { transform: translateX(150%); } }
+
+}
+@keyframes ds-scandi-cloud { 0% { transform: translateX(-110%); } 50%, 100% { transform: translateX(150%); } }@scope ([data-theme="ds-scandi"]) to ([data-theme]) {
+
 /* dust in the light: each speck rises or sinks a few millimetres while it glints in and out */
-:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(n+2):nth-child(-n+9) { width: clamp(6px, .8vmin, 13px); aspect-ratio: 1; border-radius: 50%; opacity: 0;
+.ambient > i:nth-child(n+2):nth-child(-n+9) { width: clamp(6px, .8vmin, 13px); aspect-ratio: 1; border-radius: 50%; opacity: 0;
   left: calc(100% - var(--pr) - var(--pw) * (1 - var(--mx))); top: calc(var(--pt) + var(--ph) * var(--my));
   background: radial-gradient(circle, var(--scandi-mote) 0 28%, var(--scandi-mote-glow) 45%, transparent 70%);
   animation: ds-scandi-mote var(--md) ease-in-out var(--mdelay) infinite; animation-play-state: var(--ambient-play); }
+
+}
 @keyframes ds-scandi-mote {
   0% { opacity: 0; transform: translate(0, 0); }
   25% { opacity: .9; }
   50% { transform: translate(var(--dx), var(--dy)); }
   75% { opacity: .8; }
   100% { opacity: 0; transform: translate(calc(var(--dx) * 1.7), calc(var(--dy) * .5)); }
+}@scope ([data-theme="ds-scandi"]) to ([data-theme]) {
+
+.ambient > i:nth-child(2) { --mx: .42; --my: .22; --dx: 3vmin; --dy: -4vmin; --md: 23s; --mdelay: -4s; }
+.ambient > i:nth-child(3) { --mx: .66; --my: .58; --dx: -2.5vmin; --dy: 3vmin; --md: 19s; --mdelay: -11s; }
+.ambient > i:nth-child(4) { --mx: .30; --my: .74; --dx: 4vmin; --dy: -2vmin; --md: 27s; --mdelay: -17s; }
+.ambient > i:nth-child(5) { --mx: .78; --my: .30; --dx: -3vmin; --dy: -3vmin; --md: 21s; --mdelay: -7s; }
+.ambient > i:nth-child(6) { --mx: .52; --my: .44; --dx: 2vmin; --dy: 4vmin; --md: 29s; --mdelay: -22s; }
+.ambient > i:nth-child(7) { --mx: .20; --my: .40; --dx: 3.5vmin; --dy: 2.5vmin; --md: 17s; --mdelay: -2s; }
+.ambient > i:nth-child(8) { --mx: .88; --my: .70; --dx: -4vmin; --dy: -1.5vmin; --md: 25s; --mdelay: -15s; }
+.ambient > i:nth-child(9) { --mx: .60; --my: .12; --dx: -1.5vmin; --dy: 3.5vmin; --md: 22s; --mdelay: -9s; }
+
 }
-:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(2) { --mx: .42; --my: .22; --dx: 3vmin; --dy: -4vmin; --md: 23s; --mdelay: -4s; }
-:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(3) { --mx: .66; --my: .58; --dx: -2.5vmin; --dy: 3vmin; --md: 19s; --mdelay: -11s; }
-:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(4) { --mx: .30; --my: .74; --dx: 4vmin; --dy: -2vmin; --md: 27s; --mdelay: -17s; }
-:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(5) { --mx: .78; --my: .30; --dx: -3vmin; --dy: -3vmin; --md: 21s; --mdelay: -7s; }
-:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(6) { --mx: .52; --my: .44; --dx: 2vmin; --dy: 4vmin; --md: 29s; --mdelay: -22s; }
-:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(7) { --mx: .20; --my: .40; --dx: 3.5vmin; --dy: 2.5vmin; --md: 17s; --mdelay: -2s; }
-:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(8) { --mx: .88; --my: .70; --dx: -4vmin; --dy: -1.5vmin; --md: 25s; --mdelay: -15s; }
-:where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(9) { --mx: .60; --my: .12; --dx: -1.5vmin; --dy: 3.5vmin; --md: 22s; --mdelay: -9s; }
 @media (max-width: 700px) {
-  :root[data-theme="ds-scandi"] .ambient { --pw: clamp(200px, 60vw, 280px); --pr: 2vw; --pt: calc(100% - 96px - env(safe-area-inset-bottom) - var(--ph)); }
-  :where(:root[data-theme="ds-scandi"]) .ambient > i:nth-child(n+6):nth-child(-n+9) { display: none; }
+@scope ([data-theme="ds-scandi"]) to ([data-theme]) {
+
+  .ambient:is([data-theme="ds-scandi"][data-theme], [data-theme="ds-scandi"][data-theme] *) { --pw: clamp(200px, 60vw, 280px); --pr: 2vw; --pt: calc(100% - 96px - env(safe-area-inset-bottom) - var(--ph)); }
+  .ambient > i:nth-child(n+6):nth-child(-n+9) { display: none; }
+
+}
+
 }
 /* on a phone the light falls behind the chat lines, so by day it is softer there */
-@media (max-width: 700px) and (prefers-color-scheme: light) { :root[data-theme="ds-scandi"] { --scandi-window: rgba(255, 238, 200, .5); } }
+@media (max-width: 700px) and (prefers-color-scheme: light) {
+@scope ([data-theme="ds-scandi"]) to ([data-theme]) {
+ :scope[data-theme="ds-scandi"] { --scandi-window: rgba(255, 238, 200, .5); } 
+}
+
+}
+@scope ([data-theme="ds-scandi"]) to ([data-theme]) {
+
+/* A room's box, wherever it sits, is a stretch of the same linen wall with the window's light on it: a soft patch of
+   sun (moonlight in the dark palette) from its top right, the curtain's folds in it, and three specks of dust held
+   still in the light. The folds are bands of the wall's own colour, so they show only where the light is. The top room
+   open on screen, at rest, stands on the bare sidebar (styles.css), so it gets no light. The chat of a room in this look, inside
+   a page of another, is the wall with the window's light beside the conversation, still; the composer the bare wall. */
+:scope.room {
+  --room-ground:
+    radial-gradient(circle at 74% 30%, var(--scandi-mote) 0 1.2px, transparent 2px),
+    radial-gradient(circle at 88% 64%, var(--scandi-mote) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 81% 84%, var(--scandi-mote-glow) 0 2px, transparent 3.5px),
+    repeating-linear-gradient(112deg, transparent 0 16px, color-mix(in srgb, var(--panel) 60%, transparent) 16px 30px),
+    radial-gradient(ellipse 55% 150% at 92% 0, var(--scandi-window), transparent 75%),
+    var(--panel); }
+:scope.chat { --chat-ground:
+    repeating-linear-gradient(112deg, transparent 0 24px, color-mix(in srgb, var(--bg) 60%, transparent) 24px 44px),
+    radial-gradient(ellipse 30% 45% at 78% 36%, var(--scandi-window), transparent 72%),
+    var(--bg); }
+:scope.chat-input { --chat-ground: var(--bg); }
+
+}

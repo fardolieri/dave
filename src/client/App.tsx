@@ -29,7 +29,7 @@ import { EmojiPicker } from './EmojiPicker';
 import { place } from './place';
 import { createTabLock } from './tablock';
 import { build, commitUrl, REPO_URL, shortCommit } from './version';
-import { THEMES, THEME_GROUPS, forgetRoomTheme, setRoomTheme, showRoomTheme, theme, themeOf } from './theme';
+import { THEMES, THEME_GROUPS, forgetRoomTheme, lookApart, setRoomTheme, showTopTheme, theme, themeOf } from './theme';
 import { applyUpdate, downloadProgress, holding, noteOffered, tabSettled, updateReady } from './update';
 
 export default function App() {
@@ -330,8 +330,12 @@ function Workspace(props: WorkspaceProps) {
   // The themes card, opened from a room's ⋯ menu for that room's look, hanging beside the sidebar as a profile card does.
   const [themesAt, setThemesAt] = createSignal<{ anchor: HTMLElement; roomId: string } | null>(null);
   const openThemes = (anchor: HTMLElement, roomId: string) => setThemesAt({ anchor, roomId });
-  // The page wears the look of the room on screen (a private conversation, the room's behind it).
-  createEffect(() => current()?.saved.id, (id) => { if (id) showRoomTheme(id); });
+  // The page (the sidebar, its menus, the cards, the shares) wears the look of the top room, the first in the list: the
+  // one whose call I am in, if I am in one. Each room's box wears its own; the chat of the room on screen wears that
+  // room's, marked only where it is not the page's (a mark of the page's own would cover the page's scenery behind it).
+  // A private conversation belongs to no room: the page's.
+  createEffect(() => links()[0]?.saved.id, (id) => { if (id) showTopTheme(id); });
+  const chatLook = () => { const id = current()?.saved.id ?? ''; return lookApart(id) ? themeOf(id) || 'default' : undefined; };
   /** The room on screen folded in the sidebar by a click on its box; another room brought on screen opens again. */
   const [folded, setFolded] = createSignal(false);
   const openProfile = (p: Person, anchor: HTMLElement) => {
@@ -612,6 +616,8 @@ function Workspace(props: WorkspaceProps) {
             </div>
             <For each={links()}>{(l) => {
               const selected = () => l === cur();
+              // The first in the list: its look is the page's, and its ⋯ is the one there is
+              const top = () => links()[0] === l;
               // Open in the sidebar: the room on screen, unless I folded it, or a private conversation is on screen in its place.
               const expanded = () => selected() && !folded() && !privates.openWith();
               const inThis = () => l.call.inCall();
@@ -651,12 +657,12 @@ function Workspace(props: WorkspaceProps) {
               const menuId = `room-menu-${++roomMenus}`;
               const roomMenu = sidebarMenu({ width: ROOM_MENU_W, prefer: 'below' });
               return (
-                <section class={`room ${selected() ? 'selected' : ''} ${expanded() ? '' : 'folded'} ${inThis() ? 'in-call' : ''} ${selected() && privates.openWith() ? 'behind' : ''} ${l.room.status().kind === 'connected' ? '' : 'frozen'}`}>
+                <section data-theme={themeOf(l.saved.id) || 'default'} data-apart={lookApart(l.saved.id) ? '' : undefined} class={`room ${selected() ? 'selected' : ''} ${expanded() ? '' : 'folded'} ${inThis() ? 'in-call' : ''} ${selected() && privates.openWith() ? 'behind' : ''} ${l.room.status().kind === 'connected' ? '' : 'frozen'}`}>
                   {/* The top row is the room's handle (the area its hover shades the box for, styles.css): its name (a button,
                       for the keyboard) and its faces included, it opens the room, back from a private conversation too, or
                       folds the room on screen. The ⋯ and its menu do their own. */}
                   <div class="room-head" onClick={(e) => {
-                    if ((e.target as Element).closest('.room-more, .room-leave, .room-hear, .room-unmute, [popover]')) return;
+                    if ((e.target as Element).closest('.room-more, .room-top, .room-leave, .room-hear, .room-unmute, [popover]')) return;
                     if (expanded()) { setFolded(true); return; }
                     privates.close(); setFolded(false); props.onSelect(l.saved.secret);
                   }}>
@@ -690,7 +696,14 @@ function Workspace(props: WorkspaceProps) {
                       <Show when={l.call.audioBlocked()}><button class="room-hear" title="The browser held back the call's sound until you click" onClick={() => l.call.unblockAudio()}>Hear</button></Show>
                       <button class="room-leave" title={`Leave the call in ${l.saved.name}`} onClick={() => l.call.leave()}>Leave</button>
                     </Show>
-                    <Show when={expanded()}>
+                    {/* Every room but the top one: up to the top, where its ⋯ is (invite, theme, leave), and on screen, open, as
+                        its head would. Not while in a call: the call's room is the top one */}
+                    <Show when={!top()}>
+                      <button class="room-top" disabled={!!active()} title={active() ? 'The room of your call stays on top' : `Put ${l.saved.name} on top`} aria-label={`Put ${l.saved.name} on top`}
+                        onClick={() => { const i = links().indexOf(l); if (i > 0) moveRooms(i, 0); privates.close(); setFolded(false); props.onSelect(l.saved.secret); }}>↑</button>
+                    </Show>
+                    {/* The top room's ⋯, while it is open: folded, its row is only its handle */}
+                    <Show when={top() && expanded()}>
                       <button class="room-more" ref={roomMenu.anchor} popovertarget={menuId} title="Invite, themes, clear chat history, leave" aria-label={`More for ${l.saved.name}`}>⋯</button>
                       <div class="room-menu" id={menuId} popover="auto" ref={roomMenu.menu} onBeforeToggle={roomMenu.beforeToggle} onToggle={roomMenu.toggle}>
                         <button class="link" title="The link that gets a friend into this room" onClick={() => { roomMenu.close(); toggleInvite(l); }}>{inviteOpen() ? 'Hide invite link' : 'Invite'}</button>
@@ -821,7 +834,7 @@ function Workspace(props: WorkspaceProps) {
             </section>
           )}</Show>
           {/* Kept while a conversation is on screen, hidden: back from it, the reader is where they were in the room */}
-          <ChatLog lines={cur().room.lines()} openedAt={openedAt()} jumpToken={jumpToken()} label={labelOf} hidden={!!privateFriend()}
+          <ChatLog lines={cur().room.lines()} openedAt={openedAt()} jumpToken={jumpToken()} label={labelOf} hidden={!!privateFriend()} look={chatLook()}
                    attachment={(hash) => cur().room.attachment(hash)} onPull={(hash) => cur().room.pull(hash)} onCancel={(hash) => cur().room.cancelPull(hash)} />
           <Show when={privateFriend()}>{(pf) => (
             <ChatLog lines={privates.lines(pf().key)} openedAt={privateOpenedAt()} jumpToken={privateJump()} label={labelOf} private
@@ -833,7 +846,7 @@ function Workspace(props: WorkspaceProps) {
           )}</Show>
         </div>
         {/* In a private conversation it goes by the room that would carry the text, not the one on screen */}
-        <Composer connected={privateFriend() ? privates.connected(privateFriend()!.key) : connected()} writable={privateFriend() ? true : writable()} roomName={cur().saved.name} onSend={send}
+        <Composer connected={privateFriend() ? privates.connected(privateFriend()!.key) : connected()} writable={privateFriend() ? true : writable()} roomName={cur().saved.name} onSend={send} look={privateFriend() ? undefined : chatLook()}
                   privateTo={privateFriend() ? { key: privateFriend()!.key, name: labelOf(privateFriend()!.friend).shown, blocked: privateFriend()!.blocked } : null}
                   staged={staged()} onStage={stageFile} onUnstage={unstageFile}>
           {/* Anchored to the composer's top edge, whatever its height on this device (ticket 32) */}
@@ -1057,6 +1070,28 @@ function ThemesCard(props: { open: { anchor: HTMLElement; roomId: string } | nul
     if (!o) { if (isOpen()) card.hidePopover(); return; }
     if (!isOpen()) card.showPopover();
     place(card, o.anchor, 'beside', o.anchor.closest<HTMLElement>('aside.side') ?? undefined);
+  });
+  // Beside its ⋯, which only the top room has, as the page changes under it: a pick re-themes the page (other fonts, other
+  // padding) while the card stays open for the next try, and the sidebar scrolls. The rooms reordered and its ⋯ gone (the
+  // room left the top), put away.
+  createEffect(() => props.open, (o) => {
+    if (!o) return;
+    let placing = 0;
+    const follow = () => {
+      if (placing) return; // once a frame at most
+      placing = requestAnimationFrame(() => {
+        placing = 0;
+        if (!o.anchor.isConnected) props.onClose();
+        else if (card && isOpen()) place(card, o.anchor, 'beside', o.anchor.closest<HTMLElement>('aside.side') ?? undefined);
+      });
+    };
+    const moved = new MutationObserver(follow);
+    moved.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    const lists = o.anchor.closest('aside.side');
+    if (lists) moved.observe(lists, { childList: true }); // the rooms reordered
+    addEventListener('scroll', follow, true);
+    addEventListener('resize', follow);
+    return () => { cancelAnimationFrame(placing); moved.disconnect(); removeEventListener('scroll', follow, true); removeEventListener('resize', follow); };
   });
   const picked = () => (props.open ? themeOf(props.open.roomId) : theme());
   const choice = (name: string, label: string) => (
@@ -1854,6 +1889,8 @@ function Composer(props: {
   /** Sends the text (maybe empty) with the staged files; false when it was not taken, and stays in the field. */
   onSend: (text: string) => boolean;
   staged: Staged[]; onStage: (file: File, original?: Promise<File | null>) => void; onUnstage: (id: number) => void;
+  /** The look it wears when not the page's: the room it writes to has another (client/theme.ts). */
+  look?: string;
 }) {
   const [draft, setDraft] = createSignal('');
   let input: HTMLInputElement | undefined;
@@ -1905,7 +1942,7 @@ function Composer(props: {
   };
   // Private, out of PostHog, recordings too (`ph-no-capture`): its placeholder and Send's title name the friend.
   return (
-    <form class={props.privateTo ? 'chat-input private ph-no-capture' : 'chat-input'} onSubmit={submit}>
+    <form class={props.privateTo ? 'chat-input private ph-no-capture' : 'chat-input'} data-theme={props.look} onSubmit={submit}>
       <Show when={props.staged.length}>
         <ul class="staged" aria-label="To send">
           <For each={props.staged}>{(x) => (
@@ -1949,6 +1986,8 @@ function ChatLog(props: {
   /** Whom a file's bytes come from, by its writer (a private file of mine, after a reload: the friend who pulled it). */
   holder?: (from: Identity) => string;
   attachment: (hash: string) => Attachment | undefined; onPull: (hash: string) => void; onCancel: (hash: string) => void;
+  /** The look it wears when not the page's: its room has another (client/theme.ts). */
+  look?: string;
 }) {
   let log: HTMLDivElement | undefined;
   let viewer: HTMLDialogElement | undefined;
@@ -2014,7 +2053,7 @@ function ChatLog(props: {
   });
   return (
     // A private conversation is kept out of PostHog's autocapture too (`ph-no-capture`): a click on a link would carry it.
-    <div class={props.private ? 'chat private ph-no-capture' : 'chat'} hidden={props.hidden}>
+    <div class={props.private ? 'chat private ph-no-capture' : 'chat'} hidden={props.hidden} data-theme={props.look}>
       {props.head}
       <div class="chat-log" ref={log} onScroll={onScroll}>
         <Show when={props.empty && props.lines.length === 0}><p class="chat-empty">{props.empty}</p></Show>

@@ -1,8 +1,9 @@
+@scope ([data-theme="tf-radio-log"]) to ([data-theme]) {
 /* Radio Log: generated with theme-factory (custom theme) (anthropics/skills, skills/theme-factory).
    A field radio operator’s log book: newsprint paper, ink-black ruled lines, cobalt stamp for what is on, typewriter headings.
    Palette: Newsprint #f4f1ea, Ink #1d1d1b, Cobalt Stamp #1f3fbf, Pencil Grey #5a564e. Fonts: monospace (typewriter) headers, system sans body.
    Every rule is scoped to this theme; the app's own look and the other themes are untouched. */
-:root[data-theme="tf-radio-log"] {
+:scope[data-theme="tf-radio-log"] {
   --bg: #f4f1ea; --panel: #ebe6da; --panel2: #fbf9f4; --fg: #1d1d1b; --dim: #5a564e; --line: #1d1d1b;
   --ok: #19703a; --warn: #8a5b00; --bad: #c0271b; --acc: #1f3fbf; --tf-link: #1f3fbf;
   --tf-on-acc: #ffffff; --tf-on-ok: #ffffff; --tf-on-bad: #ffffff;
@@ -14,62 +15,79 @@
 }
 
 /* type: the theme's header face on headings, room names and the names on the profile card */
-:root[data-theme="tf-radio-log"] :is(h1, h2, h3, .room-title, .profile-name strong, .consent .hello) { font-family: var(--tf-head); font-weight: 700; }
-:where(:root[data-theme="tf-radio-log"]) :is(button, select, textarea) { font-family: inherit; }
-:root[data-theme="tf-radio-log"] a { color: var(--tf-link); }
-:root[data-theme="tf-radio-log"] .msg-from { color: #1d1d1b; }
-:root[data-theme="tf-radio-log"] :is(button.room-name, button.avatar):focus-visible { outline-color: var(--tf-link); }
+:is(h1, h2, h3, .room-title, .profile-name strong, .consent .hello):is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { font-family: var(--tf-head); font-weight: 700; }
+:is(button, select, textarea) { font-family: inherit; }
+a:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { color: var(--tf-link); }
+.msg-from:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { color: #1d1d1b; }
+:is(button.room-name, button.avatar):focus-visible:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { outline-color: var(--tf-link); }
 
 /* shape: corners of the plain controls and boxes (:where keeps button.join, .link and the rest their own look; faces stay round) */
-:where(:root[data-theme="tf-radio-log"]) :is(button:not(.avatar), input, select.picker, textarea) { border-radius: 0; }
-:root[data-theme="tf-radio-log"] :is(.panel, .share, .warn, dialog.report, dialog.about, .profile[popover], .emoji-picker[popover]) { border-radius: 0; }
-:root[data-theme="tf-radio-log"] .share.share-fs { border-radius: 0; }
-/* the sidebar is square too: the room boxes, their call box, the ⋯ and ⚙ menus and their items, and ⚙ itself */
-:root[data-theme="tf-radio-log"] :is(.room, .plist.callbox, .room-menu[popover], .side-foot[popover], .room-menu button.link, .side-foot button.link, .side-me .gear, .side-top .gear, .who, .away li.on) { border-radius: 0; }
-:root[data-theme="tf-radio-log"] :is(.room-menu[popover], .side-foot[popover]) { border-width: 1.5px; box-shadow: var(--tf-shadow-lg); }
+:is(button:not(.avatar), input, select.picker, textarea) { border-radius: 0; }
+:is(.panel, .share, .warn, dialog.report, dialog.about, .profile[popover], .emoji-picker[popover]):is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { border-radius: 0; }
+.share.share-fs:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { border-radius: 0; }
+/* the sidebar is square too: the room boxes, their call box, the ⋯ and ⚙ menus and their items, and ⚙ itself (a room's
+   box is the root of its own look wherever it sits, so it is named as the root) */
+:is(.room:where(:scope), .plist.callbox, .room-menu[popover], .side-foot[popover], .room-menu button.link, .side-foot button.link, .side-me .gear, .side-top .gear, .who, .away li.on):is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { border-radius: 0; }
+:is(.room-menu[popover], .side-foot[popover]):is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { border-width: 1.5px; box-shadow: var(--tf-shadow-lg); }
 
 /* the colours styles.css writes for its dark page, each taken from this palette */
-:root[data-theme="tf-radio-log"] .update { color: var(--tf-on-acc); }
-:root[data-theme="tf-radio-log"] .update button, :root[data-theme="tf-radio-log"] .update button:hover { background: var(--tf-on-acc); color: var(--acc); }
-:root[data-theme="tf-radio-log"] .unread, :root[data-theme="tf-radio-log"] button.on:not(.link), :root[data-theme="tf-radio-log"] select.picker option:checked { color: var(--tf-on-acc); }
-:root[data-theme="tf-radio-log"] button.join { color: var(--tf-on-ok); }
-:root[data-theme="tf-radio-log"] button.leave { color: var(--tf-on-bad); }
-:root[data-theme="tf-radio-log"] button.unblock { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+.update:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { color: var(--tf-on-acc); }
+.update button:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *), .update button:hover:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { background: var(--tf-on-acc); color: var(--acc); }
+.unread:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *), button.on:not(.link):is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *), select.picker option:checked:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { color: var(--tf-on-acc); }
+button.join:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { color: var(--tf-on-ok); }
+button.leave:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { color: var(--tf-on-bad); }
+button.unblock:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
 /* the mic test fills its button while recording: a pale ink blue, so "Recording…" stays readable */
-:root[data-theme="tf-radio-log"] .panel .mictest button.recording { background-image: linear-gradient(#c3cdf3, #c3cdf3); }
-:root[data-theme="tf-radio-log"] .new { background: var(--tf-new-bg); color: var(--tf-on-new); }
-:root[data-theme="tf-radio-log"] .warn, :root[data-theme="tf-radio-log"] .banner-warn { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
-:root[data-theme="tf-radio-log"] .banner-bad { background: var(--tf-bad-bg); color: var(--tf-bad-fg); }
-:root[data-theme="tf-radio-log"] .banner { box-shadow: var(--tf-shadow); }
-:root[data-theme="tf-radio-log"] .chat-new { background: color-mix(in srgb, var(--panel2) 92%, transparent); }
-:root[data-theme="tf-radio-log"] .avatar { background: #fbf9f4; color: #1d1d1b; }
-:root[data-theme="tf-radio-log"] .share-head { background: rgba(29,29,27,.07); }
-:root[data-theme="tf-radio-log"] .share-bar { background: rgba(29,29,27,.05); }
-:root[data-theme="tf-radio-log"] :is(.profile[popover], .emoji-picker[popover]) { box-shadow: var(--tf-shadow-lg); }
-:root[data-theme="tf-radio-log"] :is(dialog.report, dialog.about)::backdrop { background: rgba(29,29,27,.35); }
-:root[data-theme="tf-radio-log"] .consent { --bubble: #fbf9f4; --bubble-fg: #1d1d1b; --bubble-dim: #5a564e; --bubble-link: #1f3fbf; }
-:root[data-theme="tf-radio-log"] .consent .bubble { box-shadow: var(--tf-shadow-lg); }
+.panel .mictest button.recording:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { background-image: linear-gradient(#c3cdf3, #c3cdf3); }
+.new:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { background: var(--tf-new-bg); color: var(--tf-on-new); }
+.warn:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *), .banner-warn:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+.banner-bad:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { background: var(--tf-bad-bg); color: var(--tf-bad-fg); }
+.banner:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { box-shadow: var(--tf-shadow); }
+.chat-new:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { background: color-mix(in srgb, var(--panel2) 92%, transparent); }
+.avatar:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { background: #fbf9f4; color: #1d1d1b; }
+.share-head:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { background: rgba(29,29,27,.07); }
+.share-bar:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { background: rgba(29,29,27,.05); }
+:is(.profile[popover], .emoji-picker[popover]):is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { box-shadow: var(--tf-shadow-lg); }
+:is(dialog.report, dialog.about):is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *)::backdrop { background: rgba(29,29,27,.35); }
+.consent:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { --bubble: #fbf9f4; --bubble-fg: #1d1d1b; --bubble-dim: #5a564e; --bubble-link: #1f3fbf; }
+.consent .bubble:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { box-shadow: var(--tf-shadow-lg); }
 
 /* fullscreen share: always the black stage, so header and bar take light text whatever the page is */
-:root[data-theme="tf-radio-log"] .share.share-fs { --fg: #f2f2f2; --dim: #c8c8c8; --panel2: #2b2b2b; --line: #4a4a4a; --ok: #3ddc84; --warn: #f5b642; --bad: #ff6b6b;
+.share.share-fs:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { --fg: #f2f2f2; --dim: #c8c8c8; --panel2: #2b2b2b; --line: #4a4a4a; --ok: #3ddc84; --warn: #f5b642; --bad: #ff6b6b;
   border: 0; background: #000; color: var(--fg); box-shadow: none; }
-:root[data-theme="tf-radio-log"] .share.share-fs :is(.share-head, .share-bar) { background: rgba(0,0,0,.55); }
+.share.share-fs :is(.share-head, .share-bar):is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { background: rgba(0,0,0,.55); }
 
-:root[data-theme="tf-radio-log"] :is(.msg-from, .msg-at, .plist em, .unread, .new) { font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace; }
-:root[data-theme="tf-radio-log"] .msg-from { text-transform: uppercase; font-size: 12px; letter-spacing: .04em; }
-:root[data-theme="tf-radio-log"] :is(h2, .room-title) { letter-spacing: .12em; }
-:root[data-theme="tf-radio-log"] h2 { color: var(--fg); }
-:root[data-theme="tf-radio-log"] .banner { border-radius: 0; }
-:root[data-theme="tf-radio-log"] .room.selected .room-title { color: var(--fg); background: #ffd24a; padding: 0 4px; }
-:root[data-theme="tf-radio-log"] .avatar { box-shadow: inset 0 0 0 1px var(--line); }
-:root[data-theme="tf-radio-log"] .avatar.speaking { box-shadow: inset 0 0 0 1px var(--line), 0 0 0 3px var(--ok); }
+:is(.msg-from, .msg-at, .plist em, .unread, .new):is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace; }
+.msg-from:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { text-transform: uppercase; font-size: 12px; letter-spacing: .04em; }
+:is(h2, .room-title):is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { letter-spacing: .12em; }
+h2:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { color: var(--fg); }
+.banner:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { border-radius: 0; }
+.room:where(:scope).selected .room-title:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { color: var(--fg); background: #ffd24a; padding: 0 4px; }
+.avatar:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { box-shadow: inset 0 0 0 1px var(--line); }
+.avatar.speaking:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { box-shadow: inset 0 0 0 1px var(--line), 0 0 0 3px var(--ok); }
 /* the log book's ruled paper behind the chat */
-:root[data-theme="tf-radio-log"] .chat-log { background: repeating-linear-gradient(180deg, transparent 0 23px, rgba(31,63,191,.07) 23px 24px) local; }
+.chat-log:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { background: repeating-linear-gradient(180deg, transparent 0 23px, rgba(31,63,191,.07) 23px 24px) local; }
 /* the meter's track would be ink black under ink-coloured lines; paper grey keeps the level and the gate mark readable */
-:root[data-theme="tf-radio-log"] .panel .vgate .vmeter { background: #d9d3c4; }
-:root[data-theme="tf-radio-log"] :is(.panel, .share, .profile[popover], .emoji-picker[popover], dialog.report, dialog.about) { border-width: 1.5px; }
-:root[data-theme="tf-radio-log"] .actions button:not(.link) { box-shadow: 2px 2px 0 var(--line); }
-:root[data-theme="tf-radio-log"] .actions button:not(.link):active { box-shadow: none; transform: translate(2px, 2px); }
-:root[data-theme="tf-radio-log"] .unread { border-radius: 0; }
-:root[data-theme="tf-radio-log"] .consent .bubble { border: 1.5px solid var(--line); }
-:root[data-theme="tf-radio-log"] .consent .bubble::after { background: var(--line); }
+.panel .vgate .vmeter:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { background: #d9d3c4; }
+:is(.panel, .share, .profile[popover], .emoji-picker[popover], dialog.report, dialog.about):is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { border-width: 1.5px; }
+.actions button:not(.link):is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { box-shadow: 2px 2px 0 var(--line); }
+.actions button:not(.link):active:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { box-shadow: none; transform: translate(2px, 2px); }
+.unread:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { border-radius: 0; }
+.consent .bubble:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *) { border: 1.5px solid var(--line); }
+.consent .bubble:is([data-theme="tf-radio-log"][data-theme], [data-theme="tf-radio-log"][data-theme] *)::after { background: var(--line); }
+
+}
+@scope ([data-theme="tf-radio-log"]) to ([data-theme]) {
+
+/* A room's box, wherever it sits, is a page of the log book: newsprint ruled in the stamp's faint blue at the chat's
+   pitch, an ink rule down the right where the time column starts, and the operator's cobalt stamp pressed on it a
+   little askew, faint, by the top corner. A folded box is one ruled line with its stamp. The top room open on screen, at rest,
+   is the sidebar's own paper (styles.css), so it gets no page. The chat of a room in this look, inside a page of
+   another, is the newsprint; its rules are the log's own (above). */
+:scope.room {
+  --room-ground: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40' fill='none' stroke='%231f3fbf' stroke-opacity='.22'%3E%3Cg transform='rotate(-12 20 20)'%3E%3Ccircle cx='20' cy='20' r='18' stroke-width='1.6'/%3E%3Ccircle cx='20' cy='20' r='14.5' stroke-width='.8'/%3E%3Cpath d='M4 16.5h32M4 23.5h32' stroke-width='1'/%3E%3Cpath d='M9 20h22' stroke-width='2.2' stroke-dasharray='3 1.6'/%3E%3C/g%3E%3C/svg%3E") right 40px top 2px / 36px 36px no-repeat,
+    linear-gradient(90deg, transparent calc(100% - 2px), rgba(29,29,27,.18) calc(100% - 2px)) 0 0 / calc(100% - 66px) 100% no-repeat,
+    repeating-linear-gradient(180deg, transparent 0 23px, rgba(31,63,191,.08) 23px 24px), var(--panel); }
+:scope:is(.chat, .chat-input) { --chat-ground: var(--bg); }
+
+}

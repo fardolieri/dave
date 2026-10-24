@@ -1,8 +1,9 @@
+@scope ([data-theme="tf-midnight-galaxy"]) to ([data-theme]) {
 /* Midnight Galaxy: theme-factory preset (anthropics/skills, skills/theme-factory).
    Dramatic and cosmic: deep purple space, a cosmic-blue glow behind the chat, lavender light, silver text.
    Palette: Deep Purple #2b1e3e, Cosmic Blue #4a4e8f, Lavender #a490c2, Silver #e6e6fa. Fonts: FreeSans Bold headers, FreeSans body (Helvetica-alike stack where FreeSans is missing).
    Every rule is scoped to this theme; the app's own look and the other themes are untouched. */
-:root[data-theme="tf-midnight-galaxy"] {
+:scope[data-theme="tf-midnight-galaxy"] {
   --bg: #2b1e3e; --panel: #22172f; --panel2: #3a2b52; --fg: #e6e6fa; --dim: #ada3c6; --line: #4f4170;
   --ok: #5fd6a4; --warn: #f2c66d; --bad: #ff8095; --acc: #a490c2; --tf-link: #c4b4e4;
   --tf-on-acc: #1c1229; --tf-on-ok: #0b2a1d; --tf-on-bad: #2b0a12;
@@ -14,91 +15,127 @@
 }
 
 /* type: the theme's header face on headings, room names and the names on the profile card */
-:root[data-theme="tf-midnight-galaxy"] :is(h1, h2, h3, .room-title, .profile-name strong, .consent .hello) { font-family: var(--tf-head); font-weight: 700; }
-:where(:root[data-theme="tf-midnight-galaxy"]) :is(button, select, textarea) { font-family: inherit; }
-:root[data-theme="tf-midnight-galaxy"] a { color: var(--tf-link); }
-:root[data-theme="tf-midnight-galaxy"] .msg-from { color: #c4b4e4; }
-:root[data-theme="tf-midnight-galaxy"] :is(button.room-name, button.avatar):focus-visible { outline-color: var(--tf-link); }
+:is(h1, h2, h3, .room-title, .profile-name strong, .consent .hello):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { font-family: var(--tf-head); font-weight: 700; }
+:is(button, select, textarea) { font-family: inherit; }
+a:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { color: var(--tf-link); }
+.msg-from:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { color: #c4b4e4; }
+:is(button.room-name, button.avatar):focus-visible:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { outline-color: var(--tf-link); }
 
 /* shape: corners of the plain controls and boxes (:where keeps button.join, .link and the rest their own look; faces stay round) */
-:where(:root[data-theme="tf-midnight-galaxy"]) :is(button:not(.avatar), input, select.picker, textarea) { border-radius: 12px; }
-:root[data-theme="tf-midnight-galaxy"] :is(.panel, .share, .warn, dialog.report, dialog.about, .profile[popover], .emoji-picker[popover]) { border-radius: 12px; }
-:root[data-theme="tf-midnight-galaxy"] .share.share-fs { border-radius: 0; }
+:is(button:not(.avatar), input, select.picker, textarea) { border-radius: 12px; }
+:is(.panel, .share, .warn, dialog.report, dialog.about, .profile[popover], .emoji-picker[popover]):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { border-radius: 12px; }
+.share.share-fs:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { border-radius: 0; }
 
 /* the colours styles.css writes for its dark page, each taken from this palette */
-:root[data-theme="tf-midnight-galaxy"] .update { color: var(--tf-on-acc); }
-:root[data-theme="tf-midnight-galaxy"] .update button, :root[data-theme="tf-midnight-galaxy"] .update button:hover { background: var(--tf-on-acc); color: var(--acc); }
-:root[data-theme="tf-midnight-galaxy"] .unread, :root[data-theme="tf-midnight-galaxy"] button.on:not(.link), :root[data-theme="tf-midnight-galaxy"] select.picker option:checked { color: var(--tf-on-acc); }
-:root[data-theme="tf-midnight-galaxy"] button.join { color: var(--tf-on-ok); }
-:root[data-theme="tf-midnight-galaxy"] :is(button.leave, button.room-leave) { color: var(--tf-on-bad); }
-:root[data-theme="tf-midnight-galaxy"] button.unblock { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+.update:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { color: var(--tf-on-acc); }
+.update button:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *), .update button:hover:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: var(--tf-on-acc); color: var(--acc); }
+.unread:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *), button.on:not(.link):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *), select.picker option:checked:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { color: var(--tf-on-acc); }
+button.join:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { color: var(--tf-on-ok); }
+:is(button.leave, button.room-leave):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { color: var(--tf-on-bad); }
+button.unblock:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
 /* the mic test fills its button while recording: a deep lavender, so "Recording…" stays readable */
-:root[data-theme="tf-midnight-galaxy"] .panel .mictest button.recording { background-image: linear-gradient(#5e4a86, #5e4a86); }
-:root[data-theme="tf-midnight-galaxy"] .new { background: var(--tf-new-bg); color: var(--tf-on-new); }
-:root[data-theme="tf-midnight-galaxy"] .warn, :root[data-theme="tf-midnight-galaxy"] .banner-warn { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
-:root[data-theme="tf-midnight-galaxy"] .banner-bad { background: var(--tf-bad-bg); color: var(--tf-bad-fg); }
-:root[data-theme="tf-midnight-galaxy"] .banner { box-shadow: var(--tf-shadow); }
-:root[data-theme="tf-midnight-galaxy"] .chat-new { background: color-mix(in srgb, var(--panel2) 92%, transparent); }
-:root[data-theme="tf-midnight-galaxy"] .avatar { background: #4a4e8f; color: #e6e6fa; }
-:root[data-theme="tf-midnight-galaxy"] .share-head { background: rgba(14,8,24,.35); }
-:root[data-theme="tf-midnight-galaxy"] .share-bar { background: rgba(14,8,24,.45); }
-:root[data-theme="tf-midnight-galaxy"] :is(.profile[popover], .emoji-picker[popover]) { box-shadow: var(--tf-shadow-lg); }
-:root[data-theme="tf-midnight-galaxy"] :is(dialog.report, dialog.about)::backdrop { background: rgba(12,6,22,.65); }
-:root[data-theme="tf-midnight-galaxy"] .consent { --bubble: #4a4e8f; --bubble-fg: #e6e6fa; --bubble-dim: #cfcde8; --bubble-link: #e2d6ff; }
-:root[data-theme="tf-midnight-galaxy"] .consent .bubble { box-shadow: var(--tf-shadow-lg); }
+.panel .mictest button.recording:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background-image: linear-gradient(#5e4a86, #5e4a86); }
+.new:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: var(--tf-new-bg); color: var(--tf-on-new); }
+.warn:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *), .banner-warn:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+.banner-bad:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: var(--tf-bad-bg); color: var(--tf-bad-fg); }
+.banner:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { box-shadow: var(--tf-shadow); }
+.chat-new:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: color-mix(in srgb, var(--panel2) 92%, transparent); }
+.avatar:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: #4a4e8f; color: #e6e6fa; }
+.share-head:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: rgba(14,8,24,.35); }
+.share-bar:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: rgba(14,8,24,.45); }
+:is(.profile[popover], .emoji-picker[popover]):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { box-shadow: var(--tf-shadow-lg); }
+:is(dialog.report, dialog.about):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *)::backdrop { background: rgba(12,6,22,.65); }
+.consent:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { --bubble: #4a4e8f; --bubble-fg: #e6e6fa; --bubble-dim: #cfcde8; --bubble-link: #e2d6ff; }
+.consent .bubble:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { box-shadow: var(--tf-shadow-lg); }
 
 /* fullscreen share: always the black stage, so header and bar take light text whatever the page is */
-:root[data-theme="tf-midnight-galaxy"] .share.share-fs { --fg: #f2f2f2; --dim: #c8c8c8; --panel2: #2b2b2b; --line: #4a4a4a; --ok: #3ddc84; --warn: #f5b642; --bad: #ff6b6b;
+.share.share-fs:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { --fg: #f2f2f2; --dim: #c8c8c8; --panel2: #2b2b2b; --line: #4a4a4a; --ok: #3ddc84; --warn: #f5b642; --bad: #ff6b6b;
   border: 0; background: #000; color: var(--fg); box-shadow: none; }
-:root[data-theme="tf-midnight-galaxy"] .share.share-fs :is(.share-head, .share-bar) { background: rgba(0,0,0,.55); }
+.share.share-fs :is(.share-head, .share-bar):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: rgba(0,0,0,.55); }
 
 /* the cosmic-blue glow: a nebula in the far corner of the chat, a faint one under the composer */
-:root[data-theme="tf-midnight-galaxy"] body { background: radial-gradient(ellipse 70% 55% at 85% 0%, rgba(74,78,143,.45), transparent 70%), radial-gradient(ellipse 60% 40% at 30% 110%, rgba(164,144,194,.14), transparent 70%), var(--bg); }
-:root[data-theme="tf-midnight-galaxy"] .side { background: linear-gradient(180deg, #22172f, #1d1428); }
-:root[data-theme="tf-midnight-galaxy"] .room.selected .room-title { color: var(--tf-link); }
-:root[data-theme="tf-midnight-galaxy"] .share-live { border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc), 0 0 22px rgba(164,144,194,.35); }
-:root[data-theme="tf-midnight-galaxy"] .avatar.speaking { box-shadow: 0 0 0 2px var(--ok), 0 0 12px rgba(95,214,164,.55); }
-:root[data-theme="tf-midnight-galaxy"] button.on:not(.link) { background: linear-gradient(135deg, #b8a6d6, #a490c2); }
-:root[data-theme="tf-midnight-galaxy"] .unread { background: var(--tf-link); }
+body:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: radial-gradient(ellipse 70% 55% at 85% 0%, rgba(74,78,143,.45), transparent 70%), radial-gradient(ellipse 60% 40% at 30% 110%, rgba(164,144,194,.14), transparent 70%), var(--bg); }
+.side:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: linear-gradient(180deg, #22172f, #1d1428); }
+.room:where(:scope).selected .room-title:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { color: var(--tf-link); }
+.share-live:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc), 0 0 22px rgba(164,144,194,.35); }
+.avatar.speaking:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { box-shadow: 0 0 0 2px var(--ok), 0 0 12px rgba(95,214,164,.55); }
+button.on:not(.link):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: linear-gradient(135deg, #b8a6d6, #a490c2); }
+.unread:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: var(--tf-link); }
 
 /* the extra: a night sky in three depths. A dense, dim field of stars sits still in the nebula's corner; a sparser,
    nearer field drifts 200 px up and to the left over four minutes and back (transform only; two tiles of unrelated sizes,
    so it shows no grid); and a dozen single stars, three with a faint four-point glint, each fade slowly in and out on a
    cycle of its own (opacity and a slight scale, 6 to 12 s, never a flash). Paused, it is a still sky; behind the chat
    the stars stay small and dim */
-:root[data-theme="tf-midnight-galaxy"] body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .65;
+body:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *)::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .65;
   -webkit-mask-image: radial-gradient(ellipse 75% 65% at 85% 0%, #000, transparent 80%), radial-gradient(ellipse 60% 45% at 25% 105%, rgba(0,0,0,.6), transparent 80%), linear-gradient(rgba(0,0,0,.3), rgba(0,0,0,.3));
   mask-image: radial-gradient(ellipse 75% 65% at 85% 0%, #000, transparent 80%), radial-gradient(ellipse 60% 45% at 25% 105%, rgba(0,0,0,.6), transparent 80%), linear-gradient(rgba(0,0,0,.3), rgba(0,0,0,.3));
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='470' height='410' fill='%23e6e6fa'%3E%3Ccircle cx='18' cy='30' r='0.8' opacity='0.7'/%3E%3Ccircle cx='77' cy='142' r='0.6' opacity='0.5'/%3E%3Ccircle cx='131' cy='61' r='1' opacity='0.8'/%3E%3Ccircle cx='203' cy='18' r='0.7' opacity='0.5'/%3E%3Ccircle cx='236' cy='171' r='0.8' opacity='0.6'/%3E%3Ccircle cx='52' cy='201' r='0.6' opacity='0.45'/%3E%3Ccircle cx='168' cy='118' r='0.6' opacity='0.4'/%3E%3Ccircle cx='110' cy='190' r='1.1' opacity='0.55' fill='%23a490c2'/%3E%3Ccircle cx='301' cy='52' r='0.7' opacity='0.6'/%3E%3Ccircle cx='352' cy='233' r='0.9' opacity='0.65'/%3E%3Ccircle cx='428' cy='97' r='0.6' opacity='0.5'/%3E%3Ccircle cx='279' cy='331' r='0.7' opacity='0.55'/%3E%3Ccircle cx='391' cy='372' r='1' opacity='0.6' fill='%23c4b4e4'/%3E%3Ccircle cx='147' cy='298' r='0.7' opacity='0.5'/%3E%3Ccircle cx='33' cy='356' r='0.6' opacity='0.45'/%3E%3Ccircle cx='446' cy='281' r='0.7' opacity='0.5'/%3E%3C/svg%3E"); }
-:root[data-theme="tf-midnight-galaxy"] .ambient { display: block; }
-:root[data-theme="tf-midnight-galaxy"] .ambient::before { content: ''; position: absolute; top: 0; left: 0; right: -200px; bottom: -100px; opacity: .65;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='610' height='470' fill='%23e6e6fa'%3E%3Ccircle cx='37' cy='52' r='1.1' opacity='0.9'/%3E%3Ccircle cx='151' cy='214' r='0.8' opacity='0.7'/%3E%3Ccircle cx='233' cy='97' r='1.3' opacity='0.85' fill='%23c4b4e4'/%3E%3Ccircle cx='318' cy='388' r='0.9' opacity='0.6'/%3E%3Ccircle cx='402' cy='33' r='1' opacity='0.8'/%3E%3Ccircle cx='471' cy='272' r='0.8' opacity='0.65'/%3E%3Ccircle cx='566' cy='121' r='1.2' opacity='0.9'/%3E%3Ccircle cx='88' cy='440' r='0.7' opacity='0.55'/%3E%3Ccircle cx='276' cy='182' r='0.7' opacity='0.5'/%3E%3C/svg%3E"), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='830' height='390' fill='%23e6e6fa'%3E%3Ccircle cx='61' cy='311' r='1' opacity='0.8'/%3E%3Ccircle cx='198' cy='47' r='0.8' opacity='0.6'/%3E%3Ccircle cx='347' cy='233' r='1.2' opacity='0.85'/%3E%3Ccircle cx='512' cy='128' r='0.9' opacity='0.7' fill='%23a490c2'/%3E%3Ccircle cx='633' cy='356' r='0.8' opacity='0.6'/%3E%3Ccircle cx='749' cy='82' r='1.1' opacity='0.8'/%3E%3Ccircle cx='421' cy='18' r='0.7' opacity='0.5'/%3E%3Ccircle cx='784' cy='247' r='0.7' opacity='0.55' fill='%23c4b4e4'/%3E%3C/svg%3E");
+  background: var(--galaxy-far); }
+.ambient:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { display: block; }
+.ambient:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *)::before { content: ''; position: absolute; top: 0; left: 0; right: -200px; bottom: -100px; opacity: .65;
+  background: var(--galaxy-near), var(--galaxy-wide);
   -webkit-mask-image: radial-gradient(ellipse 90% 80% at 75% 10%, #000, transparent 85%), linear-gradient(rgba(0,0,0,.45), rgba(0,0,0,.45));
   mask-image: radial-gradient(ellipse 90% 80% at 75% 10%, #000, transparent 85%), linear-gradient(rgba(0,0,0,.45), rgba(0,0,0,.45));
   animation: tf-midnight-galaxy-drift 240s ease-in-out infinite alternate; animation-play-state: var(--ambient-play); }
-@keyframes tf-midnight-galaxy-drift { to { transform: translate(-200px, -100px); } }
-:root[data-theme="tf-midnight-galaxy"] .ambient > i { width: clamp(5px, .5vmin, 8px); aspect-ratio: 1;
+
+}
+@keyframes tf-midnight-galaxy-drift { to { transform: translate(-200px, -100px); } }@scope ([data-theme="tf-midnight-galaxy"]) to ([data-theme]) {
+
+.ambient > i:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { width: clamp(5px, .5vmin, 8px); aspect-ratio: 1;
   background: radial-gradient(closest-side, #f4f2ff 0 28%, rgba(230,230,250,.35) 45%, transparent);
   animation: tf-midnight-galaxy-twinkle 8s ease-in-out infinite; animation-play-state: var(--ambient-play); }
-:root[data-theme="tf-midnight-galaxy"] .ambient > i:is(:nth-child(3), :nth-child(5), :nth-child(9)) { background: radial-gradient(closest-side, #e2d6ff 0 28%, rgba(164,144,194,.4) 45%, transparent); }
-:root[data-theme="tf-midnight-galaxy"] .ambient > i:is(:nth-child(2), :nth-child(7), :nth-child(10)) { width: clamp(11px, 1.1vmin, 17px);
+.ambient > i:is(:nth-child(3), :nth-child(5), :nth-child(9)):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: radial-gradient(closest-side, #e2d6ff 0 28%, rgba(164,144,194,.4) 45%, transparent); }
+.ambient > i:is(:nth-child(2), :nth-child(7), :nth-child(10)):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { width: clamp(11px, 1.1vmin, 17px);
   background: radial-gradient(closest-side, #f4f2ff 0 14%, rgba(230,230,250,.35) 26%, transparent 55%),
     linear-gradient(90deg, transparent, rgba(230,230,250,.55), transparent) center / 100% 1px no-repeat,
     linear-gradient(transparent, rgba(230,230,250,.55), transparent) center / 1px 100% no-repeat; }
-:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(1) { top: 7%; left: 61%; animation-duration: 7s; animation-delay: -2s; }
-:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(2) { top: 13%; left: 84%; animation-duration: 9s; animation-delay: -5s; }
-:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(3) { top: 5%; left: 93%; animation-duration: 6s; animation-delay: -1s; }
-:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(4) { top: 24%; left: 72%; animation-duration: 8s; animation-delay: -6s; }
-:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(5) { top: 19%; left: 42%; animation-duration: 10s; animation-delay: -3s; }
-:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(6) { top: 35%; left: 91%; animation-duration: 7.5s; animation-delay: -4s; }
-:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(7) { top: 31%; left: 55%; animation-duration: 11s; animation-delay: -8s; }
-:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(8) { top: 47%; left: 80%; animation-duration: 6.5s; animation-delay: -2.5s; }
-:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(9) { top: 56%; left: 47%; animation-duration: 9.5s; animation-delay: -7s; }
-:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(10) { top: 64%; left: 94%; animation-duration: 8.5s; animation-delay: -1.5s; }
-:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(11) { top: 12%; left: 27%; animation-duration: 7s; animation-delay: -5.5s; }
-:root[data-theme="tf-midnight-galaxy"] .ambient > i:nth-child(12) { top: 41%; left: 24%; animation-duration: 12s; animation-delay: -9s; }
+.ambient > i:nth-child(1):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 7%; left: 61%; animation-duration: 7s; animation-delay: -2s; }
+.ambient > i:nth-child(2):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 13%; left: 84%; animation-duration: 9s; animation-delay: -5s; }
+.ambient > i:nth-child(3):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 5%; left: 93%; animation-duration: 6s; animation-delay: -1s; }
+.ambient > i:nth-child(4):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 24%; left: 72%; animation-duration: 8s; animation-delay: -6s; }
+.ambient > i:nth-child(5):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 19%; left: 42%; animation-duration: 10s; animation-delay: -3s; }
+.ambient > i:nth-child(6):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 35%; left: 91%; animation-duration: 7.5s; animation-delay: -4s; }
+.ambient > i:nth-child(7):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 31%; left: 55%; animation-duration: 11s; animation-delay: -8s; }
+.ambient > i:nth-child(8):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 47%; left: 80%; animation-duration: 6.5s; animation-delay: -2.5s; }
+.ambient > i:nth-child(9):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 56%; left: 47%; animation-duration: 9.5s; animation-delay: -7s; }
+.ambient > i:nth-child(10):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 64%; left: 94%; animation-duration: 8.5s; animation-delay: -1.5s; }
+.ambient > i:nth-child(11):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 12%; left: 27%; animation-duration: 7s; animation-delay: -5.5s; }
+.ambient > i:nth-child(12):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 41%; left: 24%; animation-duration: 12s; animation-delay: -9s; }
+
+}
 @keyframes tf-midnight-galaxy-twinkle { 0%, 100% { opacity: .12; transform: scale(.7); } 50% { opacity: .7; transform: scale(1); } }
 /* on a phone the room list covers the top of the sky: only the stars that can be seen stay */
 @media (max-width: 700px) {
-  :root[data-theme="tf-midnight-galaxy"] .ambient > i:is(:nth-child(1), :nth-child(3), :nth-child(4), :nth-child(5), :nth-child(11), :nth-child(12)) { display: none; }
+@scope ([data-theme="tf-midnight-galaxy"]) to ([data-theme]) {
+
+  .ambient > i:is(:nth-child(1), :nth-child(3), :nth-child(4), :nth-child(5), :nth-child(11), :nth-child(12)):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { display: none; }
+
+}
+
+}
+@scope ([data-theme="tf-midnight-galaxy"]) to ([data-theme]) {
+
+/* The three star fields, for the sky behind the page (above) and the boxes and the chat below. */
+:scope[data-theme="tf-midnight-galaxy"] {
+  --galaxy-far: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='470' height='410' fill='%23e6e6fa'%3E%3Ccircle cx='18' cy='30' r='0.8' opacity='0.7'/%3E%3Ccircle cx='77' cy='142' r='0.6' opacity='0.5'/%3E%3Ccircle cx='131' cy='61' r='1' opacity='0.8'/%3E%3Ccircle cx='203' cy='18' r='0.7' opacity='0.5'/%3E%3Ccircle cx='236' cy='171' r='0.8' opacity='0.6'/%3E%3Ccircle cx='52' cy='201' r='0.6' opacity='0.45'/%3E%3Ccircle cx='168' cy='118' r='0.6' opacity='0.4'/%3E%3Ccircle cx='110' cy='190' r='1.1' opacity='0.55' fill='%23a490c2'/%3E%3Ccircle cx='301' cy='52' r='0.7' opacity='0.6'/%3E%3Ccircle cx='352' cy='233' r='0.9' opacity='0.65'/%3E%3Ccircle cx='428' cy='97' r='0.6' opacity='0.5'/%3E%3Ccircle cx='279' cy='331' r='0.7' opacity='0.55'/%3E%3Ccircle cx='391' cy='372' r='1' opacity='0.6' fill='%23c4b4e4'/%3E%3Ccircle cx='147' cy='298' r='0.7' opacity='0.5'/%3E%3Ccircle cx='33' cy='356' r='0.6' opacity='0.45'/%3E%3Ccircle cx='446' cy='281' r='0.7' opacity='0.5'/%3E%3C/svg%3E");
+  --galaxy-near: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='610' height='470' fill='%23e6e6fa'%3E%3Ccircle cx='37' cy='52' r='1.1' opacity='0.9'/%3E%3Ccircle cx='151' cy='214' r='0.8' opacity='0.7'/%3E%3Ccircle cx='233' cy='97' r='1.3' opacity='0.85' fill='%23c4b4e4'/%3E%3Ccircle cx='318' cy='388' r='0.9' opacity='0.6'/%3E%3Ccircle cx='402' cy='33' r='1' opacity='0.8'/%3E%3Ccircle cx='471' cy='272' r='0.8' opacity='0.65'/%3E%3Ccircle cx='566' cy='121' r='1.2' opacity='0.9'/%3E%3Ccircle cx='88' cy='440' r='0.7' opacity='0.55'/%3E%3Ccircle cx='276' cy='182' r='0.7' opacity='0.5'/%3E%3C/svg%3E");
+  --galaxy-wide: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='830' height='390' fill='%23e6e6fa'%3E%3Ccircle cx='61' cy='311' r='1' opacity='0.8'/%3E%3Ccircle cx='198' cy='47' r='0.8' opacity='0.6'/%3E%3Ccircle cx='347' cy='233' r='1.2' opacity='0.85'/%3E%3Ccircle cx='512' cy='128' r='0.9' opacity='0.7' fill='%23a490c2'/%3E%3Ccircle cx='633' cy='356' r='0.8' opacity='0.6'/%3E%3Ccircle cx='749' cy='82' r='1.1' opacity='0.8'/%3E%3Ccircle cx='421' cy='18' r='0.7' opacity='0.5'/%3E%3Ccircle cx='784' cy='247' r='0.7' opacity='0.55' fill='%23c4b4e4'/%3E%3C/svg%3E");
+  --galaxy-small: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='90' fill='%23e6e6fa'%3E%3Ccircle cx='12' cy='14' r='1' opacity='0.8'/%3E%3Ccircle cx='47' cy='58' r='0.7' opacity='0.6'/%3E%3Ccircle cx='83' cy='25' r='1.2' opacity='0.9' fill='%23c4b4e4'/%3E%3Ccircle cx='121' cy='70' r='0.8' opacity='0.6'/%3E%3Ccircle cx='150' cy='12' r='1' opacity='0.8'/%3E%3Ccircle cx='169' cy='49' r='0.7' opacity='0.5'/%3E%3Ccircle cx='30' cy='80' r='0.9' opacity='0.7'/%3E%3Ccircle cx='101' cy='44' r='0.6' opacity='0.45'/%3E%3Ccircle cx='64' cy='6' r='0.6' opacity='0.5'/%3E%3Ccircle cx='140' cy='36' r='0.6' opacity='0.5' fill='%23a490c2'/%3E%3C/svg%3E"); }
+/* A room's box, wherever it sits, is a window on the sky: the deep purple, the cosmic-blue nebula glowing in its top
+   corner, and stars, a close field of small ones so a folded box still shows a handful and the far field behind them,
+   held still. One glinting star sits by the nebula. The top room open on screen, at rest, is the sidebar's own night (styles.css),
+   so it gets no window. The chat of a room in this look, inside a page of another, is the page's sky: the nebula in
+   its far corner, the lavender glow under the composer and both fields of stars over them, dimmed behind the lines. */
+:scope.room {
+  --room-ground: radial-gradient(closest-side, #f4f2ff 0 1px, rgba(230,230,250,.3) 2px, transparent) right 64px top 9px / 9px 9px no-repeat,
+    linear-gradient(90deg, transparent, rgba(230,230,250,.5), transparent) right 60px top 13px / 17px 1px no-repeat,
+    linear-gradient(transparent, rgba(230,230,250,.5), transparent) right 68px top 5px / 1px 17px no-repeat,
+    var(--galaxy-small) 0 0 / 180px 90px, var(--galaxy-far) -60px -20px,
+    radial-gradient(ellipse 70% 130% at 92% 0%, rgba(74,78,143,.55), transparent 70%),
+    radial-gradient(ellipse 50% 90% at 0% 100%, rgba(164,144,194,.12), transparent 70%), var(--panel); }
+:scope:is(.chat, .chat-input) { --chat-ground: linear-gradient(rgba(43,30,62,.35), rgba(43,30,62,.35)) fixed,
+    var(--galaxy-near) fixed, var(--galaxy-far) fixed,
+    radial-gradient(ellipse 70% 55% at 85% 0%, rgba(74,78,143,.45), transparent 70%) fixed,
+    radial-gradient(ellipse 60% 40% at 30% 110%, rgba(164,144,194,.14), transparent 70%) fixed, var(--bg); }
+
 }

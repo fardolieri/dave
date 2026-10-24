@@ -7,9 +7,10 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 @font-face { font-family: "ds-Rubik"; font-style: normal; font-weight: 400 700; font-display: swap;
   src: url(./fonts/rubik-iJWKBXyIfDnIV7nBrXw.woff2) format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }@scope ([data-theme="ds-memphis"]) to ([data-theme]) {
 
-:root[data-theme="ds-memphis"] { color-scheme: light;
+
+:scope[data-theme="ds-memphis"] { color-scheme: light;
   --color-bg-primary: #fff4dc; --color-bg-secondary: #ffe3ee; --color-bg-tertiary: #ffffff;
   --color-text-primary: #1b1340; --color-text-secondary: #4f4570; --color-text-link: #2a3bd6;
   --color-border-primary: #1b1340; --color-border-focus: #2a3bd6;
@@ -31,8 +32,12 @@
   --dot-grid: radial-gradient(color-mix(in srgb, var(--color-ink) 13%, transparent) 1.2px, transparent 1.7px) 0 0 / 18px 18px;
   --duration-fast: 150ms; --easing-bounce: cubic-bezier(.34, 1.56, .64, 1);
 }
+
+}
 @media (prefers-color-scheme: dark) {
-  :root[data-theme="ds-memphis"] { color-scheme: dark;
+@scope ([data-theme="ds-memphis"]) to ([data-theme]) {
+
+  :scope[data-theme="ds-memphis"] { color-scheme: dark;
     --color-bg-primary: #1b1340; --color-bg-secondary: #241a55; --color-bg-tertiary: #2f2468;
     --color-text-primary: #fff4dc; --color-text-secondary: #cfc5f0; --color-text-link: #ffd23f;
     --color-border-primary: #fff4dc; --color-border-focus: #ffd23f;
@@ -47,10 +52,14 @@
     --shadow-sm: 2px 2px 0 var(--color-shadow-pop2); --shadow-md: 4px 4px 0 var(--color-shadow-pop2); --shadow-lg: 8px 8px 0 var(--color-shadow-pop);
     --dot-grid: radial-gradient(rgba(255, 244, 220, .09) 1.2px, transparent 1.7px) 0 0 / 18px 18px;
   }
+
 }
 
+}@scope ([data-theme="ds-memphis"]) to ([data-theme]) {
+
+
 /* ── Map the semantic tokens onto the app's own variables (styles.css :root) ─────────────────────────────── */
-:root[data-theme="ds-memphis"] {
+:scope[data-theme="ds-memphis"] {
   --bg: var(--color-bg-primary); --panel: var(--color-bg-secondary); --panel2: var(--color-bg-tertiary);
   --fg: var(--color-text-primary); --dim: var(--color-text-secondary); --line: var(--color-border-primary);
   --ok: var(--color-status-success); --warn: var(--color-status-warning); --bad: var(--color-status-error);
@@ -61,173 +70,246 @@
 /* ── Repairs: colours styles.css hard-codes for its dark page, read from the tokens instead. Every rule below has
    exactly the specificity of the rule it replaces (the theme prefix sits in :where), so the app's own variants
    (button.join over button, .share.share-fs over .share) still win where they did. ─────────────────────────── */
-:where(:root[data-theme="ds-memphis"]) a { color: var(--color-text-link); }
-:where(:root[data-theme="ds-memphis"]) :is(button, select, textarea) { font-family: inherit; }
-:where(:root[data-theme="ds-memphis"]) :focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
-:where(:root[data-theme="ds-memphis"]) .update { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
-:where(:root[data-theme="ds-memphis"]) .update button { background: var(--color-text-on-accent); color: var(--color-accent-primary); }
-:where(:root[data-theme="ds-memphis"]) .update button:hover { background: color-mix(in srgb, var(--color-text-on-accent) 88%, var(--color-accent-primary)); }
-:where(:root[data-theme="ds-memphis"]) .unread { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
-:where(:root[data-theme="ds-memphis"]) .new { background: var(--color-status-warning); color: var(--color-text-on-warning); }
-:where(:root[data-theme="ds-memphis"]) .warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
-:where(:root[data-theme="ds-memphis"]) .banner { box-shadow: var(--shadow-md); }
-:where(:root[data-theme="ds-memphis"]) .banner-warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
-:where(:root[data-theme="ds-memphis"]) .banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
-:where(:root[data-theme="ds-memphis"]) .chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
-:where(:root[data-theme="ds-memphis"]) .chat-new:hover { color: var(--fg); }
-:where(:root[data-theme="ds-memphis"]) button.on:where(:not(.link)) { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
-:where(:root[data-theme="ds-memphis"]) button.join { background: var(--ok); color: var(--color-text-on-success); }
-:where(:root[data-theme="ds-memphis"]) button.leave { background: var(--bad); color: var(--color-text-on-error); }
-:where(:root[data-theme="ds-memphis"]) button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
-:where(:root[data-theme="ds-memphis"]) select.picker option:checked { background: var(--color-bg-on); color: var(--color-text-on-on); }
-:where(:root[data-theme="ds-memphis"]) .avatar.speaking { box-shadow: 0 0 0 2px var(--color-ring); }
-:where(:root[data-theme="ds-memphis"]) .share-head { background: color-mix(in srgb, var(--fg) 6%, transparent); }
-:where(:root[data-theme="ds-memphis"]) .share-bar { background: color-mix(in srgb, var(--fg) 5%, transparent); }
-:where(:root[data-theme="ds-memphis"]) .panel .mictest button.recording { background: var(--panel2) linear-gradient(color-mix(in srgb, var(--acc) 35%, var(--panel2)), color-mix(in srgb, var(--acc) 35%, var(--panel2))) left / 0% 100% no-repeat; }
-:where(:root[data-theme="ds-memphis"]) .profile[popover], :where(:root[data-theme="ds-memphis"]) .emoji-picker[popover] { box-shadow: var(--shadow-lg); }
-:where(:root[data-theme="ds-memphis"]) dialog.report::backdrop, :where(:root[data-theme="ds-memphis"]) dialog.about::backdrop { background: var(--color-surface-overlay); }
-:where(:root[data-theme="ds-memphis"]) .consent { --bubble: var(--color-bubble); --bubble-fg: var(--color-bubble-fg); --bubble-dim: var(--color-bubble-dim); --bubble-link: var(--color-bubble-link); }
-:where(:root[data-theme="ds-memphis"]) .consent .bubble { box-shadow: var(--shadow-lg); }
+a { color: var(--color-text-link); }
+:is(button, select, textarea) { font-family: inherit; }
+:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
+.update { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+.update button { background: var(--color-text-on-accent); color: var(--color-accent-primary); }
+.update button:hover { background: color-mix(in srgb, var(--color-text-on-accent) 88%, var(--color-accent-primary)); }
+.unread { background: var(--color-accent-primary); color: var(--color-text-on-accent); }
+.new { background: var(--color-status-warning); color: var(--color-text-on-warning); }
+.warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+.banner { box-shadow: var(--shadow-md); }
+.banner-warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+.banner-bad { background: var(--color-error-bg); color: var(--color-error-fg); }
+.chat-new { background: var(--panel); color: var(--dim); box-shadow: var(--shadow-sm); }
+.chat-new:hover { color: var(--fg); }
+button.on:where(:not(.link)) { background: var(--color-bg-on); border-color: var(--color-bg-on); color: var(--color-text-on-on); }
+button.join { background: var(--ok); color: var(--color-text-on-success); }
+button.leave { background: var(--bad); color: var(--color-text-on-error); }
+button.unblock { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+select.picker option:checked { background: var(--color-bg-on); color: var(--color-text-on-on); }
+.avatar.speaking { box-shadow: 0 0 0 2px var(--color-ring); }
+.share-head { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.share-bar { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.panel .mictest button.recording { background: var(--panel2) linear-gradient(color-mix(in srgb, var(--acc) 35%, var(--panel2)), color-mix(in srgb, var(--acc) 35%, var(--panel2))) left / 0% 100% no-repeat; }
+.profile[popover], .emoji-picker[popover] { box-shadow: var(--shadow-lg); }
+dialog.report::backdrop, dialog.about::backdrop { background: var(--color-surface-overlay); }
+.consent { --bubble: var(--color-bubble); --bubble-fg: var(--color-bubble-fg); --bubble-dim: var(--color-bubble-dim); --bubble-link: var(--color-bubble-link); }
+.consent .bubble { box-shadow: var(--shadow-lg); }
 /* a comfortable measure for reading on a wide screen; nothing is cut, long lines wrap */
-:where(:root[data-theme="ds-memphis"]) .msg { max-width: 75ch; }
+.msg { max-width: 75ch; }
 /* Fullscreen keeps its black stage in both palettes: the overlays get the dark palette, so status dots and text stay
    legible on black even while the rest of the page is light. */
-:where(:root[data-theme="ds-memphis"]) .share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
+.share.share-fs { --fg: var(--fs-fg); --dim: var(--fs-dim); --ok: var(--fs-ok); --warn: var(--fs-warn); --bad: var(--fs-bad);
   --panel2: var(--fs-button); --line: var(--fs-line); --acc: var(--fs-acc);
   --bg: var(--fs-stage); --panel: var(--fs-button); color: var(--fg); }
 /* Phones (styles.css's 700px breakpoint): 16px text in fields so iOS does not zoom on focus, 16px messages, 44px call buttons. */
+
+}
 @media (max-width: 700px) {
-  :where(:root[data-theme="ds-memphis"]) .chat-log { font-size: 16px; }
-  :where(:root[data-theme="ds-memphis"]) :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
-  :where(:root[data-theme="ds-memphis"]) .actions button, :where(:root[data-theme="ds-memphis"]) .chat-input > button, :where(:root[data-theme="ds-memphis"]) .chat-field > .emoji-open { min-height: 44px; }
+@scope ([data-theme="ds-memphis"]) to ([data-theme]) {
+
+  .chat-log { font-size: 16px; }
+  :is(input:not([type=range], [type=checkbox], [type=radio]), textarea) { font-size: 16px; }
+  .actions button, .chat-input:where(:scope, :scope *) > button, .chat-field > .emoji-open { min-height: 44px; }
+
 }
 
+}@scope ([data-theme="ds-memphis"]) to ([data-theme]) {
+
+
 /* ── Character: party flyer ────────────────────────────────────────────────────────────────────────────── */
-:where(:root[data-theme="ds-memphis"]) body { background: var(--dot-grid), var(--bg); }
-:where(:root[data-theme="ds-memphis"]) h1, :where(:root[data-theme="ds-memphis"]) dialog.report h3, :where(:root[data-theme="ds-memphis"]) dialog.about h3 { font-family: var(--font-family-display); font-weight: 800; letter-spacing: -.02em; }
-:where(:root[data-theme="ds-memphis"]) h1 { font-size: 26px; }
-:where(:root[data-theme="ds-memphis"]) h2 { font-family: var(--font-family-display); font-size: 13px; font-weight: 800; color: var(--fg); transform: rotate(-2deg); transform-origin: left center; }
-/* room names big and bold, the one on screen marked with a highlighter */
-:where(:root[data-theme="ds-memphis"]) .room-title { font-family: var(--font-family-display); font-size: 17px; font-weight: 800; text-transform: none; letter-spacing: -.01em; }
-:where(:root[data-theme="ds-memphis"]) .room.selected .room-title { background: linear-gradient(transparent 52%, var(--color-highlight) 52%, var(--color-highlight) 92%, transparent 92%); }
-:where(:root[data-theme="ds-memphis"]) .unread { background: var(--color-pop-pink); color: var(--color-ink); border: 2px solid var(--color-ink); line-height: 14px; transform: rotate(-6deg); }
-:where(:root[data-theme="ds-memphis"]) .new { background: var(--color-pop-yellow); color: var(--color-ink); border: 1px solid var(--color-ink); border-radius: var(--border-radius-full); transform: rotate(4deg); }
+body { background: var(--dot-grid), var(--bg); }
+h1, dialog.report h3, dialog.about h3 { font-family: var(--font-family-display); font-weight: 800; letter-spacing: -.02em; }
+h1 { font-size: 26px; }
+h2 { font-family: var(--font-family-display); font-size: 13px; font-weight: 800; color: var(--fg); transform: rotate(-2deg); transform-origin: left center; }
+/* room names big and bold, the one on screen marked with a highlighter. A room's box is the root of its own look
+   wherever it sits, so it is named as the root (`:where(:scope)`, no weight); so is the composer when it wears this
+   look in a page of another. */
+.room-title { font-family: var(--font-family-display); font-size: 17px; font-weight: 800; text-transform: none; letter-spacing: -.01em; }
+.room:where(:scope).selected .room-title { background: linear-gradient(transparent 52%, var(--color-highlight) 52%, var(--color-highlight) 92%, transparent 92%); }
+.unread { background: var(--color-pop-pink); color: var(--color-ink); border: 2px solid var(--color-ink); line-height: 14px; transform: rotate(-6deg); }
+.new { background: var(--color-pop-yellow); color: var(--color-ink); border: 1px solid var(--color-ink); border-radius: var(--border-radius-full); transform: rotate(4deg); }
 /* buttons: ink outline, hard shadow, press down when clicked */
-:where(:root[data-theme="ds-memphis"]) button { border: 2px solid var(--line); border-radius: var(--border-radius-sm); font-weight: 600; box-shadow: var(--shadow-sm); }
-:where(:root[data-theme="ds-memphis"]) button:where(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open), :where(:root[data-theme="ds-memphis"]) :is(.emoji-tabs, .emoji-grid) button { box-shadow: none; }
-:where(:root[data-theme="ds-memphis"]) button.on:where(:not(.link)), :where(:root[data-theme="ds-memphis"]) button.join, :where(:root[data-theme="ds-memphis"]) button.leave, :where(:root[data-theme="ds-memphis"]) button.unblock { border-color: var(--line); font-weight: 700; }
-:where(:root[data-theme="ds-memphis"]) input, :where(:root[data-theme="ds-memphis"]) select.picker, :where(:root[data-theme="ds-memphis"]) dialog.report textarea, :where(:root[data-theme="ds-memphis"]) dialog.report .field select { border: 2px solid var(--line); border-radius: var(--border-radius-sm); }
-:where(:root[data-theme="ds-memphis"]) select.picker::picker(select) { border: 2px solid var(--line); border-radius: var(--border-radius-md); box-shadow: var(--shadow-md); }
+button { border: 2px solid var(--line); border-radius: var(--border-radius-sm); font-weight: 600; box-shadow: var(--shadow-sm); }
+button:where(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open), :is(.emoji-tabs, .emoji-grid) button { box-shadow: none; }
+button.on:where(:not(.link)), button.join, button.leave, button.unblock { border-color: var(--line); font-weight: 700; }
+input, select.picker, dialog.report textarea, dialog.report .field select { border: 2px solid var(--line); border-radius: var(--border-radius-sm); }
+select.picker::picker(select) { border: 2px solid var(--line); border-radius: var(--border-radius-md); box-shadow: var(--shadow-md); }
 /* faces in candy colours, ink initials; the speaking ring is fat */
-:where(:root[data-theme="ds-memphis"]) .avatar, :where(:root[data-theme="ds-memphis"]) button.avatar { background: var(--color-pop-lilac); color: var(--color-ink); border: 2px solid var(--color-ink); font-family: var(--font-family-display); font-weight: 800; }
-:where(:root[data-theme="ds-memphis"]) .plist li:nth-child(4n+1) .avatar { background: var(--color-pop-pink); }
-:where(:root[data-theme="ds-memphis"]) .plist li:nth-child(4n+2) .avatar { background: var(--color-pop-yellow); }
-:where(:root[data-theme="ds-memphis"]) .plist li:nth-child(4n+3) .avatar { background: var(--color-pop-teal); }
-:where(:root[data-theme="ds-memphis"]) .avatar.pic { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", system-ui, sans-serif; font-weight: 400; }
-:where(:root[data-theme="ds-memphis"]) .avatar.speaking { box-shadow: 0 0 0 3px var(--color-ring); }
-:where(:root[data-theme="ds-memphis"]) button.avatar.own::after { border: 2px solid var(--color-ink); background: var(--color-pop-yellow); color: var(--color-ink); }
-:where(:root[data-theme="ds-memphis"]) .plist em { border: 2px solid var(--line); border-radius: var(--border-radius-full); color: var(--fg); padding: 0 6px; }
+.avatar, button.avatar { background: var(--color-pop-lilac); color: var(--color-ink); border: 2px solid var(--color-ink); font-family: var(--font-family-display); font-weight: 800; }
+.plist li:nth-child(4n+1) .avatar { background: var(--color-pop-pink); }
+.plist li:nth-child(4n+2) .avatar { background: var(--color-pop-yellow); }
+.plist li:nth-child(4n+3) .avatar { background: var(--color-pop-teal); }
+.avatar.pic { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", system-ui, sans-serif; font-weight: 400; }
+.avatar.speaking { box-shadow: 0 0 0 3px var(--color-ring); }
+button.avatar.own::after { border: 2px solid var(--color-ink); background: var(--color-pop-yellow); color: var(--color-ink); }
+.plist em { border: 2px solid var(--line); border-radius: var(--border-radius-full); color: var(--fg); padding: 0 6px; }
 /* the sidebar is a pink sheet with a thick ink edge */
-:where(:root[data-theme="ds-memphis"]) .side { border-right: 3px solid var(--line); }
-:where(:root[data-theme="ds-memphis"]) .share { border: 3px solid var(--line); border-radius: var(--border-radius-md); box-shadow: 6px 6px 0 var(--color-shadow-pop2); }
-:where(:root[data-theme="ds-memphis"]) .share-live { border-color: var(--acc); }
-:where(:root[data-theme="ds-memphis"]) .share-head { font-family: var(--font-family-display); font-weight: 700; border-bottom: 2px solid var(--line); }
-:where(:root[data-theme="ds-memphis"]) .share.share-fs { box-shadow: none; }
-:where(:root[data-theme="ds-memphis"]) .share.share-fs .share-head { border: 0; }
-:where(:root[data-theme="ds-memphis"]) .panel { border: 2px solid var(--line); border-radius: var(--border-radius-md); box-shadow: 4px 4px 0 var(--color-shadow-pop); }
-:where(:root[data-theme="ds-memphis"]) .profile[popover], :where(:root[data-theme="ds-memphis"]) .emoji-picker[popover],
-:where(:root[data-theme="ds-memphis"]) dialog.report, :where(:root[data-theme="ds-memphis"]) dialog.about { border: 3px solid var(--line); border-radius: var(--border-radius-lg); }
-:where(:root[data-theme="ds-memphis"]) .profile-name strong { font-family: var(--font-family-display); font-size: 19px; font-weight: 800; }
-:where(:root[data-theme="ds-memphis"]) .emoji-scroll h4 { font-family: var(--font-family-display); font-weight: 800; color: var(--fg); }
-:where(:root[data-theme="ds-memphis"]) .banner { border: 3px solid var(--line); border-top: 0; border-radius: 0 0 var(--border-radius-md) var(--border-radius-md); font-weight: 600; }
-:where(:root[data-theme="ds-memphis"]) .warn { border: 2px solid var(--line); border-radius: var(--border-radius-sm); }
-:where(:root[data-theme="ds-memphis"]) .update { font-family: var(--font-family-display); border-bottom: 3px solid var(--line); }
-:where(:root[data-theme="ds-memphis"]) .update button { border: 2px solid var(--color-ink); border-radius: var(--border-radius-full); }
+.side { border-right: 3px solid var(--line); }
+.share { border: 3px solid var(--line); border-radius: var(--border-radius-md); box-shadow: 6px 6px 0 var(--color-shadow-pop2); }
+.share-live { border-color: var(--acc); }
+.share-head { font-family: var(--font-family-display); font-weight: 700; border-bottom: 2px solid var(--line); }
+.share.share-fs { box-shadow: none; }
+.share.share-fs .share-head { border: 0; }
+.panel { border: 2px solid var(--line); border-radius: var(--border-radius-md); box-shadow: 4px 4px 0 var(--color-shadow-pop); }
+.profile[popover], .emoji-picker[popover],
+dialog.report, dialog.about { border: 3px solid var(--line); border-radius: var(--border-radius-lg); }
+.profile-name strong { font-family: var(--font-family-display); font-size: 19px; font-weight: 800; }
+.emoji-scroll h4 { font-family: var(--font-family-display); font-weight: 800; color: var(--fg); }
+.banner { border: 3px solid var(--line); border-top: 0; border-radius: 0 0 var(--border-radius-md) var(--border-radius-md); font-weight: 600; }
+.warn { border: 2px solid var(--line); border-radius: var(--border-radius-sm); }
+.update { font-family: var(--font-family-display); border-bottom: 3px solid var(--line); }
+.update button { border: 2px solid var(--color-ink); border-radius: var(--border-radius-full); }
 /* chat: sender names in the display face, the composer a fat pill */
-:where(:root[data-theme="ds-memphis"]) .msg-from { font-family: var(--font-family-display); font-weight: 800; }
-:where(:root[data-theme="ds-memphis"]) .msg-text { line-height: 1.45; }
-:where(:root[data-theme="ds-memphis"]) .chat-new { border: 2px solid var(--line); color: var(--fg); font-weight: 600; }
-:where(:root[data-theme="ds-memphis"]) .chat-field > input { border-radius: var(--border-radius-full); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
-:where(:root[data-theme="ds-memphis"]) .chat-input > button:not(.emoji-open) { border-radius: var(--border-radius-full); padding: 8px 18px; background: var(--acc); color: var(--color-text-on-accent); font-family: var(--font-family-display); font-weight: 800; }
-:where(:root[data-theme="ds-memphis"]) .consent .bubble { border: 3px solid var(--line); }
+.msg-from { font-family: var(--font-family-display); font-weight: 800; }
+.msg-text { line-height: 1.45; }
+.chat-new { border: 2px solid var(--line); color: var(--fg); font-weight: 600; }
+.chat-field > input { border-radius: var(--border-radius-full); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
+.chat-input:where(:scope, :scope *) > button:not(.emoji-open) { border-radius: var(--border-radius-full); padding: 8px 18px; background: var(--acc); color: var(--color-text-on-accent); font-family: var(--font-family-display); font-weight: 800; }
+.consent .bubble { border: 3px solid var(--line); }
 /* the gear button is narrow; the theme's wider padding would push the cog off centre */
-:where(:root[data-theme="ds-memphis"]) .actions .gear { padding-inline: 0; }
-/* the sidebar's round ⋯ and ⚙ are bare glyphs: no ink edge, no hard shadow, no lift */
-:where(:root[data-theme="ds-memphis"]) :is(button.room-more, :is(.side-me, .side-top) button.gear), :where(:root[data-theme="ds-memphis"]) :is(button.room-more, :is(.side-me, .side-top) button.gear):is(:hover, :active) { box-shadow: none; transform: none; }
+.actions .gear { padding-inline: 0; }
+/* the sidebar's round ⋯, ↑ and ⚙ are bare glyphs: no ink edge, no hard shadow, no lift */
+:is(button.room-more, button.room-top, :is(.side-me, .side-top) button.gear), :is(button.room-more, button.room-top, :is(.side-me, .side-top) button.gear):is(:hover, :active) { box-shadow: none; transform: none; }
 /* rooms are cut-out cards on the pink sheet, the ⋯ menu and ⚙ menu flyers of their own; the folded room's faces in candy colours too */
-:where(:root[data-theme="ds-memphis"]) .room { border-radius: var(--border-radius-md); }
-:where(:root[data-theme="ds-memphis"]) .room > .room-head { border-radius: var(--border-radius-md) var(--border-radius-md) 0 0; }
-:where(:root[data-theme="ds-memphis"]) .room.folded > .room-head { border-radius: var(--border-radius-md); }
-:where(:root[data-theme="ds-memphis"]) .plist.callbox { border-radius: var(--border-radius-sm); }
-:where(:root[data-theme="ds-memphis"]) :is(.room-menu, .side-foot)[popover] { border: 3px solid var(--line); border-radius: var(--border-radius-lg); box-shadow: var(--shadow-lg); }
-:where(:root[data-theme="ds-memphis"]) .room-menu button.link.danger { font-weight: 700; }
-:where(:root[data-theme="ds-memphis"]) button.room-leave { border-color: var(--line); color: var(--color-text-on-error); font-family: var(--font-family-display); font-weight: 800; }
-:where(:root[data-theme="ds-memphis"]) .roomfaces .face:nth-child(4n+1) .avatar { background: var(--color-pop-pink); }
-:where(:root[data-theme="ds-memphis"]) .roomfaces .face:nth-child(4n+2) .avatar { background: var(--color-pop-yellow); }
-:where(:root[data-theme="ds-memphis"]) .roomfaces .face:nth-child(4n+3) .avatar { background: var(--color-pop-teal); }
+.room:where(:scope) { border-radius: var(--border-radius-md); }
+.room:where(:scope) > .room-head { border-radius: var(--border-radius-md) var(--border-radius-md) 0 0; }
+.room:where(:scope).folded > .room-head { border-radius: var(--border-radius-md); }
+.plist.callbox { border-radius: var(--border-radius-sm); }
+:is(.room-menu, .side-foot)[popover] { border: 3px solid var(--line); border-radius: var(--border-radius-lg); box-shadow: var(--shadow-lg); }
+.room-menu button.link.danger { font-weight: 700; }
+button.room-leave { border-color: var(--line); color: var(--color-text-on-error); font-family: var(--font-family-display); font-weight: 800; }
+.roomfaces .face:nth-child(4n+1) .avatar { background: var(--color-pop-pink); }
+.roomfaces .face:nth-child(4n+2) .avatar { background: var(--color-pop-yellow); }
+.roomfaces .face:nth-child(4n+3) .avatar { background: var(--color-pop-teal); }
+
+}
 @media (max-width: 700px) {
-  :where(:root[data-theme="ds-memphis"]) .side { border-right: 0; border-bottom: 3px solid var(--line); }
+@scope ([data-theme="ds-memphis"]) to ([data-theme]) {
+
+  .side { border-right: 0; border-bottom: 3px solid var(--line); }
+
+}
+
 }
 /* bouncy, for those who want motion: buttons lift on hover and press flat on click */
 @media (prefers-reduced-motion: no-preference) {
-  :where(:root[data-theme="ds-memphis"]) button { transition: transform var(--duration-fast) var(--easing-bounce), box-shadow var(--duration-fast) var(--easing-bounce); }
-  :where(:root[data-theme="ds-memphis"]) button:where(:not(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open, :disabled)):hover { transform: translate(-1px, -2px); box-shadow: 3px 4px 0 var(--line); }
-  :where(:root[data-theme="ds-memphis"]) button:where(:not(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open, :disabled)):active { transform: translate(0, 2px); box-shadow: 0 0 0 var(--line); }
-  :where(:root[data-theme="ds-memphis"]) :is(.emoji-tabs, .emoji-grid) button:hover { transform: scale(1.08) rotate(-6deg); box-shadow: none; }
+@scope ([data-theme="ds-memphis"]) to ([data-theme]) {
+
+  button { transition: transform var(--duration-fast) var(--easing-bounce), box-shadow var(--duration-fast) var(--easing-bounce); }
+  button:where(:not(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open, :disabled)):hover { transform: translate(-1px, -2px); box-shadow: 3px 4px 0 var(--line); }
+  button:where(:not(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open, :disabled)):active { transform: translate(0, 2px); box-shadow: 0 0 0 var(--line); }
+  :is(.emoji-tabs, .emoji-grid) button:hover { transform: scale(1.08) rotate(-6deg); box-shadow: none; }
+
 }
+
+}@scope ([data-theme="ds-memphis"]) to ([data-theme]) {
+
 /* the flyer's confetti: a dozen Memphis shapes (squiggles, a zigzag, rings, a triangle, a half-moon, a plus, a stick,
    dots and a dot patch) scattered over the empty right of the chat, clear of the reading column. Each one drifts and
    tilts on its own slow path (half a minute and more) and the triangle and the plus turn, so the flyer feels like a party
    in a draught; flat colour washed out to a print's back side, thinner in the dark palette, fewer on a laptop and only
    four at the edge of a phone */
-:root[data-theme="ds-memphis"] .ambient { display: block; --safe: 1060px; }
-:where(:root[data-theme="ds-memphis"]) .ambient > i { --c: var(--color-pop-pink); --r0: -8deg; --r1: 10deg; --dx: 2vw; --dy: -2.8vh; --t: 13s; --d: -4s;
+.ambient:is([data-theme="ds-memphis"][data-theme], [data-theme="ds-memphis"][data-theme] *) { display: block; --safe: 1060px; }
+.ambient > i { --c: var(--color-pop-pink); --r0: -8deg; --r1: 10deg; --dx: 2vw; --dy: -2.8vh; --t: 13s; --d: -4s;
   left: calc(var(--safe) + (100% - var(--safe) - var(--s)) * var(--x)); top: var(--y); width: var(--s); height: var(--s);
   background: var(--c); opacity: .36; transform: rotate(var(--r0));
   animation: ds-memphis-float calc(var(--t) * 2.2) ease-in-out calc(var(--d) * 2.2) infinite alternate; animation-play-state: var(--ambient-play); }
-@media (prefers-color-scheme: dark) { :where(:root[data-theme="ds-memphis"]) .ambient > i { opacity: .28; } }
+
+}
+@media (prefers-color-scheme: dark) {
+@scope ([data-theme="ds-memphis"]) to ([data-theme]) {
+ .ambient > i { opacity: .28; } 
+}
+
+}
 @keyframes ds-memphis-float { to { transform: translate(var(--dx), var(--dy)) rotate(var(--r1)); } }
-@keyframes ds-memphis-turn { to { transform: rotate(calc(var(--r0) + 360deg)); } }
+@keyframes ds-memphis-turn { to { transform: rotate(calc(var(--r0) + 360deg)); } }@scope ([data-theme="ds-memphis"]) to ([data-theme]) {
+
 /* shapes: masks keep the stroke shapes in the palette's own colours, light and dark */
-:where(:root[data-theme="ds-memphis"]) .ambient > i:is(:nth-child(1), :nth-child(12)) { height: calc(var(--s) * .34);
+.ambient > i:is(:nth-child(1), :nth-child(12)) { height: calc(var(--s) * .34);
   -webkit-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 34'><path d='M6 17q11-16 22 0t22 0t22 0t22 0' fill='none' stroke='black' stroke-width='9' stroke-linecap='round'/></svg>") center / 100% 100% no-repeat; mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 34'><path d='M6 17q11-16 22 0t22 0t22 0t22 0' fill='none' stroke='black' stroke-width='9' stroke-linecap='round'/></svg>") center / 100% 100% no-repeat; }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(5) { height: calc(var(--s) * .3);
+.ambient > i:nth-child(5) { height: calc(var(--s) * .3);
   -webkit-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 30'><path d='M5 24l15-18l15 18l15-18l15 18l15-18l15 18' fill='none' stroke='black' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/></svg>") center / 100% 100% no-repeat; mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 30'><path d='M5 24l15-18l15 18l15-18l15 18l15-18l15 18' fill='none' stroke='black' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/></svg>") center / 100% 100% no-repeat; }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(7) {
+.ambient > i:nth-child(7) {
   -webkit-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M3.5 0h3v3.5h3.5v3h-3.5v3.5h-3v-3.5h-3.5v-3h3.5z'/></svg>") center / contain no-repeat; mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M3.5 0h3v3.5h3.5v3h-3.5v3.5h-3v-3.5h-3.5v-3h3.5z'/></svg>") center / contain no-repeat; }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(2) { clip-path: polygon(50% 0, 100% 87%, 0 87%); }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:is(:nth-child(4), :nth-child(10)) { border-radius: 50%; }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:is(:nth-child(3), :nth-child(11)) { border-radius: 50%; background: none; border: calc(var(--s) * .2) solid var(--c);
+.ambient > i:nth-child(2) { clip-path: polygon(50% 0, 100% 87%, 0 87%); }
+.ambient > i:is(:nth-child(4), :nth-child(10)) { border-radius: 50%; }
+.ambient > i:is(:nth-child(3), :nth-child(11)) { border-radius: 50%; background: none; border: calc(var(--s) * .2) solid var(--c);
   box-shadow: calc(var(--s) * .07) calc(var(--s) * .07) 0 var(--line); }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(6) { height: calc(var(--s) / 2); border-radius: var(--s) var(--s) 0 0; box-shadow: calc(var(--s) * .07) calc(var(--s) * .07) 0 var(--line); }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(8) { width: calc(var(--s) * .28); border-radius: var(--border-radius-full); box-shadow: calc(var(--s) * .07) calc(var(--s) * .07) 0 var(--line); }
+.ambient > i:nth-child(6) { height: calc(var(--s) / 2); border-radius: var(--s) var(--s) 0 0; box-shadow: calc(var(--s) * .07) calc(var(--s) * .07) 0 var(--line); }
+.ambient > i:nth-child(8) { width: calc(var(--s) * .28); border-radius: var(--border-radius-full); box-shadow: calc(var(--s) * .07) calc(var(--s) * .07) 0 var(--line); }
 /* the ink dot patch is the darkest piece, so it is fainter than the colours */
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(9) { background: radial-gradient(var(--line) 28%, transparent 31%) 0 0 / 25% 25%; opacity: .2; }
-@media (prefers-color-scheme: dark) { :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(9) { opacity: .16; } }
+.ambient > i:nth-child(9) { background: radial-gradient(var(--line) 28%, transparent 31%) 0 0 / 25% 25%; opacity: .2; }
+
+}
+@media (prefers-color-scheme: dark) {
+@scope ([data-theme="ds-memphis"]) to ([data-theme]) {
+ .ambient > i:nth-child(9) { opacity: .16; } 
+}
+
+}@scope ([data-theme="ds-memphis"]) to ([data-theme]) {
+
 /* places, sizes, colours and paths: dense at the top right, a gap in the middle, a few low down */
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(1) { --s: clamp(54px, 5.4vw, 150px); --x: .1; --y: 10%; --r0: -12deg; --r1: 8deg; --t: 12s; --d: -2s; }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(2) { --s: clamp(30px, 2.8vw, 80px); --x: .52; --y: 15%; --c: var(--color-pop-teal); --r0: 12deg; --t: 52s; --d: -19s;
+.ambient > i:nth-child(1) { --s: clamp(54px, 5.4vw, 150px); --x: .1; --y: 10%; --r0: -12deg; --r1: 8deg; --t: 12s; --d: -2s; }
+.ambient > i:nth-child(2) { --s: clamp(30px, 2.8vw, 80px); --x: .52; --y: 15%; --c: var(--color-pop-teal); --r0: 12deg; --t: 52s; --d: -19s;
   animation-name: ds-memphis-turn; animation-timing-function: linear; animation-direction: normal; }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(3) { --s: clamp(36px, 3.6vw, 104px); --x: .88; --y: 7%; --c: var(--color-pop-yellow); --dx: -1.8vw; --dy: 3.4vh; --t: 15s; --d: -9s; }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(4) { --s: clamp(12px, 1.1vw, 32px); --x: .34; --y: 27%; --c: var(--acc); --dx: 2.8vw; --dy: 2.4vh; --t: 10s; --d: -6s; }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(5) { --s: clamp(52px, 5vw, 144px); --x: .72; --y: 34%; --c: var(--color-pop-lilac); --r0: 9deg; --r1: -9deg; --t: 14s; --d: -3s; }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(6) { --s: clamp(34px, 3.4vw, 98px); --x: .2; --y: 47%; --r0: 20deg; --r1: -14deg; --dy: 3.2vh; --t: 17s; --d: -12s; }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(7) { --s: clamp(24px, 2.2vw, 64px); --x: .95; --y: 53%; --c: var(--color-pop-yellow); --r0: 20deg; --t: 64s; --d: -40s;
+.ambient > i:nth-child(3) { --s: clamp(36px, 3.6vw, 104px); --x: .88; --y: 7%; --c: var(--color-pop-yellow); --dx: -1.8vw; --dy: 3.4vh; --t: 15s; --d: -9s; }
+.ambient > i:nth-child(4) { --s: clamp(12px, 1.1vw, 32px); --x: .34; --y: 27%; --c: var(--acc); --dx: 2.8vw; --dy: 2.4vh; --t: 10s; --d: -6s; }
+.ambient > i:nth-child(5) { --s: clamp(52px, 5vw, 144px); --x: .72; --y: 34%; --c: var(--color-pop-lilac); --r0: 9deg; --r1: -9deg; --t: 14s; --d: -3s; }
+.ambient > i:nth-child(6) { --s: clamp(34px, 3.4vw, 98px); --x: .2; --y: 47%; --r0: 20deg; --r1: -14deg; --dy: 3.2vh; --t: 17s; --d: -12s; }
+.ambient > i:nth-child(7) { --s: clamp(24px, 2.2vw, 64px); --x: .95; --y: 53%; --c: var(--color-pop-yellow); --r0: 20deg; --t: 64s; --d: -40s;
   animation-name: ds-memphis-turn; animation-timing-function: linear; animation-direction: normal; }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(8) { --s: clamp(34px, 3.2vw, 92px); --x: .5; --y: 63%; --c: var(--color-pop-teal); --r0: 26deg; --r1: 60deg; --dx: -2.2vw; --t: 12s; --d: -7s; }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(9) { --s: clamp(40px, 3.6vw, 104px); --x: .8; --y: 72%; --r0: 0deg; --r1: 12deg; --dx: -1.4vw; --dy: -1.8vh; --t: 19s; --d: -5s; }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(10) { --s: clamp(10px, .9vw, 26px); --x: .63; --y: 81%; --dx: -2.6vw; --dy: -3.2vh; --t: 11s; --d: -1s; }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(11) { --s: clamp(22px, 2vw, 58px); --x: .12; --y: 75%; --c: var(--color-pop-lilac); --dx: 2.2vw; --dy: 2.2vh; --t: 16s; --d: -10s; }
-:where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(12) { --s: clamp(36px, 3.4vw, 96px); --x: .36; --y: 86%; --c: var(--color-pop-teal); --r0: 8deg; --r1: -12deg; --dy: -2.2vh; --t: 13s; --d: -8s; }
+.ambient > i:nth-child(8) { --s: clamp(34px, 3.2vw, 92px); --x: .5; --y: 63%; --c: var(--color-pop-teal); --r0: 26deg; --r1: 60deg; --dx: -2.2vw; --t: 12s; --d: -7s; }
+.ambient > i:nth-child(9) { --s: clamp(40px, 3.6vw, 104px); --x: .8; --y: 72%; --r0: 0deg; --r1: 12deg; --dx: -1.4vw; --dy: -1.8vh; --t: 19s; --d: -5s; }
+.ambient > i:nth-child(10) { --s: clamp(10px, .9vw, 26px); --x: .63; --y: 81%; --dx: -2.6vw; --dy: -3.2vh; --t: 11s; --d: -1s; }
+.ambient > i:nth-child(11) { --s: clamp(22px, 2vw, 58px); --x: .12; --y: 75%; --c: var(--color-pop-lilac); --dx: 2.2vw; --dy: 2.2vh; --t: 16s; --d: -10s; }
+.ambient > i:nth-child(12) { --s: clamp(36px, 3.4vw, 96px); --x: .36; --y: 86%; --c: var(--color-pop-teal); --r0: 8deg; --r1: -12deg; --dy: -2.2vh; --t: 13s; --d: -8s; }
 /* a laptop has a narrow margin: half the confetti */
-@media (max-width: 1500px) { :where(:root[data-theme="ds-memphis"]) .ambient > i:is(:nth-child(4), :nth-child(5), :nth-child(10), :nth-child(12)) { display: none; } }
+
+}
+@media (max-width: 1500px) {
+@scope ([data-theme="ds-memphis"]) to ([data-theme]) {
+ .ambient > i:is(:nth-child(4), :nth-child(5), :nth-child(10), :nth-child(12)) { display: none; } 
+}
+
+}
 /* a phone has no margin: four shapes tucked at the right edge, half off the page, low behind the chat */
 @media (max-width: 700px) {
-  :where(:root[data-theme="ds-memphis"]) .ambient > i { left: auto; opacity: .28; }
-  :where(:root[data-theme="ds-memphis"]) .ambient > i:not(:nth-child(1), :nth-child(2), :nth-child(3), :nth-child(8)) { display: none; }
-  :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(1) { --s: 64px; right: -18px; top: 58%; }
-  :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(2) { --s: 30px; right: 14px; top: 66%; }
-  :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(3) { --s: 44px; right: -16px; top: 74%; }
-  :where(:root[data-theme="ds-memphis"]) .ambient > i:nth-child(8) { --s: 40px; right: 20px; top: 81%; --dx: -2vw; }
+@scope ([data-theme="ds-memphis"]) to ([data-theme]) {
+
+  .ambient > i { left: auto; opacity: .28; }
+  .ambient > i:not(:nth-child(1), :nth-child(2), :nth-child(3), :nth-child(8)) { display: none; }
+  .ambient > i:nth-child(1) { --s: 64px; right: -18px; top: 58%; }
+  .ambient > i:nth-child(2) { --s: 30px; right: 14px; top: 66%; }
+  .ambient > i:nth-child(3) { --s: 44px; right: -16px; top: 74%; }
+  .ambient > i:nth-child(8) { --s: 40px; right: 20px; top: 81%; --dx: -2vw; }
+
 }
-@media (prefers-color-scheme: dark) and (max-width: 700px) { :where(:root[data-theme="ds-memphis"]) .ambient > i { opacity: .22; } }
+
+}
+@media (prefers-color-scheme: dark) and (max-width: 700px) {
+@scope ([data-theme="ds-memphis"]) to ([data-theme]) {
+ .ambient > i { opacity: .22; } 
+}
+
+}
+@scope ([data-theme="ds-memphis"]) to ([data-theme]) {
+
+/* A room's box, wherever it sits, is a cut-out of the flyer: the dot grid, a teal zigzag along its bottom edge, and at
+   its right a little confetti held still (a sun rising from the top edge, a pink ring from the bottom one, a lilac
+   triangle), clear of the name and under the ⋯; flat and bright in both palettes, the dance floor's too. The top room
+   open on screen, at rest, stands on the bare sidebar (styles.css), so it gets no cut-out. The chat of a room in this look,
+   inside a page of another, is the flyer's paper with its dot grid. */
+:scope.room {
+  --room-ground:
+    conic-gradient(from 135deg at 50% 0, var(--color-shadow-pop2) 90deg, transparent 0) 0 100% / 10px 5px repeat-x,
+    radial-gradient(circle at calc(100% - 60px) 0, var(--color-pop-yellow) 0 13px, transparent 13.5px),
+    radial-gradient(circle at calc(100% - 100px) 100%, transparent 0 6px, var(--color-pop-pink) 6.5px 10px, transparent 10.5px),
+    conic-gradient(from 150deg at 50% 0, var(--color-pop-lilac) 60deg, transparent 0) right 120px top 7px / 12px 10px no-repeat,
+    var(--dot-grid), var(--panel); }
+:scope:is(.chat, .chat-input) { --chat-ground: var(--dot-grid), var(--bg); }
+
+}

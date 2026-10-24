@@ -1,5 +1,13 @@
-:root { --bg:#111318; --panel:#1a1d24; --panel2:#22262f; --fg:#e6e8ee; --dim:#8a90a0; --line:#2c313c;
+:root, [data-theme="default"] { --bg:#111318; --panel:#1a1d24; --panel2:#22262f; --fg:#e6e8ee; --dim:#8a90a0; --line:#2c313c;
   --ok:#3ddc84; --warn:#f5b642; --bad:#ff5c5c; --acc:#6c8cff; font-family: system-ui, sans-serif; color-scheme: dark; }
+/* A box with a look of its own (a room, the chat of a room) wears it inside a page that wears another: every theme is
+   scoped to its root (`@scope`, client/themes) up to the next one in. The default look's root says `default`, so a
+   theme around it stops there and the palette above is its again. Its text in its own colour, and in the default type:
+   @scope stops a theme's rules at the box, not what they leave to inherit (a page's `body { font-size }`), so a box of a
+   look apart from the page's (`data-apart`; the chat has a data-theme only then) takes the type back here, and its own
+   theme sets its own on top. */
+[data-theme]:not(:root) { color: var(--fg); }
+:where(.room[data-apart], .chat[data-theme], .chat-input[data-theme]) { font: 14px system-ui, sans-serif; letter-spacing: normal; text-transform: none; text-shadow: none; }
 * { box-sizing: border-box; }
 html, body, #app { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--fg); font-size: 14px; }
@@ -107,19 +115,24 @@ button.room-name:focus-visible { outline: 2px solid var(--acc); outline-offset: 
    At rest 2.5%, hovered 5%; the room on screen 7.5%, hovered 10%; pressed 12.5%. A private conversation on screen makes
    the room behind it a room at rest again. The row hovered is the row, not the ⋯ menu that hangs from it. (No :has()
    inside a :has(): a browser drops such a selector whole.) */
-:where(.room) { margin: 8px -8px 0; padding: 0 8px 8px; border-radius: 12px; background: color-mix(in srgb, var(--fg) 2.5%, transparent); } /* no fade: a hover shows at once */
+:where(.room) { margin: 8px -8px 0; padding: 0 8px 8px; border-radius: 12px; --room-shade: color-mix(in srgb, var(--fg) 2.5%, transparent); } /* no fade: a hover shows at once */
+/* A room's box is painted in two layers: the shade (at rest, hovered, on screen, pressed: `--room-shade`) over its own
+   ground (`--room-ground`): the ground of its own theme wherever the box is, its scenery if the theme has one. A theme
+   that paints its rooms whole (`background`) does so as before. */
+:where(.room) { background: linear-gradient(var(--room-shade, transparent), var(--room-shade, transparent)), var(--room-ground, transparent); }
+:where(.room[data-theme]) { --room-ground: linear-gradient(var(--panel), var(--panel)); }
 :where(.room) > .room-head { cursor: pointer; }
-:where(.room:is(:not(.selected), .behind):has(> .room-head:hover):not(:has(.room-menu:hover, .room-leave:hover, .room-hear:hover, .room-unmute:hover))) { background: color-mix(in srgb, var(--fg) 5%, transparent); }
-:where(.room.selected:not(.behind)) { background: color-mix(in srgb, var(--fg) 7.5%, transparent); }
-:where(.room.selected:not(.behind):has(> .room-head:hover):not(:has(.room-menu:hover, .room-leave:hover, .room-hear:hover, .room-unmute:hover))) { background: color-mix(in srgb, var(--fg) 10%, transparent); }
-:where(.room:has(> .room-head:active):not(:has(.room-more:active, .room-menu:active, .room-leave:active, .room-hear:active, .room-unmute:active))) { background: color-mix(in srgb, var(--fg) 12.5%, transparent); }
+:where(.room:is(:not(.selected), .behind):has(> .room-head:hover):not(:has(.room-menu:hover, .room-top:hover, .room-leave:hover, .room-hear:hover, .room-unmute:hover))) { --room-shade: color-mix(in srgb, var(--fg) 5%, transparent); }
+:where(.room.selected:not(.behind)) { --room-shade: color-mix(in srgb, var(--fg) 7.5%, transparent); }
+:where(.room.selected:not(.behind):has(> .room-head:hover):not(:has(.room-menu:hover, .room-top:hover, .room-leave:hover, .room-hear:hover, .room-unmute:hover))) { --room-shade: color-mix(in srgb, var(--fg) 10%, transparent); }
+:where(.room:has(> .room-head:active):not(:has(.room-more:active, .room-top:active, .room-menu:active, .room-leave:active, .room-hear:active, .room-unmute:active))) { --room-shade: color-mix(in srgb, var(--fg) 12.5%, transparent); }
 :where(.room button.room-name:active) { translate: none; } /* pressed, the box brightens; its name does not move */
 /* The room of my call, folded (another room or a conversation on screen, or folded by a click): in the call's green, so
    it is found at a glance. After the shades above, which it follows in order (all at zero weight, so a theme's own
    rooms win: imp-olympia's green field, imp-freibad's lanes). */
-:where(.room.in-call.folded) { background: color-mix(in srgb, var(--ok) 9%, transparent); }
-:where(.room.in-call.folded:has(> .room-head:hover):not(:has(.room-leave:hover, .room-hear:hover, .room-unmute:hover))) { background: color-mix(in srgb, var(--ok) 14%, transparent); }
-:where(.room.in-call.folded:has(> .room-head:active):not(:has(.room-leave:active, .room-hear:active, .room-unmute:active))) { background: color-mix(in srgb, var(--ok) 19%, transparent); } /* pressed, brighter, as any room */
+:where(.room.in-call.folded) { --room-shade: color-mix(in srgb, var(--ok) 9%, transparent); }
+:where(.room.in-call.folded:has(> .room-head:hover):not(:has(.room-leave:hover, .room-hear:hover, .room-unmute:hover))) { --room-shade: color-mix(in srgb, var(--ok) 14%, transparent); }
+:where(.room.in-call.folded:has(> .room-head:active):not(:has(.room-leave:active, .room-hear:active, .room-unmute:active))) { --room-shade: color-mix(in srgb, var(--ok) 19%, transparent); } /* pressed, brighter, as any room */
 /* The first room (the one whose call I join goes there) at the top of the sidebar, the rest at its bottom, above Direct
    messages: the second room takes the free space above it. */
 aside.side > section.room:first-of-type + section.room { margin-top: auto; } /* the second only: the rest follow it. In full weight: it is the layout (my row at the bottom), a theme's room margins give way here */
@@ -127,10 +140,11 @@ aside.side > section.room:first-of-type + section.room { margin-top: auto; } /* 
 @media (max-width: 700px) { aside.side > section.room:first-of-type + section.room { margin-top: 0; } } /* the first room's own 8px below it: a phone's sidebar has no height of its own to share: the gap between any two rooms */
 aside.side:has(> section.room + section.room) > :is(.dms, .side-me) { margin-top: 0; }
 aside.side:has(> section.room + section.room) > section.room + .side-me { margin-top: 10px; } /* no Direct messages between: a gap above my row's line, not the last room on it */
-/* The top room open on screen stands on the sidebar's own ground, no box at rest; hovered and pressed, it shades as the
-   room on screen does (10%, 12.5%), and a click folds it. Folded, or not on screen, it shades as any room. */
-:where(aside.side > section.room:first-of-type.selected:not(.folded):not(:has(> .room-head:is(:hover, :active)))) { background: none; }
-:where(aside.side > section.room:first-of-type.selected:not(.folded):has(.room-menu:hover)) { background: none; } /* its ⋯ menu hovered is not its row */
+/* The top room open on screen stands on the sidebar's own ground, no box at rest; hovered and pressed, it shows its box,
+   its own theme's scenery under the shade of the room on screen (10%, 12.5%), and a click folds it. Folded, or not on
+   screen, it shades as any room. In full weight: a theme's `--room-ground` on its boxes gives way here. */
+aside.side > section.room:first-of-type.selected:not(.folded):not(:has(> .room-head:is(:hover, :active))) { --room-shade: transparent; --room-ground: none; }
+aside.side > section.room:first-of-type.selected:not(.folded):has(.room-menu:hover) { --room-shade: transparent; --room-ground: none; } /* its ⋯ menu hovered is not its row */
 /* The handle reaches the box's edges: the row takes the box's padding into itself, so a folded room (all row) is a click
    anywhere, and an open one at its top and sides as far as its row goes. */
 :where(.room) > .room-head { margin: 0 -8px; padding: 8px 8px 6px; border-radius: 12px 12px 0 0; }
@@ -140,6 +154,11 @@ aside.side:has(> section.room + section.room) > section.room + .side-me { margin
 .room.folded button.room-name { flex: 0 1 auto; } /* its faces right after its name */
 .room-more { flex: none; margin-left: auto; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--dim); font-size: 16px; line-height: 1; }
 .room-more:hover, .room-more:focus-visible { color: var(--fg); background: var(--panel2); }
+.room-top { flex: none; margin-left: auto; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--panel) 85%, transparent); color: var(--dim); font-size: 14px; line-height: 1; } /* faint: up to the top; on a disc of its own, so a box's scenery cannot hide it */
+.room-top:not(:disabled):is(:hover, :focus-visible) { color: var(--fg); background: var(--panel2); }
+.room-top:disabled { opacity: .35; cursor: default; }
+/* The chat of a room whose look is not the page's: on its own ground, its scenery if its theme has one */
+:where(.chat[data-theme], .chat-input[data-theme]) { background: var(--chat-ground, var(--bg)); }
 .room-menu[popover] { position: fixed; inset: auto; margin: 0; overflow: auto; padding: 6px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
 .room-menu[popover]:popover-open { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
 .room-menu button.link { text-align: left; padding: 7px 10px; border-radius: 8px; color: var(--fg); font-size: 14px; text-decoration: none; }

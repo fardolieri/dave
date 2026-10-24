@@ -1,8 +1,9 @@
+@scope ([data-theme="tf-tech-innovation"]) to ([data-theme]) {
 /* Tech Innovation: theme-factory preset (anthropics/skills, skills/theme-factory).
    Bold and high-contrast: near-black graphite, electric-blue fills, neon-cyan highlights, crisp 4px corners.
    Palette: Electric Blue #0066ff, Neon Cyan #00ffff, Dark Gray #1e1e1e, White #ffffff. Fonts: DejaVu Sans Bold headers, DejaVu Sans body (Verdana where DejaVu is missing); times and lag in monospace.
    Every rule is scoped to this theme; the app's own look and the other themes are untouched. */
-:root[data-theme="tf-tech-innovation"] {
+:scope[data-theme="tf-tech-innovation"] {
   --bg: #1e1e1e; --panel: #161616; --panel2: #2a2a2a; --fg: #ffffff; --dim: #a6a6a6; --line: #3a3a3a;
   --ok: #39e58c; --warn: #ffc247; --bad: #ff6262; --acc: #0066ff; --tf-link: #00e5ff;
   --tf-on-acc: #ffffff; --tf-on-ok: #00210f; --tf-on-bad: #1a0000;
@@ -14,55 +15,64 @@
 }
 
 /* type: the theme's header face on headings, room names and the names on the profile card */
-:root[data-theme="tf-tech-innovation"] :is(h1, h2, h3, .room-title, .profile-name strong, .consent .hello) { font-family: var(--tf-head); font-weight: 700; }
-:where(:root[data-theme="tf-tech-innovation"]) :is(button, select, textarea) { font-family: inherit; }
-:root[data-theme="tf-tech-innovation"] a { color: var(--tf-link); }
-:root[data-theme="tf-tech-innovation"] .msg-from { color: #ffffff; }
-:root[data-theme="tf-tech-innovation"] :is(button.room-name, button.avatar):focus-visible { outline-color: var(--tf-link); }
+:is(h1, h2, h3, .room-title, .profile-name strong, .consent .hello):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { font-family: var(--tf-head); font-weight: 700; }
+:is(button, select, textarea) { font-family: inherit; }
+a:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { color: var(--tf-link); }
+.msg-from:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { color: #ffffff; }
+:is(button.room-name, button.avatar):focus-visible:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { outline-color: var(--tf-link); }
 
 /* shape: corners of the plain controls and boxes (:where keeps button.join, .link and the rest their own look; faces stay round) */
-:where(:root[data-theme="tf-tech-innovation"]) :is(button:not(.avatar), input, select.picker, textarea) { border-radius: 4px; }
-:root[data-theme="tf-tech-innovation"] :is(.panel, .share, .warn, dialog.report, dialog.about, .profile[popover], .emoji-picker[popover]) { border-radius: 4px; }
-:root[data-theme="tf-tech-innovation"] .share.share-fs { border-radius: 0; }
-/* the room boxes, their call box and the sidebar's menus in the same small corners */
-:root[data-theme="tf-tech-innovation"] :is(.room, .plist.callbox, .room-menu[popover], .side-foot[popover]) { border-radius: 4px; }
+:is(button:not(.avatar), input, select.picker, textarea) { border-radius: 4px; }
+:is(.panel, .share, .warn, dialog.report, dialog.about, .profile[popover], .emoji-picker[popover]):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { border-radius: 4px; }
+.share.share-fs:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { border-radius: 0; }
+/* the room boxes, their call box and the sidebar's menus in the same small corners (a room's box is the root of its own
+   look wherever it sits, so it is named as the root) */
+:is(.room:where(:scope), .plist.callbox, .room-menu[popover], .side-foot[popover]):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { border-radius: 4px; }
 
 /* the colours styles.css writes for its dark page, each taken from this palette */
-:root[data-theme="tf-tech-innovation"] .update { color: var(--tf-on-acc); }
-:root[data-theme="tf-tech-innovation"] .update button, :root[data-theme="tf-tech-innovation"] .update button:hover { background: var(--tf-on-acc); color: var(--acc); }
-:root[data-theme="tf-tech-innovation"] .unread, :root[data-theme="tf-tech-innovation"] button.on:not(.link), :root[data-theme="tf-tech-innovation"] select.picker option:checked { color: var(--tf-on-acc); }
-:root[data-theme="tf-tech-innovation"] button.join { color: var(--tf-on-ok); }
-:root[data-theme="tf-tech-innovation"] :is(button.leave, button.room-leave) { color: var(--tf-on-bad); }
-:root[data-theme="tf-tech-innovation"] button.unblock { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
-:root[data-theme="tf-tech-innovation"] .new { background: var(--tf-new-bg); color: var(--tf-on-new); }
-:root[data-theme="tf-tech-innovation"] .warn, :root[data-theme="tf-tech-innovation"] .banner-warn { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
-:root[data-theme="tf-tech-innovation"] .banner-bad { background: var(--tf-bad-bg); color: var(--tf-bad-fg); }
-:root[data-theme="tf-tech-innovation"] .banner { box-shadow: var(--tf-shadow); }
-:root[data-theme="tf-tech-innovation"] .chat-new { background: color-mix(in srgb, var(--panel2) 92%, transparent); }
-:root[data-theme="tf-tech-innovation"] .avatar { background: #2a2a2a; color: #00ffff; }
-:root[data-theme="tf-tech-innovation"] .share-head { background: rgba(0,0,0,.35); }
-:root[data-theme="tf-tech-innovation"] .share-bar { background: rgba(0,0,0,.45); }
-:root[data-theme="tf-tech-innovation"] :is(.profile[popover], .emoji-picker[popover]) { box-shadow: var(--tf-shadow-lg); }
-:root[data-theme="tf-tech-innovation"] :is(dialog.report, dialog.about)::backdrop { background: rgba(0,0,0,.7); }
-:root[data-theme="tf-tech-innovation"] .consent { --bubble: #2a2a2a; --bubble-fg: #ffffff; --bubble-dim: #b8b8b8; --bubble-link: #00e5ff; }
-:root[data-theme="tf-tech-innovation"] .consent .bubble { box-shadow: var(--tf-shadow-lg); }
+.update:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { color: var(--tf-on-acc); }
+.update button:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *), .update button:hover:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { background: var(--tf-on-acc); color: var(--acc); }
+.unread:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *), button.on:not(.link):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *), select.picker option:checked:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { color: var(--tf-on-acc); }
+button.join:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { color: var(--tf-on-ok); }
+:is(button.leave, button.room-leave):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { color: var(--tf-on-bad); }
+button.unblock:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+.new:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { background: var(--tf-new-bg); color: var(--tf-on-new); }
+.warn:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *), .banner-warn:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { background: var(--tf-warn-bg); color: var(--tf-warn-fg); }
+.banner-bad:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { background: var(--tf-bad-bg); color: var(--tf-bad-fg); }
+.banner:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { box-shadow: var(--tf-shadow); }
+.chat-new:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { background: color-mix(in srgb, var(--panel2) 92%, transparent); }
+.avatar:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { background: #2a2a2a; color: #00ffff; }
+.share-head:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { background: rgba(0,0,0,.35); }
+.share-bar:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { background: rgba(0,0,0,.45); }
+:is(.profile[popover], .emoji-picker[popover]):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { box-shadow: var(--tf-shadow-lg); }
+:is(dialog.report, dialog.about):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *)::backdrop { background: rgba(0,0,0,.7); }
+.consent:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --bubble: #2a2a2a; --bubble-fg: #ffffff; --bubble-dim: #b8b8b8; --bubble-link: #00e5ff; }
+.consent .bubble:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { box-shadow: var(--tf-shadow-lg); }
 
 /* fullscreen share: always the black stage, so header and bar take light text whatever the page is */
-:root[data-theme="tf-tech-innovation"] .share.share-fs { --fg: #f2f2f2; --dim: #c8c8c8; --panel2: #2b2b2b; --line: #4a4a4a; --ok: #3ddc84; --warn: #f5b642; --bad: #ff6b6b;
+.share.share-fs:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --fg: #f2f2f2; --dim: #c8c8c8; --panel2: #2b2b2b; --line: #4a4a4a; --ok: #3ddc84; --warn: #f5b642; --bad: #ff6b6b;
   border: 0; background: #000; color: var(--fg); box-shadow: none; }
-:root[data-theme="tf-tech-innovation"] .share.share-fs :is(.share-head, .share-bar) { background: rgba(0,0,0,.55); }
+.share.share-fs :is(.share-head, .share-bar):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { background: rgba(0,0,0,.55); }
 
-:root[data-theme="tf-tech-innovation"] :is(.msg-at, .lag, .plist em) { font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace; }
-:root[data-theme="tf-tech-innovation"] h2, :root[data-theme="tf-tech-innovation"] .room-title { letter-spacing: .14em; }
-:root[data-theme="tf-tech-innovation"] .room.selected .room-title { color: #00ffff; }
-:root[data-theme="tf-tech-innovation"] .avatar { box-shadow: inset 0 0 0 1px #00ffff55; }
-:root[data-theme="tf-tech-innovation"] .avatar.speaking { box-shadow: 0 0 0 2px var(--ok), 0 0 10px rgba(57,229,140,.6); }
-:root[data-theme="tf-tech-innovation"] button.on:not(.link) { box-shadow: 0 0 14px rgba(0,102,255,.55); }
-:root[data-theme="tf-tech-innovation"] .unread { background: #00ffff; color: #001414; }
-:root[data-theme="tf-tech-innovation"] .share-live { border-color: #00ffff; box-shadow: 0 0 16px rgba(0,255,255,.25); }
-:root[data-theme="tf-tech-innovation"] input:focus-visible, :root[data-theme="tf-tech-innovation"] textarea:focus-visible { outline: 1px solid #00ffff; outline-offset: 0; border-color: #00ffff; }
-:root[data-theme="tf-tech-innovation"] .side { border-right-color: #0066ff55; }
-@media (max-width: 700px) { :root[data-theme="tf-tech-innovation"] .side { border-bottom-color: #0066ff55; } }
+:is(.msg-at, .lag, .plist em):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace; }
+h2:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *), .room-title:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { letter-spacing: .14em; }
+.room:where(:scope).selected .room-title:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { color: #00ffff; }
+.avatar:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { box-shadow: inset 0 0 0 1px #00ffff55; }
+.avatar.speaking:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { box-shadow: 0 0 0 2px var(--ok), 0 0 10px rgba(57,229,140,.6); }
+button.on:not(.link):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { box-shadow: 0 0 14px rgba(0,102,255,.55); }
+.unread:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { background: #00ffff; color: #001414; }
+.share-live:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { border-color: #00ffff; box-shadow: 0 0 16px rgba(0,255,255,.25); }
+input:focus-visible:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *), textarea:focus-visible:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { outline: 1px solid #00ffff; outline-offset: 0; border-color: #00ffff; }
+.side:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { border-right-color: #0066ff55; }
+
+}
+@media (max-width: 700px) {
+@scope ([data-theme="tf-tech-innovation"]) to ([data-theme]) {
+ .side:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { border-bottom-color: #0066ff55; } 
+}
+
+}@scope ([data-theme="tf-tech-innovation"]) to ([data-theme]) {
+
 
 /* ambient extra: a lit circuit board. A faint neon-cyan dot grid spreads in from the bottom-right corner under an
    electric-blue glow that reaches most of the way across the screen and swells and settles once every 40 s. On the grid,
@@ -70,39 +80,50 @@
    behind, and go dark, then rest a while. Transform and
    opacity only; the grid grows with the screen so a 1440p page is not left empty. It sits behind
    everything; the opaque sidebar hides it, so it shows round the chat and the composer. */
-:root[data-theme="tf-tech-innovation"] { --tf-g: clamp(20px, 1.25vw, 36px); }
-:root[data-theme="tf-tech-innovation"] body::before,
-:root[data-theme="tf-tech-innovation"] body::after { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; }
-:root[data-theme="tf-tech-innovation"] body::before {
+:scope[data-theme="tf-tech-innovation"] { --tf-g: clamp(20px, 1.25vw, 36px); }
+body:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *)::before,
+body:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *)::after { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+body:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *)::before {
   background: radial-gradient(circle, rgba(0,255,255,.2) 1.1px, transparent 1.6px) 0 0 / var(--tf-g) var(--tf-g);
   -webkit-mask-image: radial-gradient(100vw 140vh at 100% 100%, #000 25%, transparent);
   mask-image: radial-gradient(100vw 140vh at 100% 100%, #000 25%, transparent);
 }
-:root[data-theme="tf-tech-innovation"] body::after {
+body:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *)::after {
   background: radial-gradient(110vw 130vh at 100% 100%, rgba(0,102,255,.22), rgba(0,102,255,.11) 40%, rgba(0,102,255,.04) 70%, transparent);
   transform-origin: 100% 100%; /* it grows up and to the left only, off the page's unscrollable side */
   animation: tf-tech-innovation-glow 20s ease-in-out infinite alternate;
   animation-play-state: var(--ambient-play);
 }
-@keyframes tf-tech-innovation-glow { to { transform: scale(1.18); opacity: .7; } }
+
+}
+@keyframes tf-tech-innovation-glow { to { transform: scale(1.18); opacity: .7; } }@scope ([data-theme="tf-tech-innovation"]) to ([data-theme]) {
+
 
 /* the nodes and signals: each sits on a dot of the grid (round() snaps --x and --y to it) */
-:root[data-theme="tf-tech-innovation"] .ambient { display: block; }
-:root[data-theme="tf-tech-innovation"] .ambient > i {
+.ambient:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { display: block; }
+.ambient > i:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) {
   --s: calc(var(--tf-g) * .2);
   left: var(--x); top: var(--y); width: var(--s); height: var(--s); margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
   border-radius: 50%; opacity: 0;
 }
 /* on the grid's dots where the browser can round; just off them where it cannot */
-@supports (left: round(down, 1px, 1px)) {
-  :root[data-theme="tf-tech-innovation"] .ambient > i { left: calc(round(down, var(--x), var(--tf-g)) + var(--tf-g) / 2); top: calc(round(down, var(--y), var(--tf-g)) + var(--tf-g) / 2); }
+
 }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(-n+7) {
+@supports (left: round(down, 1px, 1px)) {
+@scope ([data-theme="tf-tech-innovation"]) to ([data-theme]) {
+
+  .ambient > i:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { left: calc(round(down, var(--x), var(--tf-g)) + var(--tf-g) / 2); top: calc(round(down, var(--y), var(--tf-g)) + var(--tf-g) / 2); }
+
+}
+
+}@scope ([data-theme="tf-tech-innovation"]) to ([data-theme]) {
+
+.ambient > i:nth-child(-n+7):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) {
   background: #0066ff; box-shadow: 0 0 calc(var(--s) * 1.6) calc(var(--s) * .4) rgba(0,102,255,.35);
   animation: tf-tech-innovation-node var(--t) ease-in-out var(--d) infinite;
   animation-play-state: var(--ambient-play);
 }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(n+8) {
+.ambient > i:nth-child(n+8):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) {
   /* a short streak whose head (its right end) sits on the dot, turned once to point where it runs */
   --s: calc(var(--tf-g) * .2); --l: calc(var(--tf-g) * 2.4);
   width: var(--l); margin-left: calc(var(--s) / 2 - var(--l)); border-radius: var(--s);
@@ -112,19 +133,21 @@
   animation: tf-tech-innovation-signal var(--t) linear var(--d) infinite;
   animation-play-state: var(--ambient-play);
 }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(1) { --x: 88vw; --y: 62vh; --t: 11s; --d: -2s; }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(2) { --x: 72vw; --y: 78vh; --t: 13s; --d: -8s; }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(3) { --x: 95vw; --y: 30vh; --t: 9s; --d: -5s; }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(4) { --x: 61vw; --y: 47vh; --t: 14s; --d: -11s; }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(5) { --x: 80vw; --y: 17vh; --t: 12s; --d: -1s; }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(6) { --x: 52vw; --y: 70vh; --t: 10s; --d: -7s; }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(7) { --x: 91vw; --y: 87vh; --t: 15s; --d: -4s; }
+.ambient > i:nth-child(1):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 88vw; --y: 62vh; --t: 11s; --d: -2s; }
+.ambient > i:nth-child(2):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 72vw; --y: 78vh; --t: 13s; --d: -8s; }
+.ambient > i:nth-child(3):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 95vw; --y: 30vh; --t: 9s; --d: -5s; }
+.ambient > i:nth-child(4):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 61vw; --y: 47vh; --t: 14s; --d: -11s; }
+.ambient > i:nth-child(5):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 80vw; --y: 17vh; --t: 12s; --d: -1s; }
+.ambient > i:nth-child(6):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 52vw; --y: 70vh; --t: 10s; --d: -7s; }
+.ambient > i:nth-child(7):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 91vw; --y: 87vh; --t: 15s; --d: -4s; }
 /* signals: a run of (--ax, --ay) grid steps, heading --r */
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(8)  { --x: 93vw; --y: 95vh; --ax: 0; --ay: -16; --r: -90deg; --t: 22s; --d: -3s; }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(9)  { --x: 62vw; --y: 34vh; --ax: 14; --ay: 0; --r: 0deg; --t: 26s; --d: -15s; }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(10) { --x: 56vw; --y: 88vh; --ax: 16; --ay: 0; --r: 0deg; --t: 24s; --d: -9s; }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(11) { --x: 78vw; --y: 72vh; --ax: 0; --ay: -14; --r: -90deg; --t: 28s; --d: -21s; }
-:root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(12) { --x: 98vw; --y: 58vh; --ax: -18; --ay: 0; --r: -180deg; --t: 20s; --d: -12s; }
+.ambient > i:nth-child(8):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *)  { --x: 93vw; --y: 95vh; --ax: 0; --ay: -16; --r: -90deg; --t: 22s; --d: -3s; }
+.ambient > i:nth-child(9):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *)  { --x: 62vw; --y: 34vh; --ax: 14; --ay: 0; --r: 0deg; --t: 26s; --d: -15s; }
+.ambient > i:nth-child(10):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 56vw; --y: 88vh; --ax: 16; --ay: 0; --r: 0deg; --t: 24s; --d: -9s; }
+.ambient > i:nth-child(11):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 78vw; --y: 72vh; --ax: 0; --ay: -14; --r: -90deg; --t: 28s; --d: -21s; }
+.ambient > i:nth-child(12):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 98vw; --y: 58vh; --ax: -18; --ay: 0; --r: -180deg; --t: 20s; --d: -12s; }
+
+}
 @keyframes tf-tech-innovation-node { 0%, 62%, 100% { opacity: 0; transform: scale(.6); } 31% { opacity: .4; transform: none; } }
 @keyframes tf-tech-innovation-signal {
   0% { opacity: 0; transform: translate(0, 0) rotate(var(--r)); }
@@ -133,8 +156,31 @@
 }
 /* the phone keeps two nodes and two signals, both running across */
 @media (max-width: 700px) {
-  :root[data-theme="tf-tech-innovation"] .ambient > i:is(:nth-child(n+3):nth-child(-n+7), :nth-child(n+10)) { display: none; }
+@scope ([data-theme="tf-tech-innovation"]) to ([data-theme]) {
+
+  .ambient > i:is(:nth-child(n+3):nth-child(-n+7), :nth-child(n+10)):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { display: none; }
   /* none runs up the right edge, where it would pass for a scrollbar */
-  :root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(8) { --x: 40vw; --y: 58vh; --ax: 12; --ay: 0; --r: 0deg; }
-  :root[data-theme="tf-tech-innovation"] .ambient > i:nth-child(9) { --x: 10vw; --y: 70vh; }
+  .ambient > i:nth-child(8):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 40vw; --y: 58vh; --ax: 12; --ay: 0; --r: 0deg; }
+  .ambient > i:nth-child(9):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 10vw; --y: 70vh; }
+
+}
+
+}
+@scope ([data-theme="tf-tech-innovation"]) to ([data-theme]) {
+
+/* A room's box, wherever it sits, is a corner of the lit board: the cyan dot grid coming in from its right, where the
+   electric-blue glow sits low, and a trace running in along it to a lit node. Held still. A folded box shows the trace
+   and a row or two of the grid. The top room open on screen, at rest, is the sidebar's own graphite (styles.css), so it gets no
+   board. The chat of a room in this look, inside a page of another, is the page's board: the grid spreading in from the
+   bottom-right corner under the glow, both held where they are at rest. */
+:scope.room {
+  --room-ground: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='40' fill='none'%3E%3Cpath d='M0 33h58l10-10h44l10-10h28M86 23v-17h64' stroke='%2300ffff' stroke-opacity='.28' stroke-width='1.2'/%3E%3Ccircle cx='68' cy='23' r='2.4' fill='%230066ff'/%3E%3Ccircle cx='86' cy='6' r='2' fill='none' stroke='%2300ffff' stroke-opacity='.45'/%3E%3C/svg%3E") right 0 top 4px / 150px 40px no-repeat,
+    radial-gradient(90% 140% at 100% 100%, rgba(0,102,255,.24), rgba(0,102,255,.08) 55%, transparent),
+    linear-gradient(90deg, var(--panel) 20%, transparent 80%),
+    radial-gradient(circle, rgba(0,255,255,.22) 1.1px, transparent 1.6px) 0 0 / 20px 20px, var(--panel); }
+:scope:is(.chat, .chat-input) { --chat-ground:
+    radial-gradient(110vw 130vh at 100% 100%, rgba(0,102,255,.22), rgba(0,102,255,.11) 40%, rgba(0,102,255,.04) 70%, transparent) fixed,
+    radial-gradient(100vw 140vh at 100% 100%, transparent 25%, var(--bg)) fixed,
+    radial-gradient(circle, rgba(0,255,255,.2) 1.1px, transparent 1.6px) 0 0 / var(--tf-g) var(--tf-g) fixed, var(--bg); }
+
 }
