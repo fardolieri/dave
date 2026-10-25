@@ -271,6 +271,48 @@ test('regression: a text sent again after my reload shows once for a friend who 
   await expect.poll(() => bob.storedTexts()).toEqual(['on my way', 'after']);
 });
 
+// Oct 2026: unread counts are kept over a reload now, so a text the Room brought twice, the second time while my history
+// was still being read after a reload, counted twice for good, and showed twice: the check for a text seen before had
+// nothing to go on until the history was in.
+test('regression: a text sent again while my history is still being read after a reload counts once and shows once', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
+  const bob = await crowd.open('Bob', { rooms: [other] });
+  // The Room brings Bob's text to Alice; the copy back to him is lost, so it waits to go again.
+  bob.wire.down = (frame) => (frame.includes('"t":"sealed"') ? null : frame);
+  await bob.composer.fill('on my way');
+  await bob.composer.press('Enter');
+  const unread = alice.page.locator('button.room-name', { hasText: 'Other' }).locator('.unread');
+  await expect(unread).toHaveText('1');
+  await expect.poll(() => alice.storedTexts()).toContain('on my way');
+  // Alice's tab comes back on a slow disk for her rooms' histories alone (client/history.ts reads one with a get of
+  // `history:<room id>`): their reads take seconds, her identity and sockets do not wait for them. Registered before the
+  // app sets `onsuccess`, so it runs first: the event is held back and handed on later.
+  await alice.context.addInitScript(() => {
+    const get = IDBObjectStore.prototype.get;
+    IDBObjectStore.prototype.get = function (this: IDBObjectStore, key: IDBValidKey | IDBKeyRange) {
+      const req = get.call(this, key);
+      if (typeof key === 'string' && key.startsWith('history:')) {
+        req.addEventListener('success', (e) => { e.stopImmediatePropagation(); setTimeout(() => req.dispatchEvent(new Event('success')), 6000); }, { once: true });
+      }
+      return req;
+    };
+  });
+  const welcomes = alice.wire.frames('down', 'welcome').length;
+  await alice.page.reload();
+  await expect.poll(() => alice.wire.frames('down', 'welcome').length, { timeout: 20_000 }).toBe(welcomes + 2);
+  // Bob's next socket sends the text again, while Alice's history is still being read.
+  bob.wire.down = null;
+  await bob.wire.cut();
+  bob.wire.restore();
+  await bob.connected();
+  await bob.say('after');
+  await expect.poll(() => alice.storedTexts(), { timeout: 20_000 }).toContain('after'); // its write reads the history first
+  await expect(unread).toHaveText('2');
+  await alice.selectRoom('Other');
+  await expect.poll(() => alice.chatTexts()).toEqual(['on my way', 'after']);
+});
+
 // Oct 2026, ticket 51: the network drops a socket now and then (1006, the Room none the wiser), and a text written into it
 // was gone: never shown to anyone, the sender's own included, and nothing said.
 test('regression: a text lost with its socket is sent again on the next one', async ({ crowd }) => {
