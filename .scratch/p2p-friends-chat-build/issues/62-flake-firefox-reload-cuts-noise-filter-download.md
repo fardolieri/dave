@@ -1,6 +1,6 @@
 # 62 · Flake: a reload right after a join cut off the noise filter's download, and Firefox logged it
 
-Status: fixed in the tests (`e2e/fixtures.ts`, `join()`)
+Status: shipped 2026-10-25 to prod (06b732d, nightly e2e green first); fixed in the tests (`e2e/fixtures.ts`, `join()`)
 Seen 2026-10-25: the nightly e2e run of master 8b4deaf (40191892619), Firefox, two shards, each passed on the retry, which
 the flake-strict nightly counts as a failure (the release gate stayed shut):
 - shard 3: `presence.spec.ts:78` "the room whose call I join goes to the top of the list, and stays there after a reload".
