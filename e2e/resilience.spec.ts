@@ -735,3 +735,20 @@ test('regression: a socket gone silent without a close is given up, and the text
   expect(await bob.chatTexts()).toEqual(['into the silence']);
   expect(bob.wire.log.filter((f) => f.dir === 'down' && f.frame.startsWith('{"t":"sealed"')), 'the Room passed it on to Bob once').toHaveLength(1);
 });
+
+test('a socket the browser could not open, tried again until one gets in, fails no test on the browser\'s own error line', async ({ crowd, browserName }) => {
+  // A preview, 2026-10-21 (ticket 60), Chromium: a room socket's upgrade was reset on the way to Cloudflare, the app gave
+  // that socket up and the next one got in, and the test failed on the line Chromium logs for the failed upgrade alone.
+  // Ticket 55's upgrades answered 500 the same way. Here the browser is offline while the app reconnects: its attempts fail
+  // in the browser as those did, until it is back online and one gets in.
+  const alice = await crowd.open('Alice');
+  await alice.context.setOffline(true);
+  await alice.wire.cut();
+  alice.wire.restore();
+  await expect(alice.banner).toContainText(/Reconnecting|Server unavailable/);
+  if (browserName === 'chromium') {
+    await expect.poll(() => alice.problems.some((p) => /WebSocket connection to '[^']*\/ws\/[^']*' failed/.test(p)), 'an attempt failed in the browser').toBe(true);
+  }
+  await alice.context.setOffline(false);
+  await alice.connected(35_000);
+});
