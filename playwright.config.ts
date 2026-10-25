@@ -31,7 +31,8 @@ export default defineConfig({
   // the run: a flake is a bug to explain, not noise (ticket 35). On branches the retry still keeps one bad roll from blocking.
   failOnFlakyTests: ci && !!target,
   forbidOnly: ci,
-  reporter: ci ? [['list'], ['html', { open: 'never', outputFolder: 'e2e-report' }]] : 'list',
+  // The JSON report feeds the flake ledger (scripts/flakes/ledger.mjs, e2e.yml).
+  reporter: ci ? [['list'], ['html', { open: 'never', outputFolder: 'e2e-report' }], ['json', { outputFile: 'e2e-outcomes/report.json' }]] : 'list',
   outputDir: 'e2e-results',
   use: {
     trace: 'retain-on-failure',

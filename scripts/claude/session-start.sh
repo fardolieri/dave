@@ -40,12 +40,14 @@ if [ -n "$token" ]; then
   head=$(git rev-parse origin/master 2>/dev/null)
   tmp=$(mktemp -d)
   gh_api "issues?labels=soak&state=open&per_page=50" > "$tmp/soak" & gh_api "pulls?state=open&per_page=50" > "$tmp/pulls" &
-  gh_api "commits/$head/statuses" > "$tmp/statuses" & wait
+  gh_api "commits/$head/statuses" > "$tmp/statuses" & gh_api "contents/top.txt?ref=flake-ledger" > "$tmp/flakes" & wait
   soak=$(jq -r 'if type == "array" then [.[] | "#\(.number) \(.title[0:90])"] | join("\n") else empty end' "$tmp/soak" 2>/dev/null)
   [ -n "$soak" ] && { echo "- Open soak issues (the nightly chaos soak found these; triage before new work):"; echo "$soak" | sed 's/^/    /'; }
   repro=$(jq -r 'if type == "array" then [.[] | select(.head.ref | startswith("night-shift/")) | "#\(.number) \(.title[0:90])"] | join("\n") else empty end' "$tmp/pulls" 2>/dev/null)
   [ -n "$repro" ] && { echo "- Night shift reproductions waiting:"; echo "$repro" | sed 's/^/    /'; }
   gate=$(jq -r '[.[]? | select(.context == "nightly e2e passed")][0].state // "none yet"' "$tmp/statuses" 2>/dev/null)
+  flakes=$(jq -r '.content // empty' "$tmp/flakes" 2>/dev/null | base64 -d 2>/dev/null)
+  [ -n "$flakes" ] && { echo "- Flakes seen most this week (the flake ledger: README.md on branch flake-ledger):"; echo "$flakes" | sed 's/^/    /'; }
   rm -rf "$tmp"
   if [ "$gate" = failure ]; then
     echo "- Release gate on master's head ${head:0:7}: failure (flake or bug: /release step 2a)."

@@ -1,0 +1,56 @@
+name: flakes
+# The flake ledger (scripts/flakes/ledger.mjs): after every e2e run (branches, nightly) and every preview run (which calls
+# e2e.yml), the tries that failed in it are added to `ledger.jsonl` on the branch `flake-ledger`, and its README.md counts
+# them by test and error over the last 30 days. A flake is one row with its sightings, not a ticket per sighting; tickets
+# are per cause, linked from the rows by `causes.json` on that branch (CLAUDE.md, Flakes). The branch holds data only: no
+# workflow runs on pushes to it. Runs that end together race to push; the loser starts over (below).
+on:
+  workflow_run:
+    workflows: [e2e, preview]
+    types: [completed]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event.workflow_run.conclusion != 'skipped'
+    steps:
+      - uses: actions/checkout@v5
+      - name: Outcomes of the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.event.workflow_run.id }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          # A draft's run, or one cut short before its tests, has none.
+          gh run download "$RUN" --repo "$GITHUB_REPOSITORY" -p "e2e-outcomes-*-$RUN-$ATTEMPT" -D outcomes || true
+          find outcomes -name outcomes.jsonl -size +0 2>/dev/null > files.txt || true
+          echo "$(wc -l < files.txt) shards with outcomes"
+      - name: Add them to the ledger
+        env:
+          RUN: ${{ github.event.workflow_run.id }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          [ -s files.txt ] || exit 0
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # Runs that end together write at once. A push that lost the race starts over from the ledger as it is now; the
+          # outcomes of a run already in it are skipped (ledger.mjs), so starting over adds nothing twice.
+          for i in 1 2 3 4 5; do
+            rm -rf ledger; git worktree prune
+            if git ls-remote --exit-code origin refs/heads/flake-ledger > /dev/null; then
+              git fetch -q origin flake-ledger && git worktree add -q --detach ledger FETCH_HEAD
+            else
+              git branch -q -D ledger-new 2> /dev/null || true
+              git worktree add -q --orphan -b ledger-new ledger
+            fi
+            node scripts/flakes/ledger.mjs add ledger $(cat files.txt)
+            git -C ledger add -A
+            git -C ledger diff --cached --quiet && exit 0
+            git -C ledger commit -q -m "Run $RUN attempt $ATTEMPT [skip ci]"
+            git -C ledger push -q origin HEAD:refs/heads/flake-ledger && exit 0
+            sleep $((5 + RANDOM % 20))
+          done
+          exit 1

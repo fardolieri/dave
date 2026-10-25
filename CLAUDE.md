@@ -104,6 +104,11 @@ Rules:
 A flaky test is a bug in the app or in the test, never noise (`.scratch/p2p-friends-chat-build/issues/35-*`): find the cause,
 then fix the app, fix the test, or drop the claim. A longer timeout or another retry does not count unless the cause is known.
 
+Every failed try of every e2e and preview run goes into the flake ledger by itself (`flakes.yml`): `README.md` on the branch
+`flake-ledger` counts them by test and error over 30 days, and the session briefing names the top three. Tickets are per
+cause, not per sighting: a ticket lists the rows it explains in `causes.json` on that branch (a regex over test and error;
+commit with `[skip ci]`), and "fixed" means its rows stop growing after the fix landed.
+
 A flake does not hold up a release, though: explain before release, fix after. The nightly gate goes red on a flake so that
 whoever releases sees it; they first suspect the commits going out, and only when the evidence clears them re-run the failed
 jobs once and release (`/release` step 2a). That re-run is the one retry allowed without a known cause, because the cause

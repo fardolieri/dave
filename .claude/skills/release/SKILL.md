@@ -30,9 +30,10 @@ the same check first, so a refusal never comes as a surprise.
    - Not a test result: a shard failed before testing (the browser install, say). Say so and re-run (below).
    - A test failed, on its first try or both. **Assume the commits going out (`origin/prod..<sha>`) caused it** until the
      evidence says otherwise. Answer, with what you found:
-     1. Was it seen before these commits? The same test, or the same error, on e2e or preview runs of commits that are
-        already on prod, or in a flake ticket (`.scratch/p2p-friends-chat-build/issues/*flake*`). A sighting from before the
-        change is the strongest sign it is not the change.
+     1. Was it seen before these commits? The same test, or the same error, in the flake ledger (`README.md` and
+        `ledger.jsonl` on the branch `flake-ledger`: every failed try of every e2e and preview run, with its commit), or in
+        a flake ticket (`.scratch/p2p-friends-chat-build/issues/*flake*`). A sighting on a commit that is already on prod is
+        the strongest sign it is not the change.
      2. Does the change touch its path? Compare `git diff --stat origin/prod..<sha>` with the test's spec and the app code
         its failing step runs through (sockets, the call, history, …).
      3. Did it fail on the change's own runs? A `preview` run fails on a flake like nightly does (a red job); a branch's
@@ -48,8 +49,9 @@ the same check first, so a refusal never comes as a surprise.
        with the owner; never a second re-run. Cancelled: if a newer master deploy took over, the newer commit becomes the
        candidate; if a shard timed out, report it, no second re-run. Before releasing on a green re-run, check once more
        that `origin/master` is still `<sha>` (else part of the re-run may have tested the newer app: take the newer commit).
-   - Either way the flake is a bug to explain: open its ticket (one per cause; add to an existing one if the error is the
-     same) and say in the report that you did.
+   - Either way the flake is a bug to explain. The ledger records the sighting by itself; a ticket is per cause, not per
+     sighting: add to the ticket its ledger row already links (`causes.json` on `flake-ledger`), or open one and link the
+     row there. Say in the report which.
 3. `git log --oneline origin/prod..<sha>`: these commits go out. Note any that touch saved state (`localStorage`,
    IndexedDB) and whether they migrate.
 4. `git push origin <sha>:prod`. A rejection from the ruleset means the gate is missing for that commit: go back to step 2.

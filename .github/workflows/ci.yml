@@ -6,7 +6,7 @@ name: ci
 # breaks there (a nightly-only var, say) once failed the master deploy after a green branch.
 on:
   push:
-    branches-ignore: [master, prod]
+    branches-ignore: [master, prod, flake-ledger] # flake-ledger: data only (flakes.yml)
   workflow_dispatch:
 concurrency:
   group: ci-${{ github.ref }}
