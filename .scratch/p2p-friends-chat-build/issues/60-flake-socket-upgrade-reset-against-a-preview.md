@@ -1,6 +1,7 @@
 # 60 · Flake: a socket's upgrade reset against a preview fails a test on its console line alone
 
-Status: open
+Status: fixed on branch flake/recovery-marker, 2026-10-26 (the test is wrong, outcome 1 of ticket 35); where the reset
+comes from is still not known
 Seen 2026-10-21: the preview run of PR #89 (head 29121e1, against `dave-pr-89`), Chromium, shard 5, passed on the retry:
 `resilience.spec.ts:441` "an offer stuck for a friend who then reloads leaves their new connection alone (the impolite side
 reloads, the first to join)". The test itself went through; the fixture's console check failed on one line of Alice's:
@@ -18,3 +19,11 @@ Either accept this console line as harmless in runs against a deployed copy (pre
 from it by design and nothing the app does causes it, or find whether the reset comes from the Room (a Durable Object
 evicted mid-upgrade, say) and not the network. The second would show up in Workers observability as a socket that never
 reached `webSocketMessage`; the trace of this run has the wire log of both friends.
+
+## Answer (decided with Daniel, 2026-10-26)
+Neither of the two: if the app got over an error, the test should pass, but only then. Not an allowlist, which would also
+let through a socket the app never recovered from. The app logs `[recovered] room <id>: let in after <n> lost sockets`
+(info) when a room is let in again after lost sockets (client/room.ts), and the fixture excuses the browser's error for a
+room socket it could not open only when that room's recovery comes after it (e2e/console.ts). Regression test:
+`resilience.spec.ts` "a socket the browser could not open, tried again until one gets in, …", the browser offline while
+the app reconnects; Chromium logs the same line for each failed attempt.

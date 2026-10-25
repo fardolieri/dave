@@ -7,11 +7,14 @@
  * Every friend's console warnings, errors and uncaught exceptions are collected and fail the test at the end unless the test
  * declared them expected with `friend.expectWarning(/.../)`. That includes the invariant watchdog's `[invariant] …` warnings
  * (quality ticket 04): a test in which the UI contradicted the call fails, unless it declared `friend.expectInvariant(kind)`.
+ * The browser's own error for a room socket it could not open is excused when the app logged the room's recovery after it
+ * (e2e/console.ts): if the app got over it, so does the test.
  */
 import { randomBytes } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { test as base, expect, type Browser, type BrowserContext, type Locator, type Page, type WebSocketRoute } from '@playwright/test';
 import { environmentNoise, launchOptions, originFor, type Autoplay, type Engine } from './browsers';
+import { unexplained, type Recovery } from './console';
 
 export { expect };
 
@@ -178,6 +181,8 @@ export class Friend {
   readonly wire = new Wire();
   private expected: RegExp[] = [...KNOWN_HARMLESS];
   readonly problems: string[] = [];
+  /** The app's `[recovered]` lines: a room let in again, and how many problems were logged before it. */
+  private readonly recoveries: Recovery[] = [];
   /** Console arguments still being read out (see `watch`); settled before the problems are judged. */
   private reading: Promise<void>[] = [];
   /** URLs of the PostHog requests this friend's pages made (answered locally, never sent). */
@@ -262,6 +267,8 @@ export class Friend {
   /** Collects console warnings, errors and exceptions of a page of this friend. */
   watch(page: Page): void {
     page.on('console', (m) => {
+      const recovered = m.type() === 'info' && /^\[recovered\] room (\S+):/.exec(m.text());
+      if (recovered) { this.recoveries.push({ room: recovered[1]!, after: this.problems.length }); return; }
       if (m.type() !== 'warning' && m.type() !== 'error') return;
       const i = this.problems.push(`${m.type()}: ${m.text()}`) - 1;
       // Firefox gives an error object as "JSHandle@object", which says nothing about the failure: read it out, so a
@@ -280,7 +287,7 @@ export class Friend {
   expectInvariant(kind: string): void { this.expected.push(new RegExp(`^warning: \\[invariant\\] ${kind} `)); }
   async unexpectedProblems(): Promise<string[]> {
     await Promise.all(this.reading);
-    return this.problems.filter((p) => !this.expected.some((re) => re.test(p)));
+    return unexplained(this.problems, this.expected, this.recoveries);
   }
 
   /** Opens the app and waits until the selected room is connected (the composer is enabled). */

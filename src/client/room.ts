@@ -970,6 +970,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           life.welcomedAt = Date.now();
           welcomed = socket;
           welcomes++;
+          // The browser logs a socket it could not open as an error of its own (a reset or a 500 on the upgrade, tickets 55
+          // and 60), and the app cannot quiet it. This line says the room got over it; the e2e suite excuses those errors
+          // for this room only when it follows them (e2e/fixtures.ts). The id's start only: enough to tell a test's rooms
+          // apart, and a recording that kept console lines would not have the room.
+          if (attempt > 0) console.info(`[recovered] room ${opts.roomId.slice(0, 8)}: let in after ${attempt} lost socket${attempt === 1 ? '' : 's'}`);
           attempt = 0;
           setYou(m.you);
           // A rename, a picture or an opt-in changed while the handshake ran went to no socket; the auth had the old one.

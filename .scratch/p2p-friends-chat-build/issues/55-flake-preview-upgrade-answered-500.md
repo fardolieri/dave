@@ -2,6 +2,7 @@
 
 Status: open, cause is Cloudflare's; the Room is asked twice since 54ad1a5 (shipped 2026-10-16 to prod), which saved
 6 of the 7 failed asks seen since; one upgrade failed both asks and was answered 500
+A 500 the app gets over no longer fails a test on its console line alone (ticket 60, 2026-10-26).
 Seen 2026-10-15: the preview run of PR #64 (38777674741, head 986231c, against `dave-pr-64`), Chromium, shard 3, passed on
 the retry: `resilience.spec.ts:237` "a socket the server never answers is given up and tried again, and the room
 connects". Alice stayed on the banner; her console had five "Error during WebSocket handshake: Unexpected response code:
