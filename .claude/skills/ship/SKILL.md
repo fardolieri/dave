@@ -64,7 +64,8 @@ Then:
 ## 4. Nightly
 
 Wait for `deploy` on the master commit, then for the `e2e` run it triggers against nightly and its `nightly e2e passed`
-commit status. That status is what makes the commit releasable (`/release`).
+commit status. That status is what makes the commit releasable (`/release`). If it is red on a test, follow `/release`
+step 2a: suspect your own change first, and re-run the failed jobs once only if the evidence says it is not.
 
 ## 5. Report
 

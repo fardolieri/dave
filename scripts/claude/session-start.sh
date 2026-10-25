@@ -47,7 +47,11 @@ if [ -n "$token" ]; then
   [ -n "$repro" ] && { echo "- Night shift reproductions waiting:"; echo "$repro" | sed 's/^/    /'; }
   gate=$(jq -r '[.[]? | select(.context == "nightly e2e passed")][0].state // "none yet"' "$tmp/statuses" 2>/dev/null)
   rm -rf "$tmp"
-  echo "- Release gate on master's head ${head:0:7}: ${gate:-unknown}."
+  if [ "$gate" = failure ]; then
+    echo "- Release gate on master's head ${head:0:7}: failure (flake or bug: /release step 2a)."
+  else
+    echo "- Release gate on master's head ${head:0:7}: ${gate:-unknown}."
+  fi
 fi
 # Texts a friend's app refused (ADR 0005): a server that tampers, or an app that seals wrong. Urgent either way, so it is
 # asked of PostHog here and not left to a dashboard nobody opens. Live and nightly, the last 7 days, test browsers left out.

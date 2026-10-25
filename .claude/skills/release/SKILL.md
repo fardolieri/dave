@@ -16,15 +16,48 @@ the same check first, so a refusal never comes as a surprise.
    `gh api repos/fardolieri/dave/commits/<sha>/statuses -q '[.[] | select(.context == "nightly e2e passed")][0].state'`
    - `success`: go on.
    - nothing yet: the deploy or the nightly e2e run is still going. Wait for it (one poll loop, every 60 s, about 25 min at
-     most) and tell the owner you are waiting.
-   - `failure`: do not release. Read the failing jobs, say what failed. A flake is a bug to fix, not to retry past.
+     most) and tell the owner you are waiting. If that nightly run ended cancelled (a re-run of an older commit took its
+     place), it left no verdict: re-run it.
+   - `failure`: do not release yet. Read the failing jobs (the status's `target_url` is the run) and go to step 2a.
+
+2a. A red gate. The suite runs once against nightly and fails on any test that only passed on its retry, so a flake turns it
+   red on purpose: that red is how a flake gets noticed. Release first, investigate after; but explain before you re-run.
+   - Can a re-run still test this commit? A re-run tests whatever nightly serves now, writes its verdict on `<sha>`, and
+     shares the nightly runs' concurrency group, so it cancels a newer one or is cancelled by it. So, **right before** any
+     `gh run rerun` (not only at the start: the evidence below takes a while), `git fetch origin` and check that
+     `origin/master` is still `<sha>`. If it moved, do not re-run: the newer commit's own gate decides, make it the
+     candidate and go back to step 2. If the run's `run_attempt` is already above 1, it was re-run before: never again.
+   - Not a test result: a shard failed before testing (the browser install, say). Say so and re-run (below).
+   - A test failed, on its first try or both. **Assume the commits going out (`origin/prod..<sha>`) caused it** until the
+     evidence says otherwise. Answer, with what you found:
+     1. Was it seen before these commits? The same test, or the same error, on e2e or preview runs of commits that are
+        already on prod, or in a flake ticket (`.scratch/p2p-friends-chat-build/issues/*flake*`). A sighting from before the
+        change is the strongest sign it is not the change.
+     2. Does the change touch its path? Compare `git diff --stat origin/prod..<sha>` with the test's spec and the app code
+        its failing step runs through (sockets, the call, history, …).
+     3. Did it fail on the change's own runs? A `preview` run fails on a flake like nightly does (a red job); a branch's
+        `e2e` run against a local build retries, so there a flake is a green job whose log says `flaky`. Read both.
+   - The verdict:
+     - **It looks like the change** (no sighting before, and the change touches the path, or it was flaky on the branch
+       too): do not re-run and do not release. Tell the owner what is suspect; it is a bug of that change, fixed the usual
+       way (regression test, then the fix).
+     - **It does not**: re-run the failed jobs once, `gh run rerun <run id> --failed` (the gate job runs again with them).
+       The old `failure` stays on the commit until the re-run ends: wait for the run itself to complete (one poll loop on
+       the run, every 60 s, about 25 min at most), then read the status again (step 2). Green: release, and name the flake
+       and your verdict in the report. Red again, on any test: stop. It is a bug, or a second flake to explain the same way
+       with the owner; never a second re-run. Cancelled: if a newer master deploy took over, the newer commit becomes the
+       candidate; if a shard timed out, report it, no second re-run. Before releasing on a green re-run, check once more
+       that `origin/master` is still `<sha>` (else part of the re-run may have tested the newer app: take the newer commit).
+   - Either way the flake is a bug to explain: open its ticket (one per cause; add to an existing one if the error is the
+     same) and say in the report that you did.
 3. `git log --oneline origin/prod..<sha>`: these commits go out. Note any that touch saved state (`localStorage`,
    IndexedDB) and whether they migrate.
 4. `git push origin <sha>:prod`. A rejection from the ruleset means the gate is missing for that commit: go back to step 2.
    Never bypass it; if the owner wants a hotfix released without the gate, they can switch the ruleset off themselves.
 5. Wait for the `deploy` run on prod and confirm it succeeded (the deployed About dialog shows the commit; `curl` the prod
    URL's HTML for the commit hash if in doubt).
-6. Report: what went out (one line per commit, in plain words), the gate result, the prod deploy result, and anything
+6. Report: what went out (one line per commit, in plain words), the gate result (on a re-run: which test was flaky, your
+   verdict and its evidence, the ticket), the prod deploy result, and anything
    friends will notice (changed defaults that do not reach existing browsers, a one-time reload, etc.).
 
 The ticket convention marks shipping in the ticket's `Status:` line ("shipped <date> to prod"); update the tickets of the

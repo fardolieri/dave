@@ -104,6 +104,11 @@ Rules:
 A flaky test is a bug in the app or in the test, never noise (`.scratch/p2p-friends-chat-build/issues/35-*`): find the cause,
 then fix the app, fix the test, or drop the claim. A longer timeout or another retry does not count unless the cause is known.
 
+A flake does not hold up a release, though: explain before release, fix after. The nightly gate goes red on a flake so that
+whoever releases sees it; they first suspect the commits going out, and only when the evidence clears them re-run the failed
+jobs once and release (`/release` step 2a). That re-run is the one retry allowed without a known cause, because the cause
+is still looked for after. Red again on the re-run stops the release.
+
 ## Code
 
 - Match the surrounding style: comment density, naming, the plain prose of the existing comments and commit messages.
