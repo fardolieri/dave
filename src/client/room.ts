@@ -542,7 +542,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       if (i >= 0) push({ kind: 'system', text: 'Not sent: your text came back unreadable.', at: Date.now() });
       return;
     }
-    if (seen(m.from.publicKey, m.id)) return;
+    // Seen before only once the history is in: after a reload, one the Room brings again before that would count twice.
+    await historyLoaded.catch(() => {});
+    if (stopped || seen(m.from.publicKey, m.id)) return;
     const text: Text = { from: m.from, text: opened.text, at: m.at, id: m.id };
     push({ kind: 'text', id: textKey(text), from: text.from, text: text.text, at: text.at });
     void appendHistory(opts.roomId, text);
@@ -607,7 +609,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       posthog.capture('text_rejected', { reason: opened.reason, writer: m.from.fingerprint, own, sealed_length: m.sealed.length, kind: 'file' });
       return;
     }
-    if (seen(m.from.publicKey, m.id)) return;
+    await historyLoaded.catch(() => {}); // as a text's (received)
+    if (stopped || seen(m.from.publicKey, m.id)) return;
     const { file } = opened;
     push({ kind: 'file', id: textKey({ from: m.from, at: m.at }), from: m.from, file, at: m.at });
     void appendHistory(opts.roomId, { from: m.from, text: file.name, at: m.at, id: m.id, file });
