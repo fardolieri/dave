@@ -701,9 +701,10 @@ function Workspace(props: WorkspaceProps) {
                       <button class="room-leave" title={`Leave the call in ${l.saved.name}`} onClick={() => l.call.leave()}>Leave</button>
                     </Show>
                     {/* Every room but the top one: up to the top, where its ⋯ is (invite, theme, leave), and on screen, open, as
-                        its head would. Not while in a call: the call's room is the top one */}
-                    <Show when={!top()}>
-                      <button class="room-top" disabled={!!active()} title={active() ? 'The room of your call stays on top' : `Put ${l.saved.name} on top`} aria-label={`Put ${l.saved.name} on top`}
+                        its head would. Not while in a call: the call's room is the top one. Then a folded room shows none, and
+                        the room open on screen a disabled one that says why */}
+                    <Show when={!top() && (!active() || expanded())}>
+                      <button class="room-top" disabled={!!active()} title={active() ? 'The room of your call stays on top while you are in the call' : `Put ${l.saved.name} on top`} aria-label={`Put ${l.saved.name} on top`}
                         onClick={() => { const i = links().indexOf(l); if (i > 0) moveRooms(i, 0); privates.close(); setFolded(false); props.onSelect(l.saved.secret); }}>↑</button>
                     </Show>
                     {/* The top room's ⋯, while it is open: folded, its row is only its handle */}

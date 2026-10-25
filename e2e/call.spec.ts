@@ -219,3 +219,14 @@ test('ticket 39: starting a share plays the sharer\'s cue with a high C6 on top,
   expect(share.at(-1)).toBe('sine 1047'); // then the sparkle
   expect((await heard(bob)).at(-1)).toBe('sine 1047'); // Bob hears his own
 });
+
+test('in a call, another room folded has no ↑, and opened shows it disabled, saying why', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
+  await alice.join();
+  const up = alice.page.locator('aside.side section.room', { has: alice.page.locator('.room-title', { hasText: 'Other' }) }).locator('button.room-top');
+  await expect(up).toHaveCount(0);
+  await alice.selectRoom('Other');
+  await expect(up).toBeDisabled();
+  await expect(up).toHaveAttribute('title', /stays on top while you are in the call/);
+});
