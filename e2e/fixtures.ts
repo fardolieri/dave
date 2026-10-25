@@ -425,6 +425,20 @@ export class Friend {
   async join(): Promise<void> {
     await this.press(this.selectedRoom.locator('button.join'));
     await expect(this.selectedRoom.locator('button.leave')).toBeVisible();
+    await this.noiseFilterLoaded();
+  }
+
+  /**
+   * The noise filter's file (client/voice.ts), fetched by a join with a microphone: a reload right after the
+   * join cut its download off, and Firefox logs that as an error of the service worker that served it, which failed the
+   * test (ticket 62). Where the page can remove noise and has it on (the default), the join waits for the file; a join
+   * without a microphone fetches none, and goes on after a few seconds.
+   */
+  private async noiseFilterLoaded(): Promise<void> {
+    const wanted = await this.page.evaluate(() => typeof AudioWorkletNode !== 'undefined' && !(localStorage.getItem('dave.audioSettings') ?? '').includes('"noiseRemoval":false'));
+    if (!wanted) return;
+    const loaded = () => this.page.evaluate(() => performance.getEntriesByType('resource').some((e) => e.name.includes('/rnnoise') && (e as PerformanceResourceTiming).responseEnd > 0));
+    await expect.poll(loaded, { timeout: 5_000 }).toBe(true).catch(() => {});
   }
 
   async leave(): Promise<void> {
