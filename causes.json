@@ -178,5 +178,85 @@
  {
   "match": "^resilience\\.spec\\.ts › after a stalled attempt the rebuild goes through the TURN relay, and both sides take it \\(ticket 22\\) \\| Bob hears Alice",
   "ticket": "63"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › a friend cut off from the server stays in the call.* \\| console warnings, errors or exceptions nobody expected: Alice: error: WebSocket is already in CLOSING",
+  "ticket": "41"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › an offer stuck for a friend who then reloads leaves their new connection alone \\(the impolite side reloads, the first.* \\| console warnings",
+  "ticket": "60"
+ },
+ {
+  "match": "^call\\.spec\\.ts › ticket 24: a reload rejoins the call.* \\| console warnings, errors or exceptions nobody expected: Bob: error: WebSocket connection",
+  "ticket": "60"
+ },
+ {
+  "match": "^attachment\\.spec\\.ts › a picture that could not be pulled while its sender was frozen.* \\| ",
+  "ticket": "51"
+ },
+ {
+  "match": "^share\\.spec\\.ts › regression: a Watch click while the socket is down is asked for again after the reconnect.* \\| expect\\(locator\\)\\.toHaveText",
+  "ticket": "51"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › an offer stuck for a friend who then reloads leaves their new connection alone \\(the impolite side reloads, the last.* \\| expect\\(locator\\)\\.toHaveText",
+  "ticket": "51"
+ },
+ {
+  "match": "^settings\\.spec\\.ts › a friend's volume and the master volume multiply, and survive a reload.* \\| expect\\(locator\\)\\.toHaveText",
+  "ticket": "51"
+ },
+ {
+  "match": "^text\\.spec\\.ts › regression: a text that reached the Room before its socket was lost.* \\| ",
+  "ticket": "51"
+ },
+ {
+  "match": "^text\\.spec\\.ts › regression: the chat keeps its place when the share strip comes and goes.* \\| expect\\(locator\\)\\.toBeVisible",
+  "ticket": "51"
+ },
+ {
+  "match": "^share\\.spec\\.ts › regression: presence changes neither recreate a watched tile.* \\| expect\\(locator\\)\\.toBeEnabled",
+  "ticket": "58"
+ },
+ {
+  "match": "^share\\.spec\\.ts › the speaker gives back the volume it took.* \\| ",
+  "ticket": "61"
+ },
+ {
+  "match": "^share\\.spec\\.ts › regression: a Watch click while the socket is down is asked for again after the reconnect.* \\| expect\\(locator\\)\\.toBeVisible",
+  "ticket": "57"
+ },
+ {
+  "match": "^call\\.spec\\.ts › a mesh of three: every pair connects.* \\| expect\\(locator\\)\\.toBeVisible",
+  "ticket": "57"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › both sockets drop with an offer of each in flight.* \\| ",
+  "ticket": "57"
+ },
+ {
+  "match": "^update\\.spec\\.ts › ticket 36: a version left waiting behind the bar is taken by the next reload.* \\| ",
+  "ticket": "62"
+ },
+ {
+  "match": "^text\\.spec\\.ts › texts from more than 18 h before the room came on screen.* \\| ",
+  "ticket": "f9efd75 (fixed)"
+ },
+ {
+  "match": "^settings\\.spec\\.ts › ticket 40: the mic test plays my voice.* \\| ",
+  "ticket": "c6f2ffa (fixed)"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › an offer made while my socket comes back goes out once I am in the call again.* \\| console warnings, errors or exceptions nobody expected: Bob: warning: signal handling failed OperationError",
+  "ticket": "69be876 (fixed)"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › an offer stuck for a friend who then reloads.* \\| expect\\(received\\)\\.toBe\\(expected\\)",
+  "ticket": "8444326 (fixed)"
+ },
+ {
+  "match": "^settings\\.spec\\.ts › low bandwidth voice caps the voice.* \\| ",
+  "ticket": "8a1010e (explained)"
  }
 ]
