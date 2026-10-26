@@ -158,9 +158,9 @@ aside.side > section.room:first-of-type.selected:not(.folded):has(.room-menu:hov
 .room-more { flex: none; margin-left: auto; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--panel) 85%, transparent); color: var(--dim); font-size: 16px; line-height: 1; } /* faint; on a disc of its own, so a box's scenery cannot hide it */
 .room-more:hover, .room-more:focus-visible { color: var(--fg); background: var(--panel2); }
 button.room-leave + .room-more { margin-left: 4px; } /* my call's folded room: after its small Leave */
-/* That row is the fullest there is (faces, Unmute, Hear, Leave, ⋯): on a phone, what does not fit goes to a second line
-   rather than past the screen's edge */
-@media (max-width: 700px) { .room.in-call.folded > .room-head { flex-wrap: wrap; row-gap: 6px; } }
+/* That row is the fullest there is: with Unmute, Hear, Leave and ⋯ and a full set of faces it runs past a phone's edge.
+   Hear is there until one click, so for that moment the faces step aside; the name still shortens before anything does */
+@media (max-width: 700px) { .room.in-call.folded > .room-head:has(> .room-unmute):has(> .room-hear) > .roomfaces { display: none; } }
 /* The chat of a room whose look is not the page's: on its own ground, its scenery if its theme has one */
 :where(.chat[data-theme], .chat-input[data-theme]) { background: var(--chat-ground, var(--bg)); }
 .room-menu[popover] { position: fixed; inset: auto; margin: 0; overflow: auto; padding: 6px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
