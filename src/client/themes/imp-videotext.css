@@ -36,16 +36,15 @@ h2 { color: var(--acc); letter-spacing: .04em; }
 .room:where(:scope) > .room-head { margin: 0 -14px 6px; padding: 3px 14px; background: var(--bar); border-radius: 0; }
 .room:where(:scope).folded { padding-bottom: 0; }
 .room:where(:scope).folded > .room-head { margin-bottom: 0; }
-.room:where(:scope) > .room-head:active:not(:has(.room-more:active, .room-top:active, .room-menu:active, .room-leave:active, .room-hear:active, .room-unmute:active)) { background: var(--field); }
+.room:where(:scope) > .room-head:active:not(:has(.room-more:active, .room-menu:active, .room-leave:active, .room-hear:active, .room-unmute:active)) { background: var(--field); }
 .room-title { color: var(--acc); font-size: 13px; letter-spacing: .04em; }
 .room:where(:scope).selected .room-title,
 .room-head:hover .room-title { color: var(--warn); }
-.room-head :is(button.link, .room-more, .room-top) { color: #fff; }
+.room-head :is(button.link, .room-more) { color: #fff; }
 .room-head button.link.on { color: var(--warn); }
 button.room-name:focus-visible { outline-color: var(--warn); }
-:is(.room-more, .room-top, .side-me .gear, .side-top .gear) { border-radius: 0; }
-.room-head .room-more:is(:hover, :focus-visible),
-.room-head .room-top:not(:disabled):is(:hover, :focus-visible) { background: var(--field); }
+:is(.room-more, .side-me .gear, .side-top .gear) { border-radius: 0; }
+.room-head .room-more:is(:hover, :focus-visible) { background: var(--field); }
 /* the small Leave of my call's folded room, as Leave: black on the red */
 button.room-leave { background: var(--bad); color: #000; border-radius: 0; font-weight: 700; }
 

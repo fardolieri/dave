@@ -46,7 +46,7 @@ button.unblock:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"]
 .room:where(:scope):is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *), .room:where(:scope).folded > .room-head:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { border-radius: 18px; }
 .room:where(:scope) > .room-head:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { border-radius: 18px 18px 0 0; }
 .plist.callbox:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { border-radius: 14px; }
-:is(button.room-name, .room-more, .room-top, .side-me .gear, .side-top .gear):is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { box-shadow: none; }
+:is(button.room-name, .room-more, .side-me .gear, .side-top .gear):is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { box-shadow: none; }
 /* the small Leave of my call's folded room in the colours of the big one: the bare red under white would glare in a lamp-lit room */
 button.room-leave:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { background: #5A2430; color: #FFD3D3; }
 :is(.room-menu, .side-foot)[popover]:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { background: var(--panel); border: 0; border-radius: 18px; box-shadow: 0 18px 50px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06); }

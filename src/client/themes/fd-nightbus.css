@@ -46,7 +46,7 @@ button.room-name:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nigh
    when it wears this look in a page of another. */
 .room:where(:scope):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *), .room:where(:scope).folded > .room-head:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { border-radius: 4px; }
 .room:where(:scope) > .room-head:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { border-radius: 4px 4px 0 0; }
-:is(.plist.callbox, .room-more, .room-top, .side-me .gear, .side-top .gear, .who, .away li):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { border-radius: 3px; }
+:is(.plist.callbox, .room-more, .side-me .gear, .side-top .gear, .who, .away li):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { border-radius: 3px; }
 :is(.room-menu, .side-foot)[popover]:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { border-radius: 4px; }
 :is(.room-menu, .side-foot) button.link:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { border-radius: 2px; }
 /* the small Leave of my call's folded room as the big one: dark text on the red, which white is too faint on */

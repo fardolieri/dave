@@ -161,7 +161,7 @@ dialog.report, dialog.about { border: 3px solid var(--line); border-radius: 0; }
    sidebar, as in the base, so it has none); the call box, the ⋯, ↑, ⚙, the small Leave and the menus square as well.
    A room's box is the root of its own look wherever it sits, so it is named as the root (`:where(:scope)`, no weight),
    and what in it hangs from the sidebar names the sidebar outside the root (a `:scope` in the selector lets it). */
-:is(.room:where(:scope), .room:where(:scope) > .room-head, .plist.callbox, .room-more, .room-top, :is(.side-me, .side-top) .gear, button.room-leave, .who, .away li, .room-menu[popover], .side-foot[popover], .side-foot > button.link, .room-menu button.link) { border-radius: 0; }
+:is(.room:where(:scope), .room:where(:scope) > .room-head, .plist.callbox, .room-more, :is(.side-me, .side-top) .gear, button.room-leave, .who, .away li, .room-menu[popover], .side-foot[popover], .side-foot > button.link, .room-menu button.link) { border-radius: 0; }
 .room:where(:scope) { box-shadow: inset 0 0 0 var(--border-width) var(--line); }
 aside.side > section.room:where(:scope):first-of-type.selected:not(.folded) { box-shadow: none; }
 .plist.callbox { box-shadow: inset 0 0 0 var(--border-width) var(--ok); }

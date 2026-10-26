@@ -137,7 +137,7 @@ dialog.report, dialog.about { border-radius: var(--border-radius-lg); border-col
 .warn { border-radius: var(--border-radius-sm); }
 /* the sidebar's round ⋯, ↑ and ⚙ are glyphs on the linen, not keys: no shadow under them, no lift; the ⋯ and ⚙ menus
    float as the profile card does; the small Leave in clay with the palette's own text on clay */
-:is(button.room-more, button.room-top, :is(.side-me, .side-top) button.gear), :is(button.room-more, button.room-top, :is(.side-me, .side-top) button.gear):hover { box-shadow: none; transform: none; }
+:is(button.room-more, :is(.side-me, .side-top) button.gear), :is(button.room-more, :is(.side-me, .side-top) button.gear):hover { box-shadow: none; transform: none; }
 :is(.room-menu, .side-foot)[popover] { border-radius: var(--border-radius-lg); border-color: transparent; box-shadow: var(--shadow-lg); }
 button.room-leave { color: var(--color-text-on-error); font-weight: 800; box-shadow: none; }
 /* chat: names in the heavy weight, the composer a soft pill (named as the root too, for when it wears this look in a
