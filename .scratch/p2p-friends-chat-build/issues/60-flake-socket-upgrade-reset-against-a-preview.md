@@ -1,6 +1,6 @@
 # 60 · Flake: a socket's upgrade reset against a preview fails a test on its console line alone
 
-Status: fixed on branch flake/recovery-marker, 2026-10-26 (the test is wrong, outcome 1 of ticket 35); where the reset
+Status: fixed in 3c5faba, shipped 2026-10-26 to prod (the test is wrong, outcome 1 of ticket 35); where the reset
 comes from is still not known
 Seen 2026-10-21: the preview run of PR #89 (head 29121e1, against `dave-pr-89`), Chromium, shard 5, passed on the retry:
 `resilience.spec.ts:441` "an offer stuck for a friend who then reloads leaves their new connection alone (the impolite side
