@@ -43,6 +43,10 @@ jobs:
   soak:
     runs-on: ubuntu-latest
     timeout-minutes: 100
+    # Playwright's own image with both engines in it, as in e2e.yml, which says why.
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --ipc=host
     strategy:
       fail-fast: false
       matrix:
@@ -58,31 +62,22 @@ jobs:
       SOAK_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - uses: actions/checkout@v5
+      # The checkout belongs to the runner's user, not root: without this git refuses it, and the build stamps no commit.
+      - run: git config --system --add safe.directory "$GITHUB_WORKSPACE"
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Browsers
-        timeout-minutes: 25
-        run: |
-          # The runner's apt mirror sometimes hangs for good (e2e.yml): a hang is cut short and retried; the soak never is.
-          # `timeout` stops playwright but not the apt-get it started with sudo, which kept the dpkg lock and failed
-          # every later attempt at once (2026-10-09). That apt-get is stopped before the next attempt, a dpkg it left
-          # finishes on its own, and apt waits up to 2 min for the lock instead of failing.
-          echo 'DPkg::Lock::Timeout "120";' | sudo tee /etc/apt/apt.conf.d/99lock-timeout >/dev/null
-          for i in 1 2 3; do
-            timeout 7m pnpm exec playwright install --with-deps chromium firefox && exit 0
-            echo "browser install attempt $i failed"
-            sudo pkill -x apt-get || true; sleep 15; sudo dpkg --configure -a || true
-          done; exit 1
+      # Nothing to do while the image matches the checked-out Playwright (e2e.yml says when it does not).
+      - run: pnpm exec playwright install chromium firefox
       # A seed of its own per shard and night, unless one was given.
       - name: Soak
         run: |
           export SOAK_SEED="${SEED:-$(( (GITHUB_RUN_ID % 1000000) * 10 + ${{ matrix.shard }} ))}"
           echo "seed $SOAK_SEED"
-          pnpm exec playwright test -c playwright.soak.config.ts
+          HOME=/root pnpm exec playwright test -c playwright.soak.config.ts # root's HOME for Firefox, as in e2e.yml
         env:
           SEED: ${{ inputs.seed }}
       - if: failure()

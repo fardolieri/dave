@@ -27,7 +27,7 @@ the same check first, so a refusal never comes as a surprise.
      `gh run rerun` (not only at the start: the evidence below takes a while), `git fetch origin` and check that
      `origin/master` is still `<sha>`. If it moved, do not re-run: the newer commit's own gate decides, make it the
      candidate and go back to step 2. If the run's `run_attempt` is already above 1, it was re-run before: never again.
-   - Not a test result: a shard failed before testing (the browser install, say). Say so and re-run (below).
+   - Not a test result: a shard failed before testing (pulling or starting Playwright's image, say). Say so and re-run (below).
    - A test failed, on its first try or both. **Assume the commits going out (`origin/prod..<sha>`) caused it** until the
      evidence says otherwise. Answer, with what you found:
      1. Was it seen before these commits? The same test, or the same error, in the flake ledger (`README.md` and
