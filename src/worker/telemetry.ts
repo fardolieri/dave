@@ -3,7 +3,7 @@ import type { Outcome } from '../core/room';
 /**
  * A frame the Room refused (ticket 30), logged from the server: the sender's own tab may block PostHog or be on a line
  * too flaky to deliver its events, which is exactly when frames go wrong. One line in the Worker logs always; one
- * `server_frame_rejected` event on the sender's person when PostHog is configured (prod and nightly, not tests) and
+ * `server_frame_rejected` event on the sender's person when PostHog is configured (prod, nightly and previews) and
  * the sender opted in to PostHog (ticket 32). It says which copy of the app refused it (`build_target`, as on the client's
  * events; the Worker does not know its commit). The frame itself is never sent anywhere, only its type, length and why it was refused.
  */

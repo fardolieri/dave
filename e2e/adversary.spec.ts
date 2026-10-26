@@ -98,7 +98,9 @@ test('ADR 0005: a text the server passes off as from another friend, or tampers 
 });
 
 test('ADR 0005: a plain text, as an app from before sends one, is refused as out of date and reaches nobody', async ({ crowd }) => {
-  const alice = await crowd.open('Alice');
+  // PostHog off: the Room reports a refused frame from an opted-in sender itself, and against nightly or a preview that
+  // event is real. Every run of this test was one, 481 in a fortnight, burying the rejections friends' apps cause.
+  const alice = await crowd.open('Alice', { telemetry: 'off' });
   const bob = await crowd.open('Bob');
   alice.wire.up = (frame) => {
     if (!frame.includes('"t":"sealed"')) return frame;
@@ -112,4 +114,6 @@ test('ADR 0005: a plain text, as an app from before sends one, is refused as out
   alice.wire.up = null;
   await alice.say('sealed');
   await expect.poll(() => bob.chatTexts()).toEqual(['sealed']);
+  expect(alice.wire.frames('up', 'auth').every((a) => !('telemetry' in a)), 'the Room was never told to report on her').toBe(true);
+  expect(alice.wire.frames('up', 'telemetry')).toEqual([]);
 });

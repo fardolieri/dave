@@ -2,11 +2,12 @@ import { env, exports } from 'cloudflare:workers';
 import { runDurableObjectAlarm } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import { answerChallenge, exportPublicKey, fromBase64Url, generateIdentityKeyPair, toBase64Url } from '../src/core/identity';
-import { CLOSE_AUTH_FAILED, type ServerMessage } from '../src/core/protocol';
+import { CLOSE_AUTH_FAILED, OUT_OF_DATE, type ServerMessage } from '../src/core/protocol';
 import { CHALLENGE_TIMEOUT_MS } from '../src/core/room';
 import { authKeyOf, roomIdOf } from '../src/core/rooms';
 import worker from '../src/worker/index';
 import { upstream } from '../src/worker/posthog';
+import { logRejected } from '../src/worker/telemetry';
 import { authFrame, openRoomSocket, wsPath, type Challenge } from './harness';
 
 /** A room some test has already entered, so its verifier is set. Tests that need a fresh room make their own secret. */
@@ -140,6 +141,26 @@ describe('worker routing', () => {
     } finally {
       posted.mockRestore();
       errors.mockRestore();
+    }
+  });
+  it('a refused frame is logged always, and sent to PostHog only when its sender opted in (ticket 32)', async () => {
+    const posted = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const testEnv = { ...env, POSTHOG_KEY: 'phc_test', POSTHOG_HOST: 'https://eu.i.posthog.com', BUILD_TARGET: 'nightly' } as unknown as Env;
+      const sent: Array<Promise<unknown>> = [];
+      const ctx = { waitUntil: (p: Promise<unknown>) => sent.push(p) } as unknown as DurableObjectState;
+      logRejected(testEnv, ctx, { from: 'k', reason: OUT_OF_DATE, ref: 'text', length: 62, telemetry: false });
+      expect(warned).toHaveBeenCalledWith('frame rejected', expect.stringContaining(OUT_OF_DATE));
+      expect(posted, 'nothing sent for a sender who did not opt in').not.toHaveBeenCalled();
+      logRejected(testEnv, ctx, { from: 'k', reason: OUT_OF_DATE, ref: 'text', length: 62, telemetry: true });
+      await Promise.all(sent);
+      expect(posted).toHaveBeenCalledTimes(1);
+      const body = JSON.parse((posted.mock.calls[0] as [string, RequestInit])[1].body as string);
+      expect(body).toMatchObject({ event: 'server_frame_rejected', distinct_id: 'k', properties: { ref: 'text', reason: OUT_OF_DATE, length: 62, build_target: 'nightly' } });
+    } finally {
+      posted.mockRestore();
+      warned.mockRestore();
     }
   });
   it('passes /diag/ on to PostHog: events to its ingest host, scripts and remote config to its assets host', () => {
