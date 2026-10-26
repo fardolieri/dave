@@ -625,6 +625,8 @@ function Workspace(props: WorkspaceProps) {
               const top = () => links()[0] === l;
               // Open in the sidebar: the room on screen, unless I folded it, or a private conversation is on screen in its place.
               const expanded = () => selected() && !folded() && !privates.openWith();
+              // Its ⋯ gone (folded, another room on screen, from a link or another tab too), its Themes card goes with it
+              createEffect(() => expanded(), (hasMore) => { if (!hasMore && untrack(themesAt)?.roomId === l.saved.id) setThemesAt(null); });
               const inThis = () => l.call.inCall();
               // Call list: you first, then by join order. Participants whose server socket dropped stay listed, dimmed, for the grace period.
               // You are listed from this browser's call state, like in Online, so your row and the buttons change together.
@@ -658,8 +660,6 @@ function Workspace(props: WorkspaceProps) {
               });
               const roomFaceKeys = createMemo<string[]>(() => faces().slice(0, FACES_SHOWN).map((p) => p.publicKey), { equals: sameKeyList });
               const inviteOpen = () => inviteFor() === l.saved.secret;
-              // On screen and open in the sidebar: from its row, and from its ⋯ for what shows in the open room (Invite)
-              const open = () => { privates.close(); setFolded(false); props.onSelect(l.saved.secret); };
               // The room's ⋯ menu: below its button, else above it when there is more room there.
               const menuId = `room-menu-${++roomMenus}`;
               const roomMenu = sidebarMenu({ width: ROOM_MENU_W, prefer: 'below' });
@@ -671,7 +671,7 @@ function Workspace(props: WorkspaceProps) {
                   <div class="room-head" onClick={(e) => {
                     if ((e.target as Element).closest('.room-more, .room-leave, .room-hear, .room-unmute, [popover]')) return;
                     if (expanded()) { setFolded(true); return; }
-                    open();
+                    privates.close(); setFolded(false); props.onSelect(l.saved.secret);
                   }}>
                     <button class="room-name" aria-expanded={expanded() ? 'true' : 'false'}>
                       <span class="room-title">{l.saved.name}</span>
@@ -703,21 +703,23 @@ function Workspace(props: WorkspaceProps) {
                       <Show when={l.call.audioBlocked()}><button class="room-hear" title="The browser held back the call's sound until you click" onClick={() => l.call.unblockAudio()}>Hear</button></Show>
                       <button class="room-leave" title={`Leave the call in ${l.saved.name}`} onClick={() => l.call.leave()}>Leave</button>
                     </Show>
-                    {/* Every room's ⋯, folded or open: its menu in the room's own look, as everything in its box */}
-                    <button class="room-more" ref={roomMenu.anchor} popovertarget={menuId} title={`Invite, themes, clear chat history${top() ? '' : ', put on top'}, leave`} aria-label={`More for ${l.saved.name}`}>⋯</button>
-                    <div class="room-menu" id={menuId} popover="auto" ref={roomMenu.menu} onBeforeToggle={roomMenu.beforeToggle} onToggle={roomMenu.toggle}>
-                      {/* Its invite link shows in the room open on screen: from a folded room, Invite opens the room */}
-                      <button class="link" title="The link that gets a friend into this room" onClick={() => { roomMenu.close(); if (expanded()) toggleInvite(l); else { open(); setInviteFor(l.saved.secret); } }}>{expanded() && inviteOpen() ? 'Hide invite link' : 'Invite'}</button>
-                      <Show when={THEMES.length > 0}><button class="link" title="This room's look, in this browser" onClick={(e) => { roomMenu.close(); openThemes(e.currentTarget.closest('section.room')?.querySelector<HTMLElement>('.room-more') ?? e.currentTarget, l.saved.id); }}>Themes</button></Show>
-                      <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { roomMenu.close(); if (confirm(`Clear this browser's chat history of ${l.saved.name}? Nothing is stored on the server, so this cannot be undone.`)) void l.room.clearHistory(); }}>Clear chat history</button>
-                      {/* Every room but the top one: up to the top, its look the page's, and on screen, open. Not while in a
-                          call: the call's room is the top one */}
-                      <Show when={!top()}>
-                        <button class="link" disabled={!!active()} title={active() ? 'The room of your call stays on top while you are in the call' : `Put ${l.saved.name} on top`}
-                          onClick={() => { roomMenu.close(); const i = links().indexOf(l); if (i > 0) moveRooms(i, 0); open(); }}>Put on top</button>
-                      </Show>
-                      <button class="link danger" title="Forget this room in this browser" onClick={() => { roomMenu.close(); leaveRoom(l); }}>Leave {l.saved.name}</button>
-                    </div>
+                    {/* The ⋯ of the room open on screen, the top one or not: folded, a room's row is its handle (and, for my
+                        call's room, its Unmute, Hear and Leave). Its menu wears the room's look, as everything in its box */}
+                    <Show when={expanded()}>
+                      <button class="room-more" ref={roomMenu.anchor} popovertarget={menuId} title={`${top() ? '' : 'Put on top, '}invite, themes, clear chat history, leave`} aria-label={`More for ${l.saved.name}`}>⋯</button>
+                      <div class="room-menu" id={menuId} popover="auto" ref={roomMenu.menu} onBeforeToggle={roomMenu.beforeToggle} onToggle={roomMenu.toggle}>
+                        {/* Every room but the top one: up to the top, its look the page's. Not while in a call: the call's room
+                            is the top one */}
+                        <Show when={!top()}>
+                          <button class="link" disabled={!!active()} title={active() ? 'The room of your call stays on top while you are in the call' : `Put ${l.saved.name} on top`}
+                            onClick={() => { roomMenu.close(); const i = links().indexOf(l); if (i > 0) moveRooms(i, 0); }}>Put on top</button>
+                        </Show>
+                        <button class="link" title="The link that gets a friend into this room" onClick={() => { roomMenu.close(); toggleInvite(l); }}>{inviteOpen() ? 'Hide invite link' : 'Invite'}</button>
+                        <Show when={THEMES.length > 0}><button class="link" title="This room's look, in this browser" onClick={(e) => { roomMenu.close(); openThemes(e.currentTarget.closest('section.room')?.querySelector<HTMLElement>('.room-more') ?? e.currentTarget, l.saved.id); }}>Themes</button></Show>
+                        <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { roomMenu.close(); if (confirm(`Clear this browser's chat history of ${l.saved.name}? Nothing is stored on the server, so this cannot be undone.`)) void l.room.clearHistory(); }}>Clear chat history</button>
+                        <button class="link danger" title="Forget this room in this browser" onClick={() => { roomMenu.close(); leaveRoom(l); }}>Leave {l.saved.name}</button>
+                      </div>
+                    </Show>
                   </div>
                   <Show when={expanded() && inviteOpen()}><InvitePanel link={inviteLinkFor(l.saved)} name={l.saved.name} onClose={() => setInviteFor(null)} /></Show>
                   {/* Who is here and not in the call, me too, ready to join: at the top of the room on screen */}
@@ -1080,7 +1082,7 @@ function ThemesCard(props: { open: { anchor: HTMLElement; roomId: string } | nul
   });
   // Beside its room's ⋯, as the looks change under it: a pick re-themes the room and the card (the page too, for the top
   // room: other fonts, other padding) while the card stays open for the next try; the rooms reordered, the sidebar
-  // scrolled. Its ⋯ gone (the room left), put away.
+  // scrolled. Its ⋯ gone (the room folded or left), put away.
   createEffect(() => props.open, (o) => {
     if (!o) return;
     let placing = 0;

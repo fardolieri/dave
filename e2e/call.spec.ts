@@ -220,23 +220,26 @@ test('ticket 39: starting a share plays the sharer\'s cue with a high C6 on top,
   expect((await heard(bob)).at(-1)).toBe('sine 1047'); // Bob hears his own
 });
 
-test('in a call, another room\'s ⋯ says it cannot go on top, folded or open', async ({ crowd }) => {
+test('in a call, the ⋯ of another room open on screen says it cannot go on top; folded, the call\'s room keeps its Leave', async ({ crowd }) => {
   const other = { secret: newSecret(), name: 'Other' };
   const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
   await alice.join();
-  const box = alice.page.locator('aside.side section.room', { has: alice.page.locator('.room-title', { hasText: 'Other' }) });
-  const up = box.locator('.room-menu').getByRole('button', { name: 'Put on top' });
-  await box.locator('button.room-more').click();
-  await expect(up).toBeDisabled();
-  await expect(up).toHaveAttribute('title', /stays on top while you are in the call/);
-  await alice.page.keyboard.press('Escape');
+  const box = (name: string) => alice.page.locator('aside.side section.room', { has: alice.page.locator('.room-title', { hasText: name }) });
+  await expect(box('Other').locator('button.room-more')).toHaveCount(0); // folded: its row is only its handle
   await alice.selectRoom('Other');
-  await box.locator('button.room-more').click();
-  await expect(up).toBeDisabled();
+  // The call's room folded: no ⋯, its Leave still there
+  await expect(box(crowd.room.name).locator('button.room-more')).toHaveCount(0);
+  await expect(box(crowd.room.name).locator('button.room-leave')).toBeVisible();
+  await box('Other').locator('button.room-more').click();
+  const first = box('Other').locator('.room-menu button.link').first();
+  await expect(first).toHaveText('Put on top');
+  await expect(first).toBeDisabled();
+  await expect(first).toHaveAttribute('title', /stays on top while you are in the call/);
   // The room of the call has no Put on top: it is there
   await alice.page.keyboard.press('Escape');
-  const top = alice.page.locator('aside.side section.room').first();
-  await top.locator('button.room-more').click();
-  await expect(top.locator('.room-menu').getByRole('button', { name: `Leave ${crowd.room.name}` })).toBeVisible();
-  await expect(top.locator('.room-menu').getByRole('button', { name: 'Put on top' })).toHaveCount(0);
+  await alice.selectRoom(crowd.room.name);
+  const menu = box(crowd.room.name).locator('.room-menu');
+  await box(crowd.room.name).locator('button.room-more').click();
+  await expect(menu.getByRole('button', { name: `Leave ${crowd.room.name}` })).toBeVisible();
+  await expect(menu.getByRole('button', { name: 'Put on top' })).toHaveCount(0);
 });

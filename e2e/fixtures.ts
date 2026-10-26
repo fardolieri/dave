@@ -641,8 +641,10 @@ export async function openMenu(page: Page): Promise<void> {
 /** Opens the ⋯ menu of the room on screen (invite, clear chat history, leave), if it is not open already. */
 export async function openRoomMenu(page: Page): Promise<void> {
   if (await page.locator('.room-menu:popover-open').count()) return;
-  // Every room has its ⋯, folded or open, at the top of the list or not
-  await page.locator('aside.side section.room.selected button.room-more').click();
+  // Only the room open on screen has its ⋯ (the top one or not): opened first, folded or behind a private conversation
+  const on = page.locator('aside.side section.room.selected');
+  if (await on.locator('button.room-more').count() === 0) await on.locator('.room-head button.room-name').click();
+  await on.locator('button.room-more').click();
   await expect(page.locator('.room-menu:popover-open')).toBeVisible();
 }
 
