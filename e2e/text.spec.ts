@@ -75,6 +75,22 @@ test('a long link with no spaces wraps inside the chat at phone width, under a n
   expect(wide).toEqual([]);
 });
 
+test('regression: on a phone the app is never taller than its page, so the composer is on screen from the start', async ({ crowd }) => {
+  // Bug reports, 17 and 22 Oct: the installed app opened scrolled, the composer below the screen, until the keyboard had
+  // been out once. Its window stayed 755 px tall throughout, so most likely 100dvh came out taller than the page at launch
+  // (inferred, not measured). Chromium here never does that, so the test makes the page shorter than the viewport instead.
+  const alice = await crowd.open('Alice', { viewport: { width: 360, height: 755 } });
+  await alice.page.addStyleTag({ content: 'html { height: 600px; }' });
+  await expect(alice.composer).toBeVisible();
+  const sizes = await alice.page.evaluate(() => ({
+    page: document.body.getBoundingClientRect().bottom,
+    app: document.getElementById('app')!.getBoundingClientRect().bottom,
+    composer: document.querySelector('.chat-input')!.getBoundingClientRect().bottom,
+  }));
+  expect(sizes.app, 'the app ends where the page does').toBeLessThanOrEqual(sizes.page);
+  expect(sizes.composer, 'the composer is inside the page').toBeLessThanOrEqual(sizes.page);
+});
+
 test('received history survives a reload, and "Clear chat history" empties it', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
