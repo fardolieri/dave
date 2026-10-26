@@ -706,7 +706,7 @@ function Workspace(props: WorkspaceProps) {
                     {/* The ⋯ of the room open on screen, the top one or not: folded, a room's row is its handle (and, for my
                         call's room, its Unmute, Hear and Leave). Its menu wears the room's look, as everything in its box */}
                     <Show when={expanded()}>
-                      <button class="room-more" ref={roomMenu.anchor} popovertarget={menuId} title={`${top() ? '' : 'Put on top, '}invite, themes, clear chat history, leave`} aria-label={`More for ${l.saved.name}`}>⋯</button>
+                      <button class="room-more" ref={roomMenu.anchor} popovertarget={menuId} title={top() ? 'Invite, themes, clear chat history, leave' : 'Put on top, invite, themes, clear chat history, leave'} aria-label={`More for ${l.saved.name}`}>⋯</button>
                       <div class="room-menu" id={menuId} popover="auto" ref={roomMenu.menu} onBeforeToggle={roomMenu.beforeToggle} onToggle={roomMenu.toggle}>
                         {/* Every room but the top one: up to the top, its look the page's. Not while in a call: the call's room
                             is the top one */}

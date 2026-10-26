@@ -638,7 +638,7 @@ export async function openMenu(page: Page): Promise<void> {
   await expect(page.locator('#side-menu')).toBeVisible();
 }
 
-/** Opens the ⋯ menu of the room on screen (invite, clear chat history, leave), if it is not open already. */
+/** Opens the ⋯ menu of the room on screen (put on top, invite, themes, clear chat history, leave), if it is not open already. */
 export async function openRoomMenu(page: Page): Promise<void> {
   if (await page.locator('.room-menu:popover-open').count()) return;
   // Only the room open on screen has its ⋯ (the top one or not): opened first, folded or behind a private conversation

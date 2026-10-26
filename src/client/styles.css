@@ -155,7 +155,8 @@ aside.side > section.room:first-of-type.selected:not(.folded):has(.room-menu:hov
 :where(.room.folded) > .room-head { padding-bottom: 8px; border-radius: 12px; }
 /* The ⋯ menu of the room open on screen: put on top, invite, themes, clear chat history, leave */
 .room.folded button.room-name { flex: 0 1 auto; } /* its faces right after its name */
-.room-more { flex: none; margin-left: auto; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--panel) 85%, transparent); color: var(--dim); font-size: 16px; line-height: 1; } /* faint; on a disc of its own, so a box's scenery cannot hide it */
+.room-more { flex: none; margin-left: auto; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--dim); font-size: 16px; line-height: 1; }
+:where(aside.side > section.room:not(:first-of-type)) .room-more { background: color-mix(in srgb, var(--panel) 85%, transparent); } /* below the top: on a disc of its own, so its box's scenery cannot hide it */
 .room-more:hover, .room-more:focus-visible { color: var(--fg); background: var(--panel2); }
 /* The chat of a room whose look is not the page's: on its own ground, its scenery if its theme has one */
 :where(.chat[data-theme], .chat-input[data-theme]) { background: var(--chat-ground, var(--bg)); }
