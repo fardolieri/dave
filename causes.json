@@ -1,0 +1,182 @@
+[
+ {
+  "match": "^resilience\\.spec\\.ts › a friend cut off from the server stays in the call, dimmed, as long as the connection to them works \\(ticket 31\\) \\| expect\\(locator\\)\\.toBeEnabled\\(\\) failed",
+  "ticket": "35"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › a stalled connection is rebuilt and comes up again \\| expect\\(locator\\)\\.toHaveText\\(expected\\) fai",
+  "ticket": "35"
+ },
+ {
+  "match": "^settings\\.spec\\.ts › a friend's volume and the master volume multiply, and survive a reload \\| console warnings, errors or exceptions n",
+  "ticket": "35"
+ },
+ {
+  "match": "^update\\.spec\\.ts › ticket 33: with the server gone the app still opens, from the service worker \\| expect\\(locator\\)\\.toBeVisible\\(\\) failed",
+  "ticket": "35"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › an offer lost with a dropped socket, on either side, is sent again once the socket is back \\| console warnings, errors or exceptions n",
+  "ticket": "35"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › a late second answer to an offer sent again is never applied to a newer offer \\| console warnings, errors or exceptions n",
+  "ticket": "35"
+ },
+ {
+  "match": "^privacy\\.spec\\.ts › a yes starts PostHog and tells the server; stopping forgets it again \\| expect\\(received\\)\\.toEqual\\(expected\\) // de",
+  "ticket": "35"
+ },
+ {
+  "match": "^text\\.spec\\.ts › texts in a row from one writer go under one name \\| expect\\(received\\)\\.toEqual\\(expected\\) // de",
+  "ticket": "35"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › the call survives the server going away and coming back \\| console warnings, errors or exceptions n",
+  "ticket": "41"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › a frame on its way to the server as it goes away is lost with the socket, and nothing is written to it closing \\| console warnings, errors or exceptions n",
+  "ticket": "41"
+ },
+ {
+  "match": "^text\\.spec\\.ts › received history survives a reload, and \"Clear chat history\" empties it \\| expect\\(received\\)\\.toEqual\\(expected\\) // de",
+  "ticket": "43"
+ },
+ {
+  "match": "^update\\.spec\\.ts › ticket 36: a new version found as the app opens downloads behind a line, the rooms not yet connected, and the page reloads onto it and back into the call \\| the download shows",
+  "ticket": "44"
+ },
+ {
+  "match": "^invariants\\.spec\\.ts › a share tile left on \"Opening…\" while its video decodes is reported \\(share_opening\\) \\| expect\\(received\\)\\.toBe\\(expected\\) // Objec",
+  "ticket": "46"
+ },
+ {
+  "match": "^call\\.spec\\.ts › Chromium and Firefox in one call connect and hear each other \\| expect\\(locator\\)\\.toBeVisible\\(\\) failed",
+  "ticket": "47"
+ },
+ {
+  "match": "^share\\.spec\\.ts › regression: a share stopped and started again goes live for its viewer, not stuck on Opening \\| expect\\(locator\\)\\.toBeEnabled\\(\\) failed",
+  "ticket": "48"
+ },
+ {
+  "match": "^text\\.spec\\.ts › a text in a room not on screen counts as unread and chimes; own texts never chime \\| expect\\(locator\\)\\.toHaveText\\(expected\\) fai",
+  "ticket": "49"
+ },
+ {
+  "match": "^privacy\\.spec\\.ts › a yes during the handshake neither refuses the room nor gets lost \\| the auth carried the yes",
+  "ticket": "50"
+ },
+ {
+  "match": "^privacy\\.spec\\.ts › a yes starts PostHog and tells the server; stopping forgets it again \\| PostHog started after the yes",
+  "ticket": "50"
+ },
+ {
+  "match": "^text\\.spec\\.ts › everyone sees the same order, even for texts sent at the same moment \\| expect\\(received\\)\\.toBe\\(expected\\) // Objec",
+  "ticket": "51"
+ },
+ {
+  "match": "^text\\.spec\\.ts › text is plain: markup arrives as text and links are clickable \\| Alice's \"<img src=x onerror=\"window\\.pwne",
+  "ticket": "51"
+ },
+ {
+  "match": "^settings\\.spec\\.ts › phone width: one column, the composer pinned to the bottom of the screen and usable \\| Alice's \"line N\" comes back from the ser",
+  "ticket": "51"
+ },
+ {
+  "match": "^text\\.spec\\.ts › regression: the chat keeps its place when the share strip comes and goes \\| expect\\(received\\)\\.toBe\\(expected\\) // Objec",
+  "ticket": "53"
+ },
+ {
+  "match": "^text\\.spec\\.ts › texts in a row from one writer go under one name \\| expect\\(locator\\)\\.toHaveValue\\(expected\\) fa",
+  "ticket": "53"
+ },
+ {
+  "match": "^settings\\.spec\\.ts › a friend's volume and the master volume multiply, and survive a reload \\| console warnings, errors or exceptions n",
+  "ticket": "55"
+ },
+ {
+  "match": "^privacy\\.spec\\.ts › a fresh browser is asked once, again only from the sidebar, and sends nothing to PostHog before a yes or after a no \\| console warnings, errors or exceptions n",
+  "ticket": "55"
+ },
+ {
+  "match": "^attachment\\.spec\\.ts › regression: a picture cancelled and asked again while its first pull waited is one pull, and Cancel stops it \\| console warnings, errors or exceptions n",
+  "ticket": "55"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › a socket the server never answers is given up and tried again, and the room connects \\| expect\\(locator\\)\\.toHaveCount\\(expected\\) fa",
+  "ticket": "55"
+ },
+ {
+  "match": "^call\\.spec\\.ts › a mesh of three: every pair connects, a visitor sees the call without being in it \\| page\\.goto: Target page, context or brows",
+  "ticket": "56"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › a friend whose socket drops without a goodbye is shown as lost, then recovers \\| expect\\(locator\\)\\.toBeVisible\\(\\) failed",
+  "ticket": "57"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › regression: a socket gone silent without a close is given up, and the text written into it arrives once \\| the text arrives on the socket that repl",
+  "ticket": "57"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › a late answer to a join declared again is not taken for the answer to the next join \\| expect\\(locator\\)\\.toBeVisible\\(\\) failed",
+  "ticket": "57"
+ },
+ {
+  "match": "^presence\\.spec\\.ts › rooms are separate: presence and text do not cross \\| expect\\(locator\\)\\.toBeEnabled\\(\\) failed",
+  "ticket": "58"
+ },
+ {
+  "match": "^attachment\\.spec\\.ts › a file sent again by a second friend comes from her while the first is away \\| expect\\(received\\)\\.not\\.toContain\\(expected\\)",
+  "ticket": "59"
+ },
+ {
+  "match": "^themes\\.spec\\.ts › every theme applies, loads its fonts and keeps the console quiet, at desktop and phone width; the pick survives a reload \\| expect\\(locator\\)\\.toHaveCount\\(expected\\) fa",
+  "ticket": "61"
+ },
+ {
+  "match": "^attachment\\.spec\\.ts › regression: a pull tried again after its friend could not be reached is answered \\| expect\\(locator\\)\\.toHaveCount\\(expected\\) fa",
+  "ticket": "61"
+ },
+ {
+  "match": "^attachment\\.spec\\.ts › a pull outlives a blip of the puller's socket, and the picture still shows by itself \\| expect\\(locator\\)\\.toHaveCount\\(expected\\) fa",
+  "ticket": "61"
+ },
+ {
+  "match": "^themes\\.spec\\.ts › a stored theme whose file a later deploy dropped reads as the default look, and a theme picked then is kept \\| expect\\(locator\\)\\.toHaveCount\\(expected\\) fa",
+  "ticket": "61"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › regression: a socket gone silent without a close is given up, and the text written into it arrives once \\| Alice gives the silent socket up herself",
+  "ticket": "61"
+ },
+ {
+  "match": "^share\\.spec\\.ts › a watched share's sound is set from its tile without going fullscreen, and leaves the voice alone \\| expect\\(locator\\)\\.toHaveCount\\(expected\\) fa",
+  "ticket": "61"
+ },
+ {
+  "match": "^call\\.spec\\.ts › a friend without a microphone joins to listen, shown muted; Unmute takes one plugged in later \\| expect\\(locator\\)\\.toHaveCount\\(expected\\) fa",
+  "ticket": "61"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › regression: a socket gone silent without a close is given up, and the text written into it arrives once \\| expect\\(locator\\)\\.toHaveCount\\(expected\\) fa",
+  "ticket": "61"
+ },
+ {
+  "match": "^share\\.spec\\.ts › a share without sound keeps its volume slider disabled, not even enabled for a moment after one with sound \\| expect\\(locator\\)\\.toHaveText\\(expected\\) fai",
+  "ticket": "61"
+ },
+ {
+  "match": "^presence\\.spec\\.ts › the room whose call I join goes to the top of the list, and stays there after a reload \\| console warnings, errors or exceptions n",
+  "ticket": "62"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › a Rejoin left for another room's call is not taken up by the next reload \\| console warnings, errors or exceptions n",
+  "ticket": "62"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › after a stalled attempt the rebuild goes through the TURN relay, and both sides take it \\(ticket 22\\) \\| Bob hears Alice",
+  "ticket": "63"
+ }
+]

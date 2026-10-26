@@ -1,0 +1,3 @@
+2x this week (3x in 30 days) update.spec.ts › ticket 33: Reload moves only its own tab; a tab waiting behind it is a: expect(locator).toBeVisible() failed (no ticket)
+2x this week (2x in 30 days) resilience.spec.ts › after a stalled attempt the rebuild goes through the TURN relay, and b: Bob hears Alice (ticket 63)
+2x this week (2x in 30 days) themes.spec.ts › every theme applies, loads its fonts and keeps the console quiet, at d: expect(locator).toHaveCount(expected) failed (ticket 61)
