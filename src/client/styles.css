@@ -596,7 +596,10 @@ dialog.report .row button:first-child { flex: 1; }
 /* dave and ⚙ at the top of the sidebar: a phone's, where the row of me at the bottom is gone */
 .side-top { display: none; }
 @media (max-width: 700px) {
-  #app { height: 100dvh; }
+  /* One screen tall, and never taller than the page: the installed app on Android opened taller than its window, the
+     composer below the screen until the keyboard had been out once (17 and 22 Oct), most likely a 100dvh worked out too
+     tall at launch: the window itself was the right size throughout */
+  #app { height: 100dvh; max-height: 100%; }
   .side-top { display: flex; align-items: center; justify-content: space-between; padding: 10px 0 0; }
   .side-top .brand { font-weight: 800; font-size: 18px; letter-spacing: -.01em; }
   .side-me { display: none; }
