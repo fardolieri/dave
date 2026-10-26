@@ -200,9 +200,9 @@ test('each room wears its own look: the page the top room\'s, a room\'s box and 
   await alice.selectRoom('Other');
   await expect(page.locator('html')).toHaveAttribute('data-theme', look);
   await expect(page.locator('.chat:not(.private)')).toHaveAttribute('data-theme', 'default');
-  // Other to the top, from Room on screen: Other on screen too and open, the page in its look now, Room's box in its own.
-  await alice.selectRoom('Room');
-  await box('Other').locator('button.room-top').click();
+  // Other to the top, from its ⋯: still on screen and open, the page in its look now, Room's box in its own.
+  await box('Other').locator('button.room-more').click();
+  await box('Other').locator('.room-menu').getByRole('button', { name: 'Put on top' }).click();
   await expect(page.locator('aside.side section.room').first()).toContainText('Other');
   await expect(box('Other')).toHaveClass(/\bselected\b/);
   await expect(box('Other')).not.toHaveClass(/\bfolded\b/);
@@ -214,6 +214,46 @@ test('each room wears its own look: the page the top room\'s, a room\'s box and 
   await alice.connected();
   await expect(page.locator('html')).not.toHaveAttribute('data-theme');
   await expect(box('Room')).toHaveAttribute('data-theme', look);
+});
+test('a room\'s ⋯ menu and the cards opened from it wear its look, not the page\'s, and a folded room has no ⋯', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice', { rooms: [crowd.room, other] });
+  const page = alice.page;
+  const box = (name: string) => page.locator('aside.side section.room', { has: page.locator('.room-title', { hasText: name }) });
+  const look = 'fd-riso'; // light: its paper is nothing like the default look's dark panel
+  const defaultPanel = 'rgb(26, 29, 36)'; // --panel of the default look (styles.css)
+  await pickTheme(page, look); // for Room, the top one: the page's look
+  await expect(page.locator('html')).toHaveAttribute('data-theme', look);
+  await expect(box('Other')).toHaveClass(/\bfolded\b/);
+  await expect(box('Other').locator('button.room-more')).toHaveCount(0);
+  // Other open on screen, not on top: its ⋯ and its menu in its own look (the default), the way to the top first in it;
+  // Room folded, no ⋯
+  await alice.selectRoom('Other');
+  await expect(box(crowd.room.name).locator('button.room-more')).toHaveCount(0);
+  await box('Other').locator('button.room-more').click();
+  const menu = box('Other').locator('.room-menu:popover-open');
+  await expect(menu).toHaveCSS('background-color', defaultPanel);
+  await expect(menu.locator('button.link').first()).toHaveText('Put on top');
+  await expect(menu.locator('button.link').first()).toBeEnabled();
+  // Its themes card too, and the card wears a look picked there at once, the page still the top room's
+  await menu.getByRole('button', { name: 'Themes', exact: true }).click();
+  const card = page.locator('.themes:popover-open');
+  await expect(card).toHaveCSS('background-color', defaultPanel);
+  await card.locator(`.theme-choice[data-theme-name="${look}"]`).click();
+  await expect(card).not.toHaveCSS('background-color', defaultPanel);
+  await card.locator('.theme-choice[data-theme-name=""]').click();
+  await expect(card).toHaveCSS('background-color', defaultPanel);
+  await expect(page.locator('html')).toHaveAttribute('data-theme', look);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.themes')).toBeHidden();
+  // A profile card from Other's lists in Other's look; from Room's, the page's
+  await box('Other').locator('.plist .who', { hasText: '(you)' }).click();
+  await expect(page.locator('.profile:popover-open')).toHaveCSS('background-color', defaultPanel);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.profile')).toBeHidden();
+  await alice.selectRoom(crowd.room.name);
+  await box(crowd.room.name).locator('.plist .who', { hasText: '(you)' }).click();
+  await expect(page.locator('.profile:popover-open')).not.toHaveCSS('background-color', defaultPanel);
 });
 test('a stored theme whose file a later deploy dropped reads as the default look, and a theme picked then is kept', async ({ crowd }) => {
   const alice = await crowd.open('Alice', { connect: false });

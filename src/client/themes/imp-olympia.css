@@ -109,8 +109,8 @@ select.picker option:checked { background: var(--acc); color: #fff; }
 :is(.room:where(:scope):has(button.leave), .room:where(:scope).in-call.folded) { background: #a6e3bd; }
 .room:where(:scope):has(button.leave) .room-head { padding-top: 10px; margin-top: 0; }
 /* its row hovered and pressed, the green deepens, as any room's box shades; and leaving it folded is orange, as Leave is */
-:is(.room:where(:scope):has(button.leave), .room:where(:scope).in-call.folded):has(> .room-head:hover):not(:has(.room-menu:hover, .room-top:hover, .room-leave:hover, .room-hear:hover, .room-unmute:hover)) { background: #95dbaf; }
-:is(.room:where(:scope):has(button.leave), .room:where(:scope).in-call.folded):has(> .room-head:active):not(:has(.room-more:active, .room-top:active, .room-menu:active, .room-leave:active, .room-hear:active, .room-unmute:active)) { background: #84d3a1; }
+:is(.room:where(:scope):has(button.leave), .room:where(:scope).in-call.folded):has(> .room-head:hover):not(:has(.room-menu:hover, .room-more:hover, .room-leave:hover, .room-hear:hover, .room-unmute:hover)) { background: #95dbaf; }
+:is(.room:where(:scope):has(button.leave), .room:where(:scope).in-call.folded):has(> .room-head:active):not(:has(.room-more:active, .room-menu:active, .room-leave:active, .room-hear:active, .room-unmute:active)) { background: #84d3a1; }
 button.room-leave { background: var(--orange); color: #2b1300; border-radius: 2px; font-weight: 700; }
 
 /* shares and their bars */

@@ -319,7 +319,8 @@ function Workspace(props: WorkspaceProps) {
     document.removeEventListener('click', dropOpen, true);
     for (const t of ['pointerup', 'pointercancel']) document.removeEventListener(t, dropOpenLater, true);
   });
-  const [profile, setProfile] = createSignal<{ publicKey: string; anchor: HTMLElement } | null>(null);
+  // A profile card opened from a room's lists wears that room's look (`roomId`); from my row or a conversation, the page's.
+  const [profile, setProfile] = createSignal<{ publicKey: string; anchor: HTMLElement; roomId?: string } | null>(null);
   // A room moved in the list (to the top, as its call is joined). The room on screen stays on screen: one not chosen
   // (none yet, or one since forgotten) is the first, which a move could change, so it is chosen first.
   const moveRooms = (from: number, to: number) => {
@@ -337,13 +338,15 @@ function Workspace(props: WorkspaceProps) {
   adoptOldTheme(untrack(links).map((l) => l.saved.id));
   // The top room's look on the page, again when its look changes in another tab
   createEffect(() => { const id = links()[0]?.saved.id; return id ? `${id} ${themeOf(id)}` : ''; }, (key) => { if (key) showTopTheme(key.split(' ')[0]!); });
-  const chatLook = () => { const id = current()?.saved.id ?? ''; return lookApart(id) ? themeOf(id) || 'default' : undefined; };
+  /** A room's look where it is not the page's, for what wears it apart from the page: its chat, a card opened from it. */
+  const lookOf = (roomId: string | undefined) => (roomId !== undefined && lookApart(roomId) ? themeOf(roomId) || 'default' : undefined);
+  const chatLook = () => lookOf(current()?.saved.id ?? '');
   /** The room on screen folded in the sidebar by a click on its box; another room brought on screen opens again. */
   const [folded, setFolded] = createSignal(false);
-  const openProfile = (p: Person, anchor: HTMLElement) => {
+  const openProfile = (p: Person, anchor: HTMLElement, roomId?: string) => {
     if (openAtDown?.publicKey === p.publicKey && openAtDown.anchor === anchor) { openAtDown = null; setProfile(null); return; }
     if (p.publicKey !== me && !isKnown(p.publicKey)) { markKnown(p.publicKey, p.name); posthog.capture('new_key_acknowledged'); }
-    setProfile({ publicKey: p.publicKey, anchor });
+    setProfile({ publicKey: p.publicKey, anchor, roomId });
     posthog.capture('profile_opened', { own: p.publicKey === me });
   };
   const openPrivate = (friend: Identity) => {
@@ -618,12 +621,12 @@ function Workspace(props: WorkspaceProps) {
             </div>
             <For each={links()}>{(l) => {
               const selected = () => l === cur();
-              // The first in the list: its look is the page's, and its ⋯ is the one there is
+              // The first in the list: its look is the page's
               const top = () => links()[0] === l;
               // Open in the sidebar: the room on screen, unless I folded it, or a private conversation is on screen in its place.
               const expanded = () => selected() && !folded() && !privates.openWith();
               // Its ⋯ gone (folded, another room on screen, from a link or another tab too), its Themes card goes with it
-              createEffect(() => top() && expanded(), (hasMore) => { if (!hasMore && untrack(themesAt)?.roomId === l.saved.id) setThemesAt(null); });
+              createEffect(() => expanded(), (hasMore) => { if (!hasMore && untrack(themesAt)?.roomId === l.saved.id) setThemesAt(null); });
               const inThis = () => l.call.inCall();
               // Call list: you first, then by join order. Participants whose server socket dropped stay listed, dimmed, for the grace period.
               // You are listed from this browser's call state, like in Online, so your row and the buttons change together.
@@ -666,7 +669,7 @@ function Workspace(props: WorkspaceProps) {
                       for the keyboard) and its faces included, it opens the room, back from a private conversation too, or
                       folds the room on screen. The ⋯ and its menu do their own. */}
                   <div class="room-head" onClick={(e) => {
-                    if ((e.target as Element).closest('.room-more, .room-top, .room-leave, .room-hear, .room-unmute, [popover]')) return;
+                    if ((e.target as Element).closest('.room-more, .room-leave, .room-hear, .room-unmute, [popover]')) return;
                     if (expanded()) { setFolded(true); return; }
                     privates.close(); setFolded(false); props.onSelect(l.saved.secret);
                   }}>
@@ -700,17 +703,17 @@ function Workspace(props: WorkspaceProps) {
                       <Show when={l.call.audioBlocked()}><button class="room-hear" title="The browser held back the call's sound until you click" onClick={() => l.call.unblockAudio()}>Hear</button></Show>
                       <button class="room-leave" title={`Leave the call in ${l.saved.name}`} onClick={() => l.call.leave()}>Leave</button>
                     </Show>
-                    {/* Every room but the top one: up to the top, where its ⋯ is (invite, theme, leave), and on screen, open, as
-                        its head would. Not while in a call: the call's room is the top one. Then a folded room shows none, and
-                        the room open on screen a disabled one that says why */}
-                    <Show when={!top() && (!active() || expanded())}>
-                      <button class="room-top" disabled={!!active()} title={active() ? 'The room of your call stays on top while you are in the call' : `Put ${l.saved.name} on top`} aria-label={`Put ${l.saved.name} on top`}
-                        onClick={() => { const i = links().indexOf(l); if (i > 0) moveRooms(i, 0); privates.close(); setFolded(false); props.onSelect(l.saved.secret); }}>↑</button>
-                    </Show>
-                    {/* The top room's ⋯, while it is open: folded, its row is only its handle */}
-                    <Show when={top() && expanded()}>
-                      <button class="room-more" ref={roomMenu.anchor} popovertarget={menuId} title="Invite, themes, clear chat history, leave" aria-label={`More for ${l.saved.name}`}>⋯</button>
+                    {/* The ⋯ of the room open on screen, the top one or not: folded, a room's row is its handle (and, for my
+                        call's room, its Unmute, Hear and Leave). Its menu wears the room's look, as everything in its box */}
+                    <Show when={expanded()}>
+                      <button class="room-more" ref={roomMenu.anchor} popovertarget={menuId} title={top() ? 'Invite, themes, clear chat history, leave' : 'Put on top, invite, themes, clear chat history, leave'} aria-label={`More for ${l.saved.name}`}>⋯</button>
                       <div class="room-menu" id={menuId} popover="auto" ref={roomMenu.menu} onBeforeToggle={roomMenu.beforeToggle} onToggle={roomMenu.toggle}>
+                        {/* Every room but the top one: up to the top, its look the page's. Not while in a call: the call's room
+                            is the top one */}
+                        <Show when={!top()}>
+                          <button class="link" disabled={!!active()} title={active() ? 'The room of your call stays on top while you are in the call' : `Put ${l.saved.name} on top`}
+                            onClick={() => { roomMenu.close(); const i = links().indexOf(l); if (i > 0) moveRooms(i, 0); }}>Put on top</button>
+                        </Show>
                         <button class="link" title="The link that gets a friend into this room" onClick={() => { roomMenu.close(); toggleInvite(l); }}>{inviteOpen() ? 'Hide invite link' : 'Invite'}</button>
                         <Show when={THEMES.length > 0}><button class="link" title="This room's look, in this browser" onClick={(e) => { roomMenu.close(); openThemes(e.currentTarget.closest('section.room')?.querySelector<HTMLElement>('.room-more') ?? e.currentTarget, l.saved.id); }}>Themes</button></Show>
                         <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { roomMenu.close(); if (confirm(`Clear this browser's chat history of ${l.saved.name}? Nothing is stored on the server, so this cannot be undone.`)) void l.room.clearHistory(); }}>Clear chat history</button>
@@ -726,19 +729,19 @@ function Workspace(props: WorkspaceProps) {
                       <For each={hereKeys()}>{(key) => {
                         let last = untrack(() => here().find((p) => p.publicKey === key)!);
                         const p = () => (last = here().find((q) => q.publicKey === key) ?? last);
-                        return <PersonRow p={p()} isMe={key === me} label={labelOf(p())} arrive={key !== me && justCame(key)} onProfile={(el) => openProfile(p(), el)} unread={privates.unread(key)} inCallOf={callElsewhere(l, key)?.saved.name} />;
+                        return <PersonRow p={p()} isMe={key === me} label={labelOf(p())} arrive={key !== me && justCame(key)} onProfile={(el) => openProfile(p(), el, l.saved.id)} unread={privates.unread(key)} inCallOf={callElsewhere(l, key)?.saved.name} />;
                       }}</For>
                     </ul>
                   </Show>
                   {/* The room on screen: its call in full, in a box of its own */}
                   <Show when={expanded()}>
                   <ul class={`plist ${participants().self || participants().others.length || participants().lost.length ? 'callbox' : ''}`}>
-                    <Show when={participants().self}>{(s) => <ParticipantRow p={s()} isMe label={labelOf(s())} onProfile={(el) => openProfile(s(), el)} speaking={l.call.speakingSelf()} />}</Show>
+                    <Show when={participants().self}>{(s) => <ParticipantRow p={s()} isMe label={labelOf(s())} onProfile={(el) => openProfile(s(), el, l.saved.id)} speaking={l.call.speakingSelf()} />}</Show>
                     {/* Keyed by friend: a row made anew on each presence frame would lose its open slider, and the card it holds open */}
                     <For each={faceKeys()}>{(key) => {
                       let last = untrack(() => participants().others.find((p) => p.publicKey === key)!);
                       const p = () => (last = participants().others.find((q) => q.publicKey === key) ?? last);
-                      return <ParticipantRow p={p()} isMe={false} label={labelOf(p())} onProfile={(el) => openProfile(p(), el)} unread={privates.unread(key)} view={inThis() ? viewOf(l, key) : undefined} speaking={viewOf(l, key)?.speaking ?? false} onVolume={inThis() ? (v) => l.call.setVolume(key, v) : undefined} />;
+                      return <ParticipantRow p={p()} isMe={false} label={labelOf(p())} onProfile={(el) => openProfile(p(), el, l.saved.id)} unread={privates.unread(key)} view={inThis() ? viewOf(l, key) : undefined} speaking={viewOf(l, key)?.speaking ?? false} onVolume={inThis() ? (v) => l.call.setVolume(key, v) : undefined} />;
                     }}</For>
                     <For each={participants().lost}>{(v) => <li class="lost"><span class="avatar">{displayName(v.name, contactOf(v.publicKey))[0]}</span><span class="pname">{displayName(v.name, contactOf(v.publicKey))} <em>connection to server lost</em></span></li>}</For>
                     <Show when={!participants().self && participants().others.length === 0 && participants().lost.length === 0}><li class="dim">nobody in the call</li></Show>
@@ -812,8 +815,9 @@ function Workspace(props: WorkspaceProps) {
               <VersionDialog />
             </div>
           </aside>
-          <ThemesCard open={themesAt()} onClose={() => setThemesAt(null)} />
-          <ProfileCard open={profile()} people={withMe()} me={me} label={labelOf} onClose={() => setProfile(null)} onRenameSelf={renameSelf} onPictureSelf={pictureSelf} onMessage={(p) => { setProfile(null); openPrivate(p); }} />
+          {/* A card opened from a room wears that room's look, where it is not the page's (styles.css, `.look`) */}
+          <div class="look" data-theme={lookOf(themesAt()?.roomId)} data-apart={lookOf(themesAt()?.roomId) ? '' : undefined}><ThemesCard open={themesAt()} onClose={() => setThemesAt(null)} /></div>
+          <div class="look" data-theme={lookOf(profile()?.roomId)} data-apart={lookOf(profile()?.roomId) ? '' : undefined}><ProfileCard open={profile()} people={withMe()} me={me} label={labelOf} onClose={() => setProfile(null)} onRenameSelf={renameSelf} onPictureSelf={pictureSelf} onMessage={(p) => { setProfile(null); openPrivate(p); }} /></div>
           {/* The state of the room on screen; with a private conversation on screen, of the room that carries it, as its
               composer goes by: a room down behind it is not the conversation's */}
           <Banner status={bannerStatus((() => { const k = privates.openWith(); const via = k ? privates.via(k) : null; return (via && links().find((l) => l.room === via)) || cur(); })())} onTakeOver={() => { for (const l of links()) l.room.takeOver(); }} />
@@ -1076,9 +1080,9 @@ function ThemesCard(props: { open: { anchor: HTMLElement; roomId: string } | nul
     if (!isOpen()) card.showPopover();
     place(card, o.anchor, 'beside', o.anchor.closest<HTMLElement>('aside.side') ?? undefined);
   });
-  // Beside its ⋯, which only the top room has, as the page changes under it: a pick re-themes the page (other fonts, other
-  // padding) while the card stays open for the next try, and the sidebar scrolls. The rooms reordered and its ⋯ gone (the
-  // room left the top), put away.
+  // Beside its room's ⋯, as the looks change under it: a pick re-themes the room and the card (the page too, for the top
+  // room: other fonts, other padding) while the card stays open for the next try; the rooms reordered, the sidebar
+  // scrolled. Its ⋯ gone (the room folded or left), put away.
   createEffect(() => props.open, (o) => {
     if (!o) return;
     let placing = 0;
@@ -1092,6 +1096,7 @@ function ThemesCard(props: { open: { anchor: HTMLElement; roomId: string } | nul
     };
     const moved = new MutationObserver(follow);
     moved.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    if (card?.parentElement) moved.observe(card.parentElement, { attributes: true, attributeFilter: ['data-theme'] }); // the card's own look
     const lists = o.anchor.closest('aside.side');
     if (lists) moved.observe(lists, { childList: true }); // the rooms reordered
     addEventListener('scroll', follow, true);

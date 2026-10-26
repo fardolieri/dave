@@ -40,7 +40,7 @@ button.room-name:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie
 .emoji-tabs button:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .emoji-grid button:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *),
 .chat-input:where(:scope, :scope *) .emoji-open:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .profile button.edit:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *),
 .private-head button.edit:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *),
-.chat-older:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .room-more:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .room-top:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), :is(.side-me, .side-top) .gear:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { box-shadow: none; }
+.chat-older:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), .room-more:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *), :is(.side-me, .side-top) .gear:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { box-shadow: none; }
 /* the small Leave of my call's folded room is a red key too, with its lip */
 button.room-leave:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { box-shadow: inset 0 -2px 0 rgba(0,0,0,.3); }
 button.avatar:hover:not(.speaking):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { box-shadow: 0 0 0 2px var(--rubber); }

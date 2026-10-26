@@ -638,16 +638,13 @@ export async function openMenu(page: Page): Promise<void> {
   await expect(page.locator('#side-menu')).toBeVisible();
 }
 
-/** Opens the ⋯ menu of the room on screen (invite, clear chat history, leave), if it is not open already. */
+/** Opens the ⋯ menu of the room on screen (put on top, invite, themes, clear chat history, leave), if it is not open already. */
 export async function openRoomMenu(page: Page): Promise<void> {
   if (await page.locator('.room-menu:popover-open').count()) return;
-  // Only the top room has a ⋯, and only open: the room on screen goes to the top first, if it is not there (which opens
-  // it), or opens, folded or behind a private conversation.
-  const up = page.locator('aside.side section.room.selected button.room-top');
-  if (await up.count()) { await up.click(); await expect(page.locator('aside.side section.room').first()).toHaveClass(/selected/); }
-  const top = page.locator('aside.side section.room.selected');
-  if (await top.locator('button.room-more').count() === 0) await top.locator('.room-head button.room-name').click();
-  await page.locator('aside.side section.room.selected button.room-more').click();
+  // Only the room open on screen has its ⋯ (the top one or not): opened first, folded or behind a private conversation
+  const on = page.locator('aside.side section.room.selected');
+  if (await on.locator('button.room-more').count() === 0) await on.locator('.room-head button.room-name').click();
+  await on.locator('button.room-more').click();
   await expect(page.locator('.room-menu:popover-open')).toBeVisible();
 }
 

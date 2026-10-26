@@ -171,8 +171,8 @@ dialog.report, dialog.about { border: 3px solid var(--line); border-radius: var(
 .consent .bubble { border: 3px solid var(--line); }
 /* the gear button is narrow; the theme's wider padding would push the cog off centre */
 .actions .gear { padding-inline: 0; }
-/* the sidebar's round ⋯, ↑ and ⚙ are bare glyphs: no ink edge, no hard shadow, no lift */
-:is(button.room-more, button.room-top, :is(.side-me, .side-top) button.gear), :is(button.room-more, button.room-top, :is(.side-me, .side-top) button.gear):is(:hover, :active) { box-shadow: none; transform: none; }
+/* the sidebar's round ⋯ and ⚙ are bare glyphs: no ink edge, no hard shadow, no lift */
+:is(button.room-more, :is(.side-me, .side-top) button.gear), :is(button.room-more, :is(.side-me, .side-top) button.gear):is(:hover, :active) { box-shadow: none; transform: none; }
 /* rooms are cut-out cards on the pink sheet, the ⋯ menu and ⚙ menu flyers of their own; the folded room's faces in candy colours too */
 .room:where(:scope) { border-radius: var(--border-radius-md); }
 .room:where(:scope) > .room-head { border-radius: var(--border-radius-md) var(--border-radius-md) 0 0; }

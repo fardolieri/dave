@@ -41,12 +41,12 @@ button.room-name:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nigh
 .room:where(:scope).selected .room-title:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *), .room-head:hover .room-title:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { color: var(--led);
   text-shadow: 0 0 6px rgba(255,158,27,.55); }
 .room:where(:scope).selected button.room-name:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { border-color: #5A3A10; }
-/* square-cornered like the rest of the bus: the room boxes, the call box, ⋯, ↑, ⚙ and their menus. A room's box is the
+/* square-cornered like the rest of the bus: the room boxes, the call box, ⋯, ⚙ and their menus. A room's box is the
    root of its own look wherever it sits, so it is named as the root (`:where(:scope)`, no weight); so is the composer
    when it wears this look in a page of another. */
 .room:where(:scope):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *), .room:where(:scope).folded > .room-head:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { border-radius: 4px; }
 .room:where(:scope) > .room-head:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { border-radius: 4px 4px 0 0; }
-:is(.plist.callbox, .room-more, .room-top, .side-me .gear, .side-top .gear, .who, .away li):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { border-radius: 3px; }
+:is(.plist.callbox, .room-more, .side-me .gear, .side-top .gear, .who, .away li):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { border-radius: 3px; }
 :is(.room-menu, .side-foot)[popover]:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { border-radius: 4px; }
 :is(.room-menu, .side-foot) button.link:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { border-radius: 2px; }
 /* the small Leave of my call's folded room as the big one: dark text on the red, which white is too faint on */
