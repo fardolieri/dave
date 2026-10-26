@@ -134,8 +134,8 @@ button.room-name:focus-visible { outline: 2px solid var(--acc); outline-offset: 
    it is found at a glance. After the shades above, which it follows in order (all at zero weight, so a theme's own
    rooms win: imp-olympia's green field, imp-freibad's lanes). */
 :where(.room.in-call.folded) { --room-shade: color-mix(in srgb, var(--ok) 9%, transparent); }
-:where(.room.in-call.folded:has(> .room-head:hover):not(:has(.room-leave:hover, .room-hear:hover, .room-unmute:hover))) { --room-shade: color-mix(in srgb, var(--ok) 14%, transparent); }
-:where(.room.in-call.folded:has(> .room-head:active):not(:has(.room-leave:active, .room-hear:active, .room-unmute:active))) { --room-shade: color-mix(in srgb, var(--ok) 19%, transparent); } /* pressed, brighter, as any room */
+:where(.room.in-call.folded:has(> .room-head:hover):not(:has(.room-menu:hover, .room-more:hover, .room-leave:hover, .room-hear:hover, .room-unmute:hover))) { --room-shade: color-mix(in srgb, var(--ok) 14%, transparent); }
+:where(.room.in-call.folded:has(> .room-head:active):not(:has(.room-more:active, .room-menu:active, .room-leave:active, .room-hear:active, .room-unmute:active))) { --room-shade: color-mix(in srgb, var(--ok) 19%, transparent); } /* pressed, brighter, as any room */
 /* The first room (the one whose call I join goes there) at the top of the sidebar, the rest at its bottom, above Direct
    messages: the second room takes the free space above it. */
 aside.side > section.room:first-of-type + section.room { margin-top: auto; } /* the second only: the rest follow it. In full weight: it is the layout (my row at the bottom), a theme's room margins give way here */
@@ -158,6 +158,9 @@ aside.side > section.room:first-of-type.selected:not(.folded):has(.room-menu:hov
 .room-more { flex: none; margin-left: auto; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--panel) 85%, transparent); color: var(--dim); font-size: 16px; line-height: 1; } /* faint; on a disc of its own, so a box's scenery cannot hide it */
 .room-more:hover, .room-more:focus-visible { color: var(--fg); background: var(--panel2); }
 button.room-leave + .room-more { margin-left: 4px; } /* my call's folded room: after its small Leave */
+/* That row is the fullest there is (faces, Unmute, Hear, Leave, ⋯): on a phone, what does not fit goes to a second line
+   rather than past the screen's edge */
+@media (max-width: 700px) { .room.in-call.folded > .room-head { flex-wrap: wrap; row-gap: 6px; } }
 /* The chat of a room whose look is not the page's: on its own ground, its scenery if its theme has one */
 :where(.chat[data-theme], .chat-input[data-theme]) { background: var(--chat-ground, var(--bg)); }
 .room-menu[popover] { position: fixed; inset: auto; margin: 0; overflow: auto; padding: 6px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }

@@ -40,7 +40,7 @@ button.unblock:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"]
 .room-title:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { font-family: var(--serif); font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 18px; color: var(--dim); }
 .room:where(:scope).selected .room-title:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *), .room-head:hover .room-title:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { color: var(--fg); }
 .unread:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { background: var(--acc); color: #3A0F28; }
-/* a room is a cushion of its own, as soft as the panels; its name, ⋯, ↑ and ⚙ are words on the velvet, not buttons,
+/* a room is a cushion of its own, as soft as the panels; its name, ⋯ and ⚙ are words on the velvet, not buttons,
    so they go without the buttons' sheen of light on the top edge. A room's box is the root of its own look wherever it
    sits, so it is named as the root (`:where(:scope)`, no weight). */
 .room:where(:scope):is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *), .room:where(:scope).folded > .room-head:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { border-radius: 18px; }
