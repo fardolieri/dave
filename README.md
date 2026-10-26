@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-10-26T21:14 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-10-26T21:39 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 89, branch 270, preview 115.
+Runs recorded: nightly 87, branch 271, preview 115.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -95,4 +95,3 @@ Runs recorded: nightly 89, branch 270, preview 115.
 | 1 | 1 | branch 1 | settings.spec.ts › voice repair: RED chosen by one side doubles the voice packets both ways, off drops the FEC flag, and a browser without RED keeps plain Opus | Alice sends voice at first | [09-30](https://github.com/fardolieri/dave/actions/runs/36693869895/attempts/1) | [09-30](https://github.com/fardolieri/dave/actions/runs/36693869895/attempts/1) |  |
 | 1 | 1 | nightly 1 | text.spec.ts › texts in a row from one writer go under one name | expect(received).toEqual(expected) // deep equality | [09-29](https://github.com/fardolieri/dave/actions/runs/36613285178/attempts/1) | [09-29](https://github.com/fardolieri/dave/actions/runs/36613285178/attempts/1) | 35 |
 | 1 | 0 | nightly 1 | privacy.spec.ts › a yes starts PostHog and tells the server; stopping forgets it again | expect(received).toEqual(expected) // deep equality | [09-27](https://github.com/fardolieri/dave/actions/runs/36288825461/attempts/1) | [09-27](https://github.com/fardolieri/dave/actions/runs/36288825461/attempts/1) | 35 |
-| 1 | 0 | nightly 1 | settings.spec.ts › noise removal runs on the outgoing voice, the gate follows its slider, and switching it off sends the microphone again | RNNoise runs | [09-26](https://github.com/fardolieri/dave/actions/runs/36272255266/attempts/1) | [09-26](https://github.com/fardolieri/dave/actions/runs/36272255266/attempts/1) |  |
