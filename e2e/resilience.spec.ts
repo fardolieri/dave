@@ -270,6 +270,19 @@ test('a page whose app script went with a deploy loads again, onto the new one',
   expect(served).toBe(2);
 });
 
+test('a page opened while a deploy rolls out keeps loading again until its app script is there', async ({ crowd }) => {
+  // Nightly e2e of c3934c2, 2026-10-26 (run 40392826988): for about a minute after the deploy the edge answered the app's
+  // script with a 404, on the reload too, and pages stayed empty (ticket 64). Here the script is missing for two loads.
+  const alice = await crowd.open('Alice', { connect: false });
+  alice.expectWarning(/the server responded with a status of 404|Loading failed for the module with source/);
+  alice.expectWarning(/has been classified as a bounce tracker/);
+  let served = 0;
+  await alice.page.route(/\/(assets\/index-[^/]*\.js|src\/client\/index\.tsx)$/, (r) =>
+    (served++ > 1 ? r.continue() : r.fulfill({ status: 404, body: '' })));
+  await alice.open();
+  expect(served).toBe(3);
+});
+
 test('a friend whose socket drops without a goodbye is shown as lost, then recovers', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
