@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-10-27T20:20 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-10-27T20:48 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 77, branch 259, preview 118.
+Runs recorded: nightly 77, branch 260, preview 118.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -14,7 +14,7 @@ Runs recorded: nightly 77, branch 259, preview 118.
 | 5 | 5 | nightly 1, preview 2, branch 2 | invariants.spec.ts › a share tile left on "Opening…" while its video decodes is reported (share_opening) | expect(received).toBe(expected) // Object.is equality | [10-09](https://github.com/fardolieri/dave/actions/runs/37864990445/attempts/1) | [10-12](https://github.com/fardolieri/dave/actions/runs/38222654333/attempts/1) | 46 |
 | 4 | 4 | nightly 1, branch 2, preview 1 | attachment.spec.ts › a file sent again by a second friend comes from her while the first is away | expect(received).not.toContain(expected) // indexOf | [10-16](https://github.com/fardolieri/dave/actions/runs/38911308957/attempts/1) | [10-18](https://github.com/fardolieri/dave/actions/runs/39171574137/attempts/1) | 59 |
 | 4 | 4 | branch 4 | update.spec.ts › ticket 36: a new version found as the app opens downloads behind a line, the rooms not yet connected, and the page reloads onto it and back into the call | the download shows | [10-11](https://github.com/fardolieri/dave/actions/runs/38141987564/attempts/1) | [10-12](https://github.com/fardolieri/dave/actions/runs/38217296669/attempts/1) | 44 |
-| 3 | 3 | branch 3 | update.spec.ts › ticket 33: Reload moves only its own tab; a tab waiting behind it is asked once it takes over | expect(locator).toBeVisible() failed | [10-16](https://github.com/fardolieri/dave/actions/runs/38923099129/attempts/1) | [10-21](https://github.com/fardolieri/dave/actions/runs/39576350056/attempts/1) |  |
+| 3 | 3 | branch 3 | update.spec.ts › ticket 33: Reload moves only its own tab; a tab waiting behind it is asked once it takes over | expect(locator).toBeVisible() failed | [10-16](https://github.com/fardolieri/dave/actions/runs/38923099129/attempts/1) | [10-21](https://github.com/fardolieri/dave/actions/runs/39576350056/attempts/1) | 65 |
 | 3 | 3 | branch 3 | privacy.spec.ts › a yes during the handshake neither refuses the room nor gets lost | the auth carried the yes | [10-12](https://github.com/fardolieri/dave/actions/runs/38267385580/attempts/1) | [10-15](https://github.com/fardolieri/dave/actions/runs/38764424455/attempts/1) | 50 |
 | 3 | 3 | branch 3 | privacy.spec.ts › a yes starts PostHog and tells the server; stopping forgets it again | PostHog started after the yes | [10-09](https://github.com/fardolieri/dave/actions/runs/37894428446/attempts/1) | [10-12](https://github.com/fardolieri/dave/actions/runs/38252207798/attempts/1) | 50 |
 | 3 | 3 | branch 3 | update.spec.ts › ticket 36: a version left waiting behind the bar is taken by the next reload | console warnings, errors or exceptions nobody expected: Alice: warning: PostHog did not load TypeError: error loading dynamically imported module: http://10.1.1 | [10-08](https://github.com/fardolieri/dave/actions/runs/37789257343/attempts/1) | [10-08](https://github.com/fardolieri/dave/actions/runs/37853712926/attempts/1) | 62 |
