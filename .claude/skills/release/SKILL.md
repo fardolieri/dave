@@ -25,7 +25,8 @@ the same check first, so a refusal never comes as a surprise.
    - Can a re-run still test this commit? A re-run tests whatever nightly serves now, writes its verdict on `<sha>`, and
      shares the nightly runs' concurrency group, so it cancels a newer one or is cancelled by it. So, **right before** any
      `gh run rerun` (not only at the start: the evidence below takes a while), `git fetch origin` and check that
-     `origin/master` is still `<sha>`. If it moved, do not re-run: the newer commit's own gate decides, make it the
+     `origin/master` is still `<sha>`. If it moved, do not re-run (it would wait 6 min for nightly to serve `<sha>`, then fail every shard:
+     `scripts/wait-for-deploy.mjs`): the newer commit's own gate decides, make it the
      candidate and go back to step 2. If the run's `run_attempt` is already above 1, it was re-run before: never again.
    - Not a test result: a shard failed before testing (pulling or starting Playwright's image, say). Say so and re-run (below).
    - A test failed, on its first try or both. **Assume the commits going out (`origin/prod..<sha>`) caused it** until the
