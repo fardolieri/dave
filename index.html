@@ -15,17 +15,23 @@
     <style>html, body { background: #111318; margin: 0; height: 100%; color-scheme: dark; }</style>
     <!-- The app's script cut off on its way, by a connection reset under it (ticket 58), leaves this page empty for good:
          a module that failed to load runs nothing, and the browser keeps the failure for the page's life, so the page is
-         loaded again, once. A second failure within 30 s stays: a page offline does not reload over and over. Once the
-         service worker is installed, the script comes from its cache (client/sw.ts). -->
+         loaded again. For about a minute after a deploy the edge can answer the script with a 404 on every load (ticket 64),
+         so it tries again after longer and longer waits, five times in two minutes, then stays: a page offline does not
+         reload over and over. Once the service worker is installed, the script comes from its cache (client/sw.ts). -->
     <script>
       addEventListener('error', function (e) {
         var s = e.target;
         if (!(s instanceof HTMLScriptElement) || s.type !== 'module') return;
+        var waits = [0, 5000, 15000, 30000, 60000];
+        var tries = 0;
         try {
-          if (Date.now() - Number(sessionStorage.getItem('dave.load-retried')) < 30000) return;
-          sessionStorage.setItem('dave.load-retried', String(Date.now()));
+          // "<reloads so far> <when the last one was>"; a value of another shape, or from more than 3 min ago, starts again.
+          var last = (sessionStorage.getItem('dave.load-retried') || '').split(' ');
+          if (last.length === 2 && Date.now() - Number(last[1]) < 180000) tries = Number(last[0]) || 0;
+          if (tries >= waits.length) return;
+          sessionStorage.setItem('dave.load-retried', (tries + 1) + ' ' + (Date.now() + waits[tries]));
         } catch (_) { return; }
-        location.reload();
+        setTimeout(function () { location.reload(); }, waits[tries]);
       }, true);
     </script>
   </head>
