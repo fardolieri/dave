@@ -96,6 +96,10 @@ jobs:
       # deploy that waited behind a newer one runs master's latest copy on its own commit. The browsers of the other
       # version then come from Playwright's own servers, not the apt mirror; the image's system packages fit them closely.
       - run: pnpm exec playwright install chromium firefox
+      # After a deploy, the edge serves the new page and its files together only a minute or so later: a page opened before
+      # that loads a file that is not there (ticket 64). Each shard waits on its own, since each runner may reach another edge.
+      - if: github.event.workflow_run.head_sha || inputs.ref
+        run: node scripts/wait-for-deploy.mjs "${{ github.event.workflow_run.head_sha || inputs.ref }}"
       # HOME=/root: Firefox refuses to start as root in another user's home (the runner's, /github/home). Inside the command
       # only: set as `env:` it also reaches the runner's own docker commands, which then cannot read root's docker config.
       - run: HOME=/root pnpm exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}/8 --repeat-each=${{ inputs.repeat || 1 }} ${{ inputs.grep && '-g "$E2E_GREP" --pass-with-no-tests' || '' }}
