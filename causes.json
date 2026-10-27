@@ -258,5 +258,9 @@
  {
   "match": "^settings\\.spec\\.ts › low bandwidth voice caps the voice.* \\| ",
   "ticket": "8a1010e (explained)"
+ },
+ {
+  "match": "^update\\.spec\\.ts › ticket 33: Reload moves only its own tab; a tab waiting behind it is a[^|]*\\| expect\\(locator\\)\\.toBeVisible\\(\\) failed",
+  "ticket": "65"
  }
 ]
