@@ -559,7 +559,7 @@ test('a stalled connection is rebuilt and comes up again', async ({ crowd }) => 
   // Trailing candidates of the torn-down connection can reach the new one before its description (seen with TURN on nightly;
   // Firefox logs the error only as an object handle, so the pattern cannot name addIceCandidate).
   for (const f of [alice, bob]) f.expectWarning(/signal handling failed/);
-  const r = await alice.page.evaluate(() => (window as unknown as { __dave: { rebuild: (n: string) => string } }).__dave.rebuild('Bob'));
+  const r = await alice.page.evaluate(() => (window as unknown as { __dave: { rebuild: (n: string) => Promise<string> } }).__dave.rebuild('Bob'));
   expect(r).toMatch(/^rebuilt Bob/);
   await alice.connectedTo('Bob');
   await bob.connectedTo('Alice');
@@ -575,7 +575,7 @@ test('after a stalled attempt the rebuild goes through the TURN relay, and both 
   await needHooks(alice);
   for (const f of [alice, bob]) f.expectWarning(/signal handling failed/);
   // One attempt already counted as stalled: what the watchdog does after the first 15 s without a connection.
-  const r = await alice.page.evaluate(() => (window as unknown as { __dave: { rebuild: (n: string, stalled: number) => string } }).__dave.rebuild('Bob', 1));
+  const r = await alice.page.evaluate(() => (window as unknown as { __dave: { rebuild: (n: string, stalled: number) => Promise<string> } }).__dave.rebuild('Bob', 1));
   // A local build hands out STUN only (.dev.vars carries a placeholder TURN token), so the policy stays `all` there by design.
   test.skip(r === 'rebuilt Bob, relayOnly=false', 'no TURN server behind this copy: run it against nightly');
   expect(r).toBe('rebuilt Bob, relayOnly=true');
@@ -587,6 +587,37 @@ test('after a stalled attempt the rebuild goes through the TURN relay, and both 
   expect((await alice.peers()).find((p) => p.name === 'Bob')?.relayOnly).toBe(true);
   await alice.hearing('Bob');
   await bob.hearing('Alice');
+});
+
+test('a relay-only rebuild whose ICE failed comes back with voice both ways (ticket 63)', async ({ crowd, browserName }) => {
+  // Nightly e2e of 3c5faba, 2026-10-25 (run 40239237252), and the preview of PR #89, 2026-10-21 (run 39566936449), both
+  // Firefox: the relay-only rebuild of the test above failed ICE after 5 s, the app restarted ICE, and the restart connected
+  // through the relay on both sides. Alice heard Bob, Bob got not one byte of Alice's voice. Here Bob's candidates are kept
+  // from Alice until her rebuilt connection fails, which takes it down the same path.
+  // Chromium never fails a connection that has no remote candidate: it waits, and the watchdog rebuilds it (the test above).
+  test.skip(browserName !== 'firefox', 'only Firefox fails ICE with no candidate from the other side');
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  for (const f of [alice, bob]) f.expectWarning(/signal handling failed|WebRTC: ICE failed/);
+  type Ice = { name: string; ice: string; generation: number; relayOnly: boolean };
+  const iceOf = async () => (await alice.hook<Ice[]>('peers')).find((p) => p.name === 'Bob');
+  const before = (await iceOf())!.generation;
+  alice.wire.down = (frame) => (frame.includes('"t":"signal"') && frame.includes('"candidates":') ? null : frame);
+  const r = await alice.page.evaluate(() => (window as unknown as { __dave: { rebuild: (n: string, stalled: number) => Promise<string> } }).__dave.rebuild('Bob', 1));
+  test.skip(r === 'rebuilt Bob, relayOnly=false', 'no TURN server behind this copy: run it against nightly');
+  expect(r).toBe('rebuilt Bob, relayOnly=true');
+  await expect.poll(async () => { const p = await iceOf(); return p && p.generation > before ? p.ice : 'old'; }, { message: "Alice's relay-only attempt fails ICE", timeout: 45_000 }).toBe('failed');
+  alice.wire.down = null;
+  await expect(alice.badge('Bob')).toHaveText('via relay', { timeout: 45_000 });
+  await expect(bob.badge('Alice')).toHaveText('via relay', { timeout: 45_000 });
+  await alice.hearing('Bob');
+  await bob.hearing('Alice');
+  // Rebuilt on the side that failed, never restarted: Alice's or Bob's, the connection that carries the call had no restart.
+  for (const f of [alice, bob]) expect((await f.hook<Array<{ iceRestarts: number }>>('peers'))[0]?.iceRestarts, `${f.name}'s connection was never restarted`).toBe(0);
 });
 
 test('a friend whose server socket drops and comes back while the voice stays up plays no leave or join cue', async ({ crowd }) => {
