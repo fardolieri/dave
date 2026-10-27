@@ -1,6 +1,6 @@
 # 64 · Flake: the nightly e2e starts while the deploy is still rolling out, and pages load a bundle that is not there
 
-Status: fixed on branch ci/nightly-e2e-waits-for-deploy, 2026-10-27; seen once (two runs in the same minute)
+Status: shipped 2026-10-27 to prod (3ad797c, PR #99); "fixed" once its sightings stop; seen once (two runs in the same minute)
 Seen 2026-10-26: the nightly e2e run of c3934c2 (40392826988) started at 20:07:30, five seconds after its deploy
 (40392676804, 20:06:28 to 20:07:25) finished. Seven shards, both engines, failed tests in their first 90 seconds (20:08:22 to
 20:09:39) and all of them passed on the retry, so the gate went red. The tests had nothing in common (privacy, private,
