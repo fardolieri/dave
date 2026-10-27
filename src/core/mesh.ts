@@ -33,9 +33,15 @@ export const ICE_REFRESH_AFTER_MS = 11 * 3600 * 1000;
  */
 export const LINK_ICE_TTL_SECONDS = 3600;
 
-/** ICE disconnected: wait this long before restarting ICE. Failed: restart with this backoff. */
+/**
+ * ICE disconnected: wait this long before restarting ICE. Failed: restart with this backoff. A connection that never
+ * connected is rebuilt instead, on this back-off plus a stagger for the side that does not offer (failedRebuildDelay,
+ * ticket 63).
+ */
 export const ICE_DISCONNECTED_GRACE_MS = 5_000;
 export const ICE_RESTART_BACKOFF_MS = [2_000, 5_000, 10_000, 30_000] as const;
+/** The back-off before the `n`th ICE restart (or rebuild, failedRebuildDelay), from 0; the last step repeats. */
+export const restartBackoff = (n: number): number => ICE_RESTART_BACKOFF_MS[Math.min(n, ICE_RESTART_BACKOFF_MS.length - 1)]!;
 
 /** Sharer upload budget split across active viewers (spec §6.4). Values in bits per second. */
 export const SHARE_BUDGET_BPS = 20_000_000;
@@ -56,6 +62,15 @@ export const STUCK_STAGGER_MS = 5_000;
 export const STUCK_MAX_MS = 60_000;
 export function stuckDelay(attempt: number, initiator: boolean): number {
   return Math.min(STUCK_MAX_MS, STUCK_CONNECTING_MS * 2 ** attempt) + (initiator ? 0 : STUCK_STAGGER_MS);
+}
+
+/**
+ * How long a connection that failed before it ever connected waits before it is rebuilt (ticket 63): the ICE restart's
+ * back-off for the rebuilds of that kind so far, the other side staggered as at the watchdog. The two sides can count
+ * them apart, so this makes a collision rarer, not impossible: perfect negotiation settles the rest.
+ */
+export function failedRebuildDelay(rebuilds: number, initiator: boolean): number {
+  return restartBackoff(rebuilds) + (initiator ? 0 : STUCK_STAGGER_MS);
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { initiatesTo, isPolite, nextJoinSeq, stuckDelay, transportPolicyFor } from '../src/core/mesh';
+import { failedRebuildDelay, initiatesTo, isPolite, nextJoinSeq, stuckDelay, transportPolicyFor } from '../src/core/mesh';
 import { STUN_ONLY, parseIceServers, turnCredentialRequest } from '../src/core/turn';
 import type { Person } from '../src/core/protocol';
 
@@ -68,6 +68,15 @@ describe('stuckDelay', () => {
     expect(stuckDelay(1, true)).toBe(30_000);
     expect(stuckDelay(5, true)).toBe(60_000);
     expect(stuckDelay(5, false)).toBe(65_000);
+  });
+});
+
+describe('failedRebuildDelay', () => {
+  it('waits the restart back-off per rebuild, staggers the other side, and stops growing at the last step', () => {
+    expect(failedRebuildDelay(0, true)).toBe(2_000);
+    expect(failedRebuildDelay(0, false)).toBe(7_000);
+    expect(failedRebuildDelay(1, true)).toBe(5_000);
+    expect(failedRebuildDelay(9, true)).toBe(30_000);
   });
 });
 
