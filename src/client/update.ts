@@ -1,4 +1,4 @@
-import { createSignal } from 'solid-js';
+import { createSignal, untrack } from 'solid-js';
 import posthog from './posthog';
 
 /**
@@ -118,7 +118,7 @@ function endOpening(): void {
 }
 
 function takeOpeningUpdate(): void {
-  if (opening() === 'over' || applying) return;
+  if (untrack(opening) === 'over' || applying) return;
   // Each take is a reload; should they keep landing on the old version, stop and let the bar ask instead of looping.
   const now = Date.now();
   let recent: number[] = [];

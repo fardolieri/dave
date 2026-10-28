@@ -9,7 +9,7 @@
  * text and inputs, and no event ever carries message text or names.
  */
 import type { PostHog } from 'posthog-js';
-import { createSignal } from 'solid-js';
+import { createSignal, untrack } from 'solid-js';
 import { local } from './storage';
 import { build } from './version';
 
@@ -177,22 +177,22 @@ export function captureOnce(event: string, props: Props): void {
     .catch((e: unknown) => console.warn('problem report not sent', e));
 }
 
-/** The calls the app makes. They send nothing without the opt-in. */
+/** The calls the app makes. They send nothing without the opt-in, as it is when they are made: effects and components call them too. */
 const posthog = {
   capture(event: string, props?: Props): void {
-    if (!telemetryOn() || !key || !host) return;
+    if (!untrack(telemetryOn) || !key || !host) return;
     if (sdk) sdk.capture(event, props);
     else if (queue.length < MAX_QUEUE) queue.push([event, { ...appProps, ...props }]); // as they were when it happened, not when the SDK is up
   },
   /** Super properties of the app's own: on every event from now on, also after a later yes in this visit. */
   register(props: Props): void {
     Object.assign(appProps, props);
-    if (telemetryOn() && sdk) sdk.register(props);
+    if (untrack(telemetryOn) && sdk) sdk.register(props);
   },
   /** Remembered, so a later yes in this visit still ties events to the person. */
   identify(id: string, props: Props): void {
     person = { id, props };
-    if (telemetryOn() && sdk) sdk.identify(id, props);
+    if (untrack(telemetryOn) && sdk) sdk.identify(id, props);
   },
 };
 

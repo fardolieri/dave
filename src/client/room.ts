@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 import posthog, { onConsentChange, telemetryOn } from './posthog';
 import { buildAuthMessage, randomHex } from '../core/identity';
 import { openFile, openPrivate, openPrivateFile, openText, sealFile, sealPrivate, sealPrivateFile, sealText, sharedPrivateTextKey, verifyPrivateTextKey } from '../core/sealed';
@@ -912,7 +912,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     for (const [hash, a] of attachmentNow) {
       // Only on someone coming online, not on every update (a mute, a rename): a waiting file asks the newcomer.
       const newcomer = [...now].some((k) => !wasOnline.has(k));
-      if ((a.status === 'waiting' && newcomer) || (a.status === 'failed' && (a.reason === 'unreachable' || a.reason === 'lost') && back(hash))) want(hash);
+      if ((a.status === 'waiting' && newcomer) || (a.status === 'failed' && (a.reason === 'unreachable' || a.reason === 'lost') && back(hash))) untrack(() => want(hash));
     }
     wasOnline = now;
   });

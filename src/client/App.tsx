@@ -252,7 +252,7 @@ function Workspace(props: WorkspaceProps) {
   const [askingConsent, setAskingConsent] = createSignal(false);
   const me = identity.publicKey;
   // The theme too, so the person says which one a friend has also when it was picked before PostHog was told of picks.
-  posthog.identify(me, { fingerprint: identity.fingerprint, theme: theme() || 'default', ...(isTestAccount ? { $internal_or_test_user: true } : {}) });
+  posthog.identify(me, { fingerprint: identity.fingerprint, theme: untrack(theme) || 'default', ...(isTestAccount ? { $internal_or_test_user: true } : {}) });
   // Keyed by secret, not by the saved object: an invite link that renames a room already here (in this tab, or in a
   // waiting one, ticket 25) replaces the object, and must not rebuild the room and drop its call. The name is read live.
   const links = mapArray(() => props.rooms.map((r) => r.secret), (secret): Link => {
@@ -323,11 +323,11 @@ function Workspace(props: WorkspaceProps) {
   const [profile, setProfile] = createSignal<{ publicKey: string; anchor: HTMLElement; roomId?: string } | null>(null);
   // A room moved in the list (to the top, as its call is joined). The room on screen stays on screen: one not chosen
   // (none yet, or one since forgotten) is the first, which a move could change, so it is chosen first.
-  const moveRooms = (from: number, to: number) => {
-    const on = untrack(current);
+  const moveRooms = (from: number, to: number) => untrack(() => {
+    const on = current();
     if (on && props.selected !== on.saved.secret) props.onSelect(on.saved.secret);
     props.onMove(from, to);
-  };
+  });
   // The themes card, opened from a room's ⋯ menu for that room's look, hanging beside the sidebar as a profile card does.
   const [themesAt, setThemesAt] = createSignal<{ anchor: HTMLElement; roomId: string } | null>(null);
   const openThemes = (anchor: HTMLElement, roomId: string) => setThemesAt({ anchor, roomId });
@@ -335,7 +335,7 @@ function Workspace(props: WorkspaceProps) {
   // one whose call I am in, if I am in one. Each room's box wears its own; the chat of the room on screen wears that
   // room's, marked only where it is not the page's (a mark of the page's own would cover the page's scenery behind it).
   // A private conversation belongs to no room: the page's.
-  adoptOldTheme(untrack(links).map((l) => l.saved.id));
+  adoptOldTheme(untrack(() => links().map((l) => l.saved.id)));
   // The top room's look on the page, again when its look changes in another tab
   createEffect(() => { const id = links()[0]?.saved.id; return id ? `${id} ${themeOf(id)}` : ''; }, (key) => { if (key) showTopTheme(key.split(' ')[0]!); });
   /** A room's look where it is not the page's, for what wears it apart from the page: its chat, a card opened from it. */
@@ -626,7 +626,7 @@ function Workspace(props: WorkspaceProps) {
               // Open in the sidebar: the room on screen, unless I folded it, or a private conversation is on screen in its place.
               const expanded = () => selected() && !folded() && !privates.openWith();
               // Its ⋯ gone (folded, another room on screen, from a link or another tab too), its Themes card goes with it
-              createEffect(() => expanded(), (hasMore) => { if (!hasMore && untrack(themesAt)?.roomId === l.saved.id) setThemesAt(null); });
+              createEffect(() => expanded(), (hasMore) => { if (!hasMore && untrack(() => themesAt()?.roomId === l.saved.id)) setThemesAt(null); });
               const inThis = () => l.call.inCall();
               // Call list: you first, then by join order. Participants whose server socket dropped stay listed, dimmed, for the grace period.
               // You are listed from this browser's call state, like in Online, so your row and the buttons change together.
@@ -2023,8 +2023,8 @@ function ChatLog(props: {
   const atBottom = () => gap < 8;
   const [unseen, setUnseen] = createSignal(false);
   // Hidden (display: none), the log has no size to measure or restore by: what it had stays for when it shows again.
-  const measure = () => { if (!log || props.hidden) return; gap = log.scrollHeight - log.clientHeight - log.scrollTop; size = sizeKey(); top = log.scrollTop; };
-  const restore = () => { if (!log || props.hidden) return; log.scrollTop = log.scrollHeight - log.clientHeight - gap; size = sizeKey(); top = log.scrollTop; };
+  const measure = () => { if (!log || untrack(() => props.hidden)) return; gap = log.scrollHeight - log.clientHeight - log.scrollTop; size = sizeKey(); top = log.scrollTop; };
+  const restore = () => { if (!log || untrack(() => props.hidden)) return; log.scrollTop = log.scrollHeight - log.clientHeight - gap; size = sizeKey(); top = log.scrollTop; };
   const onScroll = () => { if (size === sizeKey()) measure(); else restore(); if (atBottom()) setUnseen(false); };
   const jump = () => { gap = 0; restore(); setUnseen(false); };
   const observer = new ResizeObserver(restore);
@@ -2033,7 +2033,7 @@ function ChatLog(props: {
     if (!log) return;
     if (prev === undefined) observer.observe(log);
     // Hidden behind a private conversation, it measures nothing: the reader's place is kept for when it shows again.
-    if (props.hidden) return;
+    if (untrack(() => props.hidden)) return;
     // A line arrived while the reader was up in the older lines: the browser has left them in place and the
     // new line waits below, so only the distance to the bottom changes. Otherwise the log stays at the newest line;
     // lines that came in above it (the history as it loads, the older lines unfolded) leave the reader where they were.
@@ -2049,7 +2049,7 @@ function ChatLog(props: {
   createEffect(() => !!props.hidden, (hidden, was) => {
     if (!log || was === undefined || hidden === was) return;
     if (hidden) {
-      hiddenAt = { top, bottom: atBottom(), n: lines().length };
+      hiddenAt = { top, bottom: atBottom(), n: untrack(lines).length };
       // Out of sight, a video or a sound playing in the room would go on with nothing on screen to stop it.
       for (const m of log.querySelectorAll('video, audio')) (m as HTMLMediaElement).pause();
       return;

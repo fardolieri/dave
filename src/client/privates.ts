@@ -320,7 +320,7 @@ export function createPrivates(opts: { identity: LocalIdentity; name: () => stri
   // Who has a private text key counts too, and the room on screen: `carrier` goes by both.
   createEffect(() => [fileRoomsChanged(), pruneFileRooms(), opts.current()?.roomId, ...opts.rooms().map((l) => `${l.room.roomId}:${l.room.status().kind}:${l.room.people().map((p) => `${p.publicKey}${p.privateTexts ? '+' : ''}`).join()}`),
     ...[...fileRoom].map(([k, r]) => `${k}:${r.roomId}:${r.privateStatus(k.slice(k.indexOf(':') + 1))}`)].join('|'), () => {
-    for (const friend of Object.keys(logList)) placeFiles(friend);
+    untrack(() => { for (const friend of Object.keys(logList)) placeFiles(friend); });
   });
   /**
    * Placements in a room of mine that is gone (left, forgotten) go, those of files of mine that never came back (not sent)
