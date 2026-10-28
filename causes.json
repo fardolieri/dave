@@ -256,7 +256,7 @@
   "ticket": "8444326 (fixed)"
  },
  {
-  "match": "^settings\\.spec\\.ts › low bandwidth voice caps the voice.* \\| ",
+  "match": "^settings\\.spec\\.ts › low bandwidth voice caps the voice.* \\| .*back to full voice",
   "ticket": "8a1010e (explained)"
  },
  {

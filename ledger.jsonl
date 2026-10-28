@@ -6885,6 +6885,7 @@
 {"run":40782336915,"attempt":1,"sha":"0c368f07de5a26a857a0c765d1d50ff6b0b12d48","ref":"docs/new-machine","event":"push","hunt":false,"target":"branch","project":"firefox","shard":6,"at":"2026-10-28T22:49:43.561Z","kind":"shard","tests":16}
 {"run":40782336915,"attempt":1,"sha":"0c368f07de5a26a857a0c765d1d50ff6b0b12d48","ref":"docs/new-machine","event":"push","hunt":false,"target":"branch","project":"firefox","shard":1,"at":"2026-10-28T22:47:23.378Z","kind":"shard","tests":23}
 {"run":40782336915,"attempt":1,"sha":"0c368f07de5a26a857a0c765d1d50ff6b0b12d48","ref":"docs/new-machine","event":"push","hunt":false,"target":"branch","project":"firefox","shard":2,"at":"2026-10-28T22:49:07.136Z","kind":"shard","tests":20}
+<<<<<<< Updated upstream
 {"run":40783212466,"attempt":1,"sha":"0c368f07de5a26a857a0c765d1d50ff6b0b12d48","ref":"master","event":"workflow_run","hunt":false,"target":"nightly","project":"chromium","shard":1,"at":"2026-10-28T22:56:23.640Z","kind":"shard","tests":23}
 {"run":40783212466,"attempt":1,"sha":"0c368f07de5a26a857a0c765d1d50ff6b0b12d48","ref":"master","event":"workflow_run","hunt":false,"target":"nightly","project":"chromium","shard":7,"at":"2026-10-28T22:55:29.138Z","kind":"shard","tests":22}
 {"run":40783212466,"attempt":1,"sha":"0c368f07de5a26a857a0c765d1d50ff6b0b12d48","ref":"master","event":"workflow_run","hunt":false,"target":"nightly","project":"firefox","shard":5,"at":"2026-10-28T22:58:45.579Z","kind":"shard","tests":17}
@@ -6901,3 +6902,6 @@
 {"run":40783212466,"attempt":1,"sha":"0c368f07de5a26a857a0c765d1d50ff6b0b12d48","ref":"master","event":"workflow_run","hunt":false,"target":"nightly","project":"firefox","shard":8,"at":"2026-10-28T22:54:55.017Z","kind":"shard","tests":8}
 {"run":40783212466,"attempt":1,"sha":"0c368f07de5a26a857a0c765d1d50ff6b0b12d48","ref":"master","event":"workflow_run","hunt":false,"target":"nightly","project":"chromium","shard":3,"at":"2026-10-28T22:55:45.409Z","kind":"shard","tests":22}
 {"run":40783212466,"attempt":1,"sha":"0c368f07de5a26a857a0c765d1d50ff6b0b12d48","ref":"master","event":"workflow_run","hunt":false,"target":"nightly","project":"chromium","shard":4,"at":"2026-10-28T22:56:17.117Z","kind":"shard","tests":22}
+=======
+{"sha":"347932475317c03a4ce0a6397f23c565492f8d49","ref":"master","event":"local","hunt":false,"target":"local","project":"chromium","at":"2026-10-28T22:39:00.000Z","kind":"failed","file":"settings.spec.ts","line":216,"test":"low bandwidth voice caps the voice both ways from one side, and the delay to each friend shows beside the name","error":"expect(received).toBeNull()","signature":"expect(received).toBeNull()","note":"full Chromium suite on the dev box (contabo, 2 workers, no retries); Alice's voice buffer still asked 200 ms after low bandwidth voice was switched off (settings.spec.ts:271)"}
+>>>>>>> Stashed changes
