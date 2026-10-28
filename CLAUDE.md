@@ -14,15 +14,11 @@ read on a small screen by someone who did not watch you work: lead with the outc
 3. Another agent session may be running in this repo at the same time (the session-start hook says so). Stay on your branch,
    and fetch before every push: master moves under you.
 
-## The machine: a remote control, not a test lab
+## Testing: GitHub Actions is the receipt
 
-The dev box is a 1 GB VM (`~/.claude/CLAUDE.md`). Measured costs from past sessions: vitest takes 30 to 75 min here and often
-never finishes, a local e2e build gets workerd OOM-killed, filming a prototype took six hours. **GitHub Actions is the test
-environment.** Push a branch and read the results of `ci.yml` and `e2e.yml`.
+What the dev box can run locally depends on the machine: see `~/.claude/CLAUDE.md`. Whatever runs locally, the verdict
+that counts is CI's (`ci.yml`, `e2e.yml`): push a branch and read its results.
 
-- OK here: reading code, editing, `git`, `gh`, `pnpm typecheck` (TypeScript 7 is native and fast), one vitest file
-  (`pnpm exec vitest run test/x.test.ts`), one e2e test against nightly with `-g` (env vars in the auto memory).
-- Not here: the full `pnpm test`, the full e2e suite, `pnpm dev` next to a browser, several heavy commands at once.
 - To reproduce a bug: write the failing test, commit it ("Regression test: …"), commit the fix ("Problem report: …"), and
   push both together. `red-green.yml` runs the test against the app from before the fix and must see it fail (the "red,
   then green" receipt); the rest of CI must be green. Do not push the test alone just to watch it go red: every red run
@@ -30,13 +26,9 @@ environment.** Push a branch and read the results of `ci.yml` and `e2e.yml`.
 - Push the test alone first only when `red-green.yml` cannot show the bug: it runs browser tests in Chromium only, against
   a local build, once. A bug that needs Firefox, or real Cloudflare (open a ready, not draft, PR so its preview runs the suite), goes red
   alone first; say why in the report. Same-ref pushes cancel each other, so wait for the red run to finish first.
-- Watch CI with one waiting loop, not several background watchers. Under memory pressure `gh` times out on TLS; use
-  `curl -H "Authorization: Bearer $(gh auth token)"` against the Actions API instead.
+- Watch CI with one waiting loop, not several background watchers.
 - Leave nothing running at the end of a turn (vite, workerd, chrome, playwright). The stop hook checks this.
-- **At most two building subagents at a time**, plus read-only reviewers. On 2026-10-12 four ran at once and the VM froze for
-  two days. A hook (`scripts/claude/agent-guard.sh`) refuses a new agent when less than 120 MB of memory is free
-  (a read-only reviewer runs inside the session's process and costs little). Prefer one
-  branch worked on in sequence over many in parallel: CI's 20 runners are the shared bottleneck anyway.
+- Prefer one branch worked on in sequence over many in parallel: CI's 20 runners are the shared bottleneck.
 
 ## Definition of done: the verification ladder
 
@@ -93,7 +85,7 @@ Rules:
 - **Inside every e2e test:** unexpected console warnings and runtime invariants (`src/client/invariants.ts`: UI that
   contradicts the call) fail the test.
 - **Nightly:** the suite against nightly is the release gate; the chaos soak (`soak.yml`, 01:00 UTC) opens `soak` issues
-  with a minimal sequence; the night shift (`scripts/night-shift/`, on this VM, 02:30 UTC) turns new problem reports into
+  with a minimal sequence; the night shift (`scripts/night-shift/`, on the dev box, 02:30 UTC) turns new problem reports into
   draft "Repro:" PRs.
 - **Every session's briefing** (`scripts/claude/session-start.sh`) says how the unattended parts did: the night shift's last
   run, open soak issues, waiting reproductions, the gate on master. A warning there comes before new work.

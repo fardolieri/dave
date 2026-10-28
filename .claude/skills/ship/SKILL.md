@@ -18,12 +18,12 @@ Arguments: optional `--no-review` (the owner explicitly waived review), `--relea
    per idea, each with a subject that states what is true now. Keep a `Regression test: …` commit separate and before its
    fix.
 3. Grep the diff for leftovers: `git diff origin/master... | grep -nE "console\.log|debugger|test\.only|\.only\(|DEBUG|zz-"`.
-4. `pnpm typecheck` (fast here). Do not run the full unit or e2e suites on this machine.
+4. `pnpm typecheck`. The full suites run in CI (section 3).
 
 ## 2. Review before anything reaches master
 
 Unless `--no-review`, spawn two subagents **in parallel**, both read-only, both given the diff range
-(`git diff origin/master...HEAD`) and told not to build or run tests on this 1 GB machine:
+(`git diff origin/master...HEAD`) and told not to build or run tests (CI does that):
 
 - **Reviewer**: a correctness review of the diff (the `/code-review` skill at medium effort is fine). Bugs, races, missing
   cleanup, saved state that outlives the deploy without a migration (`localStorage`, IndexedDB), UI states that can stick.
@@ -54,8 +54,8 @@ Then:
    Push the branch (`git push -u origin HEAD`). If a PR exists or the owner works with PRs, open or update it and link it
    in the thread (`link_pull_request` when the t3-code MCP server is up).
 2. Wait for both `ci` and `e2e` on the branch head, and with an open PR also `preview` (its deploy, then the
-   e2e suite against the preview, real Cloudflare before master): **one** loop polling the Actions API (see `CLAUDE.md` for the curl form
-   when `gh` times out), checking every 60 s, about 15 min at most. Never several watchers.
+   e2e suite against the preview, real Cloudflare before master): **one** loop polling the Actions API (when `gh` times out,
+   `curl -H "Authorization: Bearer $(gh auth token)"` still works), checking every 60 s, about 15 min at most. Never several watchers.
 3. If red, read the failing job's log (`curl -L` on `/actions/jobs/<id>/logs`), fix, and push again. A test that failed and
    then passed on retry is a flake to explain, not a pass: check the report for `flaky`.
 4. When green: `git push origin HEAD:master` (a fast-forward; if master moved, rebase, rerun typecheck, push the branch

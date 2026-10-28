@@ -17,7 +17,7 @@ echo "Session briefing (scripts/claude/session-start.sh):"
 echo "- On branch '${branch:-detached}', ${behind:-?} commit(s) behind origin/master, ${dirty} changed file(s)."
 [ "${behind:-0}" != 0 ] && [ "$branch" = master ] && echo "  -> run 'git pull --ff-only' before starting work."
 echo "- master is ${unreleased:-?} commit(s) ahead of prod (unreleased)."
-echo "- ${avail:-?} MB memory available. GitHub Actions is the test environment; see CLAUDE.md before running anything heavy."
+echo "- ${avail:-?} MB memory available. What this machine can run: ~/.claude/CLAUDE.md. CI is the receipt."
 [ "$others" -gt 0 ] 2>/dev/null && echo "- WARNING: $others other agent session(s) running on this machine. Work on your own branch, fetch before pushing, and do not run heavy commands at the same time."
 [ -n "$heavy" ] && { echo "- Leftover heavy processes from earlier sessions (kill them unless another session owns them):"; echo "$heavy" | sed 's/^/    /'; }
 # Health of the machinery that runs without anyone watching. Each of these once failed for days unnoticed: the night shift
@@ -36,7 +36,7 @@ if [ -r "$state/last-result" ]; then
 fi
 token=$(timeout 3 gh auth token 2>/dev/null)
 if [ -n "$token" ]; then
-  # At once and short: the hook has 60 s, and under memory pressure GitHub's TLS is slow (CLAUDE.md).
+  # At once and short: the hook has 60 s.
   gh_api() { curl -s -m 5 --connect-timeout 3 -H "Authorization: Bearer $token" "https://api.github.com/repos/fardolieri/dave/$1"; }
   head=$(git rev-parse origin/master 2>/dev/null)
   tmp=$(mktemp -d)

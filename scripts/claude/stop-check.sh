@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Stop hook (.claude/settings.json): a turn may not end with a dev server, workerd or a browser still running. On a 1 GB
-# machine they hold memory for hours after the agent has forgotten them. Exit 2 sends the agent back to clean up, once.
+# Stop hook (.claude/settings.json): a turn may not end with a dev server, workerd or a browser still running. They hold
+# memory for hours after the agent has forgotten them. Exit 2 sends the agent back to clean up, once.
 input=$(cat)
 case "$input" in *'"stop_hook_active":true'*|*'"stop_hook_active": true'*) exit 0 ;; esac
 

@@ -20,12 +20,12 @@ echo "=== night shift $(date -u +%FT%TZ)"
 # the same day. Two nights failed unnoticed before this (2026-10-13 and 14).
 result() { echo "$(date -u +%FT%TZ) $1 $2" > "$STATE/last-result"; echo "result: $1 $2"; }
 
-# A long-lived token from `claude setup-token`, if the owner made one: an expired session token on a night after the VM
+# A long-lived token from `claude setup-token`, if the owner made one: an expired session token on a night after the box
 # froze is what failed 2026-10-13 and 14 (no day session had refreshed it). Without the file the CLI's own login is used.
 long=$(tr -d '[:space:]' < "$HOME/.config/night-shift/oauth-token" 2>/dev/null)
 [ -n "$long" ] && export CLAUDE_CODE_OAUTH_TOKEN=$long
 
-# The box has 1 GB. Idle agent sessions of the day may still be alive (and mostly swapped out); a busy one is not.
+# Idle agent sessions of the day may still be alive; a busy one means the owner is working, so the night waits.
 busy=$(ps -eo pcpu=,args= | awk '/[c]laude --output-format/ && $1 > 5' | wc -l)
 if [ "$busy" -gt 0 ] && [ -z "${NIGHT_SHIFT_FORCE:-}" ]; then result skipped "an agent session was busy"; exit 0; fi
 [ -r "$HOME/.config/posthog/key" ] || { result failed "no PostHog key at ~/.config/posthog/key"; exit 1; }
