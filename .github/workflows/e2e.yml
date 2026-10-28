@@ -5,6 +5,10 @@ name: e2e
 #   - after each successful master deploy: against nightly, which master builds with the same hooks
 #   - by hand from the Actions tab: local, nightly, or any deployed URL
 #   - called by preview.yml after each pull request preview deploy: against that preview, which is built like nightly
+#   - weekly, and by hand with `solid_dev`: against a local build on Solid's development build (VITE_SOLID_DEV=1), where
+#     Solid's diagnostics about correctness fail a test and all of them are kept as `e2e-solid-*` (e2e/fixtures.ts). It
+#     catches what the production build lets pass, such as a write Solid forbids, before the dev server or a Solid upgrade
+#     trips on it. Its failures stay out of the flake ledger: they are of another build.
 # Each engine is split into shards on runners of their own (Playwright's --shard): the whole suite on one runner took
 # about 7 minutes. Eight per engine: 16 jobs stay under the 20 a free account runs at once, and beyond that each runner's
 # ~40 s of setup outweighs its share of the tests. A runner has its own IP, so nightly's upgrade limit sees one shard.
@@ -22,6 +26,8 @@ on:
     workflows: [deploy]
     types: [completed]
     branches: [master]
+  schedule:
+    - cron: '0 5 * * 1' # Mondays 05:00 UTC, on Solid's development build; clear of the preview sweep (04:00)
   workflow_dispatch:
     inputs:
       target:
@@ -34,6 +40,10 @@ on:
       repeat:
         description: "runs of each test (--repeat-each), spread over the shards"
         default: "1"
+      solid_dev:
+        description: "on Solid's development build, its diagnostics checked and kept (local target only)"
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       target:
@@ -46,7 +56,8 @@ on:
         required: true
 concurrency:
   # When called, the caller's event and ref apply: preview.yml's concurrency already cancels a superseded preview run.
-  group: e2e-${{ github.event_name == 'workflow_run' && 'nightly' || github.event_name == 'pull_request' && format('preview-{0}', github.ref) || github.ref }}
+  # The weekly run on Solid's development build has its own, so a run by hand on master does not cancel it.
+  group: e2e-${{ github.event_name == 'workflow_run' && 'nightly' || github.event_name == 'schedule' && 'solid-dev' || github.event_name == 'pull_request' && format('preview-{0}', github.ref) || github.ref }}
   cancel-in-progress: true
 jobs:
   draft:
@@ -77,6 +88,8 @@ jobs:
     env:
       # Empty means a local build; `nightly` is a shorthand the config understands.
       E2E_URL: ${{ github.event_name == 'workflow_run' && 'nightly' || (inputs.target != 'local' && inputs.target || '') }}
+      # The local build only: a deployed copy is the production build whatever this says.
+      VITE_SOLID_DEV: ${{ (github.event_name == 'schedule' || inputs.solid_dev) && '1' || '' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -121,12 +134,20 @@ jobs:
           SHARD: ${{ matrix.shard }}
         run: node scripts/flakes/ledger.mjs outcomes e2e-outcomes/report.json > outcomes.jsonl || true
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && env.VITE_SOLID_DEV != '1'
         with:
           name: e2e-outcomes-${{ matrix.project }}-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: outcomes.jsonl
           if-no-files-found: ignore
           retention-days: 3
+      # On Solid's development build: what Solid said in each test, a file per test and try (e2e/fixtures.ts).
+      - uses: actions/upload-artifact@v4
+        if: always() && env.VITE_SOLID_DEV == '1'
+        with:
+          name: e2e-solid-${{ matrix.project }}-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: e2e-solid
+          if-no-files-found: ignore
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

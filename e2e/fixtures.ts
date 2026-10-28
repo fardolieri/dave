@@ -281,7 +281,10 @@ export class Friend {
       const recovered = m.type() === 'info' && /^\[recovered\] room (\S+):/.exec(m.text());
       if (recovered) { this.recoveries.push({ room: recovered[1]!, after: this.problems.length }); return; }
       if (m.type() !== 'warning' && m.type() !== 'error') return;
-      if (SOLID_DEV && m.type() === 'warning' && /^\[[A-Z_]+\] /.test(m.text())) { this.solid.push(m.text()); return; }
+      if (SOLID_DEV && m.type() === 'warning' && /^\[[A-Z_]+\] /.test(m.text())) {
+        this.solid.push(m.text());
+        if (SOLID_COLLECTED_ONLY.test(m.text())) return;
+      }
       const i = this.problems.push(`${m.type()}: ${m.text()}`) - 1;
       // Firefox gives an error object as "JSHandle@object", which says nothing about the failure: read it out, so a
       // flake's report names the error (ticket 35). Patterns still match: the message's own text comes first.
@@ -646,10 +649,16 @@ export const test = base.extend<{ crowd: Crowd }>({
 
 /**
  * Whether the app under test is Solid's development build (VITE_SOLID_DEV=1, vite.config.ts). Its diagnostics are then
- * collected, not failed on: what each friend's console said and what each open page recorded since it loaded (re-runs,
- * their costs, the ones that changed nothing) go to `e2e-solid/`, one file per test and try.
+ * collected: what each friend's console said and what each open page recorded since it loaded (re-runs, their costs, the
+ * ones that changed nothing) go to `e2e-solid/`, one file per test and try. Those about correctness (a read that will not
+ * update, a write where none belongs, an owner missing) also fail the test, as any console warning does.
  */
 const SOLID_DEV = process.env['VITE_SOLID_DEV'] === '1';
+/**
+ * Solid's diagnostics that are collected only: those about speed, which depend on the runner as much as on the app, and
+ * the pointers to its guides it prints after a code's first report.
+ */
+const SOLID_COLLECTED_ONLY = /^\[(HOT_SCOPE_RERUNS|HOT_SCOPE_TIME|HOT_SCOPE_FANOUT|WIDE_SCOPE_DEPS|UNSTABLE_MEMO_OUTPUT|WIDE_WRITE|ASYNC_WATERFALL|HUGE_FAN_OUT|HUGE_FAN_IN)\] |^\[[A-Z_]+\] (repair guide|deeper evidence): /;
 
 async function writeSolidDiagnostics(friends: Friend[], testInfo: TestInfo): Promise<void> {
   const report = [];
