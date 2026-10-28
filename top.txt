@@ -1,3 +1,3 @@
 2x this week (3x in 30 days) attachment.spec.ts › regression: a pull tried again after its friend could not be reached i: expect(locator).toHaveCount(expected) failed (ticket 61)
+2x this week (2x in 30 days) resilience.spec.ts › regression: a socket gone silent without a close is given up, and the : Alice gives the silent socket up herself (ticket 61)
 2x this week (2x in 30 days) themes.spec.ts › every theme applies, loads its fonts and keeps the console quiet, at d: expect(locator).toHaveCount(expected) failed (ticket 61)
-2x this week (2x in 30 days) presence.spec.ts › the room whose call I join goes to the top of the list, and stays ther: console warnings, errors or exceptions nobody expected: Alice: error: [JavaScrip (ticket 62)

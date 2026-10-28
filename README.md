@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-10-28T20:52 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-10-28T20:54 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 76, branch 271, preview 130.
+Runs recorded: nightly 77, branch 271, preview 130.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -19,6 +19,7 @@ Runs recorded: nightly 76, branch 271, preview 130.
 | 3 | 3 | branch 3 | privacy.spec.ts › a yes during the handshake neither refuses the room nor gets lost | the auth carried the yes | [10-12](https://github.com/fardolieri/dave/actions/runs/38267385580/attempts/1) | [10-15](https://github.com/fardolieri/dave/actions/runs/38764424455/attempts/1) | 50 |
 | 3 | 3 | branch 3 | privacy.spec.ts › a yes starts PostHog and tells the server; stopping forgets it again | PostHog started after the yes | [10-09](https://github.com/fardolieri/dave/actions/runs/37894428446/attempts/1) | [10-12](https://github.com/fardolieri/dave/actions/runs/38252207798/attempts/1) | 50 |
 | 3 | 3 | branch 3 | update.spec.ts › ticket 36: a version left waiting behind the bar is taken by the next reload | console warnings, errors or exceptions nobody expected: Alice: warning: PostHog did not load TypeError: error loading dynamically imported module: http://10.1.1 | [10-08](https://github.com/fardolieri/dave/actions/runs/37789257343/attempts/1) | [10-08](https://github.com/fardolieri/dave/actions/runs/37853712926/attempts/1) | 62 |
+| 2 | 2 | preview 1, nightly 1 | resilience.spec.ts › regression: a socket gone silent without a close is given up, and the text written into it arrives once | Alice gives the silent socket up herself | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | [10-28](https://github.com/fardolieri/dave/actions/runs/40765359543/attempts/1) | 61 |
 | 2 | 2 | preview 2 | text.spec.ts › everyone sees the same order, even for texts sent at the same moment | expect(received).toBe(expected) // Object.is equality | [10-12](https://github.com/fardolieri/dave/actions/runs/38314922272/attempts/1) | [10-27](https://github.com/fardolieri/dave/actions/runs/40585343590/attempts/1) | 51 |
 | 2 | 2 | nightly 1, preview 1 | resilience.spec.ts › after a stalled attempt the rebuild goes through the TURN relay, and both sides take it (ticket 22) | Bob hears Alice | [10-21](https://github.com/fardolieri/dave/actions/runs/39566936449/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40239237252/attempts/1) | 63 |
 | 2 | 2 | nightly 1, preview 1 | themes.spec.ts › every theme applies, loads its fonts and keeps the console quiet, at desktop and phone width; the pick survives a reload | expect(locator).toHaveCount(expected) failed | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40194632521/attempts/1) | 61 |
@@ -42,7 +43,6 @@ Runs recorded: nightly 76, branch 271, preview 130.
 | 1 | 1 | branch 1 | private.spec.ts › a private text not read yet is still unread after a reload | expect(received).toEqual(expected) // deep equality | [10-24](https://github.com/fardolieri/dave/actions/runs/40093042135/attempts/1) | [10-24](https://github.com/fardolieri/dave/actions/runs/40093042135/attempts/1) |  |
 | 1 | 1 | preview 1 | share.spec.ts › a share without sound keeps its volume slider disabled, not even enabled for a moment after one with sound | expect(locator).toHaveText(expected) failed | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/3) | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/3) | 61 |
 | 1 | 1 | preview 1 | resilience.spec.ts › regression: a socket gone silent without a close is given up, and the text written into it arrives once | expect(locator).toHaveCount(expected) failed | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/2) | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/2) | 61 |
-| 1 | 1 | preview 1 | resilience.spec.ts › regression: a socket gone silent without a close is given up, and the text written into it arrives once | Alice gives the silent socket up herself | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | 61 |
 | 1 | 1 | preview 1 | share.spec.ts › a watched share's sound is set from its tile without going fullscreen, and leaves the voice alone | expect(locator).toHaveCount(expected) failed | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | 61 |
 | 1 | 1 | preview 1 | call.spec.ts › a friend without a microphone joins to listen, shown muted; Unmute takes one plugged in later | expect(locator).toHaveCount(expected) failed | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | 61 |
 | 1 | 1 | preview 1 | attachment.spec.ts › a pull outlives a blip of the puller's socket, and the picture still shows by itself | expect(locator).toHaveCount(expected) failed | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | 61 |
