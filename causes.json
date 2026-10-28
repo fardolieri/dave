@@ -266,5 +266,9 @@
  {
   "match": "^resilience\\.spec\\.ts › an offer stuck for a friend who then reloads leaves their new connection alone [^|]*\\| (Bob|Alice) sends the stuck offer again",
   "ticket": "68"
+ },
+ {
+  "match": "^settings\\.spec\\.ts › low bandwidth voice caps the voice.* \\| expect\\(received\\)\\.toBeNull\\(\\)",
+  "ticket": "0f721e7 (fixed, 69)"
  }
 ]
