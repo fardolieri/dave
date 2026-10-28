@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-10-28T17:13 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-10-28T20:14 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 78, branch 268, preview 126.
+Runs recorded: nightly 77, branch 269, preview 126.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -25,7 +25,6 @@ Runs recorded: nightly 78, branch 268, preview 126.
 | 2 | 2 | nightly 1, branch 1 | presence.spec.ts › the room whose call I join goes to the top of the list, and stays there after a reload | console warnings, errors or exceptions nobody expected: Alice: error: [JavaScript Error: "Failed to load ‘https://dave-nightly.danielmittereder.workers.dev/asse | [10-24](https://github.com/fardolieri/dave/actions/runs/40046533309/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40191892619/attempts/1) | 62 |
 | 2 | 2 | branch 2 | text.spec.ts › texts from more than 18 h before the room came on screen wait behind a button, folded again each time it does | expect(received).toEqual(expected) // deep equality | [10-12](https://github.com/fardolieri/dave/actions/runs/38222942433/attempts/1) | [10-17](https://github.com/fardolieri/dave/actions/runs/39049062343/attempts/1) | f9efd75 (fixed) |
 | 2 | 0 | nightly 2 | resilience.spec.ts › a stalled connection is rebuilt and comes up again | expect(locator).toHaveText(expected) failed | [09-28](https://github.com/fardolieri/dave/actions/runs/36488333876/attempts/1) | [09-28](https://github.com/fardolieri/dave/actions/runs/36490689930/attempts/1) | 35 |
-| 2 | 1 | nightly 2 | update.spec.ts › ticket 33: with the server gone the app still opens, from the service worker | expect(locator).toBeVisible() failed | [09-28](https://github.com/fardolieri/dave/actions/runs/36468561834/attempts/1) | [09-28](https://github.com/fardolieri/dave/actions/runs/36468561834/attempts/1) | 35 |
 | 1 | 1 | nightly 1 | attachment.spec.ts › regression: a pull tried again after its friend could not be reached is answered | console warnings, errors or exceptions nobody expected: Alice: error: Failed to load resource: the server responded with a status of 404 () | [10-26](https://github.com/fardolieri/dave/actions/runs/40392826988/attempts/1) | [10-26](https://github.com/fardolieri/dave/actions/runs/40392826988/attempts/1) |  |
 | 1 | 1 | nightly 1 | adversary.spec.ts › ADR 0004: a server that swaps DTLS fingerprints cannot get a call connected | console warnings, errors or exceptions nobody expected: Bob: warning: [JavaScript Warning: \"Loading failed for the module with source “https://dave-nightly.dan | [10-26](https://github.com/fardolieri/dave/actions/runs/40392826988/attempts/1) | [10-26](https://github.com/fardolieri/dave/actions/runs/40392826988/attempts/1) |  |
 | 1 | 1 | nightly 1 | share.spec.ts › leaving while sharing ends the share; rejoining does not bring it back | console warnings, errors or exceptions nobody expected: Bob: warning: [JavaScript Warning: \"Loading failed for the module with source “https://dave-nightly.dan | [10-26](https://github.com/fardolieri/dave/actions/runs/40392826988/attempts/1) | [10-26](https://github.com/fardolieri/dave/actions/runs/40392826988/attempts/1) |  |
@@ -92,4 +91,3 @@ Runs recorded: nightly 78, branch 268, preview 126.
 | 1 | 1 | branch 1 | settings.spec.ts › voice repair: RED chosen by one side doubles the voice packets both ways, off drops the FEC flag, and a browser without RED keeps plain Opus | Alice sends voice at first | [09-30](https://github.com/fardolieri/dave/actions/runs/36693869895/attempts/1) | [09-30](https://github.com/fardolieri/dave/actions/runs/36693869895/attempts/1) |  |
 | 1 | 1 | branch 1 | resilience.spec.ts › a friend cut off from the server stays in the call, dimmed, as long as the connection to them works (ticket 31) | console warnings, errors or exceptions nobody expected: Alice: error: WebSocket is already in CLOSING or CLOSED state. | [09-29](https://github.com/fardolieri/dave/actions/runs/36639486534/attempts/1) | [09-29](https://github.com/fardolieri/dave/actions/runs/36639486534/attempts/1) | 41 |
 | 1 | 1 | nightly 1 | text.spec.ts › texts in a row from one writer go under one name | expect(received).toEqual(expected) // deep equality | [09-29](https://github.com/fardolieri/dave/actions/runs/36613285178/attempts/1) | [09-29](https://github.com/fardolieri/dave/actions/runs/36613285178/attempts/1) | 35 |
-| 1 | 0 | nightly 1 | settings.spec.ts › a friend's volume and the master volume multiply, and survive a reload | console warnings, errors or exceptions nobody expected: Alice: warning: signal handling failed JSHandle@object | [09-28](https://github.com/fardolieri/dave/actions/runs/36468561834/attempts/1) | [09-28](https://github.com/fardolieri/dave/actions/runs/36468561834/attempts/1) | 35 |
