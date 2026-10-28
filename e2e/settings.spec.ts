@@ -268,7 +268,14 @@ test('low bandwidth voice caps the voice both ways from one side, and the delay 
   // offer went out, it was lost, and Alice's voice stayed low. The app wrongly never sent it again; now it does (see
   // resendOffer in client/call.ts, and its test in resilience.spec.ts).
   for (const f of [alice, bob]) await expect.poll(() => rate(f).then(full), { message: `${f.name} is back to full voice` }).toBe(true);
-  for (const f of [alice, bob]) expect((await voiceBuffer(f)).asked).toBeNull();
+  expect((await alice.hook<Diag>('diagnostics')).lowBandwidthVoice).toBe(false);
+  expect((await bob.hook<Diag>('diagnostics')).peers[0]?.asksLowVoice).toBe(false);
+  // The low voice floor is gone. What is still asked is the buffer that follows the line (ticket 34), whose first step is
+  // 200 ms too: a rough window as the voice switches back can raise it, for a minute (ticket 69).
+  for (const f of [alice, bob]) {
+    const [p] = await f.hook<Array<{ voiceBufferMs: number | null; adaptiveMs: number | null }>>('peers');
+    expect(p?.voiceBufferMs ?? null).toBe(p?.adaptiveMs ?? null);
+  }
   await bob.hearing('Alice');
 });
 
