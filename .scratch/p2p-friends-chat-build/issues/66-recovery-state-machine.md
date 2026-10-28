@@ -22,3 +22,8 @@ written rule to check against: each reviewer brought its own.
 
 ## Not in it
 No change of behaviour. Anything the table or the simulation shows wrong becomes a ticket of its own.
+
+## Found
+- Ticket 67: when ICE fails at both ends of a call that was up, each side answers the other's restart from a new
+  connection (O4), neither restart is used, and the call comes back by rebuilds, 10 s in the simulation. A test marked
+  `it.fails` holds what it should do.
