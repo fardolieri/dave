@@ -1,6 +1,6 @@
 # 67 · When ICE fails at both ends of a call, neither ICE restart is used, and the call comes back only by rebuilds
 
-Status: fixed 2026-10-28 on branch fix/67-restart-in-place (row O4 changed, decided by the owner); found by the recovery
+Status: shipped 2026-10-28 to prod (3e95fa5, PR #102; row O4 changed, decided by the owner); found by the recovery
 simulation (ticket 66), not seen in the field or the e2e suite
 Type: bug (slow recovery, no lost call)
 

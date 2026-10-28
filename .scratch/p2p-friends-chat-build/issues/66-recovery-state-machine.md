@@ -1,6 +1,6 @@
 # 66 · Connection recovery as a state machine in core, against a written table of rules
 
-Status: in progress, 2026-10-28, branch refactor/recovery-machine
+Status: shipped 2026-10-28 to prod (3e95fa5, PR #101)
 Type: task
 
 ## Why
