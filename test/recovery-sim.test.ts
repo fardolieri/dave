@@ -13,7 +13,8 @@ type Signal = { type: 'offer' | 'answer'; from: Side; connId: number; forConn?: 
 type Conn = {
   id: number; cert: number; ufrag: number; link: Link; ice: IceState; connection: ConnectionState;
   remote?: Desc; localOffer: boolean; closed: boolean; timers: Partial<Record<Timer, number>>;
-  restartedBeforeUp: boolean; oneWay: boolean; foreignAnswer: boolean; restarts: number;
+  /** Was ever up: ticket 63's bug is a restart of one that never was. */
+  everUp: boolean; restartedBeforeUp: boolean; oneWay: boolean; foreignAnswer: boolean; restarts: number;
 };
 type Side = { name: string; offersFirst: boolean; polite: boolean; old: boolean; conn?: Conn; counts: Counts; other?: Side; sees: { lost: boolean }; frozen: boolean };
 
@@ -55,7 +56,7 @@ class World {
   private create(side: Side, initiator: boolean): Conn {
     const conn: Conn = {
       id: this.nextId++, cert: this.nextId++, ufrag: this.nextId++, link: newLink(initiator, side.counts), ice: 'new', connection: 'new',
-      localOffer: false, closed: false, timers: {}, restartedBeforeUp: false, oneWay: false, foreignAnswer: false, restarts: 0,
+      localOffer: false, closed: false, timers: {}, everUp: false, restartedBeforeUp: false, oneWay: false, foreignAnswer: false, restarts: 0,
     };
     // An app from before ticket 63 restarts a connection that never connected instead of rebuilding it, and applies
     // every offer: as if every connection had connected once.
@@ -85,7 +86,7 @@ class World {
       case 'restart':
         if (conn.closed) break;
         conn.restarts++;
-        if (conn.connection !== 'connected' && !conn.oneWay) conn.restartedBeforeUp = true;
+        if (!conn.everUp) conn.restartedBeforeUp = true;
         conn.ufrag = this.nextId++;
         this.offer(side, conn, conn.remote?.connId);
         break;
@@ -148,7 +149,7 @@ class World {
     // Perfect negotiation: in a collision the impolite side ignores the offer, the polite side rolls back.
     if (conn.localOffer) { if (!side.polite) return; conn.localOffer = false; }
     if (conn.remote && conn.remote.ufrag !== s.ufrag) {
-      if (conn.connection !== 'connected' && !conn.oneWay) conn.restartedBeforeUp = true; // a restart applied in place
+      if (!conn.everUp) conn.restartedBeforeUp = true; // a restart applied in place
       conn.ufrag = this.nextId++;
     }
     conn.remote = { cert: s.cert, ufrag: s.ufrag, connId: s.connId };
@@ -163,7 +164,7 @@ class World {
     const connChanged = conn.connection !== connection;
     conn.ice = ice;
     conn.connection = connection;
-    if (connChanged && connection === 'connected' && conn.restartedBeforeUp) conn.oneWay = true;
+    if (connChanged && connection === 'connected') { if (conn.restartedBeforeUp) conn.oneWay = true; conn.everUp = true; }
     if (iceChanged) this.recover(side, conn, { on: 'ice', ice, connection });
     if (connChanged && side.conn === conn) this.recover(side, conn, { on: 'connection', ice: conn.ice, connection: conn.connection });
   }
@@ -289,9 +290,9 @@ describe('recovery between two friends (simulation)', () => {
     expect(w.conns().every((c) => !c.oneWay)).toBe(true);
   });
 
-  // Ticket 67: both ends restart, and each, its ICE failed, answers the other's restart offer from a new connection (O4).
-  // Neither restart is used: the new connections fail against the closed old ones, and the call comes back by rebuilds.
-  it.fails('a call that was up and loses its path at both ends comes back by ICE restarts, on the same connections (ticket 67)', () => {
+  // Ticket 67: both ends restart. Each, its ICE failed, answered the other's restart offer from a new connection (O4), so
+  // neither restart was used: the new connections failed against the closed old ones, and only rebuilds brought it back.
+  it('a call that was up and loses its path at both ends comes back by ICE restarts, on the same connections (ticket 67)', () => {
     const w = new World(['ok', 'ok']);
     w.start();
     recoveryTime(w, 5_000);
