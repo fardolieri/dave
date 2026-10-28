@@ -262,5 +262,9 @@
  {
   "match": "^update\\.spec\\.ts › ticket 33: Reload moves only its own tab; a tab waiting behind it is a[^|]*\\| expect\\(locator\\)\\.toBeVisible\\(\\) failed",
   "ticket": "65"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › an offer stuck for a friend who then reloads leaves their new connection alone [^|]*\\| (Bob|Alice) sends the stuck offer again",
+  "ticket": "68"
  }
 ]
