@@ -250,8 +250,9 @@ An offer from them, in this order (`offerPath`):
   the offer answered from a new one.
 - O3 mine never connected, the friend is not lost, the offer is not fresh, and a rebuild is waiting or running or the
   offer restarts ICE (a new ufrag): dropped, R9 now.
-- O4 the friend lost, my ICE failed or closed, or the offer is fresh (a new DTLS certificate): mine closed, answered
-  from a new one.
+- O4 the friend lost, mine closed, its ICE failed while it never connected, or the offer is fresh (a new DTLS
+  certificate): mine closed, answered from a new one. One that had connected takes an ICE restart in place, its ICE
+  failed or not (ticket 67): crossing restarts are settled by perfect negotiation.
 - O5 otherwise: applied to mine (perfect negotiation), or answered from a new one if I hold none.
 
 ### 8.3 Object eviction and restart

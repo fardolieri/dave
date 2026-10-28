@@ -198,8 +198,10 @@ export type OfferFacts = {
   fresh: boolean;
   /** A new ICE ufrag on the connection I hold: an ICE restart. */
   restartsIce: boolean;
-  /** My connection's ICE failed, or it is closed. */
-  deadIce: boolean;
+  /** My connection's ICE failed. */
+  iceFailed: boolean;
+  /** My connection is closed. */
+  closed: boolean;
 };
 
 /**
@@ -215,6 +217,8 @@ export function offerPath(link: Link | undefined, f: OfferFacts): { go: 'drop' |
     if (f.theyOfferFirst) return { go: 'fresh', row: 'O2' };
   }
   if (!link.connectedOnce && !link.lost && !f.fresh && (link.rebuild !== 'none' || f.restartsIce)) return { go: 'drop-rebuild', row: 'O3' };
-  if (link.lost || f.deadIce || f.fresh) return { go: 'fresh', row: 'O4' };
+  // A connection that had connected takes an ICE restart in place even with its ICE failed: that is what the restart is
+  // for, and two crossing restarts are settled by perfect negotiation (ticket 67).
+  if (link.lost || f.closed || (f.iceFailed && !link.connectedOnce) || f.fresh) return { go: 'fresh', row: 'O4' };
   return { go: 'apply', row: 'O5' };
 }

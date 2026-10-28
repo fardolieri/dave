@@ -1,6 +1,7 @@
 # 67 · When ICE fails at both ends of a call, neither ICE restart is used, and the call comes back only by rebuilds
 
-Status: open, found 2026-10-28 by the recovery simulation (ticket 66); not seen in the field or the e2e suite yet
+Status: fixed 2026-10-28 on branch fix/67-restart-in-place (row O4 changed, decided by the owner); found by the recovery
+simulation (ticket 66), not seen in the field or the e2e suite
 Type: bug (slow recovery, no lost call)
 
 ## What the simulation shows
@@ -17,7 +18,7 @@ O4 treats "my ICE failed" as "my connection is dead", which ticket 22 needed for
 anything. For one that was up, an ICE restart from the other side is exactly what can bring it back, and the browser
 can apply it to a connection whose ICE failed.
 
-## Question for the owner
+## Decided (owner, 2026-10-28)
 A row change in spec §8.2: O4 answers from a new connection when my ICE failed only if mine never connected; one that
 had connected takes the restart in place (O5), as perfect negotiation settles two restarts crossing. The simulation
 can check it first; the e2e suite has the restart tests for the browsers.

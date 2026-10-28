@@ -139,7 +139,8 @@ class World {
       theyOfferFirst: !side.offersFirst,
       fresh: !!conn?.remote && conn.remote.cert !== s.cert,
       restartsIce: !!conn?.remote && conn.remote.ufrag !== s.ufrag,
-      deadIce: !!conn && (conn.ice === 'failed' || conn.closed),
+      iceFailed: conn?.ice === 'failed',
+      closed: !!conn?.closed,
     };
     const { go } = offerPath(conn?.link, side.old ? { ...facts, restartsIce: false } : facts);
     if (go === 'drop') return;
@@ -275,30 +276,17 @@ describe('recovery between two friends (simulation)', () => {
     expect(w.conns().every((c) => !c.oneWay)).toBe(true);
   });
 
-  it('a call that was up and loses its path at both ends comes back, today by way of new connections', () => {
-    const w = new World(['ok', 'ok']);
-    w.start();
-    recoveryTime(w, 5_000);
-    const [a, b] = [w.a.conn!, w.b.conn!];
-    w.breakPath(); // Wi-Fi changed under one of them: ICE failed at both ends
-    const broke = w.now;
-    const took = recoveryTime(w, broke + 60_000) - broke;
-    // Both restarts are answered from new connections, which then fail against the closed old ones; rebuilds bring the
-    // call back, 10 s after the break in this model.
-    expect(took).toBeLessThan(15_000);
-    expect([w.a.conn, w.b.conn]).not.toEqual([a, b]);
-    expect(w.conns().every((c) => !c.oneWay)).toBe(true);
-  });
-
-  // Ticket 67: both ends restart. Each, its ICE failed, answered the other's restart offer from a new connection (O4), so
-  // neither restart was used: the new connections failed against the closed old ones, and only rebuilds brought it back.
+  // Ticket 67: both ends restart. Each, its ICE failed, used to answer the other's restart offer from a new connection
+  // (O4), so neither restart was used, and only rebuilds brought the call back, 10 s after the break. Now the restart is
+  // taken in place, and crossing restarts are settled by perfect negotiation.
   it('a call that was up and loses its path at both ends comes back by ICE restarts, on the same connections (ticket 67)', () => {
     const w = new World(['ok', 'ok']);
     w.start();
     recoveryTime(w, 5_000);
     const [a, b] = [w.a.conn!, w.b.conn!];
     w.breakPath();
-    recoveryTime(w, w.now + 30_000);
+    const broke = w.now;
+    expect(recoveryTime(w, broke + 30_000) - broke).toBeLessThanOrEqual(4_000); // a restart's back-off and one pairing
     expect([w.a.conn, w.b.conn]).toEqual([a, b]);
     expect(a.foreignAnswer || b.foreignAnswer).toBe(false);
   });

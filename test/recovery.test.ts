@@ -153,7 +153,7 @@ describe('recovery rules', () => {
 });
 
 describe('offerPath', () => {
-  const facts = (f: Partial<OfferFacts> = {}): OfferFacts => ({ held: true, namesGone: false, bothFirstOffers: false, iOfferFirst: false, theyOfferFirst: false, fresh: false, restartsIce: false, deadIce: false, ...f });
+  const facts = (f: Partial<OfferFacts> = {}): OfferFacts => ({ held: true, namesGone: false, bothFirstOffers: false, iOfferFirst: false, theyOfferFirst: false, fresh: false, restartsIce: false, iceFailed: false, closed: false, ...f });
   const live = (): Link => { const l = newLink(true, freshCounts()); l.connectedOnce = true; return l; };
   const never = (rebuild: Link['rebuild'] = 'none'): Link => ({ ...newLink(true, freshCounts()), rebuild });
 
@@ -177,10 +177,15 @@ describe('offerPath', () => {
     expect(offerPath(never(), facts())).toEqual({ go: 'apply', row: 'O5' });
   });
 
-  it('O4: the friend lost, my ICE dead, or a new certificate: answered from a new connection', () => {
+  it('O4: the friend lost, mine closed, its ICE failed while it never connected, or a new certificate: answered from a new connection', () => {
     const lost = live(); lost.lost = true;
     expect(offerPath(lost, facts())).toEqual({ go: 'fresh', row: 'O4' });
-    expect(offerPath(live(), facts({ deadIce: true }))).toEqual({ go: 'fresh', row: 'O4' });
+    expect(offerPath(never(), facts({ iceFailed: true }))).toEqual({ go: 'fresh', row: 'O4' });
+    expect(offerPath(live(), facts({ closed: true }))).toEqual({ go: 'fresh', row: 'O4' });
     expect(offerPath(live(), facts({ fresh: true }))).toEqual({ go: 'fresh', row: 'O4' });
+  });
+
+  it('O5: a connection that had connected takes their ICE restart in place, even with its own ICE failed (ticket 67)', () => {
+    expect(offerPath(live(), facts({ iceFailed: true, restartsIce: true }))).toEqual({ go: 'apply', row: 'O5' });
   });
 });

@@ -1205,7 +1205,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         theyOfferFirst: !!self && !!them && initiatesTo(them, { ...self, joinSeq: myJoinSeq }),
         fresh: !!peer && isFreshConnection(held?.sdp, offerSdp),
         restartsIce: !!held && ufrag(held.sdp) !== ufrag(offerSdp),
-        deadIce: !!peer && (peer.pc.iceConnectionState === 'failed' || peer.pc.connectionState === 'closed'),
+        iceFailed: peer?.pc.iceConnectionState === 'failed',
+        closed: peer?.pc.connectionState === 'closed',
       });
       const reason = { O1: 'stale offer', O2: 'offer to the offerer', O3: 'offer to a connection that never connected' }[row as 'O1' | 'O2' | 'O3'];
       if (go === 'drop') { posthog.capture('signal_dropped', { reason, offer: true }); return; }
