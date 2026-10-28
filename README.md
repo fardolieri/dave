@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-10-28T20:28 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-10-28T20:38 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 77, branch 270, preview 128.
+Runs recorded: nightly 76, branch 270, preview 129.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -26,7 +26,7 @@ Runs recorded: nightly 77, branch 270, preview 128.
 | 2 | 2 | branch 2 | text.spec.ts › texts from more than 18 h before the room came on screen wait behind a button, folded again each time it does | expect(received).toEqual(expected) // deep equality | [10-12](https://github.com/fardolieri/dave/actions/runs/38222942433/attempts/1) | [10-17](https://github.com/fardolieri/dave/actions/runs/39049062343/attempts/1) | f9efd75 (fixed) |
 | 2 | 0 | nightly 2 | resilience.spec.ts › a stalled connection is rebuilt and comes up again | expect(locator).toHaveText(expected) failed | [09-28](https://github.com/fardolieri/dave/actions/runs/36488333876/attempts/1) | [09-28](https://github.com/fardolieri/dave/actions/runs/36490689930/attempts/1) | 35 |
 | 1 | 1 | preview 1 | attachment.spec.ts › a photo copied from a page whose img src is a placeholder goes as the photo the browser copied | expect(locator).toHaveCount(expected) failed | [10-28](https://github.com/fardolieri/dave/actions/runs/40762088318/attempts/1) | [10-28](https://github.com/fardolieri/dave/actions/runs/40762088318/attempts/1) |  |
-| 1 | 1 | preview 1 | resilience.spec.ts › an offer stuck for a friend who then reloads leaves their new connection alone (the impolite side reloads, the first to join) | Bob sends the stuck offer again | [10-28](https://github.com/fardolieri/dave/actions/runs/40762088318/attempts/1) | [10-28](https://github.com/fardolieri/dave/actions/runs/40762088318/attempts/1) |  |
+| 1 | 1 | preview 1 | resilience.spec.ts › an offer stuck for a friend who then reloads leaves their new connection alone (the impolite side reloads, the first to join) | Bob sends the stuck offer again | [10-28](https://github.com/fardolieri/dave/actions/runs/40762088318/attempts/1) | [10-28](https://github.com/fardolieri/dave/actions/runs/40762088318/attempts/1) | 68 |
 | 1 | 1 | preview 1 | attachment.spec.ts › Send waits for a picture whose original is still coming; then the pictures go in the order shown, and the text after them | expect(locator).toHaveCount(expected) failed | [10-28](https://github.com/fardolieri/dave/actions/runs/40762088318/attempts/1) | [10-28](https://github.com/fardolieri/dave/actions/runs/40762088318/attempts/1) |  |
 | 1 | 1 | nightly 1 | attachment.spec.ts › regression: a pull tried again after its friend could not be reached is answered | console warnings, errors or exceptions nobody expected: Alice: error: Failed to load resource: the server responded with a status of 404 () | [10-26](https://github.com/fardolieri/dave/actions/runs/40392826988/attempts/1) | [10-26](https://github.com/fardolieri/dave/actions/runs/40392826988/attempts/1) |  |
 | 1 | 1 | nightly 1 | adversary.spec.ts › ADR 0004: a server that swaps DTLS fingerprints cannot get a call connected | console warnings, errors or exceptions nobody expected: Bob: warning: [JavaScript Warning: \"Loading failed for the module with source “https://dave-nightly.dan | [10-26](https://github.com/fardolieri/dave/actions/runs/40392826988/attempts/1) | [10-26](https://github.com/fardolieri/dave/actions/runs/40392826988/attempts/1) |  |
