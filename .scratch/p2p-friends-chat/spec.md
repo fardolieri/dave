@@ -200,6 +200,60 @@ Two amendments (2026-09-23, ticket 22, after a friend stayed at "connecting" for
 
 Amendment (2026-10-27, ticket 63, after a Firefox call came back one-way: one friend heard the other, who got no byte of their voice): a connection that never connected is **rebuilt, never restarted**. Its ICE failure, its handshake failure, or a disconnect that outlasts the grace tears it down and offers again from a fresh connection after the restart's back-off (2, 5, 10, then 30 s, per participant, cleared once a connection to them connects), the side that does not offer first 5 s later; the rebuild keeps the connection's transport policy, so only the watchdog turns to the relay. An offer that reaches such a connection while its rebuild waits, or that restarts its ICE (an app from before), is dropped and the connection rebuilt at once: the other side takes the fresh offer as one, and no live connection is answered with a certificate it never saw. A connection that had connected is still restarted in place, and a restart replaces only credentials about to expire, keeping the policy.
 
+
+#### Recovery rules (ticket 66)
+The amendments above, as one table: what a connection does on each event. `core/recovery.ts` follows it row by row and
+`test/recovery.test.ts` checks every row; a change of behaviour is a change here first, decided by the owner. A review
+that disagrees with a row asks for that change, not for code.
+
+Kept per connection: built as the offerer or not; **connected once** or not; the **badge** (connecting, up, reconnecting,
+unreachable); **restarts** since it was last up; the **rebuild** (none, waiting, running); the friend **lost** (their
+socket gone) or not. Kept per friend, across the friend's connections: **stalled** attempts and **failed rebuilds**, both
+cleared when a connection to them comes up, when their socket is lost, when they leave, and at my Leave.
+
+A **rebuild** closes the connection and offers from a new one, with fresh TURN credentials first if the held ones are
+about to expire; from one stalled attempt on, and with TURN, the new one is relay-only. A **failure** (F):
+- friend lost: close.
+- otherwise the badge goes unreachable, and:
+  - never connected: if a rebuild is waiting or running, nothing more. Else the watchdog is cancelled and a rebuild
+    waits `failedRebuildDelay` (2, 5, 10, then 30 s by failed rebuilds, plus 5 s if I do not offer first).
+  - connected once: an ICE restart waits `restartBackoff` (2, 5, 10, then 30 s by restarts); restarts go up by one; a
+    restart already waiting is replaced.
+
+Events:
+- R1 built: the watchdog waits `stuckDelay` (15 s doubling to 60 s by the stalled attempts as they were then, plus 5 s
+  if not the offerer).
+- R2 ICE connected or completed: restarts back to 0, a waiting restart cancelled (a waiting rebuild stays until the
+  handshake is through); then as for the connection's own state: R4 if connected, R5 if failed.
+- R3 ICE disconnected: badge reconnecting; the disconnect timer waits 5 s.
+- R4 connection connected: watchdog, restart and rebuild cancelled, rebuild none; connected once; the friend's counts
+  cleared; badge up; a watched share asked for again, the stats read.
+- R5 ICE failed, or the connection failed while ICE is not: F.
+- R6 ICE closed: badge unreachable.
+- R7 disconnect timer, ICE still disconnected: friend lost, close; never connected, F; else an ICE restart now.
+- R8 restart timer: ICE restart; credentials about to expire are replaced first, the transport policy kept.
+- R9 rebuild timer, or an offer dropped by O3: unless a rebuild is running, it runs, keeping the stalled attempts,
+  if then the connection is still not connected and the friend not lost.
+- R10 that rebuild ended: rebuild none; if it happened, failed rebuilds go up by one and `peer_never_connected` is sent.
+- R11 watchdog timer, badge still connecting and not closed: `peer_connecting_slow` is sent and a rebuild runs with
+  one more stalled attempt than when it was built, if the badge is then still connecting.
+- R12 the friend's socket lost (gone from presence without a `left`): their counts cleared; ICE failed, closed or new:
+  close; else friend lost, and a grace timer waits 60 s.
+- R13 grace timer: close unless the connection is connected.
+- R14 the friend back (socket back, or a new join sequence): friend not lost, grace cancelled; never connected, badge
+  unreachable and no rebuild: F; else what never reached them is sent again.
+
+An offer from them, in this order (`offerPath`):
+- O1 it names a connection of mine (`forConn`) that is gone, or names one at all while I hold none and I offer first:
+  dropped.
+- O2 both of us offered a first offer and got nothing back: I offer first, dropped; they offer first, mine closed and
+  the offer answered from a new one.
+- O3 mine never connected, the friend is not lost, the offer is not fresh, and a rebuild is waiting or running or the
+  offer restarts ICE (a new ufrag): dropped, R9 now.
+- O4 the friend lost, my ICE failed or closed, or the offer is fresh (a new DTLS certificate): mine closed, answered
+  from a new one.
+- O5 otherwise: applied to mine (perfect negotiation), or answered from a new one if I hold none.
+
 ### 8.3 Object eviction and restart
 The room object may be evicted at any quiet moment. Everything is rebuilt from attached sockets and attachments on wake; there is nothing else to lose. Text typed while a client was disconnected is gone by design.
 
