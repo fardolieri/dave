@@ -239,7 +239,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   /** Presences this room got, so a refusal can tell whether one came since the text went out. */
   let presences = 0;
   /** `waitingPrivate` as shown; read and changed through the array, whose changes show at once (signal writes are batched). */
-  const [pendingPrivate, setPendingPrivate] = createSignal<typeof waitingPrivate>([]);
+  const [pendingPrivate, setPendingPrivate] = createSignal<typeof waitingPrivate>([...waitingPrivate]);
   /** Whether a waiting private text went out unanswered, so may have reached the friend. */
   const mayHaveGone = (x: (typeof waitingPrivate)[number]): boolean => !!x.outBefore || x.outOn !== undefined;
   const toKept = (x: (typeof waitingPrivate)[number]): UnsentPrivate => ({ id: x.id, to: x.to, text: x.text, at: x.at, ...(mayHaveGone(x) ? { out: true as const } : {}) });
@@ -250,7 +250,6 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     // A file is not: like a room's (`pendingFiles`), a reload forgets it, its bytes may be held in this page only.
     if (keep && !disposed) keepUnsentPrivate(opts.roomId, waitingPrivate.filter((x) => !x.file).map(toKept));
   };
-  setPendingPrivate([...waitingPrivate]);
   /** Takes private texts out of the waiting ones; returns those taken. */
   const takePrivate = (which: (x: (typeof waitingPrivate)[number]) => boolean): typeof waitingPrivate => {
     const taken = waitingPrivate.filter(which);
