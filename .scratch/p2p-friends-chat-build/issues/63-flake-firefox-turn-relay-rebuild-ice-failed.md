@@ -1,6 +1,6 @@
 # 63 · Flake: Firefox's rebuild over the TURN relay failed ICE against nightly, and Bob never heard Alice
 
-Status: fixed on branch flake/turn-relay-rebuild, 2026-10-27 (an app bug, Firefox); seen twice
+Status: fixed 2026-10-27 (an app bug, Firefox; PR #100), shipped 2026-10-28 to prod (55a2537); "fixed" once its ledger rows stop growing; seen twice
 Seen 2026-10-25: the nightly e2e run of 3c5faba (40239237252), Firefox, shard 5, passed on its retry, so the gate went red:
 `resilience.spec.ts:556` "after a stalled attempt the rebuild goes through the TURN relay, and both sides take it (ticket
 22)". `Error: Bob hears Alice`, and in Alice's console `WebRTC: ICE failed, see about:webrtc for more details`.
