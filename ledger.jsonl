@@ -6852,3 +6852,4 @@
 {"run":40765359543,"attempt":1,"sha":"3e95fa554e0e60ed49377dcb315a36c255ffe558","ref":"master","event":"workflow_run","hunt":false,"target":"nightly","project":"firefox","shard":4,"at":"2026-10-28T20:47:13.216Z","kind":"shard","tests":22}
 {"run":40765359543,"attempt":1,"sha":"3e95fa554e0e60ed49377dcb315a36c255ffe558","ref":"master","event":"workflow_run","hunt":false,"target":"nightly","project":"firefox","shard":8,"at":"2026-10-28T20:49:43.902Z","kind":"shard","tests":8}
 {"run":40765359543,"attempt":1,"sha":"3e95fa554e0e60ed49377dcb315a36c255ffe558","ref":"master","event":"workflow_run","hunt":false,"target":"nightly","project":"firefox","shard":7,"at":"2026-10-28T20:50:51.742Z","kind":"shard","tests":21}
+{"run":40765359543,"attempt":2,"sha":"3e95fa554e0e60ed49377dcb315a36c255ffe558","ref":"master","event":"workflow_run","hunt":false,"target":"nightly","project":"firefox","shard":5,"at":"2026-10-28T21:01:53.132Z","kind":"shard","tests":17}
