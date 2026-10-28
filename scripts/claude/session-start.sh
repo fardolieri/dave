@@ -9,7 +9,8 @@ behind=$(git rev-list --count HEAD..origin/master 2>/dev/null)
 dirty=$(git status --porcelain 2>/dev/null | wc -l)
 avail=$(free -m 2>/dev/null | awk '/^Mem:/ {print $7}')
 unreleased=$(git rev-list --count origin/prod..origin/master 2>/dev/null)
-others=$(( $(pgrep -c -f '[c]laude --output-format' 2>/dev/null || echo 0) - 1 ))
+# Not the shell that launched a session: T3's wrapper (sh -c ... systemd-run ... claude) carries the same words.
+others=$(( $(pgrep -af '[c]laude --output-format' 2>/dev/null | grep -cvE '^[0-9]+ (/usr)?(/bin/)?(ba)?sh ') - 1 ))
 heavy=$(pgrep -fa '[w]orkerd|[v]ite (dev|preview)|[c]hrome-linux|[h]eadless_shell|[p]laywright test' 2>/dev/null | grep -Ev '^[0-9]+ (/bin/)?(ba)?sh |claude' | cut -c1-100)
 
 echo "Session briefing (scripts/claude/session-start.sh):"
