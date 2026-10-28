@@ -30,6 +30,9 @@ importers:
       '@playwright/test':
         specifier: 1.63.0
         version: 1.63.0
+      '@solidjs/diagnostics':
+        specifier: 2.0.0-rc.6
+        version: 2.0.0-rc.6(vitest@4.1.11(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.1)))
       '@solidjs/vite-plugin':
         specifier: 3.0.0-next.39
         version: 3.0.0-next.39(@solidjs/web@2.0.0-rc.6(solid-js@2.0.0-rc.6))(solid-js@2.0.0-rc.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.1))
@@ -721,6 +724,14 @@ packages:
 
   '@solidjs/compiler@2.0.0-rc.6':
     resolution: {integrity: sha512-3B6zdACJp+lImXJW/E0E5cXfsMlMXSIg9+s8me2sxz5Q4juGptiW+aUtluDb2e+lCUZt7kDVZdy5eHOmZ3T/mA==}
+
+  '@solidjs/diagnostics@2.0.0-rc.6':
+    resolution: {integrity: sha512-Q+4x6iwJCW+mV2jVMboaKubdjEUruirbgp+I4sa0XfNZFrbL1EQluiNqVpYL4Q0HszTzboRh2a2Rzob7OG7DTw==}
+    peerDependencies:
+      vitest: '>=2.0.0'
+    peerDependenciesMeta:
+      vitest:
+        optional: true
 
   '@solidjs/signals@2.0.0-rc.6':
     resolution: {integrity: sha512-lPqwZNLPq1Z9CBvgXkMvi1ZFr5OHUiFNz1X40+yehszDWEbJkneZx7BGKIe9eMT/AN1NSL+PMjOiMyZaqVB2xw==}
@@ -1974,6 +1985,12 @@ snapshots:
       '@solidjs/compiler-linux-x64-gnu': 2.0.0-rc.6
       '@solidjs/compiler-wasm32-wasi': 2.0.0-rc.6
       '@solidjs/compiler-win32-x64-msvc': 2.0.0-rc.6
+
+  '@solidjs/diagnostics@2.0.0-rc.6(vitest@4.1.11(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.1)))':
+    dependencies:
+      '@solidjs/signals': 2.0.0-rc.6
+    optionalDependencies:
+      vitest: 4.1.11(@types/node@24.13.6)(vite@8.3.2(@types/node@24.13.6)(esbuild@0.28.1))
 
   '@solidjs/signals@2.0.0-rc.6': {}
 

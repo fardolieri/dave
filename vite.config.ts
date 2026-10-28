@@ -164,11 +164,20 @@ function throttle(res: ServerResponse, bytesPerSecond: number): void {
 // and dist/dave, plus the deploy redirect that `wrangler deploy` follows.
 const build = buildInfo();
 
+/**
+ * `VITE_SOLID_DEV=1` builds with Solid's development build, whose diagnostics (`[CODE] …` console warnings, and with
+ * attribution on, re-run costs) the browser suite collects instead of failing on (e2e/fixtures.ts). An experiment: the
+ * dev server always has them, a deploy never.
+ */
+const solidDev = process.env['VITE_SOLID_DEV'] === '1';
+
 export default defineConfig({
-  plugins: [e2eServer(), solid(), cloudflare(), serviceWorker(build)],
-  define: { __BUILD__: JSON.stringify(build) },
+  plugins: [e2eServer(), solid(solidDev ? { dev: true } : {}), cloudflare(), serviceWorker(build)],
+  // __SOLID_DEV__ a constant, not an env variable: an unset one reads as undefined only at run time, and the bridge's chunk stayed in every build.
+  define: { __BUILD__: JSON.stringify(build), __SOLID_DEV__: JSON.stringify(solidDev) },
   // Source maps ship to production on purpose: this is a friends app and a readable stack in a friend's console is worth more than hiding code.
-  build: { target: 'esnext', sourcemap: true },
+  // Solid's development build keeps its names, so the stack of each of its diagnostics reads (e2e/fixtures.ts).
+  build: { target: 'esnext', sourcemap: true, ...(solidDev ? { minify: false } : {}) },
   // The voice worklet (client/voice.worklet.ts) is bundled like a worker; a worklet loads ES modules only.
   worker: { format: 'es' },
 });

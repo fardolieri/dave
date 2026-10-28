@@ -11,8 +11,9 @@
  * (e2e/console.ts): if the app got over it, so does the test.
  */
 import { randomBytes } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
-import { test as base, expect, type Browser, type BrowserContext, type Locator, type Page, type WebSocketRoute } from '@playwright/test';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { test as base, expect, type Browser, type BrowserContext, type Locator, type Page, type TestInfo, type WebSocketRoute } from '@playwright/test';
+import type { BridgePayload } from '@solidjs/diagnostics/browser';
 import { environmentNoise, launchOptions, originFor, type Autoplay, type Engine } from './browsers';
 import { unexplained, type Recovery } from './console';
 
@@ -181,6 +182,8 @@ export class Friend {
   readonly wire = new Wire();
   private expected: RegExp[] = [...KNOWN_HARMLESS];
   readonly problems: string[] = [];
+  /** Solid's own diagnostics in this friend's console (`[CODE] …`), kept apart from the problems in a Solid development build. */
+  readonly solid: string[] = [];
   /** The app's `[recovered]` lines: a room let in again, and how many problems were logged before it. */
   private readonly recoveries: Recovery[] = [];
   /** Console arguments still being read out (see `watch`); settled before the problems are judged. */
@@ -224,6 +227,14 @@ export class Friend {
       if (seed.picture) localStorage.setItem('dave.picture', seed.picture);
       if (seed.telemetry) localStorage.setItem('dave.telemetry', seed.telemetry);
     }, { telemetry: this.options.telemetry === undefined ? 'on' : this.options.telemetry, rooms: this.options.rooms, name: this.options.name === undefined ? this.name : this.options.name, muted: !!this.options.muted, picture: this.options.picture ?? null });
+    // Solid's diagnostics say what went wrong but not where: each gets the stack it was warned from, read against the build's
+    // source maps afterwards.
+    if (SOLID_DEV) {
+      await this.context.addInitScript(() => {
+        const warn = console.warn;
+        console.warn = (...a: unknown[]) => warn(...(typeof a[0] === 'string' && /^\[[A-Z_]+\] /.test(a[0]) ? [`${a[0]}\n${new Error().stack?.split('\n').filter((l) => l !== 'Error').slice(1, 15).join('\n')}`, ...a.slice(1)] : a));
+      });
+    }
     // Every oscillator a page starts is recorded as "type Hz", so a test can tell which cue played (ticket 23).
     await this.context.addInitScript(() => {
       const played: string[] = [];
@@ -270,6 +281,7 @@ export class Friend {
       const recovered = m.type() === 'info' && /^\[recovered\] room (\S+):/.exec(m.text());
       if (recovered) { this.recoveries.push({ room: recovered[1]!, after: this.problems.length }); return; }
       if (m.type() !== 'warning' && m.type() !== 'error') return;
+      if (SOLID_DEV && m.type() === 'warning' && /^\[[A-Z_]+\] /.test(m.text())) { this.solid.push(m.text()); return; }
       const i = this.problems.push(`${m.type()}: ${m.text()}`) - 1;
       // Firefox gives an error object as "JSHandle@object", which says nothing about the failure: read it out, so a
       // flake's report names the error (ticket 35). Patterns still match: the message's own text comes first.
@@ -625,11 +637,43 @@ export const test = base.extend<{ crowd: Crowd }>({
       }
     }
     if (problems.length) await testInfo.attach('console problems', { body: problems.join('\n'), contentType: 'text/plain' });
+    if (SOLID_DEV) await writeSolidDiagnostics(friends, testInfo);
     await Promise.all(friends.map((f) => f.close()));
     await Promise.all([...extra.values()].map(async (b) => (await b).close()));
     expect(problems, 'console warnings, errors or exceptions nobody expected').toEqual([]);
   },
 });
+
+/**
+ * Whether the app under test is Solid's development build (VITE_SOLID_DEV=1, vite.config.ts). Its diagnostics are then
+ * collected, not failed on: what each friend's console said and what each open page recorded since it loaded (re-runs,
+ * their costs, the ones that changed nothing) go to `e2e-solid/`, one file per test and try.
+ */
+const SOLID_DEV = process.env['VITE_SOLID_DEV'] === '1';
+
+async function writeSolidDiagnostics(friends: Friend[], testInfo: TestInfo): Promise<void> {
+  const report = [];
+  for (const f of friends) {
+    const pages = [];
+    for (const page of f.context?.pages() ?? []) {
+      const payload = await page.evaluate(() => {
+        const bridge = (window as unknown as { __SOLID_DIAGNOSTICS__?: { active(): boolean; end(): BridgePayload } }).__SOLID_DIAGNOSTICS__;
+        return bridge?.active() ? bridge.end() : null;
+      }).catch(() => null);
+      if (!payload) continue;
+      const reruns = payload.attribution?.reruns ?? [];
+      const count = (list: typeof reruns) => Object.entries(list.reduce<Record<string, number>>((a, r) => ({ ...a, [r.nodeName]: (a[r.nodeName] ?? 0) + 1 }), {})).sort((a, b) => b[1] - a[1]).slice(0, 20);
+      pages.push({
+        url: page.url(), durationMs: payload.durationMs, diagnostics: payload.diagnostics, reruns: reruns.length,
+        busiest: count(reruns), wasted: count(reruns.filter((r) => !r.changed && r.phase === 'plain' && !r.held)),
+        scopes: payload.attribution?.costs.scopes.slice(0, 20), writes: payload.attribution?.costs.writes.slice(0, 10),
+      });
+    }
+    report.push({ friend: f.name, console: f.solid, pages });
+  }
+  mkdirSync('e2e-solid', { recursive: true });
+  writeFileSync(`e2e-solid/${testInfo.testId}-${testInfo.retry}.json`, JSON.stringify({ test: testInfo.titlePath.slice(1), project: testInfo.project.name, status: testInfo.status, friends: report }, null, 1));
+}
 
 /** Opens the sidebar's ⚙ menu (new room, join by link, theme, report a problem…), if it is not open already. */
 export async function openMenu(page: Page): Promise<void> {

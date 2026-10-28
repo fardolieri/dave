@@ -4,6 +4,15 @@ import posthog, { startOnLoad } from './posthog';
 import { installConsoleBuffer } from './log';
 import { watchForUpdates, whenOpened } from './update';
 
+declare const __SOLID_DEV__: boolean;
+
+// Solid's development build (VITE_SOLID_DEV=1, vite.config.ts): every re-run is recorded from here on, for the browser
+// suite to read when a test ends (`window.__SOLID_DIAGNOSTICS__`, e2e/fixtures.ts). Left out of every other build.
+if (__SOLID_DEV__) {
+  const { installDiagnosticsBridge } = await import('@solidjs/diagnostics/browser');
+  installDiagnosticsBridge().begin({ attribution: true });
+}
+
 installConsoleBuffer();
 watchForUpdates();
 // Not in a page about to reload onto a new version (ticket 36): its captures wait in PostHog's queue meanwhile.
