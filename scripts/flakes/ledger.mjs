@@ -10,6 +10,9 @@
  *
  * `outcomes` runs in each e2e shard (e2e.yml), `add` after the run (flakes.yml). A row's ticket comes from causes.json on
  * the ledger branch: `[{ "match": "<regex over the row's test and error>", "ticket": "61" }]`, edited by hand.
+ *
+ * A failure seen outside CI (a full run on a dev box, of code that already passed CI) is added to ledger.jsonl by hand, as
+ * a line with `"target": "local"`, the `"sha"` it ran and a `"note"` saying where, and no run id. It counts like nightly.
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -105,8 +108,8 @@ function summarize(dir, all) {
   const runs = {};
   for (const o of recent.filter((o) => o.kind === 'shard')) (runs[o.target] ??= new Set()).add(`${o.run}/${o.attempt}`);
   // On a branch or its preview a test failing both tries is mostly the branch's own bug: only flaky tries count there.
-  // Against nightly, master's code that already passed its branch's runs, a failed test counts too.
-  const counted = recent.filter((o) => o.kind === 'flaky' || (o.kind === 'failed' && o.target === 'nightly'));
+  // Against nightly, master's code that already passed its branch's runs, a failed test counts too; so does one seen locally.
+  const counted = recent.filter((o) => o.kind === 'flaky' || (o.kind === 'failed' && (o.target === 'nightly' || o.target === 'local')));
   const week = Date.now() - 7 * 86_400_000;
   const rows = new Map();
   for (const o of counted) {
@@ -122,7 +125,7 @@ function summarize(dir, all) {
   }
   for (const row of rows.values()) row.ticket = causes.find((c) => c.re.test(row.key))?.ticket ?? '';
   const sorted = [...rows.values()].sort((a, b) => b.n - a.n || b.last.at.localeCompare(a.last.at));
-  const link = (o) => `[${o.at.slice(5, 10)}](https://github.com/${repo}/actions/runs/${o.run}/attempts/${o.attempt})`;
+  const link = (o) => o.run ? `[${o.at.slice(5, 10)}](https://github.com/${repo}/actions/runs/${o.run}/attempts/${o.attempt})` : `${o.at.slice(5, 10)} local`;
   const cell = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\|/g, '\\|').replace(/\n/g, ' ');
   const md = [
     '# Flake ledger',
@@ -130,7 +133,7 @@ function summarize(dir, all) {
     `Every e2e try that failed in the last ${DAYS} days, by test and error, newest data ${new Date().toISOString().slice(0, 16)} UTC.`,
     'Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and',
     'passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky',
-    'ones do (failing twice there is mostly the branch\'s own bug). Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket',
+    'ones do (failing twice there is mostly the branch\'s own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket',
     'column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".',
     '',
     ...warnings.map((w) => `**Warning:** ${cell(w)}`),
