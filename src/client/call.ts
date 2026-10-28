@@ -1,6 +1,7 @@
 import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
 import { distinctFormats, type VideoFormat } from '../core/format';
-import { failedRebuildDelay, restartBackoff, stuckDelay, transportPolicyFor } from '../core/mesh';
+import { transportPolicyFor } from '../core/mesh';
+import { freshCounts, newLink, offerPath, step, stillRebuild, type Action as RecoveryAction, type Counts, type Event as RecoveryEvent, type Link, type Timer } from '../core/recovery';
 import posthog from './posthog';
 import { exposeHooks, failAudioContext } from './hooks';
 import { isFreshConnection, signDescription, verifyDescription } from '../core/dtls';
@@ -13,7 +14,7 @@ import { bytesIn, candidateCounts, reportStats, summarise, voiceCounters, window
 import { createInvariantWatchdog } from './invariants';
 import { gainFor, type CallFacts } from '../core/invariants';
 import {
-  ICE_DISCONNECTED_GRACE_MS, ICE_REFRESH_AFTER_MS, PEER_GRACE_MS, SLOT_INDEX, initiatesTo, isPolite,
+  ICE_REFRESH_AFTER_MS, SLOT_INDEX, initiatesTo, isPolite,
 } from '../core/mesh';
 import type { IceServer, Person, ServerMessage, SignalData } from '../core/protocol';
 import {
@@ -123,18 +124,11 @@ type Peer = {
   voiceGain?: GainNode;
   shareGain?: GainNode;
   audioNodes: AudioNode[];
-  disconnectTimer?: ReturnType<typeof setTimeout>;
-  restartTimer?: ReturnType<typeof setTimeout>;
-  restarts: number;
-  graceTimer?: ReturnType<typeof setTimeout>;
-  /** Fires if the connection never leaves "connecting" (see connectWatchdog). */
-  connectTimer?: ReturnType<typeof setTimeout>;
-  /** This connection has been connected at least once: else a failure rebuilds it, never restarts it (connectionFailed). */
-  connectedOnce: boolean;
-  /** The rebuild of a connection that never connected, waiting after its failure (connectionFailed); unset once it ran. */
-  rebuildTimer?: ReturnType<typeof setTimeout>;
-  /** That rebuild is under way (rebuildFailed), waiting for credentials maybe. */
-  rebuilding: boolean;
+  /** Its recovery (core/recovery.ts, spec §8.2 "Recovery rules"), and the timers that recovery runs (`recover`). */
+  link: Link;
+  timers: Partial<Record<Timer, ReturnType<typeof setTimeout>>>;
+  /** What a rebuild after a failure saw when it began, for its `peer_never_connected` (R10). */
+  rebuildFacts?: Record<string, unknown>;
   /** ICE restarts of this connection so far (dev hook). */
   iceRestarts: number;
   /** Built with iceTransportPolicy "relay": a rebuild after a stalled attempt (ticket 22). */
@@ -289,12 +283,13 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   const smallScreen = () => typeof matchMedia !== 'undefined' && matchMedia(SMALL_SCREEN_QUERY).matches;
 
   const peers = new Map<string, Peer>();
-  /** Stalled attempts per participant since the last successful connection; drives the watchdog delay and the relay fallback. */
-  const stuckAttempts = new Map<string, number>();
-  /** Rebuilds per participant of connections that failed before they ever connected (ticket 63); drives their back-off. */
-  const failedRebuilds = new Map<string, number>();
-  /** A connection to them came up, or they are gone: their next connection starts with no attempts counted. */
-  const forgetAttempts = (key: string) => { stuckAttempts.delete(key); failedRebuilds.delete(key); };
+  /**
+   * Per participant, across their connections: stalled attempts (the watchdog's delay, the relay fallback) and failed
+   * rebuilds (their back-off). Cleared when a connection to them comes up, when their socket is lost (core/recovery.ts),
+   * when they leave, and at my Leave.
+   */
+  const attempts = new Map<string, Counts>();
+  const countsOf = (key: string): Counts => { let c = attempts.get(key); if (!c) attempts.set(key, (c = freshCounts())); return c; };
   let localStream: MediaStream | null = null;
   let voiceTrack: MediaStreamTrack | null = null;
   let iceServers: IceServer[] = [];
@@ -897,7 +892,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   function createPeer(key: string, name: string, initiator: boolean): Peer {
     // After a stalled attempt the rebuild goes relay-only (ticket 22): ICE had found a direct path that never carried
     // encryption, so the retry avoids it. My relay candidates suffice; every pair then passes through the TURN server.
-    const relayOnly = transportPolicyFor(stuckAttempts.get(key) ?? 0, hasTurn()) === 'relay';
+    const relayOnly = transportPolicyFor(countsOf(key).stalled, hasTurn()) === 'relay';
     const pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: relayOnly ? 'relay' : 'all' });
     const audio = new Audio();
     audio.autoplay = true;
@@ -907,7 +902,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const { closed, close: markClosed } = closeLatch();
     const peer: Peer = {
       key, name, pc, closed, markClosed, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, joinSeq: untrack(room.people).find((p) => p.publicKey === key && p.role === 'participant')?.joinSeq ?? null,
-      returns: 0, id: crypto.randomUUID().replaceAll('-', ''), remoteId: null, offerN: 0, answerN: undefined, offerSent: null, audio, keepAlive, audioNodes: [], restarts: 0, relayOnly, generation: ++generation, connectedOnce: false, rebuilding: false, iceRestarts: 0, iceIssuedAt,
+      returns: 0, id: crypto.randomUUID().replaceAll('-', ''), remoteId: null, offerN: 0, answerN: undefined, offerSent: null, audio, keepAlive, audioNodes: [], relayOnly, generation: ++generation, link: newLink(initiator, countsOf(key)), timers: {}, iceRestarts: 0, iceIssuedAt,
       view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1, shareVolume: untrack(shareVolumes)[key] ?? 1, shareSound: false, rttMs: null },
       viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, sendsRed: false, sendsFec: true, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, shareSoundBytesIn: 0, shareSoundReadAt: 0, watchedAt: 0, shareSoundChecks: 0, videoBytesAt: 0, framesDecoded: null, framesGrewAt: null, holdOpening: false, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
@@ -927,9 +922,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       peer.outgoingCandidates.push(candidate ? candidate.toJSON() : null);
       peer.candidateTimer ??= setTimeout(() => flushCandidates(peer), CANDIDATE_BATCH_MS);
     };
-    pc.oniceconnectionstatechange = () => onIceState(peer);
-    pc.onconnectionstatechange = () => onConnectionState(peer);
-    armConnectWatchdog(peer, initiator);
+    pc.oniceconnectionstatechange = () => recover(peer, { on: 'ice', ice: pc.iceConnectionState, connection: pc.connectionState });
+    pc.onconnectionstatechange = () => recover(peer, { on: 'connection', ice: pc.iceConnectionState, connection: pc.connectionState });
     pc.ontrack = ({ track, transceiver }) => {
       // Fires inside setRemoteDescription, before the answerer has recorded its transceivers,
       // so identify the slot by position in the connection's transceiver list, not via peer.tx.
@@ -953,6 +947,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       }
     };
     peers.set(key, peer);
+    recover(peer, { on: 'built' });
     // A rebuilt connection lost the sharer's subscription; re-assert mine before the first publish, so a tile that
     // was live never reads "closed" in between, which would end its fullscreen (spec §6.5, §8.1).
     if (watchIntent.has(key) && sendSubscribe(key, true)) peer.view.watching = true;
@@ -1183,43 +1178,44 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     let peer = peers.get(from);
     const self = untrack(room.people).find((p) => p.publicKey === myKey);
     const them = untrack(room.people).find((p) => p.publicKey === from && p.role === 'participant');
-    if (isOffer && data.forConn !== undefined && (peer ? peer.id !== data.forConn : iOfferTo(from))) {
-      // A renegotiation of a connection of mine that is gone: an offer sent again (resendOffer) that reached this page
-      // after a reload, or my connection was rebuilt since. Taken up, it would tie my connection to one of theirs that
-      // is closed. Their new connection, or mine, offers afresh: a page that reloaded joined last and offers itself.
-      // With no connection to them and not the one to offer, I take it up as before (an ICE restart of theirs after
-      // mine failed): nobody else would offer.
-      posthog.capture('signal_dropped', { reason: 'stale offer', offer: true });
-      return;
-    }
-    if (peer && isOffer && data.forConn === undefined && !peer.pc.remoteDescription && peer.pc.localDescription && self && them) {
-      // Both of us hold a connection that offered and got nothing back: one first offer is left over from before a
-      // reload or a reconnect of the other (sent again by resendOffer, or late). Presence says who offers first now
-      // (core/mesh.ts); politeness would not do, as the polite side would take up the stale one. The one to offer
-      // drops theirs; the other starts over from it.
-      if (iOfferTo(from)) { posthog.capture('signal_dropped', { reason: 'offer to the offerer', offer: true }); return; }
-      if (initiatesTo(them, { ...self, joinSeq: myJoinSeq })) { closePeer(from); peer = undefined; }
-    }
-    const offerSdp = isOffer ? (data.description as RTCSessionDescriptionInit).sdp ?? '' : '';
-    const fresh = !!peer && isOffer && isFreshConnection(peer.pc.remoteDescription?.sdp, offerSdp);
-    // An offer of theirs to a connection of mine that never connected, while its rebuild waits, or one that restarts its
-    // ICE (as an app from before ticket 63 does): applied in place it is the restart that left Firefox one-way, and
-    // answered from a fresh connection it gives their live one a certificate it never saw. Dropped, and mine is rebuilt
-    // now: my fresh offer reaches them as one (isFreshConnection below, on their side).
-    const ufrag = (sdp: string | undefined) => /a=ice-ufrag:(\S+)/.exec(sdp ?? '')?.[1];
-    if (peer && isOffer && !fresh && !peer.connectedOnce && !peer.view.serverLost
-      && (peer.rebuildTimer !== undefined || peer.rebuilding || (!!peer.pc.remoteDescription && ufrag(peer.pc.remoteDescription.sdp) !== ufrag(offerSdp)))) {
-      posthog.capture('signal_dropped', { reason: 'offer to a connection that never connected', offer: true });
-      peer.ignoreOffer = true; // its candidates, trailing in signals of their own, fail quietly as after an offer ignored in glare
-      rebuildFailed(peer);
-      return;
-    }
-    if (peer && isOffer && (peer.view.serverLost || peer.pc.iceConnectionState === 'failed' || peer.pc.connectionState === 'closed' || fresh)) {
-      // A fresh offer from a peer whose old connection is dead, who vanished and came back, or who built a new connection
-      // (their watchdog or a rejoin, told by a new DTLS certificate, ticket 22): start over. Applying it to the old
-      // connection would renegotiate a link the other side has already torn down.
-      closePeer(from);
-      peer = undefined;
+    if (isOffer) {
+      // Where their offer goes (spec §8.2, O1 to O5; core/recovery.ts offerPath):
+      // - O1, a renegotiation of a connection of mine that is gone: an offer sent again (resendOffer) that reached this
+      //   page after a reload, or my connection was rebuilt since. Taken up, it would tie my connection to one of theirs
+      //   that is closed; their new connection, or mine, offers afresh. With no connection to them and not the one to
+      //   offer, I take it up as before (an ICE restart of theirs after mine failed): nobody else would offer.
+      // - O2, both of us hold a connection that offered and got nothing back: one first offer is left over from before a
+      //   reload or a reconnect of the other. Presence says who offers first now; politeness would not do, as the polite
+      //   side would take up the stale one. The one to offer drops theirs; the other starts over from it.
+      // - O3, mine never connected and waits for its rebuild, or the offer restarts its ICE (an app from before ticket
+      //   63): applied in place it is the restart that left Firefox one-way, and answered from a fresh connection it
+      //   gives their live one a certificate it never saw. Dropped, and mine rebuilt now: my fresh offer reaches them as
+      //   one.
+      // - O4, their old connection is dead, they vanished and came back, or they built a new connection (their watchdog
+      //   or a rejoin, told by a new DTLS certificate, ticket 22): start over. Applied to the old connection it would
+      //   renegotiate a link the other side has already torn down.
+      const offerSdp = (data.description as RTCSessionDescriptionInit).sdp ?? '';
+      const ufrag = (sdp: string | undefined) => /a=ice-ufrag:(\S+)/.exec(sdp ?? '')?.[1];
+      const held = peer?.pc.remoteDescription;
+      const { go, row } = offerPath(peer?.link, {
+        held: !!peer,
+        namesGone: data.forConn !== undefined && (!peer || peer.id !== data.forConn),
+        bothFirstOffers: !!peer && data.forConn === undefined && !held && !!peer.pc.localDescription,
+        iOfferFirst: iOfferTo(from),
+        theyOfferFirst: !!self && !!them && initiatesTo(them, { ...self, joinSeq: myJoinSeq }),
+        fresh: !!peer && isFreshConnection(held?.sdp, offerSdp),
+        restartsIce: !!held && ufrag(held.sdp) !== ufrag(offerSdp),
+        deadIce: !!peer && (peer.pc.iceConnectionState === 'failed' || peer.pc.connectionState === 'closed'),
+      });
+      const reason = { O1: 'stale offer', O2: 'offer to the offerer', O3: 'offer to a connection that never connected' }[row as 'O1' | 'O2' | 'O3'];
+      if (go === 'drop') { posthog.capture('signal_dropped', { reason, offer: true }); return; }
+      if (go === 'drop-rebuild' && peer) {
+        posthog.capture('signal_dropped', { reason, offer: true });
+        peer.ignoreOffer = true; // its candidates, trailing in signals of their own, fail quietly as after an offer ignored in glare
+        recover(peer, { on: 'rebuild-now' });
+        return;
+      }
+      if (go === 'fresh') { closePeer(from); peer = undefined; }
     }
     if (!peer) {
       // Candidates come after the description they belong to, in order: without one they are left over from a
@@ -1283,73 +1279,60 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   /**
-   * The badge turns green only on the full connection state, which includes the DTLS handshake. ICE alone
-   * can succeed one-sidedly (the other side answered our checks but refused our description, ticket 14),
-   * and a path without encryption carries no media; showing "direct" for it also silenced the watchdog.
+   * Tells a connection's recovery what happened and carries out what it says (core/recovery.ts, spec §8.2 "Recovery
+   * rules", ADR 0008). Not for a connection already replaced or closed, but for the end of its own rebuild (R10).
    */
-  function onConnectionState(peer: Peer): void {
-    // The handshake can fail while ICE still says connected: no media flows, so the badge goes as for failed ICE (which
-    // handles its own failure; the connection state follows it).
-    if (peer.pc.connectionState === 'failed' && peer.pc.iceConnectionState !== 'failed') { connectionFailed(peer); return; }
-    if (peer.pc.connectionState !== 'connected') return;
-    clearTimeout(peer.connectTimer);
-    // A restart or rebuild still waiting has nothing left to do.
-    clearTimeout(peer.restartTimer);
-    clearTimeout(peer.rebuildTimer);
-    peer.rebuildTimer = undefined;
-    peer.connectedOnce = true;
-    forgetAttempts(peer.key);
-    if (peer.view.conn === 'connecting' || peer.view.conn === 'reconnecting' || peer.view.conn === 'unreachable') setView(peer, { conn: 'direct' });
-    // Ask again now the link is up. The ask sent when this connection was built can reach the sharer while they still
-    // hold the old one, which their fresh-offer path then closes along with the subscription (a Rejoin, a rebuild).
-    // A repeated subscribe is harmless on the sharer's side.
-    if (watchIntent.has(peer.key) && sendSubscribe(peer.key, true) && !peer.view.watching) { peer.watchedAt = Date.now(); peer.shareSoundChecks = 0; setView(peer, { watching: true }); }
-    void refreshStats(peer);
+  function recover(peer: Peer, event: RecoveryEvent): void {
+    if (peers.get(peer.key) !== peer && event.on !== 'rebuilt') return;
+    const ctx = { get iOfferFirst() { return iOfferTo(peer.key); } };
+    for (const action of step(peer.link, countsOf(peer.key), event, ctx)) act(peer, action);
   }
 
-  function onIceState(peer: Peer): void {
-    const s = peer.pc.iceConnectionState;
-    clearTimeout(peer.disconnectTimer);
-    if (s === 'connected' || s === 'completed') {
-      peer.restarts = 0;
-      // A rebuild waiting (rebuildTimer) stays until the handshake is through too: ICE alone carries nothing, and the
-      // watchdog no longer looks after it (onConnectionState clears it then).
-      clearTimeout(peer.restartTimer);
-      // After an ICE restart the connection state may already read connected; let it settle the badge.
-      onConnectionState(peer);
-    } else if (s === 'disconnected') {
-      setView(peer, { conn: 'reconnecting' });
-      // A peer whose server socket is gone cannot be signalled, so an ICE restart would only produce
-      // "not in the call" errors: once their media fails too, the connection is over. They re-offer on return.
-      peer.disconnectTimer = setTimeout(() => {
-        if (peer.pc.iceConnectionState !== 'disconnected') return;
-        // One that never connected goes the way of a failure: it is rebuilt, never restarted (ticket 63).
-        if (peer.view.serverLost) closePeer(peer.key); else if (!peer.connectedOnce) connectionFailed(peer); else void restartIce(peer);
-      }, ICE_DISCONNECTED_GRACE_MS);
-    } else if (s === 'failed') {
-      connectionFailed(peer);
-    } else if (s === 'closed') {
-      setView(peer, { conn: 'unreachable' });
+  function act(peer: Peer, a: RecoveryAction): void {
+    const { pc } = peer;
+    switch (a.do) {
+      case 'badge':
+        // Up: direct until the stats tell the pair (refreshStats). The badge turns green only on the full connection
+        // state, which includes the DTLS handshake: ICE alone can succeed one-sidedly (ticket 14).
+        if (a.badge !== 'up') setView(peer, { conn: a.badge });
+        else if (peer.view.conn === 'connecting' || peer.view.conn === 'reconnecting' || peer.view.conn === 'unreachable') setView(peer, { conn: 'direct' });
+        break;
+      case 'arm':
+        clearTimeout(peer.timers[a.timer]);
+        peer.timers[a.timer] = setTimeout(() => {
+          peer.timers[a.timer] = undefined;
+          recover(peer, { on: 'timer', timer: a.timer, ice: pc.iceConnectionState, connection: pc.connectionState });
+        }, a.ms);
+        break;
+      case 'cancel':
+        clearTimeout(peer.timers[a.timer]);
+        peer.timers[a.timer] = undefined;
+        break;
+      case 'restart':
+        void restartIce(peer);
+        break;
+      case 'rebuild':
+        if (a.why === 'stuck') { void stuckRebuild(peer, a.stalled); break; }
+        peer.rebuildFacts = { relay_only: peer.relayOnly, ice: pc.iceConnectionState, connection: pc.connectionState };
+        void rebuildPeer(peer, a.stalled, () => stillRebuild(peer.link, 'failed', pc.connectionState)).then((done) => recover(peer, { on: 'rebuilt', why: 'failed', done }));
+        break;
+      case 'close':
+        closePeer(peer.key);
+        break;
+      case 'up':
+        // Ask again now the link is up. The ask sent when this connection was built can reach the sharer while they still
+        // hold the old one, which their fresh-offer path then closes along with the subscription (a Rejoin, a rebuild).
+        // A repeated subscribe is harmless on the sharer's side.
+        if (watchIntent.has(peer.key) && sendSubscribe(peer.key, true) && !peer.view.watching) { peer.watchedAt = Date.now(); peer.shareSoundChecks = 0; setView(peer, { watching: true }); }
+        void refreshStats(peer);
+        break;
+      case 'resend':
+        resendOffer(peer, 'their_return');
+        break;
+      case 'report':
+        posthog.capture(a.event, { rebuilds: a.rebuilds, ...peer.rebuildFacts });
+        break;
     }
-  }
-
-  /**
-   * Rebuilds a connection that never connected, now (its timer ran, or an offer of theirs reached it), once at a time.
-   * Declined (their socket gone, say), the next failure, or their return, arms it again.
-   */
-  function rebuildFailed(peer: Peer): void {
-    clearTimeout(peer.rebuildTimer);
-    peer.rebuildTimer = undefined;
-    if (peer.rebuilding) return;
-    peer.rebuilding = true;
-    const n = failedRebuilds.get(peer.key) ?? 0;
-    const facts = { rebuilds: n, relay_only: peer.relayOnly, ice: peer.pc.iceConnectionState, connection: peer.pc.connectionState };
-    void rebuildPeer(peer, stuckAttempts.get(peer.key) ?? 0, () => peer.pc.connectionState !== 'connected' && !peer.view.serverLost).then((done) => {
-      peer.rebuilding = false;
-      if (!done) return;
-      failedRebuilds.set(peer.key, n + 1);
-      posthog.capture('peer_never_connected', facts);
-    });
   }
 
   /** Whether presence makes me the one to offer to them first (core/mesh.ts); false while either is unknown. */
@@ -1359,36 +1342,13 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     return !!self && !!them && initiatesTo({ ...self, joinSeq: myJoinSeq }, them);
   }
 
-  /**
-   * No media can flow (ICE or the handshake failed): unreachable, then after the back-off an ICE restart of a connection
-   * that had connected, or a rebuild of one that never did. In Firefox a relay-only rebuild whose ICE failed came back from
-   * the restart connected, hearing the friend, while they never got a byte of my voice (ticket 63). The rebuild keeps the
-   * connection's policy and its stalled attempts: only the watchdog turns to the relay (ticket 22), so a first attempt over
-   * every path that failed once keeps them all, and where TURN is blocked can still reach the friend.
-   */
-  function connectionFailed(peer: Peer): void {
-    if (peer.view.serverLost) { closePeer(peer.key); return; }
-    setView(peer, { conn: 'unreachable' });
-    if (!peer.connectedOnce) {
-      // Told again (ICE after the handshake, say): the wait is not pushed out.
-      if (peer.rebuildTimer !== undefined || peer.rebuilding) return;
-      clearTimeout(peer.connectTimer);
-      peer.rebuildTimer = setTimeout(() => rebuildFailed(peer), failedRebuildDelay(failedRebuilds.get(peer.key) ?? 0, iOfferTo(peer.key)));
-      return;
-    }
-    const delay = restartBackoff(peer.restarts);
-    peer.restarts++;
-    clearTimeout(peer.restartTimer); // one restart pending at a time, should both failures be told
-    peer.restartTimer = setTimeout(() => void restartIce(peer), delay);
-  }
-
   /** One peer as a problem report sees it: states, the share track, decoder and encoder counters, the selected pair (ticket 12). */
   async function peerDiag(peer: Peer): Promise<PeerDiagnostics> {
     const { inboundVideo, outboundVideo, inboundVoice, outboundVoice, pair } = await reportStats(peer.pc, peer.tx[SLOT_INDEX.voice]);
     const track = peer.remoteShare.getVideoTracks()[0];
     const { conn, watching, shareLive, shareKbps, shareFormat, serverLost, volume, shareVolume, rttMs } = peer.view;
     return {
-      fingerprint: untrack(room.people).find((p) => p.publicKey === peer.key)?.fingerprint ?? null, polite: peer.polite, restarts: peer.restarts, relayOnly: peer.relayOnly, viewsMyShare: peer.viewsMyShare, viewerScale: peer.viewerScale, asksLowVoice: peer.asksLowVoice, sendsRed: peer.sendsRed, sendsFec: peer.sendsFec,
+      fingerprint: untrack(room.people).find((p) => p.publicKey === peer.key)?.fingerprint ?? null, polite: peer.polite, restarts: peer.link.restarts, relayOnly: peer.relayOnly, viewsMyShare: peer.viewsMyShare, viewerScale: peer.viewerScale, asksLowVoice: peer.asksLowVoice, sendsRed: peer.sendsRed, sendsFec: peer.sendsFec,
       voiceBufferMs: (peer.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined)?.jitterBufferTarget ?? null,
       voiceBuffer: { adaptiveMs: bufferMs(peer.buffer), level: peer.buffer.level, lastWindow: peer.lastWindow },
       view: { conn, watching, shareLive, shareKbps, shareFormat, serverLost, volume, shareVolume, rttMs },
@@ -1467,7 +1427,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
   const invariants = createInvariantWatchdog(invariantFacts, (key) => {
     const p = peers.get(key);
-    return p ? { fingerprint: fingerprintOf(p), relayOnly: p.relayOnly, restarts: p.restarts, serverLost: p.view.serverLost, signaling: p.pc.signalingState } : {};
+    return p ? { fingerprint: fingerprintOf(p), relayOnly: p.relayOnly, restarts: p.link.restarts, serverLost: p.view.serverLost, signaling: p.pc.signalingState } : {};
   });
 
   /**
@@ -1486,24 +1446,19 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   /**
-   * Stuck-connecting watchdog (spec §8.2). A connection that never left "connecting" gets reported
-   * with everything the browser knows, then torn down and offered again by whoever noticed: perfect
-   * negotiation sorts out the collision if both do. This is what a page reload used to achieve by hand.
+   * Stuck-connecting watchdog (spec §8.2, R11). A connection that never left "connecting" gets reported with everything
+   * the browser knows, then torn down and offered again by whoever noticed: perfect negotiation sorts out the collision if
+   * both do. This is what a page reload used to achieve by hand.
    */
-  function armConnectWatchdog(peer: Peer, initiator: boolean): void {
-    const attempt = stuckAttempts.get(peer.key) ?? 0;
-    peer.connectTimer = setTimeout(() => void connectWatchdog(peer, initiator, attempt), stuckDelay(attempt, initiator));
-  }
-  async function connectWatchdog(peer: Peer, initiator: boolean, attempt: number): Promise<void> {
-    const stillStuck = () => peers.get(peer.key) === peer && peer.view.conn === 'connecting' && peer.pc.connectionState !== 'closed';
-    if (!stillStuck()) return;
+  async function stuckRebuild(peer: Peer, stalled: number): Promise<void> {
+    const still = () => peers.get(peer.key) === peer && stillRebuild(peer.link, 'stuck', peer.pc.connectionState);
     const counts = await candidateCounts(peer.pc);
     posthog.capture('peer_connecting_slow', {
-      attempt, initiator, polite: peer.polite, relay_only: peer.relayOnly, signaling: peer.pc.signalingState, ice: peer.pc.iceConnectionState, gathering: peer.pc.iceGatheringState,
+      attempt: stalled - 1, initiator: peer.link.initiator, polite: peer.polite, relay_only: peer.relayOnly, signaling: peer.pc.signalingState, ice: peer.pc.iceConnectionState, gathering: peer.pc.iceGatheringState,
       remote_description: peer.pc.remoteDescription !== null, local_description: peer.pc.localDescription !== null, peers: peers.size, ...counts,
     });
-    if (!stillStuck()) return;
-    await rebuildPeer(peer, attempt + 1, stillStuck);
+    if (!still()) return;
+    await rebuildPeer(peer, stalled, still);
   }
 
   /**
@@ -1518,14 +1473,14 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const person = untrack(room.people).find((p) => p.publicKey === peer.key && p.role === 'participant');
     closePeer(peer.key);
     if (!joined || !person) return false;
-    stuckAttempts.set(peer.key, stalled);
+    countsOf(peer.key).stalled = stalled;
     createPeer(peer.key, person.name, true);
     return true;
   }
 
   async function restartIce(peer: Peer): Promise<void> {
     if (peer.pc.connectionState === 'closed') return;
-    posthog.capture('ice_restart', { attempt: peer.restarts, ice_state: peer.pc.iceConnectionState });
+    posthog.capture('ice_restart', { attempt: peer.link.restarts, ice_state: peer.pc.iceConnectionState });
     await freshenIce();
     if (peer.pc.signalingState === 'closed') return; // closed while the credentials were asked for
     // Only credentials about to expire are replaced, as before; the tab's may be fresher than these, fetched by another
@@ -1573,7 +1528,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const now = Date.now();
     if (framesDecoded !== null && peer.framesDecoded !== null && framesDecoded > peer.framesDecoded) peer.framesGrewAt = now;
     peer.framesDecoded = framesDecoded;
-    // Only rate over a meaningful window; onIceState and the 2 s timer can call this back to back.
+    // Only rate over a meaningful window; a connection coming up (recover) and the 2 s timer can call this back to back.
     if (peer.videoBytesAt && now - peer.videoBytesAt >= 500) {
       const kbps = Math.round(((videoBytesIn - peer.videoBytesIn) * 8) / (now - peer.videoBytesAt));
       // The remote track can stay unmuted when the sharer only stops sending, so a share started again fires no
@@ -1632,7 +1587,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   function closePeer(key: string): void {
     const peer = peers.get(key);
     if (!peer) return;
-    clearTimeout(peer.disconnectTimer); clearTimeout(peer.restartTimer); clearTimeout(peer.rebuildTimer); clearTimeout(peer.graceTimer); clearTimeout(peer.candidateTimer); clearTimeout(peer.connectTimer);
+    for (const t of Object.values(peer.timers)) clearTimeout(t);
+    clearTimeout(peer.candidateTimer);
     peer.pc.close();
     peer.markClosed();
     peer.audio.srcObject = null;
@@ -1659,13 +1615,13 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       const existing = peers.get(p.publicKey);
       if (existing) {
         // Their socket came back: what I sent while it was down never reached them.
-        const back = existing.view.serverLost || (existing.joinSeq !== null && existing.joinSeq !== p.joinSeq);
-        if (existing.view.serverLost) { clearTimeout(existing.graceTimer); setView(existing, { serverLost: false, name: p.name }); }
+        const back = existing.link.lost || (existing.joinSeq !== null && existing.joinSeq !== p.joinSeq);
+        const wasLost = existing.link.lost;
         existing.joinSeq = p.joinSeq;
-        // A failed one that never connected whose rebuild was declined while they were away is rebuilt now they are back,
-        // its offer not sent again.
-        if (back && !existing.connectedOnce && existing.view.conn === 'unreachable' && existing.rebuildTimer === undefined && !existing.rebuilding) { existing.returns++; connectionFailed(existing); }
-        else if (back) { existing.returns++; resendOffer(existing, 'their_return'); }
+        // R14: what I sent while it was down is sent again, or a failed one that never connected, whose rebuild was
+        // declined while they were away, is rebuilt.
+        if (back) { existing.returns++; recover(existing, { on: 'back' }); }
+        if (wasLost) setView(existing, { serverLost: false, name: p.name });
         // Their share ended: my subscription is void, the tile goes back to "click to watch" (spec §6.5).
         if (!p.sharing) { watchIntent.delete(p.publicKey); if (existing.view.watching) setView(existing, { watching: false, shareLive: false, shareKbps: 0, shareFormat: null, shareSound: false }); }
         continue;
@@ -1677,21 +1633,16 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       if (person && person.role === 'participant') continue;
       // Vanished, or reappeared as a visitor while their rejoin is still in flight: their server socket dropped.
       // A deliberate leave arrives as an explicit `left` and closes at once; here we keep media for a grace period.
-      if (!peer.view.serverLost) {
+      if (!peer.link.lost) {
         posthog.capture('peer_server_lost', { ice: peer.pc.iceConnectionState });
-        const ice = peer.pc.iceConnectionState;
-        // The stalled-attempt count goes with them: a friend who comes back later gets a fresh first attempt on every path.
-        forgetAttempts(peer.key);
-        if (ice === 'failed' || ice === 'closed' || ice === 'new') { closePeer(peer.key); continue; } // nothing worth keeping
-        setView(peer, { serverLost: true });
-        // A connection that works is kept however long their socket stays away (ticket 31): the voice never needed the
-        // server. It ends when the browser says the link is gone (the disconnected and failed branches of onIceState),
-        // or here, when it still is not up after the grace period.
-        peer.graceTimer = setTimeout(() => graceEnded(peer), PEER_GRACE_MS);
+        // R12. The attempt counts go with them: a friend who comes back later gets a fresh first attempt on every path. A
+        // connection that works is kept however long their socket stays away (ticket 31): the voice never needed the
+        // server. It ends when the browser says the link is gone (R5, R7), or when it still is not up after the grace.
+        recover(peer, { on: 'lost', ice: peer.pc.iceConnectionState });
+        if (peer.link.lost) setView(peer, { serverLost: true });
       }
     }
   }
-  function graceEnded(peer: Peer): void { if (peer.pc.connectionState !== 'connected') closePeer(peer.key); }
   createEffect(() => room.people(), (people) => { reconcile(people); }); // block body: never return a value from an effect callback
 
   // Re-declare after our own server reconnect (spec §8.1): peer connections stay, join sequence is fresh.
@@ -1733,7 +1684,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     switch (m.t) {
       case 'call': case 'ice': onAnswer(m); return;
       case 'signal': onSignal(m.from, m.data); return;
-      case 'left': watchIntent.delete(m.publicKey); forgetAttempts(m.publicKey); closePeer(m.publicKey); return;
+      case 'left': watchIntent.delete(m.publicKey); attempts.delete(m.publicKey); closePeer(m.publicKey); return;
       case 'subscribe': {
         const peer = peers.get(m.from);
         if (!peer) { if (m.on) earlyViewers.set(m.from, m.scale ?? 1); else earlyViewers.delete(m.from); return; }
@@ -1930,8 +1881,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     pending.get('call')?.cancel();
     pending.get('ice')?.cancel(); // fresh credentials for peers about to close: the server sends no answer after the Leave
     for (const key of [...peers.keys()]) closePeer(key);
-    stuckAttempts.clear();
-    failedRebuilds.clear();
+    attempts.clear();
     watchIntent.clear(); // joining again starts with every tile at "click to watch", not with yesterday's subscriptions
     clearInterval(heartbeat);
     local.remove(REJOIN_KEY); // a deliberate Leave (or another tab taking over) means no Rejoin
@@ -2008,7 +1958,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   const exposeDevHook = () => {
     if (!exposeHooks) return;
     (window as unknown as { __dave?: unknown }).__dave = {
-      peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, relayOnly: p.relayOnly, generation: p.generation, iceRestarts: p.iceRestarts, stuck: stuckAttempts.get(p.key) ?? 0, audioBytesIn: p.view.audioBytesIn, videoBytesIn: p.videoBytesIn, watching: p.view.watching, shareLive: p.view.shareLive, subscribedToMe: p.viewsMyShare, transceivers: p.pc.getTransceivers().length, rttMs: p.view.rttMs, asksLowVoice: p.asksLowVoice, sendsRed: p.sendsRed,
+      peers: () => [...peers.values()].map((p) => ({ name: p.name, ice: p.pc.iceConnectionState, conn: p.view.conn, relayOnly: p.relayOnly, generation: p.generation, iceRestarts: p.iceRestarts, stuck: attempts.get(p.key)?.stalled ?? 0, audioBytesIn: p.view.audioBytesIn, videoBytesIn: p.videoBytesIn, watching: p.view.watching, shareLive: p.view.shareLive, subscribedToMe: p.viewsMyShare, transceivers: p.pc.getTransceivers().length, rttMs: p.view.rttMs, asksLowVoice: p.asksLowVoice, sendsRed: p.sendsRed,
         signaling: p.pc.signalingState, remoteUfrag: /a=ice-ufrag:(\S+)/.exec(p.pc.remoteDescription?.sdp ?? '')?.[1] ?? null,
         voiceBufferMs: (p.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined)?.jitterBufferTarget ?? null, adaptiveMs: bufferMs(p.buffer), lastWindow: p.lastWindow })),
       share: () => untrack(() => ({
@@ -2054,9 +2004,9 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       /** The end of the grace period for a friend who lost the server (ticket 31), on demand instead of after PEER_GRACE_MS: 'kept' or 'closed'. */
       expireGrace: (name: string) => {
         const peer = [...peers.values()].find((p) => p.name === name);
-        if (!peer?.view.serverLost) return 'not lost';
-        clearTimeout(peer.graceTimer);
-        graceEnded(peer);
+        if (!peer?.link.lost) return 'not lost';
+        act(peer, { do: 'cancel', timer: 'grace' });
+        recover(peer, { on: 'timer', timer: 'grace', ice: peer.pc.iceConnectionState, connection: peer.pc.connectionState });
         return peers.has(peer.key) ? 'kept' : 'closed';
       },
       /** Makes the sent voice read `factor` of real time from now on, as a USB-C headset did (ticket 37). */
@@ -2096,7 +2046,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         const peer = [...peers.values()].find((p) => p.name === name);
         if (!peer) return 'no such peer';
         Object.defineProperty(peer.pc, 'connectionState', { get: () => 'failed', configurable: true });
-        try { onConnectionState(peer); } finally { delete (peer.pc as { connectionState?: unknown }).connectionState; }
+        try { recover(peer, { on: 'connection', ice: peer.pc.iceConnectionState, connection: peer.pc.connectionState }); } finally { delete (peer.pc as { connectionState?: unknown }).connectionState; }
         return peer.view.conn;
       },
       /** Closes the connection to `name` underneath the call, as a path that forgot closePeer would: no state event fires, the badge stays. */
