@@ -27,7 +27,8 @@ export const THEME_GROUPS: readonly { label: string; themes: { name: string; lab
 const known = (name: string): string => (name === '' || THEMES.includes(name) ? name : '');
 const stored = local.read('theme');
 let fallback = stored !== null ? known(stored) : '';
-const [picks, setPicks] = createSignal<Record<string, string>>(local.read('roomThemes'));
+// Written from the workspace as it is made, too (adoptOldTheme): the store of the page, not of the scope that writes it.
+const [picks, setPicks] = createSignal<Record<string, string>>(local.read('roomThemes'), { ownedWrite: true });
 // Another tab's picks (a tab that took the app over, client/tablock.ts): this one shows them, and writes on top of them.
 addEventListener('storage', (e) => {
   if (e.key === 'dave.roomThemes') setPicks(local.read('roomThemes'));
