@@ -7,7 +7,8 @@
  * returns, and what every fixture parses to. Changing any of them fails that test, which says what to do next.
  *
  * - A new key: add it here first. `local`, `idbGet` and `idbSet` (client/storage.ts) only take keys listed here.
- * - A new stored shape: add a fixture in it, and keep the old fixtures: they are what browsers out there still hold.
+ * - A new stored shape: add a fixture in it, and keep the old fixtures: they are what browsers out there still hold. A
+ *   shape the app before it cannot read goes under a new key, the old key left as it is, so a rollback finds its data.
  *
  * Not listed: what posthog-js stores itself (`ph_*`, removed when telemetry is off, client/posthog.ts) and the service
  * worker's caches, which are named per build (client/sw.ts).

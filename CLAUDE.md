@@ -55,10 +55,12 @@ Rules:
 - **Review before the first push to master**, not after: an independent review subagent (or `/code-review`) on the diff.
   Past reviews found real bugs every time they ran. Then review the fixes again (the fix diff only), until a round finds
   nothing real, at most three rounds. Real means a concrete sequence that breaks something; nits do not start a round.
-- **Saved state needs a migration story.** Anything in `localStorage` or IndexedDB outlives a deploy: changing a default or a
-  stored shape does not reach existing browsers by itself. Either migrate, or say plainly in the report who will not see it.
-  Every stored key is listed in `src/core/storedstate.ts` with its parser and fixtures. `test/storedstate.test.ts` fails on
-  a changed default or shape and says what to do.
+- **Saved state needs a migration story.** Anything in `localStorage`, IndexedDB or a Room's storage outlives a deploy:
+  changing a default or a stored shape does not reach existing data by itself, and no preview meets old data (they start
+  empty), so the live site is the first place a migration runs. Either migrate, or say plainly in the report who will not
+  see it. A migration writes a new key and leaves the old one as it was, so a rollback still finds its data; deleting the
+  old key is a later change, once the migration is known to work. Every stored key is listed in `src/core/storedstate.ts`
+  with its parser and fixtures. `test/storedstate.test.ts` fails on a changed default or shape and says what to do.
 - Never invent commit hashes, test counts or CI results. Copy them from the output.
 
 ## Shipping
