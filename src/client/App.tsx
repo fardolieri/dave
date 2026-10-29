@@ -1,4 +1,5 @@
 import { createSignal, Switch, Match, createMemo, createEffect, For, Show, untrack, onCleanup, onSettled, mapArray } from 'solid-js';
+import type { JSX } from '@solidjs/web';
 import './styles.css';
 import dino from './dino.svg';
 import posthog, { consent, isTestAccount, setConsent, telemetryOn, type Consent } from './posthog';
@@ -18,7 +19,7 @@ import { contactOf, isKnown, markKnown, setNickname } from './contacts';
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, identityOf, normaliseName, type Identity, type Person } from '../core/protocol';
 import { displayName, formatAgo, knownAgo } from '../core/names';
 import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
-import { formatBitrate, formatVideo } from '../core/format';
+import { formatBitrate, formatStream } from '../core/format';
 import { FOLD_OLDER_MS, olderCount } from '../core/chatlog';
 import { formatDelay, lagLevel } from '../core/lowvoice';
 import { shareTileState } from '../core/invariants';
@@ -833,6 +834,8 @@ function Workspace(props: WorkspaceProps) {
                     view={viewOf(s(), key)}
                     stream={key === me ? s().call.sharing() ?? undefined : s().call.shareStreamOf(key)}
                     outgoing={key === me ? s().call.outgoing() : undefined}
+                    faceOf={(k) => { const p = present(k); return p && labelOf(p); }}
+                    connOf={(k) => viewOf(s(), k)?.conn}
                     onWatch={(on) => s().call.watch(key, on)}
                     onFullscreen={() => s().call.watchOnly(key)}
                     onVolume={s().call.inCall() ? (v) => s().call.setShareVolume(key, v) : undefined}
@@ -1524,6 +1527,8 @@ const requestFullscreenSafely = (el: FullscreenEl, video?: HTMLVideoElement & { 
 type ShareTileProps = {
   /** The sharer as this browser names them. */
   p: Person; name: string; isMe: boolean; inCall: boolean; view?: PeerView; stream?: MediaStream; outgoing?: OutgoingShare | null;
+  /** How a viewer of the share is shown, and my connection to them; none for a friend not here. */
+  faceOf: (publicKey: string) => Label | undefined; connOf: (publicKey: string) => ConnState | undefined;
   onWatch: (on: boolean) => void; onFullscreen: () => void; onVolume?: (v: number) => void;
   /** The tile has been live for a while and still shows no frame (ticket 12). */
   onBlack?: (element: Record<string, unknown>) => void;
@@ -1660,17 +1665,25 @@ function ShareTile(props: ShareTileProps) {
     const v = props.view?.shareVolume ?? 1;
     if (v > 0) { unmutedShares.set(props.p.publicKey, v); props.onVolume?.(0); } else props.onVolume?.(unmutedShares.get(props.p.publicKey) ?? 1);
   };
+  // Who watches, as pictures before the numbers: mine from my browser, which each subscribe reaches, a friend's as the
+  // friend declares it through presence (me among them).
+  const viewers = () => (props.isMe ? props.outgoing?.each.map((e) => e.publicKey) ?? [] : props.p.viewers ?? []);
   const stats = () => {
     if (props.isMe) {
-      const o = props.outgoing;
-      if (!o || o.viewers === 0) return 'you are sharing · nobody watching yet';
-      const who = o.viewers === 1 ? '1 viewer' : `${o.viewers} viewers`;
-      return [who, formatBitrate(o.kbps), ...o.formats.map(formatVideo)].join(' · ');
+      const each = props.outgoing?.each ?? [];
+      if (each.length === 0) return 'you are sharing · nobody watching yet';
+      return each.length === 1 ? formatStream(each[0]!.kbps, each[0]!.format) : formatBitrate(props.outgoing!.kbps);
     }
     const v = props.view;
     if (!v) return '';
     if (state() !== 'live') return CONN_LABEL[v.conn];
-    return [formatBitrate(v.shareKbps), ...(v.shareFormat ? [formatVideo(v.shareFormat)] : []), CONN_LABEL[v.conn]].join(' · ');
+    return formatStream(v.shareKbps, v.shareFormat);
+  };
+  // On my own share, a viewer's picture shows on hover what goes to them and how we are connected.
+  const viewerTip = (key: string) => {
+    const e = props.outgoing?.each.find((x) => x.publicKey === key);
+    const conn = props.connOf(key);
+    return <>{e ? formatStream(e.kbps, e.format) : ''}<Show when={conn}>{(c) => <span class={`conn conn-${c()}`} aria-label={CONN_LABEL[c()]}><i /></span>}</Show></>;
   };
   return (
     <div class={`share share-${state()} ${fullscreen() ? 'share-fs' : ''} ${fullscreen() && idle() && !onControls() ? 'share-idle' : ''}`} ref={root} onClick={onTileClick}
@@ -1690,6 +1703,7 @@ function ShareTile(props: ShareTileProps) {
       </Switch>
       <Show when={running()}>
         <div class="share-bar" onClick={(e) => e.stopPropagation()} onPointerEnter={() => setOnControls(true)} onPointerLeave={() => setOnControls(false)}>
+          <Show when={viewers().length > 0}><ShareFaces keys={viewers()} label={props.faceOf} tip={props.isMe ? viewerTip : undefined} /></Show>
           <span class="share-stats">{stats()}</span>
           {/* Disabled until sound has arrived: a window, or anything shared from Firefox, has none to set. Always there, so
               the bar does not jump when it comes. */}
@@ -1704,6 +1718,22 @@ function ShareTile(props: ShareTileProps) {
         </div>
       </Show>
     </div>
+  );
+}
+
+/** Who watches a share, as overlapping pictures like a folded room's faces; with `tip`, each shows it on hover (and on keyboard focus). */
+function ShareFaces(props: { keys: string[]; label: (publicKey: string) => Label | undefined; tip?: (publicKey: string) => JSX.Element }) {
+  return (
+    <span class="share-faces ph-no-capture">
+      <For each={props.keys}>{(key) => (
+        <Show when={props.label(key)}>{(l) => (
+          <span class={`face ${props.tip ? 'tipped' : ''}`} role="group" tabindex={props.tip ? 0 : undefined} aria-label={l().shown}>
+            <span class={`avatar ${l().picture ? 'pic' : ''}`}>{l().picture ?? l().shown[0]}</span>
+            <Show when={props.tip}>{(tip) => <span class="share-tip" role="tooltip">{tip()(key)}</span>}</Show>
+          </span>
+        )}</Show>
+      )}</For>
+    </span>
   );
 }
 

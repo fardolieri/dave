@@ -46,6 +46,54 @@ test('regression: a share stopped and started again goes live for its viewer, no
   await expect(bob.tile('Alice').locator('video')).toBeVisible();
 });
 
+test('a share shows who watches it: the sharer sees each viewer\'s stream on hover, a viewer sees who watches along', async ({ crowd, browserName }) => {
+  const [alice, bob, carol] = await callOf(crowd, ['Alice', 'Bob', 'Carol']);
+  const stream = /^\d+ fps · \d+×\d+ · [\d.]+ (kbps|Mbps)$/;
+  // Firefox's receiver stats may leave the frame rate out, and the bar then leaves it out too.
+  const received = browserName === 'chromium' ? stream : /^(\d+ fps · )?\d+×\d+ · [\d.]+ (kbps|Mbps)$/;
+  const bitrate = /^[\d.]+ (kbps|Mbps)$/;
+  const faces = (bar: ReturnType<Friend['tile']>) => bar.locator('.share-faces .face');
+  const names = async (bar: ReturnType<Friend['tile']>) => (await faces(bar).evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')))).sort();
+  await alice.startShare();
+  const own = alice.tile('Your screen').locator('.share-bar');
+  await expect(own.locator('.share-stats')).toHaveText('you are sharing · nobody watching yet');
+  await expect(faces(own)).toHaveCount(0);
+
+  // One viewer: the sharer's bar reads that viewer's stream, and the viewer's own picture is on both bars.
+  await bob.watchShare('Alice');
+  await expect(faces(own)).toHaveCount(1);
+  await expect(faces(own)).toHaveAttribute('aria-label', 'Bob');
+  await expect(own.locator('.share-stats')).toHaveText(stream);
+  const bobBar = bob.tile('Alice').locator('.share-bar');
+  await expect(faces(bobBar)).toHaveCount(1);
+  await expect(faces(bobBar)).toHaveAttribute('aria-label', 'Bob');
+  await expect(bobBar.locator('.share-stats')).toHaveText(received);
+
+  // On hover, the sharer sees what goes to that viewer and how they are connected; a viewer's pictures say nothing.
+  const tip = faces(own).first().locator('.share-tip');
+  await expect(tip).toBeHidden();
+  await faces(own).first().hover();
+  await expect(tip).toBeVisible();
+  await expect(tip).toHaveText(stream);
+  await expect(tip.locator('.conn:is(.conn-direct, .conn-relayed) i')).toBeVisible(); // as connectedTo takes either
+  await expect(bobBar.locator('.share-tip')).toHaveCount(0);
+
+  // Two viewers: the sharer's bar reads the whole upload, and each viewer sees both.
+  await carol.watchShare('Alice');
+  const carolBar = carol.tile('Alice').locator('.share-bar');
+  await expect(faces(own)).toHaveCount(2);
+  await expect(own.locator('.share-stats')).toHaveText(bitrate);
+  await expect.poll(() => names(bobBar)).toEqual(['Bob', 'Carol']);
+  await expect.poll(() => names(carolBar)).toEqual(['Bob', 'Carol']);
+  await expect(carolBar.locator('.share-stats')).toHaveText(received);
+
+  // One stops watching: gone from every bar.
+  await bob.tile('Alice').getByRole('button', { name: 'Stop watching' }).click();
+  await expect.poll(() => names(own)).toEqual(['Carol']);
+  await expect.poll(() => names(carolBar)).toEqual(['Carol']);
+  await expect(own.locator('.share-stats')).toHaveText(stream);
+});
+
 test('two sharers at once: a viewer watches both and dropping one leaves the other flowing', async ({ crowd }) => {
   const [alice, bob, carol] = await callOf(crowd, ['Alice', 'Bob', 'Carol'], 2);
   await alice.startShare();
@@ -90,7 +138,8 @@ test('a watched share\'s sound is set from its tile without going fullscreen, an
   const barHeight = async () => (await bar.boundingBox())?.height ?? 0;
   const statsHeight = (await bar.locator('.share-stats').boundingBox())?.height ?? 0;
   const fsHeight = (await bar.locator('button.fs').boundingBox())?.height ?? 0;
-  expect(await barHeight()).toBeLessThanOrEqual(Math.max(statsHeight, fsHeight) + 8); // the bar's own padding, 3 px each side
+  const facesHeight = (await bar.locator('.share-faces').boundingBox())?.height ?? 0;
+  expect(await barHeight()).toBeLessThanOrEqual(Math.max(statsHeight, fsHeight, facesHeight) + 8); // the bar's own padding, 3 px each side
   await slider.fill('40');
   await expect.poll(async () => (await ofAlice())?.shareView).toBeCloseTo(0.4);
   await expect(bar.locator('.share-vol')).toHaveAttribute('title', /40%/);

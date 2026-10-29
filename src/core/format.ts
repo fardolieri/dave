@@ -6,10 +6,9 @@ export function formatBitrate(kbps: number): string {
 }
 
 export type VideoFormat = { width: number; height: number; fps: number };
-/** "1280×720 · 30 fps"; fps is rounded, zero fps is left out (no frames yet). */
-export function formatVideo(f: VideoFormat): string {
-  const res = `${f.width}×${f.height}`;
-  return f.fps > 0 ? `${res} · ${Math.round(f.fps)} fps` : res;
+/** "30 fps · 1280×720 · 2.4 Mbps", as a share's bar shows a stream; fps is rounded, zero fps (no frames yet) and an unknown format are left out. */
+export function formatStream(kbps: number, f: VideoFormat | null): string {
+  return [...(f && f.fps > 0 ? [`${Math.round(f.fps)} fps`] : []), ...(f ? [`${f.width}×${f.height}`] : []), formatBitrate(kbps)].join(' · ');
 }
 /** Distinct formats, largest first, so a sharer with viewers at different scales sees each once. */
 export function distinctFormats(list: VideoFormat[]): VideoFormat[] {

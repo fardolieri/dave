@@ -138,3 +138,37 @@ describe('telemetry consent on the server (ticket 32)', () => {
     expect(presenceSnapshot([on.state]).people).toEqual([person]);
   });
 });
+
+describe('who watches a share, in presence', () => {
+  const person: Person = { publicKey: 'k-alice', fingerprint: 'f', name: 'Alice', role: 'participant', joinSeq: 1, sharing: false, muted: false };
+  const ctx = { authKey: 'a', now: 0, others: [], mintIce: async () => ({ iceServers: [], turnUser: null }) };
+  const attached: SocketState = { stage: 'attached', person, bucket: newBucket(0), attachedAt: 0 };
+  const send = (state: SocketState, m: object) => onMessage(state, JSON.stringify(m), ctx);
+  const viewersOf = (state: SocketState) => presenceSnapshot([state]).people[0]!.viewers;
+
+  it('takes a list of viewers with a share, and refuses one that is not a list of keys or too long', () => {
+    const key = (c: string) => c.repeat(87);
+    expect(parseClientMessage(JSON.stringify({ t: 'share', on: true, viewers: [key('b'), key('b'), key('c')] }))).toEqual({ t: 'share', on: true, viewers: [key('b'), key('c')] });
+    expect(parseClientMessage(JSON.stringify({ t: 'share', on: true }))).toEqual({ t: 'share', on: true });
+    for (const viewers of [key('b'), [7], ['not a key!'], ['k-bob'], [key('b') + 'x'.repeat(900)], Array.from({ length: 33 }, (_, i) => `${i}`.padEnd(87, 'x'))]) {
+      expect(parseClientMessage(JSON.stringify({ t: 'share', on: true, viewers }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'share' });
+    }
+  });
+
+  it('shows the sharer\'s viewers while sharing; a share without a list keeps the last one, its end and a leave drop it', async () => {
+    const [bob, carol] = ['b'.repeat(87), 'c'.repeat(87)];
+    const on = await send(attached, { t: 'share', on: true, viewers: [bob] });
+    expect(on.presenceChanged).toBe(true);
+    expect(viewersOf(on.state)).toEqual([bob]);
+    const same = await send(on.state, { t: 'share', on: true, viewers: [bob] });
+    expect(same.presenceChanged).toBeUndefined();
+    const more = await send(on.state, { t: 'share', on: true, viewers: [bob, carol] });
+    expect(more.presenceChanged).toBe(true);
+    expect(viewersOf((await send(more.state, { t: 'share', on: true })).state)).toEqual([bob, carol]); // an app from before
+    expect(viewersOf((await send(more.state, { t: 'share', on: true, viewers: [] })).state)).toBeUndefined();
+    expect(viewersOf((await send(more.state, { t: 'share', on: false, viewers: [bob] })).state)).toBeUndefined();
+    expect(viewersOf((await send(more.state, { t: 'leave' })).state)).toBeUndefined();
+    expect(viewersOf((await send(more.state, { t: 'join', muted: false, sharing: true })).state)).toEqual([bob, carol]);
+    expect(viewersOf((await send(more.state, { t: 'join', muted: false })).state)).toBeUndefined();
+  });
+});

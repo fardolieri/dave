@@ -122,6 +122,13 @@ export function presenceSnapshot(states: Iterable<SocketState | null | undefined
   return { t: 'presence', people: [...newest.values()].map((s) => s.person) };
 }
 
+/** The person with these viewers of the share; none, or an empty list, leaves the field out. */
+function withViewers(person: Person, viewers: string[] | undefined): Person {
+  const { viewers: _old, ...rest } = person;
+  return viewers?.length ? { ...rest, viewers } : rest;
+}
+const sameKeys = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((k, i) => k === b[i]);
+
 /** Every frame before authentication that is not a correct answer counts as a strike. */
 function strike(state: Extract<SocketState, { stage: 'challenge' }>, reason: string): Outcome {
   const attempts = state.attempts + 1;
@@ -244,7 +251,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       // Joining twice (after a server reconnect) is fine: a fresh join sequence, same identity.
       // The sequence is fixed and stored before the TURN fetch so concurrent joins cannot collide.
       const joinSeq = nextJoinSeq([...ctx.others, state.person]);
-      const person: Person = { ...state.person, role: 'participant', joinSeq, muted: msg.muted, sharing: msg.sharing === true };
+      const person: Person = withViewers({ ...state.person, role: 'participant', joinSeq, muted: msg.muted, sharing: msg.sharing === true }, msg.sharing === true ? state.person.viewers : undefined);
       const joins = (state.joins ?? 0) + 1;
       const now = ctx.now;
       const id = msg.id !== undefined ? { id: msg.id } : {}; // a client from before request ids sends none (protocol.ts, RequestId)
@@ -261,7 +268,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     }
     case 'leave': {
       if (state.person.role !== 'participant') return { state: next, replies: [] };
-      const person: Person = { ...state.person, role: 'visitor', joinSeq: null, sharing: false, muted: false };
+      const person: Person = withViewers({ ...state.person, role: 'visitor', joinSeq: null, sharing: false, muted: false }, undefined);
       const { turnUsers, ...rest } = next;
       return { state: { ...rest, person }, replies: [], broadcast: [{ t: 'left', publicKey: person.publicKey }], presenceChanged: true, ...(turnUsers?.length ? { revokeTurn: turnUsers } : {}) };
     }
@@ -291,8 +298,9 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     }
     case 'share': {
       if (state.person.role !== 'participant') return notInCall('share');
-      if (state.person.sharing === msg.on) return { state: next, replies: [] };
-      return { state: { ...next, person: { ...state.person, sharing: msg.on } }, replies: [], presenceChanged: true };
+      const viewers = msg.on ? msg.viewers ?? state.person.viewers : undefined;
+      if (state.person.sharing === msg.on && sameKeys(state.person.viewers ?? [], viewers ?? [])) return { state: next, replies: [] };
+      return { state: { ...next, person: withViewers({ ...state.person, sharing: msg.on }, viewers) }, replies: [], presenceChanged: true };
     }
     case 'subscribe': {
       if (state.person.role !== 'participant') return notInCall('subscribe');

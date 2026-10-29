@@ -385,6 +385,20 @@ button.unblock { background: #4a3a12; color: var(--warn); border-color: transpar
 .share-bar { display: flex; align-items: center; gap: 10px; padding: 3px 8px; font-family: monospace; font-size: 11px; color: var(--dim); background: rgba(0,0,0,.35); cursor: default; }
 .share-bar .share-stats { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .share-bar .fs { padding: 0 6px; line-height: 1.4; font-family: system-ui, sans-serif; }
+/* who watches, before the numbers: small overlapping pictures like a folded room's faces, no taller than the bar's text. On my
+   own share each says on hover what goes to that viewer, above the bar (the tile clips below it) */
+.share-faces { display: flex; flex: none; padding-left: 2px; }
+.share-faces .face { position: relative; display: inline-flex; margin-left: -5px; border-radius: 50%; }
+.share-faces .face:first-child { margin-left: 0; }
+.share-faces .face.tipped { cursor: default; }
+.share-faces .face.tipped:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+.share-faces .avatar { width: 18px; height: 18px; font: 600 10px system-ui, sans-serif; box-shadow: 0 0 0 1.5px rgba(0,0,0,.6); }
+.share-faces .avatar.pic { font-weight: 400; font-size: 12px; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", system-ui, sans-serif; }
+.share-tip { display: none; position: absolute; bottom: calc(100% + 6px); left: -4px; z-index: 2; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 4px; white-space: nowrap; background: rgba(0,0,0,.85); color: #fff; }
+.share-faces .face:hover .share-tip, .share-faces .face:focus-visible .share-tip { display: inline-flex; }
+.share-tip .conn i { margin: 0; transform: none; }
+.share.share-fs .share-faces .avatar { width: 22px; height: 22px; font-size: 11px; }
+.share.share-fs .share-faces .avatar.pic { font-size: 14px; }
 /* the share's own sound: always a short slider, no taller than the bar's text, so the bar keeps its height; the percentage only in
    fullscreen. The speaker before it mutes, a bare icon like the chat's emoji button, without the frame a theme gives buttons. */
 .share-vol { display: flex; flex-shrink: 0; align-items: center; gap: 4px; font-family: system-ui, sans-serif; line-height: 1; }

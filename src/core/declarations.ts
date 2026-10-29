@@ -48,11 +48,13 @@ export function joinDeclares(d: Declared): { muted: boolean; sharing: boolean } 
 /**
  * After the join on a socket is answered: every ask to watch or stop watching, to friends presence lists as sharing in
  * the call. A sharer keeps who watches her in her browser, across this friend's reconnects, so a repeated ask changes
- * nothing there; one lost with the last socket is made up for. Mute and share ride in the join itself.
+ * nothing there; one lost with the last socket is made up for. Mute and share ride in the join itself, but not who
+ * watches the share: a new socket starts without them, so a share with viewers is declared again.
  */
 export function afterJoin(d: Declared, people: readonly Person[]): Declaration[] {
   const sharing = new Set(people.filter((p) => p.role === 'participant' && p.sharing).map((p) => p.publicKey));
-  return [...d.values()].filter((m) => m.t === 'subscribe' && sharing.has(m.to));
+  const share = get(d, 'share');
+  return [...(share?.on && share.viewers?.length ? [share] : []), ...[...d.values()].filter((m) => m.t === 'subscribe' && sharing.has(m.to))];
 }
 
 /**

@@ -45,8 +45,10 @@ export const MIC_TEST_RECORD_MS = 5000;
 /** Why a mic test ended, for telemetry. */
 export type MicTestEnd = 'stop' | 'played' | 'panel' | 'mute' | 'leave' | 'hidden' | 'failed';
 
-/** My own share as the sharer sees it: total upload, the distinct encoded formats, how many watch. */
-export type OutgoingShare = { kbps: number; formats: VideoFormat[]; viewers: number };
+/** My own share as the sharer sees it: total upload, the distinct encoded formats, how many watch, and each viewer's stream in the order they came. */
+export type OutgoingShare = { kbps: number; formats: VideoFormat[]; viewers: number; each: ViewerStream[] };
+/** What my share sends one viewer. */
+export type ViewerStream = { publicKey: string; kbps: number; format: VideoFormat | null };
 
 /** Snapshot for problem reports (ticket 12): states and counters, no names, no message texts. */
 export type PeerDiagnostics = {
@@ -67,7 +69,7 @@ export type PeerDiagnostics = {
   pair: { local: string; remote: string; state: string; rttMs: number | null; outgoingKbps: number | null } | null;
 };
 export type CallDiagnostics = {
-  inCall: boolean; muted: boolean; microphone: boolean; micTest: MicTest | null; joinSeq: number | null; sharing: Record<string, unknown> | null; outgoing: OutgoingShare | null;
+  inCall: boolean; muted: boolean; microphone: boolean; micTest: MicTest | null; joinSeq: number | null; sharing: Record<string, unknown> | null; outgoing: Omit<OutgoingShare, 'each'> | null;
   shareSettings: unknown; viewerSettings: unknown; audioProcessing: unknown; lowBandwidthVoice: boolean; voiceRepair: VoiceRepair; ice: { servers: number; turn: boolean; ageMinutes: number | null };
   peers: PeerDiagnostics[];
 };
@@ -1406,7 +1408,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     return {
       inCall: joined, muted: untrack(muted), microphone: !!voiceTrack, micTest: testing, joinSeq: myJoinSeq,
       sharing: shareVideo ? { ...shareVideo.getSettings(), readyState: shareVideo.readyState, contentHint: shareVideo.contentHint } : null,
-      outgoing: untrack(outgoing), shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl, noiseRemoval: untrack(noiseRemoval), voiceThreshold, path: voice?.path ?? null, stop: untrack(noiseRemovalStop), load: voiceLoad, micRate: voiceTrack?.getSettings().sampleRate ?? null }, lowBandwidthVoice: lowVoiceOn, voiceRepair,
+      outgoing: untrack(() => { const o = outgoing(); return o && { kbps: o.kbps, formats: o.formats, viewers: o.viewers }; }), // without who watches: a report names friends by fingerprint only
+      shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl, noiseRemoval: untrack(noiseRemoval), voiceThreshold, path: voice?.path ?? null, stop: untrack(noiseRemovalStop), load: voiceLoad, micRate: voiceTrack?.getSettings().sampleRate ?? null }, lowBandwidthVoice: lowVoiceOn, voiceRepair,
       ice: { servers: iceServers.length, turn: hasTurn(), ageMinutes: iceIssuedAt ? Math.round((Date.now() - iceIssuedAt) / 60000) : null },
       peers: await Promise.all([...peers.values()].map(peerDiag)),
     };
@@ -1572,7 +1575,13 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     for (const p of peers.values()) void refreshStats(p);
   }, 2000);
 
-  /** Sum my share's upload over its viewers and list the encoded formats, largest first (spec §6.5). */
+  /** Who the Room last heard watches my share, joined; null before the share declared any. */
+  let declaredViewers: string | null = null;
+  /**
+   * Sum my share's upload over its viewers and list the encoded formats, largest first (spec §6.5), and each viewer's part.
+   * Who watches goes to the Room too, whenever it changes: a viewer's subscribe reaches only me, and the others see who
+   * watches with them through presence.
+   */
   function updateOutgoing(): void {
     if (!shareVideo) { if (untrack(outgoing)) setOutgoing(null); return; }
     const viewers = [...peers.values()].filter((p) => p.viewsMyShare);
@@ -1580,9 +1589,12 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       kbps: viewers.reduce((sum, p) => sum + p.outKbps, 0),
       formats: distinctFormats(viewers.map((p) => p.outFormat).filter((f): f is VideoFormat => f !== null)),
       viewers: viewers.length,
+      each: viewers.map((p) => ({ publicKey: p.key, kbps: p.outKbps, format: p.outFormat })),
     };
     const prev = untrack(outgoing);
-    if (!prev || prev.kbps !== next.kbps || prev.viewers !== next.viewers || JSON.stringify(prev.formats) !== JSON.stringify(next.formats)) setOutgoing(next);
+    if (!prev || JSON.stringify(prev) !== JSON.stringify(next)) setOutgoing(next);
+    const keys = viewers.map((p) => p.key);
+    if (keys.join(',') !== declaredViewers) { declaredViewers = keys.join(','); room.declare({ t: 'share', on: true, viewers: keys }); }
   }
 
   function closePeer(key: string): void {
@@ -1604,7 +1616,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     lastLoud.delete(key);
     setShareStreams((m) => { const n = new Map(m); n.delete(key); return n; });
     publish();
-    if (peer.viewsMyShare) reapplyShareEncodings(); // the budget re-splits among the remaining Viewers
+    if (peer.viewsMyShare) { reapplyShareEncodings(); updateOutgoing(); } // the budget re-splits among the remaining Viewers, who are shown
   }
 
   /** Server presence is authoritative for membership; media follows it (spec §8.2). */
@@ -1727,8 +1739,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     shareVideo.onended = () => stopShare(); // the browser's own "stop sharing" control
     for (const peer of peers.values()) attachLocalTracks(peer);
     setSharing(stream);
-    setOutgoing({ kbps: 0, formats: [], viewers: [...peers.values()].filter((p) => p.viewsMyShare).length });
-    room.declare({ t: 'share', on: true });
+    declaredViewers = null;
+    updateOutgoing(); // declares the share, with whoever asked to watch already
     posthog.capture('screen_share_started');
   }
 
@@ -1747,6 +1759,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     earlyViewers.clear();
     setSharing(null);
     setOutgoing(null);
+    declaredViewers = null;
     if (announce) room.declare({ t: 'share', on: false });
     posthog.capture('screen_share_stopped');
     for (const peer of peers.values()) {

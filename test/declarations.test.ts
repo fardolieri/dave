@@ -54,6 +54,16 @@ describe('declarations (quality ticket 10)', () => {
     expect(afterJoin(d, [])).toEqual([]);
   });
 
+  it('after the join, a share with viewers says who watches it again; one without any rides in the join alone', () => {
+    const d = declared('Alice', null, false);
+    declare(d, { t: 'share', on: true });
+    expect(afterJoin(d, [])).toEqual([]);
+    declare(d, { t: 'share', on: true, viewers: ['bob', 'carol'] });
+    expect(afterJoin(d, [])).toEqual([{ t: 'share', on: true, viewers: ['bob', 'carol'] }]);
+    declare(d, { t: 'share', on: true, viewers: [] });
+    expect(afterJoin(d, [])).toEqual([]);
+  });
+
   it('a share that ended, or a friend who left, takes the ask to watch along; a friend only reconnecting does not', () => {
     const d = declared('Alice', null, false);
     for (const to of ['bob', 'carol', 'dan', 'erin']) declare(d, { t: 'subscribe', to, on: true });

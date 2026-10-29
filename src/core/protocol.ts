@@ -36,6 +36,8 @@ export type Person = Identity & {
   /** Order of joining the Call; null for visitors. */
   joinSeq: number | null;
   sharing: boolean;
+  /** Who watches the share, as the sharer declares it (a subscribe reaches only the sharer's browser); absent while not sharing. */
+  viewers?: string[];
   muted: boolean;
   /** Where private texts to this friend are sealed to; none from an app before ADR 0007, which cannot get one. */
   privateTexts?: PrivateTextKey;
@@ -122,8 +124,11 @@ export type ClientMessage =
   | { t: 'link'; to: string; data: LinkData }
   /** Ask for ICE servers for a file link: short-lived TURN credentials, for visitors too. */
   | { t: 'linkice'; id: RequestId }
-  /** Announce that my share started or stopped; everyone learns through the presence flag. */
-  | { t: 'share'; on: boolean }
+  /**
+   * Announce that my share started or stopped; everyone learns through the presence flag. `viewers`: who watches it now,
+   * which everyone learns too, so a viewer sees who else watches. Without it (an app from before) the last list stays.
+   */
+  | { t: 'share'; on: boolean; viewers?: string[] }
   /** Ask a sharer to start or stop sending me their share; `scale` asks for a downscaled encoding (small screens). */
   | { t: 'subscribe'; to: string; on: boolean; scale?: number };
 
@@ -168,6 +173,8 @@ export const PING_INTERVAL_MS = 30_000;
  * over the old 16 KB and was dropped, so that renegotiation never arrived (ticket 30). Well under Cloudflare's frame limit.
  */
 export const MAX_MESSAGE_BYTES = 512 * 1024;
+/** The most viewers a share declares; far more than a call of friends holds. */
+export const MAX_VIEWERS = 32;
 export const MAX_NAME_LENGTH = 32;
 export const MAX_TEXT_LENGTH = 2000;
 /** Longest RGI emoji is a four-person family: 7 code points, 11 UTF-16 units. A little slack for a variation selector. */
@@ -191,6 +198,8 @@ export const CLOSE_SUPERSEDED = 4004;
 const B64URL = /^[A-Za-z0-9_-]+$/;
 const str = (v: unknown, max = MAX_MESSAGE_BYTES): v is string => typeof v === 'string' && v.length > 0 && v.length <= max;
 const b64 = (v: unknown): v is string => str(v, 1024) && B64URL.test(v);
+/** An identity's public key: 65 bytes, base64url. A list of them stays well inside a socket attachment's 16 KB. */
+const isPublicKey = (v: unknown): v is string => b64(v) && v.length === 87;
 
 export function normaliseName(raw: string): string | null {
   const name = raw.trim().replace(/\s+/g, ' ');
@@ -268,7 +277,7 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
       if (m.telemetry === true) auth.telemetry = true;
       // Optional: one of another shape is left out, so the friend still gets in, without private texts (ADR 0007).
       const k = m.privateTexts as Record<string, unknown> | null | undefined;
-      if (k && typeof k === 'object' && b64(k.key) && k.key.length === 87 && b64(k.sig) && k.sig.length === 86) auth.privateTexts = { key: k.key, sig: k.sig };
+      if (k && typeof k === 'object' && isPublicKey(k.key) && b64(k.sig) && k.sig.length === 86) auth.privateTexts = { key: k.key, sig: k.sig };
       return auth;
     }
     case 'ping':
@@ -295,7 +304,10 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
       if (m.id !== undefined && !isRequestId(m.id)) return invalid('unrecognised message');
       return isRequestId(m.id) ? { t: 'ice', id: m.id } : { t: 'ice' };
     case 'share':
-      return typeof m.on === 'boolean' ? { t: 'share', on: m.on } : invalid('unrecognised message');
+      if (typeof m.on !== 'boolean') return invalid('unrecognised message');
+      if (m.viewers === undefined) return { t: 'share', on: m.on };
+      if (!Array.isArray(m.viewers) || m.viewers.length > MAX_VIEWERS || !m.viewers.every(isPublicKey)) return invalid('unrecognised message');
+      return { t: 'share', on: m.on, viewers: [...new Set(m.viewers)] };
     case 'telemetry':
       return typeof m.on === 'boolean' ? { t: 'telemetry', on: m.on } : invalid('unrecognised message');
     case 'subscribe': {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { distinctFormats, formatBitrate, formatVideo } from '../src/core/format';
+import { distinctFormats, formatBitrate, formatStream } from '../src/core/format';
 
 describe('formatBitrate', () => {
   it('uses kbps below a megabit and rounded Mbps above', () => {
@@ -11,10 +11,11 @@ describe('formatBitrate', () => {
   });
 });
 
-describe('formatVideo and distinctFormats', () => {
-  it('prints resolution and rounded fps, omitting fps when no frames flow yet', () => {
-    expect(formatVideo({ width: 1280, height: 720, fps: 29.7 })).toBe('1280×720 · 30 fps');
-    expect(formatVideo({ width: 1920, height: 1080, fps: 0 })).toBe('1920×1080');
+describe('formatStream and distinctFormats', () => {
+  it('prints rounded fps, resolution and bitrate in that order, leaving out what is not known yet', () => {
+    expect(formatStream(2440, { width: 1280, height: 720, fps: 29.7 })).toBe('30 fps · 1280×720 · 2.4 Mbps');
+    expect(formatStream(850, { width: 1920, height: 1080, fps: 0 })).toBe('1920×1080 · 850 kbps');
+    expect(formatStream(0, null)).toBe('0 kbps');
   });
   it('collapses equal formats and sorts largest first', () => {
     const out = distinctFormats([
