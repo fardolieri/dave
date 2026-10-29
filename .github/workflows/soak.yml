@@ -1,7 +1,7 @@
 name: soak
 # The friend group from hell (quality ticket 05): four friends, Chromium and Firefox mixed, take seeded random actions in one
 # room for a quarter of an hour while everything they see is checked against a model (e2e/soak/, playwright.soak.config.ts).
-#   - every night at 01:00 UTC against a local build of master (Worker and Room in workerd, as e2e.yml's branch runs),
+#   - every night at 01:00 UTC against a local build of master (Worker and Room in workerd, as e2e.yml's local runs),
 #     three shards with seeds of their own
 #   - by hand from the Actions tab: replay a seed (with its step count) or a reported action list, on a branch's local
 #     build or against a deployed copy with the inspection hooks (a pull request's preview)

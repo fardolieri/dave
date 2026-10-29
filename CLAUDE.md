@@ -17,15 +17,17 @@ read on a small screen by someone who did not watch you work: lead with the outc
 ## Testing: GitHub Actions is the receipt
 
 What the dev box can run locally depends on the machine: see `~/.claude/CLAUDE.md`. Whatever runs locally, the verdict
-that counts is CI's (`ci.yml`, `e2e.yml`): push a branch and read its results.
+that counts is CI's: `ci.yml` and `red-green.yml` on the branch, and the browser suite (`e2e.yml`) against the ready PR's
+preview. Push a branch, open the PR and read its results.
 
 - To reproduce a bug: write the failing test, commit it ("Regression test: …"), commit the fix ("Problem report: …"), and
   push both together. `red-green.yml` runs the test against the app from before the fix and must see it fail (the "red,
   then green" receipt); the rest of CI must be green. Do not push the test alone just to watch it go red: every red run
   emails the owner, and these were 38 of the last 100 failed runs.
 - Push the test alone first only when `red-green.yml` cannot show the bug: it runs browser tests in Chromium only, against
-  a local build, once. A bug that needs Firefox, or real Cloudflare (open a ready, not draft, PR so its preview runs the suite), goes red
-  alone first; say why in the report. Same-ref pushes cancel each other, so wait for the red run to finish first.
+  a local build, once. A bug that needs Firefox or real Cloudflare goes red alone first, in a ready (not draft) PR whose
+  preview runs the suite in both engines (for Firefox alone, `gh workflow run e2e.yml --ref <branch>` also does); say why
+  in the report. Same-ref pushes cancel each other, so wait for the red run to finish first.
 - Watch CI with one waiting loop, not several background watchers.
 - Leave nothing running at the end of a turn (vite, workerd, chrome, playwright). The stop hook checks this.
 - Prefer one branch worked on in sequence over many in parallel: CI's 20 runners are the shared bottleneck.
@@ -38,7 +40,7 @@ Every change climbs this ladder, and every report says which rung it reached, in
 |---|---|---|
 | 0 typed | `pnpm typecheck` passes | here or CI |
 | 1 unit | `pnpm test` passes | CI (`ci.yml`) |
-| 2 browser | the e2e suite passes against a local build, both engines | CI (`e2e.yml` on the branch) |
+| 2 browser | the e2e suite passes against a local build, both engines | by hand: `e2e.yml` from the Actions tab (Chromium alone here is not this rung: say so). Rung 3 covers it |
 | 3 preview | the e2e suite passed against the PR's preview, both engines, real Cloudflare: the gate to master | CI (`preview.yml` on the ready PR) |
 | 4 seen | a human or a recording looked at the real thing (real browser, real device for phone features) | owner, or a recording |
 
@@ -73,10 +75,11 @@ from the Actions tab, then a fix. Prefer small PRs, squashed into one commit per
 
 ## What watches the app
 
-- **CI on every branch:** typecheck and unit tests (`ci.yml`), the browser suite in both engines
-  (`e2e.yml`), the red-then-green check of regression tests (`red-green.yml`). Not while the branch's PR is a draft
-  (`draft-gate.yml`): a draft is still being iterated on, and its pushes end green with the jobs skipped, which is no
-  verdict. Marking it ready runs all three on its head. `night-shift/*` branches always run them.
+- **CI on every branch:** typecheck and unit tests (`ci.yml`), the red-then-green check of regression tests
+  (`red-green.yml`). Not while the branch's PR is a draft (`draft-gate.yml`): a draft is still being iterated on, and its
+  pushes end green with the jobs skipped, which is no verdict. Marking it ready runs both on its head. `night-shift/*`
+  branches always run them, and the browser suite against a local build too (`e2e.yml`): their drafts get no preview.
+  Other branches get the browser suite from their PR's preview only (below); a run against a local build is by hand.
 - **On every open PR**, drafts too: a preview Worker of its own, `dave-pr-<n>` (`preview.yml`), the live build plus the
   inspection hooks, with the whole e2e suite run against it once deployed (once ready, not while a draft): the gate to
   master. One comment on the PR links it and a room of the PR's own, so the owner can try a change from the phone before it

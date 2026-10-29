@@ -10,8 +10,8 @@ name: preview
 # Once deployed, the browser suite runs against the preview (e2e.yml, called): real Cloudflare, flakes failing it. That run
 # is the gate to master, which deploys the live site: it writes the `preview e2e passed` status a ruleset on master requires.
 # A draft PR is one still being iterated on, often opened just for its preview: it gets the preview but not the suite against
-# it, and its branch pushes skip ci, e2e and red-green (draft-gate.yml). Marking it ready for review deploys again, runs the
-# suite here and dispatches those three on its head. The night shift's draft "Repro:" PRs (night-shift/*) need no preview and
+# it, and its branch pushes skip ci and red-green (draft-gate.yml). Marking it ready for review deploys again, runs the
+# suite here and dispatches those two on its head. The night shift's draft "Repro:" PRs (night-shift/*) need no preview and
 # get none until marked ready, which keeps the account far from its 100 Workers. PRs from forks are skipped: no secrets.
 on:
   pull_request:
@@ -95,17 +95,16 @@ jobs:
     needs: deploy
     if: '!github.event.pull_request.draft'
     uses: ./.github/workflows/e2e.yml
-    # The called workflow's last job writes the gate's commit status, its first looks up the PR (draft-gate.yml), and a
-    # called job gets no more permissions than its caller grants.
+    # The called workflow's last job writes the gate's commit status, and a called job gets no more permissions than its
+    # caller grants.
     permissions:
       contents: read
-      pull-requests: read
       statuses: write
     with:
       target: ${{ needs.deploy.outputs.url }}
       ref: ${{ github.event.pull_request.head.sha }}
   # The draft's pushes skipped the branch checks (draft-gate.yml); run them on the head now that it is ready. A night-shift
-  # branch ran them on every push.
+  # branch ran them on every push. The browser suite is the e2e job above.
   checks:
     if: >-
       github.event.action == 'ready_for_review' && github.event.pull_request.head.repo.full_name == github.repository &&
@@ -117,7 +116,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           REF: ${{ github.event.pull_request.head.ref }}
-        run: for w in ci.yml e2e.yml red-green.yml; do gh workflow run "$w" --repo "$GITHUB_REPOSITORY" --ref "$REF"; done
+        run: for w in ci.yml red-green.yml; do gh workflow run "$w" --repo "$GITHUB_REPOSITORY" --ref "$REF"; done
   cleanup:
     if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
