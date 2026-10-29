@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-10-29T22:25 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-10-29T22:30 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 76, branch 273, preview 132.
+Runs recorded: nightly 76, branch 271, preview 133.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -93,4 +93,3 @@ Runs recorded: nightly 76, branch 273, preview 132.
 | 1 | 1 | branch 1 | update.spec.ts › ticket 36: a version left waiting behind the bar is taken by the next reload | console warnings, errors or exceptions nobody expected: Alice: error: [JavaScript Error: "Failed to load ‘http://10.1.0.14:4179/assets/module-D6ZP0uBm.js’. A Se | [10-08](https://github.com/fardolieri/dave/actions/runs/37780036599/attempts/1) | [10-08](https://github.com/fardolieri/dave/actions/runs/37780036599/attempts/1) | 62 |
 | 1 | 1 | nightly 1 | text.spec.ts › texts from more than 18 h before the room came on screen wait behind a button, folded again each time it does | expect(locator).toHaveText(expected) failed | [10-07](https://github.com/fardolieri/dave/actions/runs/37581763252/attempts/1) | [10-07](https://github.com/fardolieri/dave/actions/runs/37581763252/attempts/1) | f9efd75 (fixed) |
 | 1 | 1 | branch 1 | settings.spec.ts › voice repair: RED chosen by one side doubles the voice packets both ways, off drops the FEC flag, and a browser without RED keeps plain Opus | Alice sends voice at first | [09-30](https://github.com/fardolieri/dave/actions/runs/36693869895/attempts/1) | [09-30](https://github.com/fardolieri/dave/actions/runs/36693869895/attempts/1) |  |
-| 1 | 1 | branch 1 | resilience.spec.ts › a friend cut off from the server stays in the call, dimmed, as long as the connection to them works (ticket 31) | console warnings, errors or exceptions nobody expected: Alice: error: WebSocket is already in CLOSING or CLOSED state. | [09-29](https://github.com/fardolieri/dave/actions/runs/36639486534/attempts/1) | [09-29](https://github.com/fardolieri/dave/actions/runs/36639486534/attempts/1) | 41 |
