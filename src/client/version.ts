@@ -7,8 +7,9 @@ export type BuildInfo = {
   committedAt: string;
   builtAt: string;
   /**
-   * 'live' (prod), 'nightly', 'preview' (a pull request's own Worker), 'e2e' (the suite's build in CI), or 'local' for a
-   * build outside GitHub Actions. Sent as `build_target` with every PostHog event (client/posthog.ts).
+   * 'live' (the live site), 'preview' (a pull request's own Worker), 'e2e' (the suite's build in CI), or 'local' for a
+   * build outside GitHub Actions; events from before 2026-10-29 may also say 'nightly', a copy of master since retired.
+   * Sent as `build_target` with every PostHog event (client/posthog.ts).
    */
   target: string;
   /** Built from a working tree with uncommitted changes. */

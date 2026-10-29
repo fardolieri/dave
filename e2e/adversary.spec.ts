@@ -98,7 +98,7 @@ test('ADR 0005: a text the server passes off as from another friend, or tampers 
 });
 
 test('ADR 0005: a plain text, as an app from before sends one, is refused as out of date and reaches nobody', async ({ crowd }) => {
-  // PostHog off: the Room reports a refused frame from an opted-in sender itself, and against nightly or a preview that
+  // PostHog off: the Room reports a refused frame from an opted-in sender itself, and against a preview that
   // event is real. Every run of this test was one, 481 in a fortnight, burying the rejections friends' apps cause.
   const alice = await crowd.open('Alice', { telemetry: 'off' });
   const bob = await crowd.open('Bob');

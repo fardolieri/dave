@@ -577,7 +577,7 @@ test('after a stalled attempt the rebuild goes through the TURN relay, and both 
   // One attempt already counted as stalled: what the watchdog does after the first 15 s without a connection.
   const r = await alice.page.evaluate(() => (window as unknown as { __dave: { rebuild: (n: string, stalled: number) => Promise<string> } }).__dave.rebuild('Bob', 1));
   // A local build hands out STUN only (.dev.vars carries a placeholder TURN token), so the policy stays `all` there by design.
-  test.skip(r === 'rebuilt Bob, relayOnly=false', 'no TURN server behind this copy: run it against nightly');
+  test.skip(r === 'rebuilt Bob, relayOnly=false', 'no TURN server behind this copy: run it against a preview');
   expect(r).toBe('rebuilt Bob, relayOnly=true');
   // Only Alice's side is relay-only, and her relay candidates alone put the pair through the TURN server: Bob reads it too.
   // A relay allocation adds round trips to the TURN server before the first check, so the wait is the watchdog's own 15 s
@@ -608,7 +608,7 @@ test('a relay-only rebuild whose ICE failed comes back with voice both ways (tic
   const before = (await iceOf())!.generation;
   alice.wire.down = (frame) => (frame.includes('"t":"signal"') && frame.includes('"candidates":') ? null : frame);
   const r = await alice.page.evaluate(() => (window as unknown as { __dave: { rebuild: (n: string, stalled: number) => Promise<string> } }).__dave.rebuild('Bob', 1));
-  test.skip(r === 'rebuilt Bob, relayOnly=false', 'no TURN server behind this copy: run it against nightly');
+  test.skip(r === 'rebuilt Bob, relayOnly=false', 'no TURN server behind this copy: run it against a preview');
   expect(r).toBe('rebuilt Bob, relayOnly=true');
   await expect.poll(async () => { const p = await iceOf(); return p && p.generation > before ? p.ice : 'old'; }, { message: "Alice's relay-only attempt fails ICE", timeout: 45_000 }).toBe('failed');
   alice.wire.down = null;

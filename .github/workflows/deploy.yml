@@ -1,18 +1,14 @@
 name: deploy
-# master deploys the nightly Worker (dave-nightly); prod deploys the live site (dave).
-# Releasing is a fast-forward of prod to master: git push origin master:prod
+# master deploys the live site (dave). A ruleset on master accepts only a commit whose pull request preview passed the
+# whole browser suite (the `preview e2e passed` status, e2e.yml), so what deploys here was tested on real Cloudflare first.
+# A bad deploy is undone with rollback.yml.
 on:
   push:
-    branches: [master, prod]
-concurrency: deploy-${{ github.ref_name }}
+    branches: [master]
+concurrency: deploy-master
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      # Picks the Wrangler environment when the Vite plugin writes the deploy config; empty means the top-level Worker.
-      CLOUDFLARE_ENV: ${{ github.ref_name == 'master' && 'nightly' || '' }}
-      # Nightly carries the inspection hooks (src/client/hooks.ts) so the browser suite can run in full against it; prod does not.
-      VITE_E2E: ${{ github.ref_name == 'master' && '1' || '' }}
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -25,6 +21,7 @@ jobs:
       - run: pnpm test
       - run: pnpm build
       - uses: cloudflare/wrangler-action@v4
+        id: deploy
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -33,3 +30,10 @@ jobs:
             TURN_KEY_API_TOKEN
         env:
           TURN_KEY_API_TOKEN: ${{ secrets.TURN_KEY_API_TOKEN }}
+      # The deploy is done when the edge serves this commit's page and files together (ticket 64), not when wrangler returns.
+      - name: The live site serves this commit
+        run: |
+          test -n "$E2E_URL" || { echo "::error::the deploy printed no URL"; exit 1; }
+          node scripts/wait-for-deploy.mjs "$GITHUB_SHA"
+        env:
+          E2E_URL: ${{ steps.deploy.outputs.deployment-url }}

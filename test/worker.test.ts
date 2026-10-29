@@ -63,13 +63,13 @@ describe('worker routing', () => {
     const ip = '203.0.113.9';
     const path = await wsPath(freshSecret());
     // This address's attempts are used up on the binding itself, which the Worker asks with the same key. Through the Worker
-    // each one also opens a socket in a Room: nightly's limit of 120 (ci.yml and deploy.yml run the tests with
-    // CLOUDFLARE_ENV=nightly) took up to 5 s that way on a busy runner, past the test's timeout, and the loop went on
-    // opening and closing sockets under the tests after it (ticket 45).
+    // each one also opens a socket in a Room: the retired nightly Worker's limit of 120 (the tests ran in its environment
+    // too) took up to 5 s that way on a busy runner, past the test's timeout, and the loop went on opening and closing
+    // sockets under the tests after it (ticket 45).
     // The limiter's windows are aligned to the wall clock: one that rolls over between using up and the attempt starts
     // counting from zero, so the attempt gets in. That can only happen once a minute; the next round finds the new window.
     // The attempts go 40 at a time: in Miniflare each one is a round trip to the limiter's own Durable Object and a write
-    // there, and nightly's 121 one after the other are the likely reason this took past 5 s again on a busy runner (ci.yml
+    // there, and that limit's 121 one after the other are the likely reason this took past 5 s again on a busy runner (ci.yml
     // run 38298003264, ticket 45's comments).
     let status = 0;
     for (let round = 0; round < 3 && status !== 429; round++) {
@@ -101,7 +101,7 @@ describe('worker routing', () => {
     const posted = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      const testEnv = { ...env, ROOM: room, UPGRADE_LIMIT: undefined, POSTHOG_KEY: 'phc_test', POSTHOG_HOST: 'https://eu.i.posthog.com', BUILD_TARGET: 'nightly' } as unknown as Env;
+      const testEnv = { ...env, ROOM: room, UPGRADE_LIMIT: undefined, POSTHOG_KEY: 'phc_test', POSTHOG_HOST: 'https://eu.i.posthog.com', BUILD_TARGET: 'preview' } as unknown as Env;
       const ctx = { waitUntil: (p: Promise<unknown>) => sent.push(p), passThroughOnException: () => {} } as unknown as ExecutionContext;
       const res = await worker.fetch!(new Request(`https://dave.test${await wsPath(SECRET)}`, { headers: { Upgrade: 'websocket' } }) as Parameters<NonNullable<typeof worker.fetch>>[0], testEnv, ctx);
       expect(res.status).toBe(500);
@@ -113,7 +113,7 @@ describe('worker routing', () => {
         expect(url).toBe('https://eu.i.posthog.com/i/v0/e/');
         const body = JSON.parse(init.body as string);
         expect(body.event).toBe('server_upgrade_failed');
-        expect(body.properties).toMatchObject({ name: 'Error', message: thrown.message, retryable: true, overloaded: false, build_target: 'nightly', attempt: i + 1 });
+        expect(body.properties).toMatchObject({ name: 'Error', message: thrown.message, retryable: true, overloaded: false, build_target: 'preview', attempt: i + 1 });
       }
       expect(errors).toHaveBeenCalledWith('upgrade failed', expect.stringContaining('retryable":true'));
     } finally {
@@ -130,7 +130,7 @@ describe('worker routing', () => {
     const posted = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      const testEnv = { ...env, ROOM: room, UPGRADE_LIMIT: undefined, POSTHOG_KEY: 'phc_test', POSTHOG_HOST: 'https://eu.i.posthog.com', BUILD_TARGET: 'nightly' } as unknown as Env;
+      const testEnv = { ...env, ROOM: room, UPGRADE_LIMIT: undefined, POSTHOG_KEY: 'phc_test', POSTHOG_HOST: 'https://eu.i.posthog.com', BUILD_TARGET: 'preview' } as unknown as Env;
       const sent: Array<Promise<unknown>> = [];
       const ctx = { waitUntil: (p: Promise<unknown>) => sent.push(p), passThroughOnException: () => {} } as unknown as ExecutionContext;
       const res = await worker.fetch!(new Request(`https://dave.test${await wsPath(SECRET)}`, { headers: { Upgrade: 'websocket' } }) as Parameters<NonNullable<typeof worker.fetch>>[0], testEnv, ctx);
@@ -147,7 +147,7 @@ describe('worker routing', () => {
     const posted = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
     const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
-      const testEnv = { ...env, POSTHOG_KEY: 'phc_test', POSTHOG_HOST: 'https://eu.i.posthog.com', BUILD_TARGET: 'nightly' } as unknown as Env;
+      const testEnv = { ...env, POSTHOG_KEY: 'phc_test', POSTHOG_HOST: 'https://eu.i.posthog.com', BUILD_TARGET: 'preview' } as unknown as Env;
       const sent: Array<Promise<unknown>> = [];
       const ctx = { waitUntil: (p: Promise<unknown>) => sent.push(p) } as unknown as DurableObjectState;
       logRejected(testEnv, ctx, { from: 'k', reason: OUT_OF_DATE, ref: 'text', length: 62, telemetry: false });
@@ -157,7 +157,7 @@ describe('worker routing', () => {
       await Promise.all(sent);
       expect(posted).toHaveBeenCalledTimes(1);
       const body = JSON.parse((posted.mock.calls[0] as [string, RequestInit])[1].body as string);
-      expect(body).toMatchObject({ event: 'server_frame_rejected', distinct_id: 'k', properties: { ref: 'text', reason: OUT_OF_DATE, length: 62, build_target: 'nightly' } });
+      expect(body).toMatchObject({ event: 'server_frame_rejected', distinct_id: 'k', properties: { ref: 'text', reason: OUT_OF_DATE, length: 62, build_target: 'preview' } });
     } finally {
       posted.mockRestore();
       warned.mockRestore();

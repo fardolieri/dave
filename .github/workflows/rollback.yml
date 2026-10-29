@@ -1,0 +1,28 @@
+name: rollback
+# Puts the live site back on an earlier version, from the Actions tab: the one before the current deploy, or the version
+# named. The Worker and its files switch in seconds; Rooms already running may take a few minutes to follow (Wrangler
+# updates Durable Object code deferred). Faster than a revert, which has to pass the preview gate first. The next push to
+# master deploys over it again, so follow it with a fix or a revert through a pull request.
+# Cloudflare refuses to roll back past a Durable Object migration (wrangler.jsonc `migrations`).
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "why, kept with the deployment on Cloudflare"
+        required: true
+      version:
+        description: "the Worker version to go back to (wrangler versions list); empty for the one before the current"
+        default: ""
+# Never at the same time as a deploy. Of two runs waiting in this group the older is cancelled, a deploy or a rollback:
+# re-run whichever was, if it is still wanted.
+concurrency: deploy-master
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npx --yes wrangler@4.146.0 rollback $VERSION --name dave --message "$REASON" --yes
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          REASON: ${{ inputs.reason }}
+          VERSION: ${{ inputs.version }}

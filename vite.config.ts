@@ -21,7 +21,7 @@ function buildInfo(): BuildInfo {
     committedAt: git('log', '-1', '--format=%cI'),
     builtAt: new Date().toISOString(),
     // Deploys run in GitHub Actions (deploy.yml); anything else is a build on someone's machine.
-    target: !process.env.GITHUB_ACTIONS ? 'local' : env === 'nightly' ? 'nightly' : env === '' ? 'live' : env,
+    target: !process.env.GITHUB_ACTIONS ? 'local' : env === '' ? 'live' : env,
     dirty: git('status', '--porcelain', '--untracked-files=no') !== '',
   };
 }

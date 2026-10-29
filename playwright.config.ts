@@ -7,8 +7,8 @@ import { launchOptions, LOCAL_PORT, originFor, target } from './e2e/browsers';
  * One switch picks what it runs against:
  *   pnpm e2e            a local build: the app built with the inspection hooks on (VITE_E2E=1) and the `e2e` Wrangler
  *                       environment (no upgrade limit), served by `vite preview` in workerd
- *   pnpm e2e:nightly    the deployed nightly Worker, which master builds with the same hooks
- *   E2E_URL=<url>       any other deployed copy; tests that need the hooks skip themselves where they are missing
+ *   E2E_URL=<url>       a deployed copy: a pull request's preview carries the same hooks; on the live site, tests that
+ *                       need them skip themselves
  *
  * E2E_FIREFOX=1 adds the Firefox project (always on in CI). Slow machine: E2E_SLOW=4 stretches every timeout.
  */
@@ -27,7 +27,7 @@ export default defineConfig({
   // A deployed Worker limits socket upgrades per IP (see wrangler.jsonc): one test at a time there.
   workers: Number(process.env['E2E_WORKERS']) || (ci && !target ? 2 : 1),
   retries: ci ? 1 : 0,
-  // Against a deployed copy in CI (the nightly run is the release gate, e2e.yml) a test that only passed on its retry fails
+  // Against a deployed copy in CI (a preview's run is the gate to master, e2e.yml) a test that only passed on its retry fails
   // the run: a flake is a bug to explain, not noise (ticket 35). On branches the retry still keeps one bad roll from blocking.
   failOnFlakyTests: ci && !!target,
   forbidOnly: ci,

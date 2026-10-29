@@ -8,7 +8,7 @@ name: red-green
 # From the Actions tab it can compare with another branch than master. A push to a draft PR's branch skips it (draft-gate.yml).
 on:
   push:
-    branches-ignore: [master, prod, flake-ledger] # flake-ledger: data only (flakes.yml)
+    branches-ignore: [master, flake-ledger] # flake-ledger: data only (flakes.yml)
   workflow_dispatch:
     inputs:
       base:

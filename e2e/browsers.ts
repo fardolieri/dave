@@ -6,11 +6,10 @@ import { existsSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import type { LaunchOptions } from '@playwright/test';
 
-const NIGHTLY = 'https://dave-nightly.danielmittereder.workers.dev';
 // Its own port, not vite preview's 4173: a local run reuses a server already listening there, which must be an e2e build.
 export const LOCAL_PORT = Number(process.env['E2E_PORT']) || 4179;
 /** A deployed copy to drive, or undefined for the local build. Empty counts as unset: CI passes an empty E2E_URL for a local run. */
-export const target: string | undefined = process.env['E2E_URL'] === 'nightly' ? NIGHTLY : process.env['E2E_URL'] || undefined;
+export const target: string | undefined = process.env['E2E_URL'] || undefined;
 
 
 /**

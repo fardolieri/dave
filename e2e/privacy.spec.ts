@@ -55,7 +55,7 @@ test('a yes starts PostHog and tells the server; stopping forgets it again', asy
     .map((k) => { try { return JSON.parse(localStorage.getItem(k)!) as Record<string, unknown>; } catch { return null; } })
     .find((v) => v && 'build_target' in v) ?? null);
   await expect.poll(superProperties, { message: 'the build is registered with the SDK' })
-    .toMatchObject({ build_commit: expect.stringMatching(/^[0-9a-f]{40}$/), build_target: expect.stringMatching(/^(live|nightly|preview|e2e|local)$/) });
+    .toMatchObject({ build_commit: expect.stringMatching(/^[0-9a-f]{40}$/), build_target: expect.stringMatching(/^(live|preview|e2e|local)$/) });
   await expect.poll(() => alice.wire.frames('up', 'telemetry')).toEqual([{ t: 'telemetry', on: true }]);
   await alice.page.reload();
   await alice.connected();
@@ -77,7 +77,7 @@ test('a yes starts PostHog and tells the server; stopping forgets it again', asy
   await alice.page.getByRole('button', { name: 'Help find bugs', exact: true }).click();
   await answer(alice.page, 'Sure!');
   await expect.poll(superProperties, { message: 'the build is registered again after a no and a yes' })
-    .toMatchObject({ build_commit: expect.stringMatching(/^[0-9a-f]{40}$/), build_target: expect.stringMatching(/^(live|nightly|preview|e2e|local)$/) });
+    .toMatchObject({ build_commit: expect.stringMatching(/^[0-9a-f]{40}$/), build_target: expect.stringMatching(/^(live|preview|e2e|local)$/) });
   await openMenu(alice.page);
   await alice.page.getByRole('button', { name: 'Stop helping find bugs' }).click();
   await answer(alice.page, 'Maybe later');
@@ -146,13 +146,13 @@ test('a problem report still goes without the opt-in, alone and saying where it 
   // It says which copy of the app sent it, so a report from a preview or a test build is not taken for one from prod.
   expect((await sent).postDataJSON()).toMatchObject({
     event: 'bug_report',
-    properties: { build_commit: expect.stringMatching(/^[0-9a-f]{40}$/), build_target: expect.stringMatching(/^(live|nightly|preview|e2e|local)$/) },
+    properties: { build_commit: expect.stringMatching(/^[0-9a-f]{40}$/), build_target: expect.stringMatching(/^(live|preview|e2e|local)$/) },
   });
   expect(await posthogStorage(alice.page)).toEqual([]);
 });
 
 test('the Worker really passes /diag on to PostHog: scripts and remote config to its assets host, the rest to its ingest host', async ({ crowd }) => {
-  test.skip(!target, 'the local e2e build has no PostHog host: run against nightly or a preview');
+  test.skip(!target, 'the local e2e build has no PostHog host: run against a preview');
   const alice = await crowd.open('Alice', { telemetry: 'off' });
   // The context's own request client is not routed, so this reaches the deployed Worker, which the friends' pages never do here.
   const api = alice.context.request;

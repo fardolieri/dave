@@ -21,7 +21,7 @@ import { build } from './version';
 export const isTestAccount: boolean = local.read('test');
 
 /**
- * On every event, so one can tell which copy of the app sent it: prod ('live'), nightly, a pull request's preview
+ * On every event, so one can tell which copy of the app sent it: the live site ('live'), a pull request's preview
  * ('preview') or a test build ('e2e', 'local'). They all send to the same project. Registered with the SDK, and added by
  * hand to what goes without it.
  */

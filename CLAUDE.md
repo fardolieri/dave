@@ -9,8 +9,8 @@ read on a small screen by someone who did not watch you work: lead with the outc
 
 ## Before any work
 
-1. `git checkout master && git pull --ff-only`. The owner pushes from other machines; the clone here is often behind.
-2. Work on a branch (`<topic>/<slug>`), never on master directly, unless the owner explicitly says "push straight to master".
+1. `git checkout master && git pull --ff-only`. The owner lands work from other machines; the clone here is often behind.
+2. Work on a branch (`<topic>/<slug>`), never on master directly: master takes only commits whose PR preview passed.
 3. Another agent session may be running in this repo at the same time (the session-start hook says so). Stay on your branch,
    and fetch before every push: master moves under you.
 
@@ -38,8 +38,8 @@ Every change climbs this ladder, and every report says which rung it reached, in
 |---|---|---|
 | 0 typed | `pnpm typecheck` passes | here or CI |
 | 1 unit | `pnpm test` passes | CI (`ci.yml`) |
-| 2 browser | the e2e suite passes against a local build, both engines; with an open ready PR, also against its preview | CI (`e2e.yml` on the branch, `preview.yml` on the PR) |
-| 3 nightly | deployed to nightly and the e2e suite passed against it | CI (`e2e.yml` after deploy) |
+| 2 browser | the e2e suite passes against a local build, both engines | CI (`e2e.yml` on the branch) |
+| 3 preview | the e2e suite passed against the PR's preview, both engines, real Cloudflare: the gate to master | CI (`preview.yml` on the ready PR) |
 | 4 seen | a human or a recording looked at the real thing (real browser, real device for phone features) | owner, or a recording |
 
 Rules:
@@ -53,8 +53,8 @@ Rules:
   (for bugs no test can reach). Put any hook or helper the test needs (`src/client/hooks.ts`, `e2e/fixtures.ts`) in the
   "Regression test:" commit, so the test fails on the bug and not on a missing hook: the job calls that inconclusive.
 - **Review before the first push to master**, not after: an independent review subagent (or `/code-review`) on the diff.
-  Past reviews found real bugs every time they ran. Then review the fixes again, until a round finds nothing real, at most
-  three rounds (`/ship` step 2 says how).
+  Past reviews found real bugs every time they ran. Then review the fixes again (the fix diff only), until a round finds
+  nothing real, at most three rounds. Real means a concrete sequence that breaks something; nits do not start a round.
 - **Saved state needs a migration story.** Anything in `localStorage` or IndexedDB outlives a deploy: changing a default or a
   stored shape does not reach existing browsers by itself. Either migrate, or say plainly in the report who will not see it.
   Every stored key is listed in `src/core/storedstate.ts` with its parser and fixtures. `test/storedstate.test.ts` fails on
@@ -63,32 +63,31 @@ Rules:
 
 ## Shipping
 
-- `master` deploys nightly (`dave-nightly`); `prod` deploys the live site. Releasing is a fast-forward:
-  `git push origin master:prod`, nothing else (no cherry-picks, no force pushes).
-- **prod is gated:** GitHub refuses a push to prod unless the commit has the `nightly e2e passed` status, which `e2e.yml`
-  writes only after the full suite passed against nightly for exactly that commit. So: push master, wait for deploy and
-  nightly e2e, then release. `/release` does this.
-- `/ship` takes a branch from "works" to "on master": rebase, review, push, CI, report.
-- Prefer small PRs. Squash noise (debug commits, CI experiments) into a coherent story before master.
+Every change goes through a ready PR. A push to master deploys the live site, and GitHub accepts only a fast-forward to a
+commit with the `preview e2e passed` status, which the PR's preview run writes on its head (rung 3). So: rebase, review,
+wait for the preview, `git push origin HEAD:master`, then check that `deploy` passed (it waits until the site serves the
+commit). A full send ends there; a full stop ends with the PR ready and rung 3 reached. A bad deploy: `rollback.yml`
+from the Actions tab, then a fix. Prefer small PRs, squashed into one commit per idea.
 
 ## What watches the app
 
-- **CI on every branch:** typecheck and unit tests in both Wrangler envs (`ci.yml`), the browser suite in both engines
+- **CI on every branch:** typecheck and unit tests (`ci.yml`), the browser suite in both engines
   (`e2e.yml`), the red-then-green check of regression tests (`red-green.yml`). Not while the branch's PR is a draft
   (`draft-gate.yml`): a draft is still being iterated on, and its pushes end green with the jobs skipped, which is no
   verdict. Marking it ready runs all three on its head. `night-shift/*` branches always run them.
-- **On every open PR**, drafts too: a preview Worker of its own, `dave-pr-<n>` (`preview.yml`), built like nightly, with
-  the whole e2e suite run against it once deployed (once ready, not while a draft). One comment on the PR links it and a
-  room of the PR's own, so the owner can try a change from the phone before it reaches master. It starts with empty
-  storage: a change that meets old saved state is only really seen on nightly. The night shift's drafts get none. A weekly
-  sweep (`preview-sweep.yml`) deletes previews whose PR closed.
+- **On every open PR**, drafts too: a preview Worker of its own, `dave-pr-<n>` (`preview.yml`), the live build plus the
+  inspection hooks, with the whole e2e suite run against it once deployed (once ready, not while a draft): the gate to
+  master. One comment on the PR links it and a room of the PR's own, so the owner can try a change from the phone before it
+  goes live. It starts with empty storage. The night shift's drafts get none. A weekly sweep (`preview-sweep.yml`) deletes
+  previews whose PR closed.
 - **Inside every e2e test:** unexpected console warnings and runtime invariants (`src/client/invariants.ts`: UI that
   contradicts the call) fail the test.
-- **Nightly:** the suite against nightly is the release gate; the chaos soak (`soak.yml`, 01:00 UTC) opens `soak` issues
-  with a minimal sequence; the night shift (`scripts/night-shift/`, on the dev box, 02:30 UTC) turns new problem reports into
+- **Every night:** the chaos soak (`soak.yml`, 01:00 UTC, a local build of master) opens `soak` issues with a minimal
+  sequence; the night shift (`scripts/night-shift/`, on the dev box, 02:30 UTC) turns new problem reports into
   draft "Repro:" PRs.
 - **Every session's briefing** (`scripts/claude/session-start.sh`) says how the unattended parts did: the night shift's last
-  run, open soak issues, waiting reproductions, the gate on master. A warning there comes before new work.
+  run, open soak issues, waiting reproductions, whether master's head reached the live site. A warning there comes before
+  new work.
 - **In the field:** `invariant_violation`, `$exception` and `bug_report` in PostHog (read recipe in the auto memory).
 
 ## Flakes
@@ -101,10 +100,13 @@ Every failed try of every e2e and preview run goes into the flake ledger by itse
 cause, not per sighting: a ticket lists the rows it explains in `causes.json` on that branch (a regex over test and error;
 commit with `[skip ci]`), and "fixed" means its rows stop growing after the fix landed.
 
-A flake does not hold up a release, though: explain before release, fix after. The nightly gate goes red on a flake so that
-whoever releases sees it; they first suspect the commits going out, and only when the evidence clears them re-run the failed
-jobs once and release (`/release` step 2a). That re-run is the one retry allowed without a known cause, because the cause
-is still looked for after. Red again on the re-run stops the release.
+A flake does not hold up a PR, though: explain before landing, fix after. The preview gate goes red on a flake so that
+whoever lands the PR sees it. Suspect the PR's own change first: was the same test or error seen before on commits without
+it (the ledger, a flake ticket), and does the change touch the test's path or the app code its failing step runs through?
+Only when the evidence clears the change, re-run the failed jobs once (`gh run rerun <id> --failed`; the gate job runs
+again with them) and name the flake and the evidence in the report. That re-run is the one retry allowed without a known
+cause, because the cause is still looked for after. Red again on the re-run stops the landing. Either way, add the
+sighting to the ticket its ledger row links, or open one.
 
 ## Code
 

@@ -1,13 +1,14 @@
 name: preview
 # A preview of every open pull request, deployed so it can be tried from a phone in one tap: a Worker of its own,
-# dave-pr-<number>, built like nightly (CLOUDFLARE_ENV=preview, with the inspection hooks) and redeployed on every push.
+# dave-pr-<number>, built like the live site but with the inspection hooks (CLOUDFLARE_ENV=preview) and redeployed on
+# every push.
 # One comment on the PR carries the link and is rewritten in place. The Worker is deleted when the PR closes;
 # preview-sweep.yml catches any left behind.
 # The link is an invite to a room of the PR's own (the bare URL shows only the invite notice), the same on every push, so
 # a friend tapping it lands where the PR is being tried. Its secret is public (so is the repo), which is fine for a
 # throwaway Worker; any other invite link works there too with the host swapped (a room is only its secret, ADR 0004).
-# Once deployed, the browser suite runs against the preview (e2e.yml, called), as it runs against nightly after a master
-# deploy: real Cloudflare, before master, flakes failing it like there.
+# Once deployed, the browser suite runs against the preview (e2e.yml, called): real Cloudflare, flakes failing it. That run
+# is the gate to master, which deploys the live site: it writes the `preview e2e passed` status a ruleset on master requires.
 # A draft PR is one still being iterated on, often opened just for its preview: it gets the preview but not the suite against
 # it, and its branch pushes skip ci, e2e and red-green (draft-gate.yml). Marking it ready for review deploys again, runs the
 # suite here and dispatches those three on its head. The night shift's draft "Repro:" PRs (night-shift/*) need no preview and
@@ -94,8 +95,8 @@ jobs:
     needs: deploy
     if: '!github.event.pull_request.draft'
     uses: ./.github/workflows/e2e.yml
-    # The called workflow's last job writes commit statuses (only after a nightly run, never here), its first looks up the
-    # PR (draft-gate.yml), and a called job gets no more permissions than its caller grants.
+    # The called workflow's last job writes the gate's commit status, its first looks up the PR (draft-gate.yml), and a
+    # called job gets no more permissions than its caller grants.
     permissions:
       contents: read
       pull-requests: read

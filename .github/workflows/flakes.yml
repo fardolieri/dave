@@ -1,5 +1,5 @@
 name: flakes
-# The flake ledger (scripts/flakes/ledger.mjs): after every e2e run (branches, nightly) and every preview run (which calls
+# The flake ledger (scripts/flakes/ledger.mjs): after every e2e run (branches) and every preview run (which calls
 # e2e.yml), the tries that failed in it are added to `ledger.jsonl` on the branch `flake-ledger`, and its README.md counts
 # them by test and error over the last 30 days. A flake is one row with its sightings, not a ticket per sighting; tickets
 # are per cause, linked from the rows by `causes.json` on that branch (CLAUDE.md, Flakes). The branch holds data only: no

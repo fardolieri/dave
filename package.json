@@ -14,8 +14,7 @@
     "test": "node scripts/check-core-isolation.mjs && node scripts/check-playwright-image.mjs && node scripts/check-theme-fonts.mjs && node scripts/check-theme-masks.mjs && vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.e2e.json --noEmit",
     "types": "wrangler types",
-    "e2e": "playwright test",
-    "e2e:nightly": "E2E_URL=nightly playwright test"
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@solidjs/signals": "2.0.0-rc.6",

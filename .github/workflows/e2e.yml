@@ -1,37 +1,34 @@
 name: e2e
 # The browser suite (e2e/, playwright.config.ts) in Chromium and Firefox, the only browser tests this repo has:
-#   - every pushed branch except master and prod: against a local build (Worker and Room in workerd, inspection hooks on),
+#   - every pushed branch except master: against a local build (Worker and Room in workerd, inspection hooks on),
 #     unless the branch's PR is a draft (draft-gate.yml)
-#   - after each successful master deploy: against nightly, which master builds with the same hooks
-#   - by hand from the Actions tab: local, nightly, or any deployed URL
-#   - called by preview.yml after each pull request preview deploy: against that preview, which is built like nightly
+#   - called by preview.yml after each pull request preview deploy: against that preview, real Cloudflare with the same
+#     hooks. This run is the gate to master.
+#   - by hand from the Actions tab: local, or any deployed URL
 #   - weekly, and by hand with `solid_dev`: against a local build on Solid's development build (VITE_SOLID_DEV=1), where
 #     Solid's diagnostics about correctness fail a test and all of them are kept as `e2e-solid-*` (e2e/fixtures.ts). It
 #     catches what the production build lets pass, such as a write Solid forbids, before the dev server or a Solid upgrade
 #     trips on it. Its failures stay out of the flake ledger: they are of another build.
 # Each engine is split into shards on runners of their own (Playwright's --shard): the whole suite on one runner took
 # about 7 minutes. Eight per engine: 16 jobs stay under the 20 a free account runs at once, and beyond that each runner's
-# ~40 s of setup outweighs its share of the tests. A runner has its own IP, so nightly's upgrade limit sees one shard.
+# ~40 s of setup outweighs its share of the tests. A runner has its own IP, so a preview's upgrade limit sees one shard.
 # The report and the traces of failures are kept as an artifact.
 #
-# The nightly run is the release gate: its last job writes the commit status `nightly e2e passed`, success only when every
-# shard of both engines passed against nightly for that exact commit, with no flaky test (playwright.config.ts fails flakes
-# there). A ruleset on `prod` requires it, so GitHub refuses to fast-forward prod to a commit that has not passed (CLAUDE.md).
-# A flake turns it red on purpose, so whoever releases sees it; they may re-run the failed jobs once after clearing the
-# commits going out (/release step 2a), and the re-run's verdict replaces the first. Each attempt keeps its artifacts.
+# The preview run is the gate to master, and master deploys the live site: its last job writes the commit status
+# `preview e2e passed` on the pull request's head, success only when every shard of both engines passed against the preview
+# for that exact commit, with no flaky test (playwright.config.ts fails flakes there). A ruleset on master requires it, so
+# GitHub refuses to move master to a commit that has not passed (CLAUDE.md). A flake turns it red on purpose; the failed
+# jobs may be re-run once after clearing the change (CLAUDE.md, Flakes), and the re-run's verdict replaces the first. Each
+# attempt keeps its artifacts.
 on:
   push:
-    branches-ignore: [master, prod, flake-ledger] # flake-ledger: data only (flakes.yml)
-  workflow_run:
-    workflows: [deploy]
-    types: [completed]
-    branches: [master]
+    branches-ignore: [master, flake-ledger] # flake-ledger: data only (flakes.yml)
   schedule:
     - cron: '0 5 * * 1' # Mondays 05:00 UTC, on Solid's development build; clear of the preview sweep (04:00)
   workflow_dispatch:
     inputs:
       target:
-        description: "local, nightly, or the URL of a deployed copy"
+        description: "local, or the URL of a deployed copy"
         default: local
         required: true
       grep:
@@ -57,7 +54,7 @@ on:
 concurrency:
   # When called, the caller's event and ref apply: preview.yml's concurrency already cancels a superseded preview run.
   # The weekly run on Solid's development build has its own, so a run by hand on master does not cancel it.
-  group: e2e-${{ github.event_name == 'workflow_run' && 'nightly' || github.event_name == 'schedule' && 'solid-dev' || github.event_name == 'pull_request' && format('preview-{0}', github.ref) || github.ref }}
+  group: e2e-${{ github.event_name == 'schedule' && 'solid-dev' || github.event_name == 'pull_request' && format('preview-{0}', github.ref) || github.ref }}
   cancel-in-progress: true
 jobs:
   draft:
@@ -67,8 +64,7 @@ jobs:
       pull-requests: read
   e2e:
     needs: draft
-    # After a deploy, only when it succeeded; a failed deploy leaves nightly on the previous version.
-    if: needs.draft.outputs.run == 'true' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    if: needs.draft.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # Playwright's own image, with both engines and everything they need already in it: a few tests put a Chromium sharer
@@ -86,15 +82,15 @@ jobs:
         project: [chromium, firefox]
         shard: [1, 2, 3, 4, 5, 6, 7, 8] # the total is written out again in the test step below
     env:
-      # Empty means a local build; `nightly` is a shorthand the config understands.
-      E2E_URL: ${{ github.event_name == 'workflow_run' && 'nightly' || (inputs.target != 'local' && inputs.target || '') }}
+      # Empty means a local build.
+      E2E_URL: ${{ inputs.target != 'local' && inputs.target || '' }}
       # The local build only: a deployed copy is the production build whatever this says.
       VITE_SOLID_DEV: ${{ (github.event_name == 'schedule' || inputs.solid_dev) && '1' || '' }}
     steps:
       - uses: actions/checkout@v5
         with:
-          # After a deploy, test the commit that was deployed.
-          ref: ${{ github.event.workflow_run.head_sha || inputs.ref || github.sha }}
+          # Against a preview, test the commit deployed there.
+          ref: ${{ inputs.ref || github.sha }}
       # The checkout belongs to the runner's user, not root: without this git refuses it, and the build stamps no commit.
       # System-wide, as the steps do not all share one HOME.
       - run: git config --system --add safe.directory "$GITHUB_WORKSPACE"
@@ -106,14 +102,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Nothing to do when the image matches the checked-out Playwright, which it need not: this file can be newer than
       # the commit tested. A preview (preview.yml) runs the copy merged with master on the pull request's head, and a
-      # deploy that waited behind a newer one runs master's latest copy on its own commit. The browsers of the other
+      # run by hand on an older commit runs this copy too. The browsers of the other
       # version then come from Playwright's own servers, not the apt mirror; the image's system packages fit them closely.
       - run: pnpm exec playwright install chromium firefox
       # After a deploy, the edge serves the new page and its files together only a minute or so later: a page opened before
       # that loads a file that is not there (ticket 64). Each shard waits on its own, since each runner may reach another edge.
       # A pull request not yet rebased onto the script has none at its head, and runs as before.
-      - if: github.event.workflow_run.head_sha || inputs.ref
-        run: test ! -f scripts/wait-for-deploy.mjs || node scripts/wait-for-deploy.mjs "${{ github.event.workflow_run.head_sha || inputs.ref }}"
+      - if: inputs.ref
+        run: test ! -f scripts/wait-for-deploy.mjs || node scripts/wait-for-deploy.mjs "${{ inputs.ref }}"
       # HOME=/root: Firefox refuses to start as root in another user's home (the runner's, /github/home). Inside the command
       # only: set as `env:` it also reaches the runner's own docker commands, which then cannot read root's docker config.
       - run: HOME=/root pnpm exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}/8 --repeat-each=${{ inputs.repeat || 1 }} ${{ inputs.grep && '-g "$E2E_GREP" --pass-with-no-tests' || '' }}
@@ -125,8 +121,8 @@ jobs:
         env:
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
-          SHA: ${{ github.event.workflow_run.head_sha || inputs.ref || github.sha }}
-          REF: ${{ github.event.workflow_run.head_branch || github.head_ref || github.ref_name }}
+          SHA: ${{ inputs.ref || github.sha }}
+          REF: ${{ github.head_ref || github.ref_name }}
           EVENT: ${{ github.event_name }}
           GREP: ${{ inputs.grep }}
           REPEAT: ${{ inputs.repeat }}
@@ -180,13 +176,13 @@ jobs:
           retention-days: 14
 
   gate:
-    # The release gate. After the run against nightly it writes the commit status `nightly e2e passed` on the tested commit,
-    # success only when every shard of both engines passed. A ruleset on `prod` requires that status. It is a commit status
-    # and not this job's own check because GitHub's rules do not count checks from workflow_run runs (tried 2026-10-08).
-    # Branch runs of the same commit never write it.
-    # Called from preview.yml it gates nothing, and is named so.
+    # The gate to master. Called from preview.yml it writes the commit status `preview e2e passed` on the pull request's
+    # head, the commit tested (inputs.ref), success only when every shard of both engines passed against the preview. A
+    # ruleset on master requires that status. A commit status, not this job's own check: a check belongs to the run's
+    # commit, and the status must name the commit that was tested and would be pushed to master.
+    # Branch runs against a local build and runs by hand never write it.
     # A push to a draft PR's branch tested nothing and reports nothing.
-    name: ${{ github.event_name == 'pull_request' && 'result' || 'release gate' }}
+    name: ${{ github.event_name == 'pull_request' && 'gate to master' || 'result' }}
     needs: [draft, e2e]
     if: always() && needs.draft.outputs.run == 'true'
     runs-on: ubuntu-latest
@@ -197,21 +193,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RESULT: ${{ needs.e2e.result }}
-          NIGHTLY: ${{ github.event_name == 'workflow_run' }}
-          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          GATE: ${{ github.event_name == 'pull_request' && inputs.ref != '' }}
+          SHA: ${{ inputs.ref || github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          echo "e2e shards: $RESULT (against nightly: $NIGHTLY)"
-          # No verdict for a run that never tested this commit: its deploy failed or was replaced by a newer master push
-          # (skipped). Writing "failure" there read as a broken commit (2026-10-11, f360159); the commit simply stays
-          # unreleasable until a later commit passes. A cancelled run (a newer nightly run took over, or a shard hung past
-          # its timeout) writes no status either, but fails this job so a hang stays visible.
-          if [ "$NIGHTLY" = true ] && [ "$RESULT" = skipped ]; then echo "No verdict for $SHA: the suite did not run"; exit 0; fi
-          if [ "$NIGHTLY" = true ] && [ "$RESULT" = cancelled ]; then echo "::error::No verdict for $SHA: the suite was cancelled (superseded, or a shard timed out)"; exit 1; fi
-          if [ "$NIGHTLY" = true ]; then
+          echo "e2e shards: $RESULT (the gate to master: $GATE)"
+          # A cancelled run (a newer push to the PR took over, or a shard hung past its timeout) is no verdict on the commit
+          # and writes no status, but fails this job so a hang stays visible. The commit simply cannot go to master.
+          if [ "$GATE" = true ] && [ "$RESULT" = cancelled ]; then echo "::error::No verdict for $SHA: the suite was cancelled (superseded, or a shard timed out)"; exit 1; fi
+          if [ "$GATE" = true ]; then
             state=$([ "$RESULT" = success ] && echo success || echo failure)
-            gh api -X POST "repos/${{ github.repository }}/statuses/$SHA" -f state="$state" -f context="nightly e2e passed" \
-              -f description="Full e2e suite against nightly, both engines, no flakes: $RESULT" -f target_url="$RUN_URL" > /dev/null
-            echo "Wrote 'nightly e2e passed' = $state on $SHA"
+            gh api -X POST "repos/${{ github.repository }}/statuses/$SHA" -f state="$state" -f context="preview e2e passed" \
+              -f description="Full e2e suite against the PR's preview, both engines, no flakes: $RESULT" -f target_url="$RUN_URL" > /dev/null
+            echo "Wrote 'preview e2e passed' = $state on $SHA"
           fi
           test "$RESULT" = success

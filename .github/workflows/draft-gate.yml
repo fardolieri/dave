@@ -2,10 +2,10 @@ name: draft-gate
 # Called first by ci.yml, e2e.yml and red-green.yml: says whether their checks run. A push to a branch whose open pull request
 # is a draft skips them, so a PR opened only for its preview (preview.yml deploys drafts too) can take quick pushes without a
 # full CI run each. Marking it ready for review runs all three on its head (preview.yml dispatches them).
-# Everything else runs: other events (nightly, by hand, a preview's call), a branch with no PR yet (its first push usually
+# Everything else runs: other events (by hand, a preview's call), a branch with no PR yet (its first push usually
 # comes before the PR), and night-shift/* branches, whose draft "Repro:" PRs need the red e2e run as their evidence. An API
 # error runs the checks too: a missed skip costs a run, a wrong skip would pass a branch nobody tested.
-# A skipped run ends green with its jobs skipped; the summary says why. It is no verdict on the commit (/ship knows).
+# A skipped run ends green with its jobs skipped; the summary says why. It is no verdict on the commit.
 on:
   workflow_call:
     outputs:
