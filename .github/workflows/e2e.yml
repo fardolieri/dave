@@ -74,7 +74,7 @@ jobs:
     # The tag is @playwright/test's version; scripts/check-playwright-image.mjs (part of `pnpm test`) says when they part.
     # Root inside. --ipc=host: Chromium runs out of shared memory in Docker's default 64 MB.
     container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
       options: --ipc=host
     strategy:
       fail-fast: false

@@ -11,7 +11,9 @@
  * (e2e/console.ts): if the app got over it, so does the test.
  */
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { test as base, expect, type Browser, type BrowserContext, type Locator, type Page, type TestInfo, type WebSocketRoute } from '@playwright/test';
 import type { BridgePayload } from '@solidjs/diagnostics/browser';
 import { environmentNoise, launchOptions, originFor, type Autoplay, type Engine } from './browsers';
@@ -283,7 +285,7 @@ export class Friend {
       if (m.type() !== 'warning' && m.type() !== 'error') return;
       if (SOLID_DEV && m.type() === 'warning' && /^\[[A-Z_]+\] /.test(m.text())) {
         this.solid.push(m.text());
-        if (SOLID_COLLECTED_ONLY.test(m.text())) return;
+        if (SOLID_COLLECTED_ONLY!.test(m.text())) return;
       }
       const i = this.problems.push(`${m.type()}: ${m.text()}`) - 1;
       // Firefox gives an error object as "JSHandle@object", which says nothing about the failure: read it out, so a
@@ -656,9 +658,16 @@ export const test = base.extend<{ crowd: Crowd }>({
 const SOLID_DEV = process.env['VITE_SOLID_DEV'] === '1';
 /**
  * Solid's diagnostics that are collected only: those about speed, which depend on the runner as much as on the app, and
- * the pointers to its guides it prints after a code's first report.
+ * the pointer to its guides it prints on its own after a thrown code's first report. The speed codes are read from the
+ * list Solid ships, by the kinds its own console footer counts as speed, so a Solid release that adds one needs no edit
+ * here. Read only on Solid's development build, so no other run depends on that file.
  */
-const SOLID_COLLECTED_ONLY = /^\[(HOT_SCOPE_RERUNS|HOT_SCOPE_TIME|HOT_SCOPE_FANOUT|WIDE_SCOPE_DEPS|UNSTABLE_MEMO_OUTPUT|WIDE_WRITE|ASYNC_WATERFALL|HUGE_FAN_OUT|HUGE_FAN_IN)\] |^\[[A-Z_]+\] (repair guide|deeper evidence): /;
+const SOLID_COLLECTED_ONLY = SOLID_DEV ? (() => {
+  const list: { code: string; kind: string[] }[] = JSON.parse(readFileSync(join(dirname(createRequire(import.meta.url).resolve('solid-js/package.json')), 'diagnostics.json'), 'utf8'));
+  const speed = list.filter((d) => d.kind.some((k) => ['perf', 'graph', 'responsiveness'].includes(k))).map((d) => d.code);
+  if (!speed.includes('HOT_SCOPE_RERUNS')) throw new Error('solid-js/diagnostics.json no longer lists the speed codes as e2e/fixtures.ts reads them; update SOLID_COLLECTED_ONLY');
+  return new RegExp(`^\\[(${speed.join('|')})\\] |^\\[[A-Z_]+\\] what it means and how to fix it: `);
+})() : null;
 
 async function writeSolidDiagnostics(friends: Friend[], testInfo: TestInfo): Promise<void> {
   const report = [];
