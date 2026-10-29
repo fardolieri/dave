@@ -266,7 +266,7 @@ function Workspace(props: WorkspaceProps) {
     // The latest saved entry; the last one seen while the room is being forgotten and its link disposed.
     return { get saved() { return (last = props.rooms.find((r) => r.secret === secret) ?? last); }, room, call };
   });
-  onCleanup(props.onStepBack(() => { for (const l of untrack(links)) l.call.leave(); })); // a join under way too
+  onSettled(() => props.onStepBack(() => { for (const l of untrack(links)) l.call.leave(); })); // a join under way too
   /** The room on screen. Null only for the moment between leaving the last room and the workspace going away. */
   const current = createMemo(() => links().find((l) => l.saved.secret === props.selected) ?? links()[0] ?? null);
   /** The room whose call I am in, if any. */
@@ -308,17 +308,18 @@ function Workspace(props: WorkspaceProps) {
   let openAtDown: { publicKey: string; anchor: HTMLElement } | null = null;
   const takeOpen = () => { openAtDown = untrack(profile); };
   const dropOpen = () => setTimeout(() => { openAtDown = null; });
-  document.addEventListener('pointerdown', takeOpen, true);
-  document.addEventListener('click', dropOpen, true);
   // A press that ends with no click (it became a scroll, it was released elsewhere) drops it too, a moment later: a
   // tap's click comes well after its pointerup, and must still find it.
   const dropOpenLater = () => setTimeout(() => { openAtDown = null; }, 700);
-  document.addEventListener('pointerup', dropOpenLater, true);
-  document.addEventListener('pointercancel', dropOpenLater, true);
-  onCleanup(() => {
-    document.removeEventListener('pointerdown', takeOpen, true);
-    document.removeEventListener('click', dropOpen, true);
-    for (const t of ['pointerup', 'pointercancel']) document.removeEventListener(t, dropOpenLater, true);
+  onSettled(() => {
+    document.addEventListener('pointerdown', takeOpen, true);
+    document.addEventListener('click', dropOpen, true);
+    for (const t of ['pointerup', 'pointercancel']) document.addEventListener(t, dropOpenLater, true);
+    return () => {
+      document.removeEventListener('pointerdown', takeOpen, true);
+      document.removeEventListener('click', dropOpen, true);
+      for (const t of ['pointerup', 'pointercancel']) document.removeEventListener(t, dropOpenLater, true);
+    };
   });
   // A profile card opened from a room's lists wears that room's look (`roomId`); from my row or a conversation, the page's.
   const [profile, setProfile] = createSignal<{ publicKey: string; anchor: HTMLElement; roomId?: string } | null>(null);
@@ -329,9 +330,6 @@ function Workspace(props: WorkspaceProps) {
     if (on && props.selected !== on.saved.secret) props.onSelect(on.saved.secret);
     props.onMove(from, to);
   });
-  // The themes card, opened from a room's ⋯ menu for that room's look, hanging beside the sidebar as a profile card does.
-  const [themesAt, setThemesAt] = createSignal<{ anchor: HTMLElement; roomId: string } | null>(null);
-  const openThemes = (anchor: HTMLElement, roomId: string) => setThemesAt({ anchor, roomId });
   // The page (the sidebar, its menus, the cards, the shares) wears the look of the top room, the first in the list: the
   // one whose call I am in, if I am in one. Each room's box wears its own; the chat of the room on screen wears that
   // room's, marked only where it is not the page's (a mark of the page's own would cover the page's scenery behind it).
@@ -342,8 +340,18 @@ function Workspace(props: WorkspaceProps) {
   /** A room's look where it is not the page's, for what wears it apart from the page: its chat, a card opened from it. */
   const lookOf = (roomId: string | undefined) => (roomId !== undefined && lookApart(roomId) ? themeOf(roomId) || 'default' : undefined);
   const chatLook = () => lookOf(current()?.saved.id ?? '');
-  /** The room on screen folded in the sidebar by a click on its box; another room brought on screen opens again. */
-  const [folded, setFolded] = createSignal(false);
+  /**
+   * The room on screen folded in the sidebar by a click on its box. Whichever way another room came on screen (a click, a
+   * room just made, an invite link, another tab), it is open; back from a private conversation too, however I got back.
+   */
+  const [folded, setFolded] = createSignal(() => { current(); privates.openWith(); return false; });
+  /** The room open in the sidebar: the room on screen, unless I folded it, or a private conversation is on screen in its place. */
+  const expandedRoom = createMemo(() => (folded() || privates.openWith() ? null : current()));
+  // The themes card, opened from the ⋯ menu of the room open in the sidebar for that room's look, hanging beside the
+  // sidebar as a profile card does. That ⋯ gone (folded, another room on screen, from a link or another tab too), the
+  // card goes with it.
+  const [themesAt, setThemesAt] = createSignal<{ anchor: HTMLElement; roomId: string } | null>(() => { expandedRoom(); return null; });
+  const openThemes = (anchor: HTMLElement, roomId: string) => setThemesAt({ anchor, roomId });
   const openProfile = (p: Person, anchor: HTMLElement, roomId?: string) => {
     if (openAtDown?.publicKey === p.publicKey && openAtDown.anchor === anchor) { openAtDown = null; setProfile(null); return; }
     if (p.publicKey !== me && !isKnown(p.publicKey)) { markKnown(p.publicKey, p.name); posthog.capture('new_key_acknowledged'); }
@@ -377,7 +385,7 @@ function Workspace(props: WorkspaceProps) {
     others.sort((a, b) => cameAt.get(b.publicKey)! - cameAt.get(a.publicKey)!);
     const self = withMe().find((p) => p.publicKey === me)!;
     return !active() ? [...others, self] : others;
-  });
+  }, { equals: sameItems });
   /**
    * Who is in a room and not in its call, ready to join: listed at the top of the room on screen, above its call; me last,
    * unless I am in a call. A friend in a call of another room of mine is here too, and listed (`callElsewhere`): being
@@ -408,11 +416,11 @@ function Workspace(props: WorkspaceProps) {
   const viewOf = (l: Link, key: string): PeerView | undefined => l.call.views().find((v) => v.publicKey === key);
   const [panel, setPanel] = createSignal<'audio' | 'share' | null>(null);
   // Sharers, from the staged room's presence (tiles render from signaling state, never from track events).
-  const sharers = createMemo(() => stage()?.room.people().filter((p) => p.role === 'participant' && p.sharing) ?? []);
+  const sharers = createMemo(() => stage()?.room.people().filter((p) => p.role === 'participant' && p.sharing) ?? [], { equals: sameItems });
   // Tiles are keyed by public key, not by Person object: every presence frame (a join, a leave, a mute, a rename)
   // replaces every Person, and a tile recreated for that would lose its video element and its fullscreen.
   // The rows of the room on screen are keyed the same way (`hereKeys`), so a friend's row is made once, when they come online, and slides in then.
-  const sharerKeys = createMemo<string[]>(() => sharers().map((p) => p.publicKey), { equals: sameKeyList });
+  const sharerKeys = createMemo<string[]>(() => sharers().map((p) => p.publicKey), { equals: sameItems });
   const sharerOf = (key: string): Person => sharers().find((p) => p.publicKey === key) ?? sharers()[0]!;
   const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
   const connected = () => current()?.room.status().kind === 'connected';
@@ -425,9 +433,11 @@ function Workspace(props: WorkspaceProps) {
   onSettled(() => { roomShownAt = performance.now(); });
   const [firstConnect, setFirstConnect] = createSignal(true);
   // Counted from when the rooms may connect: not while they wait for a new version found as the app opened (ticket 36).
-  let quietTimer: ReturnType<typeof setTimeout> | undefined;
-  createEffect(() => holding(), (held) => { if (!held && !quietTimer) quietTimer = setTimeout(() => setFirstConnect(false), QUIET_CONNECT_MS); });
-  onCleanup(() => clearTimeout(quietTimer));
+  createEffect(() => holding(), (held) => {
+    if (held) return;
+    const quiet = setTimeout(() => setFirstConnect(false), QUIET_CONNECT_MS);
+    return () => clearTimeout(quiet);
+  });
   const bannerStatus = (l: Link): ServerStatus => (firstConnect() && l.room.status().kind === 'connecting' ? { kind: 'connected' } : l.room.status());
   // Bumped when I send or switch rooms: the log jumps to the newest line (the composer and the log are separate grid items).
   const [jumpToken, setJumpToken] = createSignal(0);
@@ -437,25 +447,28 @@ function Workspace(props: WorkspaceProps) {
   // with Send to the room on screen then. Each is made ready to send at once (a pasted picture's original fetched, the
   // file hashed), and Send waits for all of them: nothing slow is left for the room, which keeps them and the text in
   // the order handed over. A reload drops them.
-  const [staged, setStaged] = createSignal<Staged[]>([]);
+  // Like the composer's draft, the room's wait while a private conversation is on screen and come back after. Files staged
+  // in a conversation are its own, and go as it leaves the screen, so a Send in the room cannot take them to everyone.
+  const [roomStaged, setRoomStaged] = createSignal<Staged[]>([]);
+  const [privateStaged, setPrivateStaged] = createSignal<Staged[]>(() => { privates.openWith(); return []; });
+  const staged = () => (privates.openWith() ? privateStaged() : roomStaged());
+  const setStaged = (change: (all: Staged[]) => Staged[]) => (privates.openWith() ? setPrivateStaged : setRoomStaged)(change);
+  // A thumbnail's URL is let go once no list has its file: sent, taken off, replaced by its original, or left behind in a
+  // conversation that closed.
+  createEffect(() => [...roomStaged(), ...privateStaged()].flatMap((x) => (x.url ? [x.url] : [])), (now, prev) => {
+    for (const url of prev ?? []) if (!now.includes(url)) URL.revokeObjectURL(url);
+  });
   let stagedIds = 0;
-  /** The room's staged files, set aside while a private conversation is on screen (see the effect below). */
-  let roomStaged: Staged[] = [];
   const stageFile = (file: File, original?: Promise<File | null>) => {
     const id = ++stagedIds;
     setStaged((all) => [...all, { id, file, url: thumbnailUrl(file), state: original ? 'original' : 'preparing', prepared: null }]);
-    // Wherever it is by then: on screen, or set aside with the room's while a conversation is (`roomStaged`).
+    // Wherever it is by then: on screen, or set aside with the room's while a conversation is.
     const update = (change: (x: Staged) => Staged) => {
-      setStaged((all) => all.map((x) => (x.id === id ? change(x) : x)));
-      roomStaged = roomStaged.map((x) => (x.id === id ? change(x) : x));
+      for (const set of [setRoomStaged, setPrivateStaged]) set((all) => (all.some((x) => x.id === id) ? all.map((x) => (x.id === id ? change(x) : x)) : all));
     };
     void (async () => {
       const picked = (await original) ?? file;
-      update((x) => {
-        if (picked === file) return { ...x, state: 'preparing' };
-        if (x.url) URL.revokeObjectURL(x.url);
-        return { ...x, file: picked, url: thumbnailUrl(picked), state: 'preparing' };
-      });
+      update((x) => (picked === file ? { ...x, state: 'preparing' } : { ...x, file: picked, url: thumbnailUrl(picked), state: 'preparing' }));
       try {
         const prepared = await prepareFile(picked);
         update((x) => ({ ...x, state: 'ready', prepared }));
@@ -464,21 +477,7 @@ function Workspace(props: WorkspaceProps) {
       }
     })();
   };
-  // Like the composer's draft: the room's staged files wait while a conversation is on screen and come back after; files
-  // staged in a conversation go as it leaves the screen, so a Send in the room cannot take them to everyone.
-  createEffect(() => privates.openWith(), (key, prev) => {
-    if (key === prev || (prev === undefined && key === null)) return;
-    const now = untrack(staged);
-    if (!prev && key) { roomStaged = now; setStaged([]); return; }
-    for (const x of now) if (x.url) URL.revokeObjectURL(x.url);
-    setStaged(key ? [] : roomStaged);
-    if (!key) roomStaged = [];
-  });
-  const unstageFile = (id: number) => {
-    const gone = staged().find((x) => x.id === id);
-    if (gone?.url) URL.revokeObjectURL(gone.url);
-    setStaged((all) => all.filter((x) => x.id !== id));
-  };
+  const unstageFile = (id: number) => setStaged((all) => all.filter((x) => x.id !== id));
   // A file dropped anywhere on the page waits above the composer, as a picked one does: friends drop it on the text
   // field or the sidebar as often as on the log. It is never left to the browser, which would open it in place of the
   // app; it is staged only while something can be sent.
@@ -498,10 +497,7 @@ function Workspace(props: WorkspaceProps) {
   const onTop = (t: EventTarget | null) => t instanceof Element && !!(t.closest('dialog[open], [popover]') || document.fullscreenElement?.contains(t));
   // Another room put on screen (a click, an invite link) ends the conversation on screen; the room behind it going away
   // (left, forgotten) does not: another simply takes its place behind.
-  // Whichever way it came (a click, a room just made, an invite link, another tab), the room brought on screen is open.
-  // Back from a private conversation, too, however I got back.
-  createEffect(() => privates.openWith(), (now, prev) => { if (prev && !now) setFolded(false); });
-  createEffect(() => current(), (now, prev) => { if (now !== prev) setFolded(false); if (prev && now !== prev && untrack(links).includes(prev)) privates.close(); });
+  createEffect(() => current(), (now, prev) => { if (prev && now !== prev && untrack(links).includes(prev)) privates.close(); });
   // Direct messages unfolds for the conversation on screen, online friend or not: its row there is the one highlighted.
   // Unfolded so, it folds again once the conversation closes; one I unfolded myself stays as I left it.
   let dms: HTMLDetailsElement | undefined;
@@ -513,7 +509,7 @@ function Workspace(props: WorkspaceProps) {
     else if (!k && unfoldedForIt) { dms.open = false; unfoldedForIt = false; }
   });
   /** Every unread private text: on Direct messages while it is folded; unfolded, each friend's row has its own count. */
-  const threadKeys = createMemo<string[]>(() => privates.threads().map((t) => t.friend.publicKey), { equals: sameKeyList });
+  const threadKeys = createMemo<string[]>(() => privates.threads().map((t) => t.friend.publicKey), { equals: sameItems });
   const dmsUnread = createMemo(() => privates.threads().reduce((n, t) => n + privates.unread(t.friend.publicKey), 0));
   /** The private conversation on screen: the friend as presence has them now, else as I last saw them. */
   const privateFriend = createMemo(() => {
@@ -533,15 +529,13 @@ function Workspace(props: WorkspaceProps) {
     if (priv) {
       // Files first, then the text, as in a room; each goes to the friend alone. One a room would not take stays staged.
       const kept = files.filter((x) => x.prepared && !privates.sendFile(priv.key, x.prepared));
-      for (const x of files) if (x.url && !kept.includes(x)) URL.revokeObjectURL(x.url);
-      setStaged(kept);
+      setStaged(() => kept);
       const sent = text ? privates.send(priv.key, text) : false;
       if (sent || kept.length < files.length) setPrivateJump((n) => n + 1);
       // True when the text went, so the field empties: the files no room took stay staged, and the conversation says why.
       return text ? sent : kept.length === 0;
     }
-    setStaged([]);
-    for (const x of files) if (x.url) URL.revokeObjectURL(x.url);
+    setStaged(() => []);
     for (const x of files) if (x.prepared) room.sendPrepared(x.prepared);
     if (text) room.sendText(text);
     setJumpToken((n) => n + 1);
@@ -602,7 +596,7 @@ function Workspace(props: WorkspaceProps) {
 
   return (
     <Show when={current()}>{(cur) => (
-      <div class={`app ${sharers().length > 0 ? 'split' : ''} ${dragging() ? 'dropping' : ''}`}
+      <div class={['app', { split: sharers().length > 0, dropping: dragging() }]}
            onDragEnter={(e) => { if (hasFiles(e)) { depth++; if (!onTop(e.target)) overPage(); } }}
            onDragOver={(e) => {
              if (!hasFiles(e)) return;
@@ -624,10 +618,7 @@ function Workspace(props: WorkspaceProps) {
               const selected = () => l === cur();
               // The first in the list: its look is the page's
               const top = () => links()[0] === l;
-              // Open in the sidebar: the room on screen, unless I folded it, or a private conversation is on screen in its place.
-              const expanded = () => selected() && !folded() && !privates.openWith();
-              // Its ⋯ gone (folded, another room on screen, from a link or another tab too), its Themes card goes with it
-              createEffect(() => expanded(), (hasMore) => { if (!hasMore && untrack(() => themesAt()?.roomId === l.saved.id)) setThemesAt(null); });
+              const expanded = () => expandedRoom() === l;
               const inThis = () => l.call.inCall();
               // Call list: you first, then by join order. Participants whose server socket dropped stay listed, dimmed, for the grace period.
               // You are listed from this browser's call state, like in Online, so your row and the buttons change together.
@@ -635,16 +626,17 @@ function Workspace(props: WorkspaceProps) {
                 const all = l.room.people().filter((p) => p.role === 'participant');
                 const self = inThis() ? all.find((p) => p.publicKey === me) ?? l.room.people().find((p) => p.publicKey === me) : undefined;
                 const others = all.filter((p) => p.publicKey !== me).sort((a, b) => (a.joinSeq ?? 0) - (b.joinSeq ?? 0));
-                const lost = l.call.views().filter((v) => v.serverLost && !all.some((p) => p.publicKey === v.publicKey));
-                return { self, others, lost };
+                return { self, others };
               });
+              // Apart from the call's views, which change with every stats tick and with the presence they follow (call.ts)
+              const lost = createMemo(() => l.call.views().filter((v) => v.serverLost && !participants().others.some((p) => p.publicKey === v.publicKey)), { equals: sameItems });
               const elsewhere = () => { const a = active(); return a && a !== l ? a : null; };
               // Only the room on screen lists them: the others need not work them out on every presence frame.
-              const here = createMemo(() => (expanded() ? hereIn(l) : []));
-              const hereKeys = createMemo<string[]>(() => here().map((p) => p.publicKey), { equals: sameKeyList });
+              const here = createMemo(() => (expanded() ? hereIn(l) : []), { equals: sameItems });
+              const hereKeys = createMemo<string[]>(() => here().map((p) => p.publicKey), { equals: sameItems });
               // Who is in the call but me, by key: the call box's rows are keyed by friend, as a row made anew on each presence
               // frame would lose focus, its tooltip, its open slider and the card it holds open.
-              const faceKeys = createMemo<string[]>(() => participants().others.map((p) => p.publicKey), { equals: sameKeyList });
+              const faceKeys = createMemo<string[]>(() => participants().others.map((p) => p.publicKey), { equals: sameItems });
               // Another room, beside its name: everyone in it as faces, those in its call first (a green ring), then the rest (a
               // plain one). Me only when I am in its call: a room not on screen is folded even then, its controls on screen in it.
               // At most FACES_SHOWN, then a count of the rest, so a busy room keeps its name. Only rooms not on screen need them.
@@ -658,14 +650,14 @@ function Workspace(props: WorkspaceProps) {
                 online();
                 const rest = people.filter((p) => p.role !== 'participant').sort((a, b) => (cameAt.get(b.publicKey) ?? -1) - (cameAt.get(a.publicKey) ?? -1));
                 return [...inCall, ...rest];
-              });
-              const roomFaceKeys = createMemo<string[]>(() => faces().slice(0, FACES_SHOWN).map((p) => p.publicKey), { equals: sameKeyList });
+              }, { equals: sameItems });
+              const roomFaceKeys = createMemo<string[]>(() => faces().slice(0, FACES_SHOWN).map((p) => p.publicKey), { equals: sameItems });
               const inviteOpen = () => inviteFor() === l.saved.secret;
               // The room's ⋯ menu: below its button, else above it when there is more room there.
               const menuId = `room-menu-${++roomMenus}`;
               const roomMenu = sidebarMenu({ width: ROOM_MENU_W, prefer: 'below' });
               return (
-                <section data-theme={themeOf(l.saved.id) || 'default'} data-apart={lookApart(l.saved.id) ? '' : undefined} class={`room ${selected() ? 'selected' : ''} ${expanded() ? '' : 'folded'} ${inThis() ? 'in-call' : ''} ${selected() && privates.openWith() ? 'behind' : ''} ${l.room.status().kind === 'connected' ? '' : 'frozen'}`}>
+                <section data-theme={themeOf(l.saved.id) || 'default'} data-apart={lookApart(l.saved.id) ? '' : undefined} class={['room', { selected: selected(), folded: !expanded(), 'in-call': inThis(), behind: selected() && !!privates.openWith(), frozen: l.room.status().kind !== 'connected' }]}>
                   {/* The top row is the room's handle (the area its hover shades the box for, styles.css): its name (a button,
                       for the keyboard) and its faces included, it opens the room, back from a private conversation too, or
                       folds the room on screen. The ⋯ and its menu do their own. */}
@@ -686,8 +678,8 @@ function Workspace(props: WorkspaceProps) {
                           let last = untrack(() => faces().find((p) => p.publicKey === key)!);
                           const p = () => (last = faces().find((q) => q.publicKey === key) ?? last);
                           return (
-                            <span class={p().role === 'participant' || (key === me && inThis()) ? 'face in-call' : 'face'}>
-                              <span class={`avatar ${labelOf(p()).picture ? 'pic' : ''}`} title={`${labelOf(p()).shown}${key === me ? ' (you)' : ''}${p().role === 'participant' || (key === me && inThis()) ? ', in the call' : ''}${labelOf(p()).known || key === me ? '' : ', a new key'}`}>{labelOf(p()).picture ?? labelOf(p()).shown[0]}</span>
+                            <span class={['face', { 'in-call': p().role === 'participant' || (key === me && inThis()) }]}>
+                              <span class={['avatar', { pic: !!labelOf(p()).picture }]} title={`${labelOf(p()).shown}${key === me ? ' (you)' : ''}${p().role === 'participant' || (key === me && inThis()) ? ', in the call' : ''}${labelOf(p()).known || key === me ? '' : ', a new key'}`}>{labelOf(p()).picture ?? labelOf(p()).shown[0]}</span>
                               <Show when={privates.unread(key) > 0}><b class="unread" title="New private messages">{privates.unread(key)}</b></Show>
                               <Show when={!labelOf(p()).known}><b class="newdot" title="new" /></Show>
                             </span>
@@ -736,7 +728,7 @@ function Workspace(props: WorkspaceProps) {
                   </Show>
                   {/* The room on screen: its call in full, in a box of its own */}
                   <Show when={expanded()}>
-                  <ul class={`plist ${participants().self || participants().others.length || participants().lost.length ? 'callbox' : ''}`}>
+                  <ul class={['plist', { callbox: !!participants().self || participants().others.length > 0 || lost().length > 0 }]}>
                     <Show when={participants().self}>{(s) => <ParticipantRow p={s()} isMe label={labelOf(s())} onProfile={(el) => openProfile(s(), el, l.saved.id)} speaking={l.call.speakingSelf()} />}</Show>
                     {/* Keyed by friend: a row made anew on each presence frame would lose its open slider, and the card it holds open */}
                     <For each={faceKeys()}>{(key) => {
@@ -744,8 +736,8 @@ function Workspace(props: WorkspaceProps) {
                       const p = () => (last = participants().others.find((q) => q.publicKey === key) ?? last);
                       return <ParticipantRow p={p()} isMe={false} label={labelOf(p())} onProfile={(el) => openProfile(p(), el, l.saved.id)} unread={privates.unread(key)} view={inThis() ? viewOf(l, key) : undefined} speaking={viewOf(l, key)?.speaking ?? false} onVolume={inThis() ? (v) => l.call.setVolume(key, v) : undefined} />;
                     }}</For>
-                    <For each={participants().lost}>{(v) => <li class="lost"><span class="avatar">{displayName(v.name, contactOf(v.publicKey))[0]}</span><span class="pname">{displayName(v.name, contactOf(v.publicKey))} <em>connection to server lost</em></span></li>}</For>
-                    <Show when={!participants().self && participants().others.length === 0 && participants().lost.length === 0}><li class="dim">nobody in the call</li></Show>
+                    <For each={lost()}>{(v) => <li class="lost"><span class="avatar">{displayName(v.name, contactOf(v.publicKey))[0]}</span><span class="pname">{displayName(v.name, contactOf(v.publicKey))} <em>connection to server lost</em></span></li>}</For>
+                    <Show when={!participants().self && participants().others.length === 0 && lost().length === 0}><li class="dim">nobody in the call</li></Show>
                   </ul>
                   </Show>
                   <Show when={expanded()}>
@@ -774,7 +766,7 @@ function Workspace(props: WorkspaceProps) {
                     // The friend as presence has them now, else as I last saw them
                     const friend = () => present(key) ?? t().friend;
                     return (
-                    <li class={`${present(key) ? '' : 'offline'} ${privates.openWith() === key ? 'on' : ''}`.trim() || undefined} onClick={() => openPrivate(friend())}>
+                    <li class={{ offline: !present(key), on: privates.openWith() === key }} onClick={() => openPrivate(friend())}>
                       <Avatar initial={labelOf(friend()).shown[0]!} picture={labelOf(friend()).picture} title={`Your private conversation with ${labelOf(friend()).shown}`} onOpen={() => openPrivate(friend())} />
                       <Show when={privates.unread(key) > 0}><b class="unread" title="New private messages">{privates.unread(key)}</b></Show>
                       <span class="pname" title={labelOf(friend()).title}><span class="tname">{labelOf(friend()).shown}</span>
@@ -791,7 +783,7 @@ function Workspace(props: WorkspaceProps) {
               {/* Picture and name are one handle, as a person's row in a room: my profile card */}
               <span class="who" title="Your profile" onClick={(e) => openProfile(withMe().find((p) => p.publicKey === me)!, e.currentTarget)}>
                 <Avatar initial={labelOf(localSelf()).shown[0]!} picture={labelOf(localSelf()).picture} title="Your profile" onOpen={(el) => openProfile(withMe().find((p) => p.publicKey === me)!, el.parentElement ?? el)} />
-                <span class={connected() ? 'nm' : 'nm pending'} title={connected() ? undefined : 'Connecting…'}>{labelOf(localSelf()).shown}</span>
+                <span class={['nm', { pending: !connected() }]} title={connected() ? undefined : 'Connecting…'}>{labelOf(localSelf()).shown}</span>
               </span>
               <button class="gear" ref={gearMenu.anchor} popovertarget="side-menu" title="New room, join by link, report a problem, and more" aria-label="Settings and more">⚙</button>
             </div>
@@ -811,7 +803,7 @@ function Workspace(props: WorkspaceProps) {
               <Show when={joining()} fallback={<button class="link" title="Enter a room from a pasted invite link" onClick={() => setJoining(true)}>Join by link</button>}>
                 <JoinLinkForm autofocus onJoin={(link) => { setJoining(false); closeMenu(); props.onJoin(link); }} onCancel={() => setJoining(false)} />
               </Show>
-              <button class={`link ${askingConsent() ? 'on' : ''}`} title={telemetryOn() ? 'This browser sends usage events, errors and a masked screen recording to PostHog. Click to read what is sent, or to stop.' : 'Send usage events, errors and a masked screen recording to PostHog, so bugs can be found. Click to read what is sent.'} onClick={() => { setAskingConsent((a) => !a); closeMenu(); }}>{telemetryOn() ? 'Stop helping find bugs' : 'Help find bugs'}</button>
+              <button class={['link', { on: askingConsent() }]} title={telemetryOn() ? 'This browser sends usage events, errors and a masked screen recording to PostHog. Click to read what is sent, or to stop.' : 'Send usage events, errors and a masked screen recording to PostHog, so bugs can be found. Click to read what is sent.'} onClick={() => { setAskingConsent((a) => !a); closeMenu(); }}>{telemetryOn() ? 'Stop helping find bugs' : 'Help find bugs'}</button>
               <ReportDialog collect={() => collectReport({ status: () => cur().room.status().kind, people: everyone, me: () => me, call: (active() ?? cur()).call.diagnostics })} />
               <VersionDialog />
             </div>
@@ -879,15 +871,15 @@ function CallControls(props: { call: Call; panel: 'audio' | 'share' | null; onPa
         <button class="unblock" title="The browser held back the call's sound until you click" onClick={props.call.unblockAudio}>Click to hear the call</button>
       </Show>
       <div class="row">
-        <button class={props.call.muted() ? 'on' : ''} onClick={() => void props.call.setMuted(!props.call.muted())}>{props.call.muted() ? 'Unmute' : 'Mute'}</button>
-        <button class={`gear ${props.panel === 'audio' ? 'on' : ''}`} title="Audio settings" onClick={() => { toggle('audio'); void props.call.refreshDevices(); }}>⚙</button>
+        <button class={{ on: props.call.muted() }} onClick={() => void props.call.setMuted(!props.call.muted())}>{props.call.muted() ? 'Unmute' : 'Mute'}</button>
+        <button class={['gear', { on: props.panel === 'audio' }]} title="Audio settings" onClick={() => { toggle('audio'); void props.call.refreshDevices(); }}>⚙</button>
       </div>
       <Show when={props.call.micProblem()}>{(p) => <div class="hint">{p()} You can listen; Unmute asks for the microphone again.</div>}</Show>
       <Show when={props.panel === 'audio'}><AudioPanel call={props.call} /></Show>
       <Show when={props.canShare} fallback={<div class="hint">Screen sharing is not available on this device</div>}>
         <div class="row">
-          <button class={props.call.sharing() ? 'on' : ''} onClick={() => void (props.call.sharing() ? props.call.stopShare() : props.call.startShare())}>{props.call.sharing() ? 'Stop sharing' : 'Share screen'}</button>
-          <button class={`gear ${props.panel === 'share' ? 'on' : ''}`} title="Share settings" onClick={() => toggle('share')}>⚙</button>
+          <button class={{ on: !!props.call.sharing() }} onClick={() => void (props.call.sharing() ? props.call.stopShare() : props.call.startShare())}>{props.call.sharing() ? 'Stop sharing' : 'Share screen'}</button>
+          <button class={['gear', { on: props.panel === 'share' }]} title="Share settings" onClick={() => toggle('share')}>⚙</button>
         </div>
       </Show>
       <Show when={props.panel === 'share'}><SharePanel call={props.call} /></Show>
@@ -930,7 +922,7 @@ type Label = { shown: string; known: boolean; title: string; picture?: string };
 function Avatar(props: { initial: string; picture?: string; speaking?: boolean; title: string; onOpen: (anchor: HTMLElement) => void }) {
   // Out of PostHog's autocapture (`ph-no-capture`): a friend's avatar opens their card, the way to our private
   // conversation, and whom I write to privately is mine.
-  return <button class={`avatar ph-no-capture ${props.picture ? 'pic' : ''} ${props.speaking ? 'speaking' : ''}`} title={props.title} onClick={(e) => { e.stopPropagation(); props.onOpen(e.currentTarget); }}>{props.picture ?? props.initial}</button>;
+  return <button class={['avatar ph-no-capture', { pic: !!props.picture, speaking: !!props.speaking }]} title={props.title} onClick={(e) => { e.stopPropagation(); props.onOpen(e.currentTarget); }}>{props.picture ?? props.initial}</button>;
 }
 
 /**
@@ -1006,8 +998,11 @@ const FACES_SHOWN = 6;
 const ROOM_MENU_W = 200;
 /** Numbers the rooms' ⋯ menus, for the ids their buttons point at (a room's secret is not for the page's markup). */
 let roomMenus = 0;
-/** Whether two lists of keys are the same, in the same order: rows keyed by friend are not made anew for an equal list. */
-const sameKeyList = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((k, i) => k === b[i]);
+/**
+ * Whether two lists hold the same items, in the same order: rows keyed by friend are not made anew for an equal list of
+ * keys, and a memo that filters an equal list again tells nobody (Solid's UNSTABLE_MEMO_OUTPUT).
+ */
+const sameItems = <T,>(a: readonly T[], b: readonly T[]): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
 /** How long the first connection may take before the room shows the "Connecting…" pill. */
 const QUIET_CONNECT_MS = 2500;
 /** Friends arriving as the room comes on screen wait this long, so they slide in after the phone's splash has faded. */
@@ -1056,7 +1051,7 @@ function PersonRow(props: { p: Person; isMe: boolean; label: Label; onProfile: (
   // conversation); the rest of the row is the room's, as the rest of its box.
   let row: HTMLLIElement | undefined;
   return (
-    <li ref={(el) => { row = el; if (untrack(() => props.arrive)) slideIn(el); }} class={props.pending ? 'pending ph-no-autocapture' : 'ph-no-autocapture'}>
+    <li ref={(el) => { row = el; if (untrack(() => props.arrive)) slideIn(el); }} class={['ph-no-autocapture', { pending: !!props.pending }]}>
       <span class="who" onClick={() => props.onProfile(row!)} title={props.label.known ? props.label.title : `${props.label.title}. A new key: opening their card acknowledges it.`}>
         <Avatar initial={props.label.shown[0]!} picture={props.label.picture} title={props.isMe ? 'Your profile' : `${props.label.shown}'s profile`} onOpen={() => props.onProfile(row!)} />
         <Show when={props.unread}><b class="unread" title="New private messages">{props.unread}</b></Show>
@@ -1166,15 +1161,18 @@ function ProfileCard(props: { open: { publicKey: string; anchor: HTMLElement } |
   const placeCard = (anchor: HTMLElement) => { if (card) place(card, anchor, 'beside', anchor.closest<HTMLElement>('aside.side') ?? undefined); };
   // Placed again when it changes size (✎ makes it taller): from my avatar at the bottom of the sidebar it would grow past the
   // window. Placing moves it and does not resize it, so this cannot loop.
-  const resized = new ResizeObserver(() => { if (card && props.open?.anchor.isConnected && isOpen()) placeCard(props.open.anchor); });
-  onCleanup(() => resized.disconnect());
+  onSettled(() => {
+    const resized = new ResizeObserver(() => { if (card && props.open?.anchor.isConnected && isOpen()) placeCard(props.open.anchor); });
+    if (card) resized.observe(card);
+    return () => resized.disconnect();
+  });
   // Gone from presence (the socket rebuilt it without me): nothing to show.
   createEffect(() => props.open !== null && person() === null, (gone) => { if (gone) props.onClose(); });
   // Light dismiss (click outside, Escape) closes the popover; the state follows. Clicking another avatar
   // dismisses and reopens in the same task, so only report a close that stuck.
   const onToggle = (e: Event) => { if ((e as ToggleEvent).newState === 'closed' && !isOpen()) props.onClose(); };
   return (
-    <div class="profile ph-no-autocapture" popover="auto" ref={(el) => { card = el; resized.observe(el); }} onToggle={onToggle}>
+    <div class="profile ph-no-autocapture" popover="auto" ref={card} onToggle={onToggle}>
       {/* Keyed by the opening: each one starts out not editing */}
       <Show when={props.open} keyed>{(_opened) => (
         <Show when={person()}>{(p) => <>
@@ -1224,13 +1222,13 @@ function Profile(props: { person: Identity; me: string; label: (id: Identity) =>
   };
   const editTitle = () => (isMe() ? 'Change your name' : contact()?.nick ? 'Change nickname' : 'Give a nickname');
   const picture = () => props.label(props.person).picture;
-  const BigAvatar = () => <span class={`avatar big ${picture() ? 'pic' : ''}`}>{picture() ?? props.label(props.person).shown[0]}</span>;
+  const BigAvatar = () => <span class={['avatar big', { pic: !!picture() }]}>{picture() ?? props.label(props.person).shown[0]}</span>;
   return (
     <>
       <Show when={editing()} fallback={
         <div class="profile-head">
           <Show when={isMe()} fallback={<BigAvatar />}>
-            <button class={`avatar big own ${picture() ? 'pic' : ''}`} ref={ownAvatar} popovertarget="profile-emoji" title="Choose a profile picture" aria-label="Choose a profile picture">{picture() ?? props.label(props.person).shown[0]}</button>
+            <button class={['avatar big own', { pic: !!picture() }]} ref={ownAvatar} popovertarget="profile-emoji" title="Choose a profile picture" aria-label="Choose a profile picture">{picture() ?? props.label(props.person).shown[0]}</button>
             <EmojiPicker id="profile-emoji" anchor={() => ownAvatar} onPick={(c) => props.onPictureSelf(c)} closeOnPick />
           </Show>
           <div class="profile-names">
@@ -1287,7 +1285,7 @@ function PrivateHead(props: { friend: Identity; me: string; label: (id: Identity
         <Show when={props.friend.publicKey} keyed>{(_key) => <Profile person={props.friend} me={props.me} label={props.label} onRenameSelf={() => {}} onPictureSelf={() => {}} />}</Show>
       </div>
       <p class="private-where">
-        <span class={props.where.length && !props.blocked ? 'here on' : 'here'}>
+        <span class={['here', { on: props.where.length > 0 && !props.blocked }]}>
           {props.blocked ? `Can't write now: ${props.blocked}` : props.where.length ? `In ${props.where.join(', ')}` : 'Your rooms with them are reconnecting'}
         </span>
         <button type="button" class="link" title="Only this browser's copy: nothing is stored on the server" onClick={() => { if (confirm(`Delete your private conversation with ${props.label(props.friend).shown} from this browser? Nothing is stored on the server, so this cannot be undone.`)) props.onForget(); }}>Delete conversation</button>
@@ -1354,7 +1352,7 @@ function AudioPanel(props: { call: Call }) {
         <div class="vgate" title="Your voice goes out while the bar passes the mark. Drag the mark left if your first words get cut off, right if noise still gets through; all the way left lets everything through. Double-click to reset.">
           <span>Voice gate</span>
           <span class="vtrack">
-            <span class="vmeter"><span class={`fill ${props.call.voiceLevel().open ? 'open' : ''}`} style={{ width: `${props.call.voiceLevel().voice * 100}%` }} /></span>
+            <span class="vmeter"><span class={['fill', { open: props.call.voiceLevel().open }]} style={{ width: `${props.call.voiceLevel().voice * 100}%` }} /></span>
             <input type="range" aria-label="Voice gate" min="0" max="100" step="5" value={Math.round(a().voiceThreshold * 100)}
               onInput={(e) => set({ voiceThreshold: Math.min(MAX_VOICE_THRESHOLD, Number(e.currentTarget.value) / 100) })} onDblClick={() => set({ voiceThreshold: DEFAULT_VOICE_THRESHOLD })} />
           </span>
@@ -1399,13 +1397,13 @@ function MicTest(props: { call: Call }) {
     <>
       <div class="mictest">
         <span>Mic test</span>
-        <button class={t() === 'live' ? 'on' : ''} disabled={props.call.micProblem() !== null} onClick={() => toggle('live', props.call.hearYourself)}
+        <button class={{ on: t() === 'live' }} disabled={props.call.micProblem() !== null} onClick={() => toggle('live', props.call.hearYourself)}
           title="Hear your voice as friends get it while you change the settings below. Use headphones: through speakers it comes back as an echo or a howl.">Hear yourself</button>
         <Show when={props.call.canRecordMicTest}>
-          <button class={t() === 'recording' ? 'recording' : ''} style={{ '--record-ms': `${MIC_TEST_RECORD_MS}ms` }} disabled={props.call.micProblem() !== null} onClick={() => toggle('recording', props.call.recordMicTest)}
+          <button class={{ recording: t() === 'recording' }} style={{ '--record-ms': `${MIC_TEST_RECORD_MS}ms` }} disabled={props.call.micProblem() !== null} onClick={() => toggle('recording', props.call.recordMicTest)}
             title="Records 5 seconds of your voice as friends get it, then plays them back. Works through speakers too.">{t() === 'recording' ? 'Recording…' : 'Record 5 s'}</button>
           <Show when={props.call.hasMicTestClip()}>
-            <button class={t() === 'playing' ? 'on' : ''} onClick={() => toggle('playing', props.call.playMicTest)} title="Plays the last recording again">Play</button>
+            <button class={{ on: t() === 'playing' }} onClick={() => toggle('playing', props.call.playMicTest)} title="Plays the last recording again">Play</button>
           </Show>
         </Show>
       </div>
@@ -1433,7 +1431,7 @@ function Lag(props: { ms: number }) {
   const level = () => lagLevel(props.ms);
   const title = () => `Round trip: ${formatDelay(props.ms)}. You hear them about half of that late.`
     + (level() === 'ok' ? '' : ' A line this slow usually queues up at one end; Low bandwidth voice in the audio settings may help, on either side.');
-  return <span class={`lag lag-${level()}`} title={title()}>{formatDelay(props.ms)}</span>;
+  return <span class={['lag', `lag-${level()}`]} title={title()}>{formatDelay(props.ms)}</span>;
 }
 
 const NAME_FLOOR_CH = 8;
@@ -1467,19 +1465,20 @@ function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: 
   const volume = () => props.view?.volume ?? 1;
   const percent = () => Math.round(volume() * 100);
   const [tight, setTight] = createSignal(false);
-  let watcher: { disconnect(): void }[] = [];
-  onCleanup(() => watcher.forEach((w) => w.disconnect()));
-  const watchFit = (line: HTMLDivElement) => {
-    const check = () => setTight(!badgesFitWhole(line));
+  let line: HTMLDivElement | undefined;
+  onSettled(() => {
+    if (!line) return;
+    const fit = line;
+    const check = () => setTight(!badgesFitWhole(fit));
     const resize = new ResizeObserver(check), mutation = new MutationObserver(check);
-    resize.observe(line);
-    mutation.observe(line, { childList: true, subtree: true, characterData: true });
-    watcher = [resize, mutation];
-  };
+    resize.observe(fit);
+    mutation.observe(fit, { childList: true, subtree: true, characterData: true });
+    return () => { resize.disconnect(); mutation.disconnect(); };
+  });
   return (
     <li class="prow ph-no-autocapture" ref={row}>
       {/* Who it is (picture, unread count, name) opens the profile card, beside the row; the rest of the line is the room's */}
-      <div class={`pline ${tight() ? 'tight' : ''}`} ref={watchFit}>
+      <div class={['pline', { tight: tight() }]} ref={line}>
       <span class="who" onClick={() => props.onProfile(row!)}>
         <Avatar initial={props.label.shown[0]!} picture={props.label.picture} speaking={props.speaking} title={props.isMe ? 'Your profile' : `${props.label.shown}'s profile`} onOpen={() => props.onProfile(row!)} />
         <Show when={props.unread}><b class="unread" title="New private messages">{props.unread}</b></Show>
@@ -1490,10 +1489,10 @@ function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: 
       <span class="pflags">
         <Show when={props.p.muted}><em>muted</em></Show>
         <Show when={props.p.sharing}><em>sharing</em></Show>
-        <Show when={props.view}>{(v) => <span class={`conn conn-${v().conn}`} title={CONN_LABEL[v().conn]}><i /><span class="conn-label">{CONN_LABEL[v().conn]}</span></span>}</Show>
+        <Show when={props.view}>{(v) => <span class={['conn', `conn-${v().conn}`]} title={CONN_LABEL[v().conn]}><i /><span class="conn-label">{CONN_LABEL[v().conn]}</span></span>}</Show>
         <Show when={props.view && props.view.rttMs !== null}><Lag ms={props.view!.rttMs!} /></Show>
         <Show when={props.onVolume && props.view}>
-          <button class={`vol ${percent() !== 100 ? 'on' : ''}`} title={`Their voice for you: ${percent()}%`} onClick={(e) => { e.stopPropagation(); setSliderOpen(!sliderOpen()); }}>
+          <button class={['vol', { on: percent() !== 100 }]} title={`Their voice for you: ${percent()}%`} onClick={(e) => { e.stopPropagation(); setSliderOpen(!sliderOpen()); }}>
             {percent() === 0 ? '🔇' : '🔊'}<Show when={percent() !== 100}><small>{percent()}%</small></Show>
           </button>
         </Show>
@@ -1597,17 +1596,15 @@ function ShareTile(props: ShareTileProps) {
   // Black-tile check: bytes arrive (the tile is live) but nothing shows. Report it with what the
   // element says, nudge the element (re-attach the source, play), and let the call re-subscribe.
   // At most two rounds per subscription so a genuinely broken share does not loop forever.
-  let blackTimer: ReturnType<typeof setTimeout> | undefined;
   let blackChecks = 0;
   // A memo, so the effect runs on the transition only: an effect on a plain expression reruns with every
   // view update (kbps, speaking), which would re-arm the timer forever and call play() in a loop.
   const live = createMemo(() => state() === 'live' && !props.isMe);
   createEffect(live, (on) => {
-    clearTimeout(blackTimer);
     if (!on) { setNeedsClick(false); return; }
     play('live');
     const framesAtLive = framesShown;
-    blackTimer = setTimeout(() => {
+    const blackTimer = setTimeout(() => {
       if (!video || untrack(state) !== 'live' || blackChecks >= 2) return;
       const q = typeof video.getVideoPlaybackQuality === 'function' ? video.getVideoPlaybackQuality() : null;
       const counted = video.dataset['frames'] !== undefined; // requestVideoFrameCallback available
@@ -1619,8 +1616,8 @@ function ShareTile(props: ShareTileProps) {
       const source = video.srcObject; video.srcObject = null; video.srcObject = source; play('reset');
       props.onBlack?.(element);
     }, BLACK_CHECK_MS);
+    return () => clearTimeout(blackTimer);
   });
-  onCleanup(() => clearTimeout(blackTimer));
   // Whether this tile is the fullscreen element, mirrored from the document event.
   const [fullscreen, setFullscreen] = createSignal(false);
   // In fullscreen the overlays fade after a moment without pointer movement, so the picture is all
@@ -1634,18 +1631,20 @@ function ShareTile(props: ShareTileProps) {
     setFullscreen(on);
     if (on) wake(); else { clearTimeout(idleTimer); setIdle(false); }
   };
-  document.addEventListener('fullscreenchange', onFsChange);
-  document.addEventListener('webkitfullscreenchange', onFsChange);
   const holdsFullscreen = () => root !== undefined && fullscreenElement() === root;
   // Fullscreen ends the moment the share can no longer show anything (sharer quit, I stopped, peer
   // unreachable, I left the call, tile gone); the page must never stay stuck black.
   const isRunning = createMemo(running);
   createEffect(isRunning, (on) => { if (!on && holdsFullscreen()) exitFullscreenSafely(); });
-  onCleanup(() => {
-    clearTimeout(idleTimer);
-    document.removeEventListener('fullscreenchange', onFsChange);
-    document.removeEventListener('webkitfullscreenchange', onFsChange);
-    if (holdsFullscreen()) exitFullscreenSafely();
+  onSettled(() => {
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    return () => {
+      clearTimeout(idleTimer);
+      document.removeEventListener('fullscreenchange', onFsChange);
+      document.removeEventListener('webkitfullscreenchange', onFsChange);
+      if (holdsFullscreen()) exitFullscreenSafely();
+    };
   });
   const enterFullscreen = () => {
     if (!root) return;
@@ -1683,14 +1682,14 @@ function ShareTile(props: ShareTileProps) {
   const viewerTip = (key: string) => {
     const e = props.outgoing?.each.find((x) => x.publicKey === key);
     const conn = props.connOf(key);
-    return <>{e ? formatStream(e.kbps, e.format) : ''}<Show when={conn}>{(c) => <span class={`conn conn-${c()}`} aria-label={CONN_LABEL[c()]}><i /></span>}</Show></>;
+    return <>{e ? formatStream(e.kbps, e.format) : ''}<Show when={conn}>{(c) => <span class={['conn', `conn-${c()}`]} aria-label={CONN_LABEL[c()]}><i /></span>}</Show></>;
   };
   return (
-    <div class={`share share-${state()} ${fullscreen() ? 'share-fs' : ''} ${fullscreen() && idle() && !onControls() ? 'share-idle' : ''}`} ref={root} onClick={onTileClick}
+    <div class={['share', `share-${state()}`, { 'share-fs': fullscreen(), 'share-idle': fullscreen() && idle() && !onControls() }]} ref={root} onClick={onTileClick}
       onPointerMove={() => { if (fullscreen()) wake(); }} onPointerDown={() => { if (fullscreen()) wake(); }}>
       <div class="share-head" onPointerEnter={() => setOnControls(true)} onPointerLeave={() => setOnControls(false)}>
         <span>{props.isMe ? 'Your screen' : `${props.name}'s screen`}</span>
-        <Show when={!props.isMe && props.view ? props.view : undefined}>{(v) => <span class={`conn conn-${v().conn}`}><i />{CONN_LABEL[v().conn]}</span>}</Show>
+        <Show when={!props.isMe && props.view ? props.view : undefined}>{(v) => <span class={['conn', `conn-${v().conn}`]}><i />{CONN_LABEL[v().conn]}</span>}</Show>
         <Show when={!props.isMe && (state() === 'live' || state() === 'opening')}><button class="stop" title="Stop receiving this share" onClick={stopWatching}>Stop watching</button></Show>
       </div>
       <video ref={video} playsinline muted hidden={!showsVideo()} />
@@ -1708,7 +1707,7 @@ function ShareTile(props: ShareTileProps) {
           {/* Disabled until sound has arrived: a window, or anything shared from Firefox, has none to set. Always there, so
               the bar does not jump when it comes. */}
           <Show when={!props.isMe && props.onVolume}>
-            <div class={`share-vol ${props.view?.shareSound ? '' : 'share-vol-none'}`} title={props.view?.shareSound ? `${percent()}%. Double-click the slider to reset.` : NO_SHARE_SOUND}>
+            <div class={['share-vol', { 'share-vol-none': !props.view?.shareSound }]} title={props.view?.shareSound ? `${percent()}%. Double-click the slider to reset.` : NO_SHARE_SOUND}>
               <button class="share-mute" disabled={!props.view?.shareSound} onClick={toggleMute} aria-label={percent() === 0 ? "Unmute this share's sound" : "Mute this share's sound"}>{percent() === 0 ? '🔇' : '🔊'}</button>
               <input type="range" min="0" max={MAX_VOLUME * 100} step="5" value={percent()} disabled={!props.view?.shareSound} aria-label="This share's sound" title={props.view?.shareSound ? undefined : NO_SHARE_SOUND} onInput={(e) => props.onVolume?.(Number(e.currentTarget.value) / 100)} onDblClick={() => props.onVolume?.(1)} />
               <span class="share-vol-pct">{percent()}%</span>
@@ -1727,8 +1726,8 @@ function ShareFaces(props: { keys: string[]; label: (publicKey: string) => Label
     <span class="share-faces ph-no-capture">
       <For each={props.keys}>{(key) => (
         <Show when={props.label(key)}>{(l) => (
-          <span class={`face ${props.tip ? 'tipped' : ''}`} role="group" tabindex={props.tip ? 0 : undefined} aria-label={l().shown}>
-            <span class={`avatar ${l().picture ? 'pic' : ''}`}>{l().picture ?? l().shown[0]}</span>
+          <span class={['face', { tipped: !!props.tip }]} role="group" tabindex={props.tip ? 0 : undefined} aria-label={l().shown}>
+            <span class={['avatar', { pic: !!l().picture }]}>{l().picture ?? l().shown[0]}</span>
             <Show when={props.tip}>{(tip) => <span class="share-tip" role="tooltip">{tip()(key)}</span>}</Show>
           </span>
         )}</Show>
@@ -1932,7 +1931,14 @@ function Composer(props: {
   /** The look it wears when not the page's: the room it writes to has another (client/theme.ts). */
   look?: string;
 }) {
-  const [draft, setDraft] = createSignal('');
+  // A room's draft waits while a conversation is on screen (a look at a friend's profile, say) and comes back after. A
+  // draft written in a conversation is its own, and goes when it leaves the screen (back to a room, another friend): the
+  // next Enter would send it to more people than it was for.
+  const privateKey = createMemo(() => props.privateTo?.key);
+  const [roomDraft, setRoomDraft] = createSignal('');
+  const [privateDraft, setPrivateDraft] = createSignal(() => { privateKey(); return ''; });
+  const draft = () => (privateKey() ? privateDraft() : roomDraft());
+  const setDraft = (text: string) => (privateKey() ? setPrivateDraft : setRoomDraft)(text);
   let input: HTMLInputElement | undefined;
   let emojiButton: HTMLButtonElement | undefined;
   let picker: HTMLInputElement | undefined;
@@ -1950,17 +1956,8 @@ function Composer(props: {
   // A file staged from the attach button or a drop: Enter sends it, so the text field takes the focus where there is a
   // keyboard. A phone's would cover the chat, and it has the Send button.
   createEffect(() => props.staged.length, (n, prev) => { if (n > (prev ?? 0) && matchMedia('(pointer: fine)').matches) input?.focus(); });
-  // A private conversation coming on screen takes the focus, where there is a keyboard. A draft written in one goes when
-  // it leaves the screen (back to a room, another friend): the next Enter would send it to more people than it was for.
-  // A room's draft waits while a conversation is on screen (a look at a friend's profile, say) and comes back after.
-  let roomDraft = '';
-  createEffect(() => props.privateTo?.key, (key, prev) => {
-    if (key === prev) return;
-    if (!prev && key) roomDraft = untrack(draft);
-    if (prev || key) setDraft(key ? '' : roomDraft);
-    if (!key) roomDraft = '';
-    if (key && matchMedia('(pointer: fine)').matches) input?.focus();
-  });
+  // A private conversation coming on screen takes the focus, where there is a keyboard.
+  createEffect(privateKey, (key, prev) => { if (key && key !== prev && matchMedia('(pointer: fine)').matches) input?.focus(); });
   /** Why Send cannot send right now while writing privately, or null. */
   const privateHeld = () => (props.privateTo?.blocked ? `Can't write to ${props.privateTo.name} now: ${props.privateTo.blocked}` : null);
   const submit = (e: Event) => {
@@ -1982,14 +1979,16 @@ function Composer(props: {
   };
   // Private, out of PostHog, recordings too (`ph-no-capture`): its placeholder and Send's title name the friend.
   return (
-    <form class={props.privateTo ? 'chat-input private ph-no-capture' : 'chat-input'} data-theme={props.look} onSubmit={submit}>
+    <form class={['chat-input', { 'private ph-no-capture': !!props.privateTo }]} data-theme={props.look} onSubmit={submit}>
       <Show when={props.staged.length}>
         <ul class="staged" aria-label="To send">
-          <For each={props.staged}>{(x) => (
-            <li class={settled(x) ? x.state : `${x.state} pending`}>
-              <span class="thumb"><Show when={x.url} fallback={fileEnding(x.file.name)}>{(u) => <Picture src={u()} type={x.file.type} alt="" />}</Show></span>
-              <span class="meta"><span class="name" title={x.file.name}>{x.file.name}</span><span class="size">{STAGED_STATE[x.state] || formatSize(x.file.size)}</span></span>
-              <button type="button" class="unstage" onClick={() => props.onUnstage(x.id)} title={`Don't send ${x.file.name}`} aria-label={`Remove ${x.file.name}`}>✕</button>
+          {/* Keyed by id: a file made ready is a new entry for the same file, and keeps its row and thumbnail; one replaced by
+              its original (a pasted picture's GIF) gets a thumbnail of its own */}
+          <For each={props.staged} keyed={(x) => x.id}>{(x) => (
+            <li class={[x().state, { pending: !settled(x()) }]}>
+              <span class="thumb"><Show when={x().url} keyed fallback={fileEnding(x().file.name)}>{(u) => <Picture src={u} type={x().file.type} alt="" />}</Show></span>
+              <span class="meta"><span class="name" title={x().file.name}>{x().file.name}</span><span class="size">{STAGED_STATE[x().state] || formatSize(x().file.size)}</span></span>
+              <button type="button" class="unstage" onClick={() => props.onUnstage(x().id)} title={`Don't send ${x().file.name}`} aria-label={`Remove ${x().file.name}`}>✕</button>
             </li>
           )}</For>
         </ul>
@@ -2040,7 +2039,7 @@ function ChatLog(props: {
   );
   const [unfoldedFor, setUnfoldedFor] = createSignal<number | null>(null); // the opening the reader unfolded the older lines in
   const folded = createMemo(() => (unfoldedFor() === props.openedAt ? 0 : olderCount(props.lines, props.openedAt - FOLD_OLDER_MS)));
-  const lines = createMemo(() => props.lines.slice(folded()));
+  const lines = createMemo(() => props.lines.slice(folded()), { equals: sameItems });
   // Lines in reading order, so selecting text works as it reads. The browser measures scroll positions from the
   // top edge, which is the edge that moves when the share strip comes or goes, so the log keeps its own distance
   // to the bottom edge and restores it after every size change (ResizeObserver) and every change of the lines:
@@ -2057,11 +2056,14 @@ function ChatLog(props: {
   const restore = () => { if (!log || untrack(() => props.hidden)) return; log.scrollTop = log.scrollHeight - log.clientHeight - gap; size = sizeKey(); top = log.scrollTop; };
   const onScroll = () => { if (size === sizeKey()) measure(); else restore(); if (atBottom()) setUnseen(false); };
   const jump = () => { gap = 0; restore(); setUnseen(false); };
-  const observer = new ResizeObserver(restore);
-  onCleanup(() => observer.disconnect());
+  onSettled(() => {
+    if (!log) return;
+    const observer = new ResizeObserver(restore);
+    observer.observe(log);
+    return () => observer.disconnect();
+  });
   createEffect(() => ({ n: lines().length, last: lines().at(-1)?.id }), (now, prev) => {
     if (!log) return;
-    if (prev === undefined) observer.observe(log);
     // Hidden behind a private conversation, it measures nothing: the reader's place is kept for when it shows again.
     if (untrack(() => props.hidden)) return;
     // A line arrived while the reader was up in the older lines: the browser has left them in place and the
@@ -2093,7 +2095,7 @@ function ChatLog(props: {
   });
   return (
     // A private conversation is kept out of PostHog's autocapture too (`ph-no-capture`): a click on a link would carry it.
-    <div class={props.private ? 'chat private ph-no-capture' : 'chat'} hidden={props.hidden} data-theme={props.look}>
+    <div class={['chat', { 'private ph-no-capture': !!props.private }]} hidden={props.hidden} data-theme={props.look}>
       {props.head}
       <div class="chat-log" ref={log} onScroll={onScroll}>
         <Show when={props.empty && props.lines.length === 0}><p class="chat-empty">{props.empty}</p></Show>
@@ -2102,16 +2104,17 @@ function ChatLog(props: {
             Show older messages
           </button>
         </Show>
-        <For each={lines()}>
+        {/* Keyed by id: a text of mine still on its way is made anew with every line that arrives, and keeps its row */}
+        <For each={lines()} keyed={(l) => l.id}>
           {(l, i) => (
             <Switch>
-              <Match when={l.kind === 'system' && l}>{(s) => <div class="msg msg-sys"><span class="msg-text">{s().text}</span><span class="msg-at">{when(s().at)}</span></div>}</Match>
-              <Match when={l.kind === 'text' && l}>
+              <Match when={ofKind(l(), 'system')}>{(s) => <div class="msg msg-sys"><span class="msg-text">{s().text}</span><span class="msg-at">{when(s().at)}</span></div>}</Match>
+              <Match when={ofKind(l(), 'text')}>
                 {(m) => (
                   <Show when={!continues(lines(), i())} fallback={
-                    <div class={msgClass('msg msg-cont', m())}><div class="msg-text" title={m().pending ? 'Not sent yet' : when(m().at)}><Linkified text={m().text} /></div></div>
+                    <div class={['msg msg-cont', { 'msg-pending': !!m().pending }]}><div class="msg-text" title={m().pending ? 'Not sent yet' : when(m().at)}><Linkified text={m().text} /></div></div>
                   }>
-                    <div class={msgClass('msg', m())}>
+                    <div class={['msg', { 'msg-pending': !!m().pending }]}>
                       <span class="msg-from" title={props.label(m().from).title}>{props.label(m().from).shown}</span>
                       <span class="msg-at">{when(m().at)}</span>
                       <div class="msg-text" title={m().pending ? 'Not sent yet' : undefined}><Linkified text={m().text} /></div>
@@ -2119,10 +2122,10 @@ function ChatLog(props: {
                   </Show>
                 )}
               </Match>
-              <Match when={l.kind === 'file' && l}>
+              <Match when={ofKind(l(), 'file')}>
                 {(m) => (
-                  <Show when={!continues(lines(), i())} fallback={<div class={m().pending ? 'msg msg-cont msg-pending' : 'msg msg-cont'}>{file(m(), m().pending ? 'Not sent yet' : when(m().at))}</div>}>
-                    <div class={m().pending ? 'msg msg-pending' : 'msg'}>
+                  <Show when={!continues(lines(), i())} fallback={<div class={['msg msg-cont', { 'msg-pending': !!m().pending }]}>{file(m(), m().pending ? 'Not sent yet' : when(m().at))}</div>}>
+                    <div class={['msg', { 'msg-pending': !!m().pending }]}>
                       <span class="msg-from" title={props.label(m().from).title}>{props.label(m().from).shown}</span>
                       <span class="msg-at">{when(m().at)}</span>
                       {file(m(), m().pending ? 'Not sent yet' : undefined)}
@@ -2234,14 +2237,12 @@ function Picture(props: { src: string; type: string; alt: string; onClick?: () =
   const [loaded, setLoaded] = createSignal(false);
   const [onScreen, setOnScreen] = createSignal(false);
   let img: HTMLImageElement | undefined;
-  let seen: IntersectionObserver | undefined;
-  onCleanup(() => seen?.disconnect());
-  const watch = (el: HTMLImageElement) => {
-    img = el;
-    if (!moves) return;
-    seen = new IntersectionObserver((entries) => { for (const e of entries) setOnScreen(e.isIntersecting); });
-    seen.observe(el);
-  };
+  onSettled(() => {
+    if (!moves || !img) return;
+    const seen = new IntersectionObserver((entries) => { for (const e of entries) setOnScreen(e.isIntersecting); });
+    seen.observe(img);
+    return () => seen.disconnect();
+  });
   const still = () => moves && loaded() && onScreen() && !windowFocused();
   // Drawn no larger than the picture shows, in device pixels: a big GIF is not copied whole.
   const draw = (canvas: HTMLCanvasElement) => {
@@ -2255,7 +2256,7 @@ function Picture(props: { src: string; type: string; alt: string; onClick?: () =
   return (
     <>
       {/* Kept in place under its still, see-through, so it still takes the click and lets the hover reach its box */}
-      <img ref={watch} src={props.src} alt={props.alt} onClick={props.onClick} onLoad={() => setLoaded(true)} style={{ opacity: still() ? 0 : undefined }} />
+      <img ref={img} src={props.src} alt={props.alt} onClick={props.onClick} onLoad={() => setLoaded(true)} style={{ opacity: still() ? 0 : undefined }} />
       <Show when={still()}><canvas class="still" ref={draw} aria-hidden="true" /></Show>
     </>
   );
@@ -2263,12 +2264,13 @@ function Picture(props: { src: string; type: string; alt: string; onClick?: () =
 
 /** How long after a line the same writer's next one still joins it under one name. */
 const GROUP_MS = 5 * 60 * 1000;
+/** The line, if it is of this kind: what a <Match> narrows to. */
+const ofKind = <K extends ChatLine['kind']>(l: ChatLine, kind: K): Extract<ChatLine, { kind: K }> | false => (l.kind === kind ? (l as Extract<ChatLine, { kind: K }>) : false);
 /** Whether line i follows straight on from the same writer's previous text, so it goes under that name without its own. */
 const continues = (lines: ChatLine[], i: number): boolean => {
   const l = lines[i], prev = lines[i - 1];
   return l?.kind !== 'system' && !!l && prev?.kind !== undefined && prev.kind !== 'system' && prev.from.publicKey === l.from.publicKey && l.at - prev.at < GROUP_MS;
 };
-const msgClass = (base: string, m: Extract<ChatLine, { kind: 'text' }>): string => `${base}${m.pending ? ' msg-pending' : ''}`;
 
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g;
 function Linkified(props: { text: string }) {

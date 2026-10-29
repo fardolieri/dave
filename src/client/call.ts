@@ -73,6 +73,8 @@ export type CallDiagnostics = {
   shareSettings: unknown; viewerSettings: unknown; audioProcessing: unknown; lowBandwidthVoice: boolean; voiceRepair: VoiceRepair; ice: { servers: number; turn: boolean; ageMinutes: number | null };
   peers: PeerDiagnostics[];
 };
+/** Whether a published view still says what a peer's view says now, field for field. */
+const sameView = (a: PeerView, b: PeerView): boolean => (Object.keys(b) as (keyof PeerView)[]).every((k) => a[k] === b[k]);
 const sameFormat = (a: VideoFormat | null, b: VideoFormat | null): boolean => a === b || (!!a && !!b && a.width === b.width && a.height === b.height && Math.round(a.fps) === Math.round(b.fps));
 
 /** What the UI shows per remote participant. Plain data mirrored from WebRTC events (spec §2.1). */
@@ -349,7 +351,12 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   const sources = new Map<string, MediaStreamAudioSourceNode>();
 
   const me = (): Person | null => room.people().find((p) => p.publicKey === myKey) ?? null;
-  const publish = () => setViews([...peers.values()].map((p) => ({ ...p.view })));
+  // A friend's view that did not change since the last copy stays that copy, and an unchanged list the same list: what
+  // reads them is not told of a change that changed nothing (Solid's UNSTABLE_MEMO_OUTPUT), on every stats tick.
+  const publish = () => setViews((was) => {
+    const next = [...peers.values()].map((p) => { const old = was.find((v) => v.publicKey === p.key); return old && sameView(old, p.view) ? old : { ...p.view }; });
+    return next.length === was.length && next.every((v, i) => v === was[i]) ? was : next;
+  });
   const setView = (p: Peer, patch: Partial<PeerView>) => {
     if (patch.conn && patch.conn !== p.view.conn) posthog.capture('peer_connection_state', { state: patch.conn, previous: p.view.conn, peers: peers.size });
     if (patch.shareLive && p.holdOpening) patch = { ...patch, shareLive: false };
