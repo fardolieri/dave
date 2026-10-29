@@ -15,7 +15,7 @@
  *   SOAK_ACTIONS="Alice join; …"       exactly these actions (the minimal list of a report)
  *   SOAK_SHRINK_MINUTES=30             the time the shrinking may take; 0 skips it
  *
- *   E2E_URL=nightly pnpm exec playwright test -c playwright.soak.config.ts
+ *   pnpm exec playwright test -c playwright.soak.config.ts      against a local build; E2E_URL=<url> for a deployed copy
  */
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -346,7 +346,7 @@ function report(r: { failure: Failure; ran: Action[]; minimal: Action[]; complet
   const hash = createHash('sha256').update(sequence).digest('hex').slice(0, 12);
   const sig = signature(failure.kinds, failure.problems[0]!);
   const sigHash = createHash('sha256').update(sig).digest('hex').slice(0, 12);
-  const targetInput = env['SOAK_TARGET'] ?? (target ? 'nightly' : 'local');
+  const targetInput = env['SOAK_TARGET'] ?? target ?? 'local';
   const runUrl = env['SOAK_RUN_URL'];
   const shrunk = minimal.length < ran.length;
   const replayList = `gh workflow run soak.yml -f target=${targetInput} -f actions="${sequence}"`;

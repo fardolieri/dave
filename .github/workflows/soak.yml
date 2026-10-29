@@ -1,10 +1,12 @@
 name: soak
 # The friend group from hell (quality ticket 05): four friends, Chromium and Firefox mixed, take seeded random actions in one
 # room for a quarter of an hour while everything they see is checked against a model (e2e/soak/, playwright.soak.config.ts).
-#   - every night at 01:00 UTC against nightly, three shards with seeds of their own, each runner on its own IP: nightly
-#     limits socket upgrades per IP (wrangler.jsonc), and the soak keeps to a few a minute
-#   - by hand from the Actions tab: replay a seed (with its step count) or a reported action list, or soak a branch's local
-#     build (target `local`)
+#   - every night at 01:00 UTC against a local build of master (Worker and Room in workerd, as e2e.yml's branch runs),
+#     three shards with seeds of their own
+#   - by hand from the Actions tab: replay a seed (with its step count) or a reported action list, on a branch's local
+#     build or against a deployed copy with the inspection hooks (a pull request's preview)
+# In three weeks against nightly (2026-10-09 to 29) it found one bug that was not its own (#39: a call context that failed
+# never came back), and that came from the runner, not from Cloudflare; so it soaks a local build since nightly was retired.
 # A failing shard replays its list in fresh rooms, shrinks it to a shorter one that fails the same way and traces that. The
 # report, the trace and the socket frames are kept as an artifact, and the `issue` job opens an issue labelled `soak` (or
 # comments on the open one with the same list). The release gate is e2e.yml's alone: this writes no commit status and shares
@@ -15,8 +17,8 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: "nightly, local (a build of the chosen branch), or the URL of a deployed copy"
-        default: nightly
+        description: "local (a build of the chosen branch), or the URL of a deployed copy"
+        default: local
         required: true
       seed:
         description: "replay one seed (one shard); empty for random seeds"
@@ -52,8 +54,8 @@ jobs:
       matrix:
         shard: ${{ fromJSON((inputs.seed || inputs.actions) && '[1]' || '[1, 2, 3]') }}
     env:
-      E2E_URL: ${{ (inputs.target || 'nightly') != 'local' && (inputs.target || 'nightly') || '' }}
-      SOAK_TARGET: ${{ inputs.target || 'nightly' }}
+      E2E_URL: ${{ (inputs.target || 'local') != 'local' && inputs.target || '' }}
+      SOAK_TARGET: ${{ inputs.target || 'local' }}
       SOAK_STEPS: ${{ inputs.steps }}
       SOAK_MINUTES: ${{ inputs.minutes || '15' }}
       SOAK_ACTIONS: ${{ inputs.actions }}
@@ -108,16 +110,7 @@ jobs:
           pattern: soak-*
           path: artifacts
       # Reports only: the artifacts also hold traces and socket frames, which stay in the artifact.
-      - name: Was nightly redeployed meanwhile?
-        id: deployed
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          started=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .run_started_at)
-          urls=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?branch=master&created=>=$started" --jq '[.workflow_runs[].html_url] | join(", ")')
-          echo "urls=$urls" >> "$GITHUB_OUTPUT"
       - run: node scripts/soak-issue.mjs artifacts/*/soak-out
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          DEPLOYED: ${{ steps.deployed.outputs.urls }}

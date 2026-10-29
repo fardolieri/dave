@@ -6,7 +6,7 @@
  *
  *   node scripts/soak-issue.mjs <folder with report.json and report.md> [...]
  *
- * Needs GH_TOKEN and GITHUB_REPOSITORY. RUN_URL is linked; DEPLOYED, when set, says nightly was redeployed during the run.
+ * Needs GH_TOKEN and GITHUB_REPOSITORY. RUN_URL is linked.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -29,8 +29,7 @@ const open = await api('/issues?labels=soak&state=open&per_page=100');
 for (const dir of process.argv.slice(2)) {
   if (!existsSync(join(dir, 'report.json'))) { console.log(`${dir}: no report`); continue; }
   const r = JSON.parse(readFileSync(join(dir, 'report.json'), 'utf8'));
-  let body = readFileSync(join(dir, 'report.md'), 'utf8');
-  if (process.env.DEPLOYED) body = `> Nightly was redeployed while this ran (${process.env.DEPLOYED}): the change of version may be what failed.\n\n${body}`;
+  const body = readFileSync(join(dir, 'report.md'), 'utf8');
   const sequence = `<!-- soak-sequence: ${r.hash} -->`;
   const signed = r.signature ? `<!-- soak-signature: ${r.signature} -->` : null;
   // By signature when the report has one; the list only for reports from before signatures. Two different failures of
