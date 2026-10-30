@@ -760,6 +760,23 @@ test('a file comes from a friend who pulled it once its sender is gone, past one
   expect(offersTo(daveKey), 'Dave, who said it is not there, was not asked again').toBe(asked);
 });
 
+// Report of 2026-10-17: "Why is my own 24 MB file gone? Didn't I send it?" A file over 16 MB is served from the file
+// picked, never copied (ticket 03), so it is gone with the tab that sent it unless a friend pulled it. Asked for again,
+// it said "Alice doesn't have it any more" to Alice herself.
+test('regression: my own large file, gone with the tab that sent it, says why to me, not as if a friend had lost it', async ({ crowd }) => {
+  test.slow();
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.attach({ name: 'big.png', mimeType: 'image/png', buffer: heavy(png(640, 480), 17 * 1024 * 1024) });
+  await expect(bob.page.locator('.chat-log .att-media button.att-get')).toBeVisible({ timeout: 60_000 });
+  await alice.page.reload();
+  const mine = alice.page.locator('.chat-log .att-media');
+  await mine.locator('button.att-get').click({ timeout: 30_000 });
+  const caption = mine.locator('figcaption');
+  await expect(caption).toContainText('files over 16 MB stay only while the tab that sent them is open', { timeout: 30_000 });
+  await expect(caption).not.toContainText('Alice');
+});
+
 // Attachments ticket 03: a large file comes in pieces, each checked and written to disk as it comes, and a pull that
 // stopped goes on from the last piece it checked instead of from the start.
 test('a large file stopped part way goes on from there, and arrives whole', async ({ crowd }) => {
