@@ -39,3 +39,10 @@ WebRTC connection between two browsers on the same runner never came up through 
 ## Next
 Read the Worker's logs for the hour (wrangler tail cannot look back; Cloudflare's dashboard can); if the upgrades never
 arrived, this is Cloudflare's, like ticket 55, and the tests' 20 s wait for a first connection is what to reconsider.
+
+## Comments
+
+2026-10-30, PR #114's preview at 8c1593b (run 41114344125, attempt 2, the re-run of Firefox shard 5 after ticket 72's
+flake): `resilience.spec.ts:454` "an offer stuck for a friend who then reloads leaves their new connection alone (the
+polite side reloads, the first to join)", Firefox, passed on its retry. A `.banner` saying Connecting, Reconnecting or
+Server unavailable was still there after 20 s. PR #114 changes a file card's wording only.
