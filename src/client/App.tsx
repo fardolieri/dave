@@ -888,15 +888,26 @@ function CallControls(props: { call: Call; panel: 'audio' | 'share' | null; onPa
   );
 }
 
+/** How long the invite panel shows "Copied" before it puts itself away. */
+const COPIED_MS = 500;
+
 /**
  * The invite link of a room, ready to copy, and as a QR code for a phone in the same room to scan. The link
- * is the whole secret: whoever has it is in, so the code is as private as the screen it is on.
+ * is the whole secret: whoever has it is in, so the code is as private as the screen it is on. Copied, the link
+ * is on its way and the panel puts itself away, once its "Copied" has been seen; a failed copy keeps it open.
  */
 function InvitePanel(props: { link: string; name: string; onClose: () => void }) {
   let input: HTMLInputElement | undefined;
+  // A copy that finishes once the panel is gone closes nothing: by then another room's panel may be the open one.
+  let gone = false;
+  let closing: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => { gone = true; clearTimeout(closing); });
   const [state, setState] = createSignal<'idle' | 'copied' | 'failed'>('idle');
   const copy = async () => {
-    try { await navigator.clipboard.writeText(props.link); setState('copied'); posthog.capture('invite_link_copied'); } catch { input?.select(); setState('failed'); }
+    clearTimeout(closing);
+    try { await navigator.clipboard.writeText(props.link); setState('copied'); posthog.capture('invite_link_copied'); } catch { input?.select(); setState('failed'); return; }
+    // Cleared again here: a second click while the first copy was still on its way would leave a timer nothing clears.
+    if (!gone) { clearTimeout(closing); closing = setTimeout(() => props.onClose(), COPIED_MS); }
   };
   const qr = createMemo(() => encodeQr(props.link));
   return (

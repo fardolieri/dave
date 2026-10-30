@@ -1,4 +1,4 @@
-import { expect, newSecret, test } from './fixtures';
+import { expect, newSecret, openRoomMenu, test } from './fixtures';
 
 test('first visit through an invite link: pick a name, land in the room, the secret leaves the address bar', async ({ crowd }) => {
   const secret = newSecret();
@@ -12,6 +12,43 @@ test('first visit through an invite link: pick a name, land in the room, the sec
   // A second friend with the same link lands in the same room.
   const walt = await crowd.open('Walt', { rooms: [{ secret, name: 'Friends' }] });
   await expect.poll(() => walt.online()).toEqual(['Vicky', 'Walt']);
+});
+
+test('the invite panel puts itself away once its link is copied, and stays open when the copy fails', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const { page } = alice;
+  // A clipboard of the test's own: the browsers' real ones ask for permissions this suite does not hand out.
+  await page.evaluate(() => {
+    const w = window as unknown as { copied: string[]; refuse: boolean; labels: string[] };
+    w.copied = []; w.refuse = false; w.labels = [];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => { if (w.refuse) throw new Error('refused'); w.copied.push(text); } } });
+    // What the copy button said, as it said it: "Copied" shows for half a second only, shorter than a check may take to come.
+    new MutationObserver(() => {
+      const label = document.querySelector('.panel.invite button.on')?.textContent;
+      if (label && label !== w.labels.at(-1)) w.labels.push(label);
+    }).observe(document.body, { subtree: true, childList: true, characterData: true });
+  });
+  const copied = () => page.evaluate(() => (window as unknown as { copied: string[] }).copied);
+  const panel = page.locator('.panel.invite');
+  const openInvite = async () => {
+    await openRoomMenu(page);
+    await page.locator('.room-menu:popover-open').getByRole('button', { name: 'Invite', exact: true }).click();
+    await expect(panel).toBeVisible();
+  };
+  await openInvite();
+  const link = await panel.getByRole('textbox', { name: 'Invite link' }).inputValue();
+  await panel.getByRole('button', { name: 'Copy link' }).click();
+  await expect(panel).toBeHidden();
+  expect(await copied()).toEqual([link]);
+  expect(await page.evaluate(() => (window as unknown as { labels: string[] }).labels)).toEqual(['Copy link', 'Copied']);
+  // Opened again, it starts over; a copy the browser refuses leaves the link selected and the panel where it is.
+  await page.evaluate(() => { (window as unknown as { refuse: boolean }).refuse = true; });
+  await openInvite();
+  await panel.getByRole('button', { name: 'Copy link' }).click();
+  await expect(panel.locator('.warn')).toContainText('Could not access the clipboard');
+  await page.waitForTimeout(700); // longer than a copied link's panel stays
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Copy link' })).toBeVisible();
 });
 
 test('presence lists everyone online and drops a friend who closes the page', async ({ crowd }) => {
