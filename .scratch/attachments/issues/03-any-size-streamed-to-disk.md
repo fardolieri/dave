@@ -38,3 +38,10 @@ go on. Now a worker (client/filewriter.ts) writes the file in place with `create
 its hash, each piece flushed and the progress saved before the next: a pull cut off without warning loses at most the
 piece under way. Writing in place came to Safari in 15.2, so iPhones before Safari 26 can now keep large files too.
 Complete files in segments from before (`<hash>.<n>`) are still read; a pull stopped on the old app starts again, once.
+
+## Report of 2026-10-17: "Why is my own 24 MB file gone? Didn't I send it?"
+The sender, on a phone, came back to the room after her tab was gone. Her file was served from the file she picked and
+never copied (see Not done above), and no friend had pulled it, so asking for it again ended in "Alice doesn't have it
+any more": her own name, read as if someone else had lost it. Her own card now says it was not kept and why (files over
+16 MB stay only while the tab that sent them is open). Still not done: keeping a copy for the sender, which would
+answer the report itself.

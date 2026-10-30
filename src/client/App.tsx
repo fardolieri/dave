@@ -839,6 +839,7 @@ function Workspace(props: WorkspaceProps) {
           )}</Show>
           {/* Kept while a conversation is on screen, hidden: back from it, the reader is where they were in the room */}
           <ChatLog lines={cur().room.lines()} openedAt={openedAt()} jumpToken={jumpToken()} label={labelOf} hidden={!!privateFriend()} look={chatLook()}
+                   holder={(from) => (from.publicKey === me ? null : labelOf(from).shown)}
                    attachment={(hash) => cur().room.attachment(hash)} onPull={(hash) => cur().room.pull(hash)} onCancel={(hash) => cur().room.cancelPull(hash)} />
           <Show when={privateFriend()}>{(pf) => (
             <ChatLog lines={privates.lines(pf().key)} openedAt={privateOpenedAt()} jumpToken={privateJump()} label={labelOf} private
@@ -2035,8 +2036,9 @@ function ChatLog(props: {
   head?: any; private?: boolean; hidden?: boolean;
   /** What an empty log says. */
   empty?: string;
-  /** Whom a file's bytes come from, by its writer (a private file of mine, after a reload: the friend who pulled it). */
-  holder?: (from: Identity) => string;
+  /** Whom a file's bytes come from, by its writer (a private file of mine, after a reload: the friend who pulled it), or
+   * `null` for a file of mine in a room: then only this browser had it, and maybe a friend who pulled it. */
+  holder?: (from: Identity) => string | null;
   attachment: (hash: string) => Attachment | undefined; onPull: (hash: string) => void; onCancel: (hash: string) => void;
   /** The look it wears when not the page's: its room has another (client/theme.ts). */
   look?: string;
@@ -2047,7 +2049,7 @@ function ChatLog(props: {
   const view = (url: string, name: string, type: string) => { setViewing({ url, name, type }); if (viewer && !viewer.open) viewer.showModal(); };
   // The tooltip (the time, or that it is not sent yet) is on the text or the attachment, not on the whole row.
   const file = (m: Extract<ChatLine, { kind: 'file' }>, title: string | undefined) => (
-    <FileView file={m.file} title={title} attachment={props.attachment(m.file.hash)} holder={props.holder?.(m.from) ?? props.label(m.from).shown}
+    <FileView file={m.file} title={title} attachment={props.attachment(m.file.hash)} holder={props.holder ? props.holder(m.from) : props.label(m.from).shown}
               onPull={() => props.onPull(m.file.hash)} onCancel={() => props.onCancel(m.file.hash)} onView={view} />
   );
   const [unfoldedFor, setUnfoldedFor] = createSignal<number | null>(null); // the opening the reader unfolded the older lines in
@@ -2160,12 +2162,16 @@ function ChatLog(props: {
 
 /** The longest side of a picture or a video in the chat, in CSS pixels; a portrait one is as tall, and narrower. */
 const MEDIA_SIDE = 320;
-const PULL_FAILED: Record<PullError, (holder: string) => string> = {
-  unreachable: (h) => `Couldn't reach ${h}`,
+/** Why a pull failed, by whom it came from: `null` for a file of mine (report of 2026-10-17: "Alice doesn't have it any
+ * more", said to Alice of her own file, read as if it had not gone out). */
+const PULL_FAILED: Record<PullError, (holder: string | null, file: FileMeta) => string> = {
+  unreachable: (h) => `Couldn't reach ${h ?? 'a friend who has it'}`,
   lost: () => 'The connection dropped',
-  'not there': (h) => `${h} doesn't have it any more`,
+  'not there': (h, f) => h !== null ? `${h} doesn't have it any more`
+    : f.piece ? 'Not kept here: files over 16 MB stay only while the tab that sent them is open, and no friend online has it'
+    : 'No longer in this browser, and no friend online has it',
   damaged: () => 'It arrived damaged',
-  busy: (h) => `${h} is sending to others`,
+  busy: (h) => `${h ?? 'A friend who has it'} is sending to others`,
   'no room': () => "This browser can't keep files this large",
 };
 
@@ -2173,7 +2179,7 @@ const PULL_FAILED: Record<PullError, (holder: string) => string> = {
  * An attachment in the chat (ADR 0006): a picture or a video inline once its bytes are here, its preview until then,
  * with what is happening over it; anything else a card with its name, size and a button. A picture opens full size.
  */
-function FileView(props: { file: FileMeta; title: string | undefined; attachment: Attachment | undefined; holder: string; onPull: () => void; onCancel: () => void; onView: (url: string, name: string, type: string) => void }) {
+function FileView(props: { file: FileMeta; title: string | undefined; attachment: Attachment | undefined; holder: string | null; onPull: () => void; onCancel: () => void; onView: (url: string, name: string, type: string) => void }) {
   const kind = () => inlineKind(props.file.type);
   const a = () => props.attachment ?? { status: 'idle' as const };
   const url = () => { const now = a(); return now.status === 'ready' ? now.url : null; };
@@ -2197,8 +2203,8 @@ function FileView(props: { file: FileMeta; title: string | undefined; attachment
           <button type="button" class="att-cancel" onClick={(e) => { e.stopPropagation(); props.onCancel(); }} title="Stop loading it" aria-label="Cancel">✕</button>
         </span>
       );
-      case 'waiting': return <span class="att-state">Waiting for {props.holder} to come online</span>;
-      case 'failed': return <span class="att-state">{PULL_FAILED[now.reason](props.holder)}.{now.retryAt ? ' Trying again soon.' : ''} <button type="button" onClick={(e) => { e.stopPropagation(); props.onPull(); }}>Try again</button></span>;
+      case 'waiting': return <span class="att-state">Waiting for {props.holder ?? 'a friend who has it'} to come online</span>;
+      case 'failed': return <span class="att-state">{PULL_FAILED[now.reason](props.holder, props.file)}.{now.retryAt ? ' Trying again soon.' : ''} <button type="button" onClick={(e) => { e.stopPropagation(); props.onPull(); }}>Try again</button></span>;
       case 'idle': return (
         <button type="button" class="att-get" onClick={(e) => { e.stopPropagation(); props.onPull(); }}>
           ⬇ {now.partial ? `Resume, ${Math.floor((100 * now.partial) / Math.max(1, props.file.size))}% of ${formatSize(props.file.size)}` : formatSize(props.file.size)}
