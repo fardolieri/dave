@@ -16,13 +16,17 @@ export type ReportShape = {
   log: Array<{ level: 'warn' | 'error' }>;
 };
 
-/** What the friend says is broken. One tag so reports group without reading each description. */
+/**
+ * What the friend says is broken. One tag so reports group without reading each description. A wish is
+ * no problem: it goes out as its own `wish` event with the words only, so it never counts as a bug.
+ */
 export const CATEGORIES = {
   connection: 'Connecting or staying connected',
   audio: 'Voice: hearing or being heard',
   share: 'Screen share: black, frozen, blurry',
   text: 'Text chat',
   other: 'Something else',
+  wish: 'Wishlist: something I would like dave to do',
 } as const;
 export type Category = keyof typeof CATEGORIES;
 
@@ -37,6 +41,7 @@ export type ReportForm = { text: string; category: Category; severity: Severity 
 
 export const isCategory = (v: string): v is Category => Object.hasOwn(CATEGORIES, v);
 export const isSeverity = (v: string): v is Severity => Object.hasOwn(SEVERITIES, v);
+export const isWish = (c: Category): c is 'wish' => c === 'wish';
 
 /**
  * A share tile that is shown but has no size, has never decoded a frame, or is paused: a paused element
@@ -90,6 +95,9 @@ export function reportProperties(form: ReportForm, report: ReportShape): Record<
     errors: report.log.filter((e) => e.level === 'error').length,
   };
 }
+
+/** Clipboard text of a wish: the words, nothing about the tab. */
+export const formatWish = (text: string): string => `Wish: ${text.trim()}`;
 
 /** Clipboard text for browsers that block PostHog: the human part first, the snapshot below. */
 export const formatReport = (form: ReportForm, report: ReportShape): string =>

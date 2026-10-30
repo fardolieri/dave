@@ -348,6 +348,25 @@ test('a problem report is sent to the error log, with the friend told so', async
   await expect(dialog).not.toBeVisible();
 });
 
+test('a wish goes out as its own event, its words alone, without being asked how bad it is', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { telemetry: 'off', plainUserAgent: true });
+  await openMenu(alice.page);
+  await alice.page.getByRole('button', { name: 'Report a problem' }).click();
+  const dialog = alice.page.locator('dialog.report');
+  await expect(dialog.getByText('How bad is it?')).toBeVisible();
+  await dialog.locator('select').selectOption('wish');
+  await expect(dialog.getByText('How bad is it?'), 'a wish hurts nobody').toHaveCount(0);
+  await expect(dialog.getByRole('heading')).toHaveText('Make a wish');
+  await expect(dialog.locator('textarea')).toHaveAttribute('placeholder', /What would you like/);
+  await dialog.locator('textarea').fill('automated test wish, please ignore');
+  const sent = alice.page.waitForRequest(/\/i\/v0\/e\/$/);
+  await dialog.getByRole('button', { name: 'Send' }).click();
+  await expect(dialog.locator('.ok')).toContainText('Sent, thank you');
+  const event = (await sent).postDataJSON();
+  expect(event).toMatchObject({ event: 'wish', properties: { text: 'automated test wish, please ignore' } });
+  expect(event.properties, 'nothing about the tab goes with a wish').not.toHaveProperty('report');
+});
+
 test('phone width: one column, the composer pinned to the bottom of the screen and usable', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob', { viewport: { width: 390, height: 780 } });

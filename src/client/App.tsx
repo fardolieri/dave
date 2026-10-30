@@ -24,8 +24,8 @@ import { FOLD_OLDER_MS, olderCount } from '../core/chatlog';
 import { formatDelay, lagLevel } from '../core/lowvoice';
 import { shareTileState } from '../core/invariants';
 import { VOICE_REPAIRS, type VoiceRepair } from '../core/voicerepair';
-import { collectReport, formatReport, sendReport, type Report } from './diagnostics';
-import { CATEGORIES, SEVERITIES, isCategory, isSeverity, type Category, type Severity } from '../core/report';
+import { collectReport, formatReport, formatWish, sendReport, sendWish, type Report } from './diagnostics';
+import { CATEGORIES, SEVERITIES, isCategory, isSeverity, isWish, type Category, type Severity } from '../core/report';
 import { EmojiPicker } from './EmojiPicker';
 import { place } from './place';
 import { createTabLock } from './tablock';
@@ -1792,7 +1792,7 @@ function TelemetryNotice(props: { onAnswer: (c: Consent) => void }) {
 /**
  * "Report a problem" (ticket 12): a category, a severity and a description plus a technical snapshot
  * go to the room's error log (PostHog), next to this tab's masked session replay. Copy is the fallback
- * for browsers that block it.
+ * for browsers that block it. A wish goes alone, as its words: no severity, no snapshot.
  */
 function ReportDialog(props: { collect: () => Promise<Report> }) {
   let dialog: HTMLDialogElement | undefined;
@@ -1801,31 +1801,41 @@ function ReportDialog(props: { collect: () => Promise<Report> }) {
   const [severity, setSeverity] = createSignal<Severity>('annoying');
   const [phase, setPhase] = createSignal<'idle' | 'sending' | 'sent' | 'copied' | 'copy_failed'>('idle');
   const form = () => ({ text: text(), category: category(), severity: severity() });
+  const wish = () => isWish(category());
   const open = () => { setPhase('idle'); dialog?.showModal(); };
-  const send = async () => { setPhase('sending'); sendReport(form(), await props.collect()); setPhase('sent'); };
+  const send = async () => {
+    setPhase('sending');
+    if (wish()) sendWish(text());
+    else sendReport(form(), await props.collect());
+    setPhase('sent');
+  };
   const copy = async () => {
-    const body = formatReport(form(), await props.collect());
+    const body = wish() ? formatWish(text()) : formatReport(form(), await props.collect());
     try { await navigator.clipboard.writeText(body); setPhase('copied'); } catch { setPhase('copy_failed'); }
   };
   return (
     <>
-      <button class="link" onClick={open}>Report a problem</button>
+      <button class="link" onClick={open}>Report a problem or a wish</button>
       <dialog class="report" ref={dialog}>
-        <h3>Report a problem</h3>
-        <label class="field">What is broken?
+        <h3>{wish() ? 'Make a wish' : 'Report a problem'}</h3>
+        <label class="field">{wish() ? 'What is it about?' : 'What is broken?'}
           <select value={category()} onChange={(e) => { const v = e.currentTarget.value; if (isCategory(v)) setCategory(v); }}>
             <For each={Object.entries(CATEGORIES)}>{([key, label]) => <option value={key}>{label}</option>}</For>
           </select>
         </label>
-        <fieldset class="field severity">
-          <legend>How bad is it?</legend>
-          <For each={Object.entries(SEVERITIES)}>{([key, label]) => (
-            <label><input type="radio" name="severity" value={key} checked={severity() === key} onChange={() => { if (isSeverity(key)) setSeverity(key); }} /> {label}</label>
-          )}</For>
-        </fieldset>
-        <textarea value={text()} onInput={(e) => setText(e.currentTarget.value)} placeholder="What went wrong, and what did you expect? When did it happen?" rows={4} />
+        <Show when={!wish()}>
+          <fieldset class="field severity">
+            <legend>How bad is it?</legend>
+            <For each={Object.entries(SEVERITIES)}>{([key, label]) => (
+              <label><input type="radio" name="severity" value={key} checked={severity() === key} onChange={() => { if (isSeverity(key)) setSeverity(key); }} /> {label}</label>
+            )}</For>
+          </fieldset>
+        </Show>
+        <textarea value={text()} onInput={(e) => setText(e.currentTarget.value)} placeholder={wish() ? 'What would you like dave to do? What would you use it for?' : 'What went wrong, and what did you expect? When did it happen?'} rows={4} />
         <p class="hint">
-          Your description is sent to PostHog, the room's error log, together with a technical snapshot of your connection: states and counters, never message texts or names.
+          {wish()
+            ? "Your wish is sent to PostHog, the room's error log, where the person running this room reads it, without a snapshot of your connection."
+            : "Your description is sent to PostHog, the room's error log, together with a technical snapshot of your connection: states and counters, never message texts or names."}
           {telemetryOn() ? ' The last minutes of this tab are already kept as a masked session replay.' : ' Only this report goes, nothing before or after it.'}
         </p>
         <Switch>

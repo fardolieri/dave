@@ -12,7 +12,7 @@ import { recentLog } from './log';
 import type { CallDiagnostics } from './call';
 import { reportProperties, type ReportForm } from '../core/report';
 
-export { formatReport } from '../core/report';
+export { formatReport, formatWish } from '../core/report';
 
 export type Report = {
   at: string;
@@ -61,6 +61,11 @@ export function videoElementStates(): Report['videoElements'] {
     const shown = v.dataset['frames'];
     return { readyState: v.readyState, width: v.videoWidth, height: v.videoHeight, paused: v.paused, ended: v.ended, error: v.error?.code ?? null, hidden: v.hidden !== false, frames: shown !== undefined ? Number(shown) : q?.totalVideoFrames ?? null, dropped: q?.droppedVideoFrames ?? null };
   });
+}
+
+/** A wish: the friend's words, nothing about the tab. Its own event, so it never counts as a problem. */
+export function sendWish(text: string): void {
+  captureOnce('wish', { text: text.trim() });
 }
 
 /** One event: the friend's words and tags as properties, the snapshot as JSON, and the flat fields `reportProperties` lifts out of it. */

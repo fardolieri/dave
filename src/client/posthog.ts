@@ -174,7 +174,7 @@ export function captureOnce(event: string, props: Props): void {
     timestamp: new Date().toISOString(),
   };
   void fetch(`${host}/i/v0/e/`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), credentials: 'omit', keepalive: true })
-    .catch((e: unknown) => console.warn('problem report not sent', e));
+    .catch((e: unknown) => console.warn(`${event} not sent`, e));
 }
 
 /** The calls the app makes. They send nothing without the opt-in, as it is when they are made: effects and components call them too. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CATEGORIES, SEVERITIES, formatReport, isBlackTile, isCategory, isSeverity, reportProperties, type ReportShape } from '../src/core/report';
+import { CATEGORIES, SEVERITIES, formatReport, formatWish, isBlackTile, isCategory, isSeverity, isWish, reportProperties, type ReportShape } from '../src/core/report';
 
 type Peer = ReportShape['call']['peers'][number];
 const peer = (view: Partial<Peer['view']>): Peer => ({ view: { conn: 'direct', watching: false, shareLive: false, ...view } });
@@ -59,6 +59,15 @@ describe('reportProperties', () => {
     expect(reportProperties({ text: 'x', category: 'audio', severity: 'blocking' }, slow)).toMatchObject({ voice_repair: 'fec', peers_sending_red: 0, max_adaptive_buffer_ms: null });
     const repaired = { ...report, call: { ...report.call, voiceRepair: 'red', peers: [{ ...peer({ rttMs: 80 }), sendsRed: true, voiceBuffer: { adaptiveMs: 400 } }, { ...peer({ rttMs: 90 }), voiceBuffer: { adaptiveMs: null } }] } };
     expect(reportProperties({ text: 'x', category: 'audio', severity: 'blocking' }, repaired)).toMatchObject({ voice_repair: 'red', peers_sending_red: 1, max_adaptive_buffer_ms: 400 });
+  });
+});
+
+describe('a wish', () => {
+  it('is the one category that is no problem', () => {
+    expect(Object.keys(CATEGORIES).filter((k) => isCategory(k) && isWish(k))).toEqual(['wish']);
+  });
+  it('copies as its words alone', () => {
+    expect(formatWish('  a dark theme for the call view \n')).toBe('Wish: a dark theme for the call view');
   });
 });
 
