@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { target } from './browsers';
-import { expect, newSecret, test, pickTheme, pickedTheme, themeNames } from './fixtures';
+import { expect, newSecret, openRoomMenu, test, pickTheme, pickedTheme, themeNames } from './fixtures';
 
 // Every look of the theme picker (client/theme.ts), on one app in a lived-in state: a room with a friend in the call and
 // sharing a screen, a few chat lines, an unread count on another room. Each theme is picked the way a friend picks it and
@@ -395,4 +395,26 @@ test('Kino\'s house lights are on with nobody sharing, go down under a share and
   await bob.stopShare();
   await expect.poll(lit, { message: 'the lights come up again when the share ends' }).toEqual(on);
   expect(await endless(page), 'and still stand still with reduced motion').toEqual([]);
+});
+
+// The invite panel and the rows below it: a row hovered lays its ground 4px past its edges (styles.css, `.who:hover`), so
+// with nothing between them a friend's row hovered under the panel ran into its border, in every theme (report of Oct 30).
+test('the invite panel stands clear of the rows below it, in every theme', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { viewport: DESKTOP });
+  const page = alice.page;
+  await openRoomMenu(page);
+  await page.locator('.room-menu:popover-open').getByRole('button', { name: 'Invite', exact: true }).click();
+  const panel = page.locator('.panel.invite');
+  await expect(panel).toBeVisible();
+  const gap = () => panel.evaluate((el) => el.nextElementSibling!.getBoundingClientRect().top - el.getBoundingClientRect().bottom);
+  const themes = await themeNames(page);
+  expect(themes.length, 'the picker offers the default look and at least one theme').toBeGreaterThan(1);
+  const gaps: Record<string, number> = {};
+  for (const value of themes) {
+    await pickTheme(page, value);
+    await expect(panel).toBeVisible();
+    gaps[value || 'default'] = await gap();
+  }
+  const tight = Object.entries(gaps).filter(([, px]) => px < 8);
+  expect(tight, 'themes whose invite panel has less than 8px below it, more than a hovered row\'s 4px').toEqual([]);
 });
