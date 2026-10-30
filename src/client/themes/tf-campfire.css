@@ -61,7 +61,7 @@ button.unblock:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfi
    clock. Dim on purpose: no glow is more than 8 % of its colour where it is strongest, the sparks under half strength.
    Only transform and opacity move, on two screen-sized layers and the sparks; a burst is one pseudo-element whose
    box-shadows are its sparks, scaled out from the glow's heart and moving with its layer. */
-.ambient:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { display: block; }
+.ambient:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { display: block; backdrop-filter: blur(1px); }
 .ambient:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::before,
 .ambient:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::after { content: ''; position: absolute; inset: -15%;
   animation: tf-campfire-drift-a 150s ease-in-out -50s infinite alternate; animation-play-state: var(--ambient-play); }
