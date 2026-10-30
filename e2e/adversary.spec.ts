@@ -25,8 +25,9 @@ test('ADR 0004: a server that swaps DTLS fingerprints cannot get a call connecte
   await expect.poll(() => bob.problems.some((p) => p.includes('description rejected: bad signature'))).toBe(true);
   // Give the watchdog time for a rebuild or two: it must never come up.
   await bob.page.waitForTimeout(20_000);
-  await expect(bob.badge('Alice')).not.toHaveText(/direct|via relay/);
-  await expect(alice.badge('Bob')).not.toHaveText(/direct|via relay/);
+  // No badge of theirs says connected: between the watchdog's rebuilds a row has no badge at all (ticket 71).
+  await expect(bob.badge('Alice').filter({ hasText: /direct|via relay/ })).toHaveCount(0);
+  await expect(alice.badge('Bob').filter({ hasText: /direct|via relay/ })).toHaveCount(0);
 });
 
 test('ADR 0004: a description with its signature stripped is refused', async ({ crowd }) => {
@@ -43,7 +44,7 @@ test('ADR 0004: a description with its signature stripped is refused', async ({ 
   await alice.join();
   await bob.join();
   await expect.poll(() => bob.problems.some((p) => p.includes('description rejected: unsigned'))).toBe(true);
-  await expect(bob.badge('Alice')).not.toHaveText(/direct|via relay/);
+  await expect(bob.badge('Alice').filter({ hasText: /direct|via relay/ })).toHaveCount(0);
 });
 
 test('the shared secret never crosses the wire', async ({ crowd }) => {

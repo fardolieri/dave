@@ -1,6 +1,6 @@
 # 71 · Flake: the DTLS swap test fails when the friend's row shows no connection badge at all
 
-Status: open, cause known (the test)
+Status: fix landed 2026-10-30; fixed once its ledger row stops growing
 Type: flake
 
 Seen 2026-10-30: the preview run of PR #110 at aac957f (run 41102076892), Chromium, shard 1, passed on its retry, so the
