@@ -39,13 +39,28 @@ if [ -n "$token" ]; then
   head=$(git rev-parse origin/master 2>/dev/null)
   tmp=$(mktemp -d)
   gh_api "issues?labels=soak&state=open&per_page=50" > "$tmp/soak" & gh_api "pulls?state=open&per_page=50" > "$tmp/pulls" &
-  gh_api "actions/workflows/deploy.yml/runs?head_sha=$head&per_page=1" > "$tmp/deploy" &
+  gh_api "actions/workflows/deploy.yml/runs?branch=master&event=push&per_page=1" > "$tmp/deploy" &
   gh_api "actions/workflows/rollback.yml/runs?status=success&per_page=1" > "$tmp/rollback" & gh_api "contents/top.txt?ref=flake-ledger" > "$tmp/flakes" & wait
   soak=$(jq -r 'if type == "array" then [.[] | "#\(.number) \(.title[0:90])"] | join("\n") else empty end' "$tmp/soak" 2>/dev/null)
   [ -n "$soak" ] && { echo "- Open soak issues (the nightly chaos soak found these; triage before new work):"; echo "$soak" | sed 's/^/    /'; }
   repro=$(jq -r 'if type == "array" then [.[] | select(.head.ref | startswith("night-shift/")) | "#\(.number) \(.title[0:90])"] | join("\n") else empty end' "$tmp/pulls" 2>/dev/null)
   [ -n "$repro" ] && { echo "- Night shift reproductions waiting:"; echo "$repro" | sed 's/^/    /'; }
   deploy=$(jq -r '.workflow_runs[0]? // empty | if .status == "completed" then .conclusion else .status end' "$tmp/deploy" 2>/dev/null)
+  deployed=$(jq -r '.workflow_runs[0]?.head_sha // empty' "$tmp/deploy" 2>/dev/null)
+  # A commit that changes nothing the site is built from deploys nothing (deploy.yml on master, its `!` paths): master's
+  # head is as good as deployed when every file changed since the last deploy is one of those. A glob's `**` is a shell `*`.
+  shipped=()
+  if [ -n "$deployed" ] && [ "$deployed" != "$head" ]; then
+    mapfile -t unshipped < <(git show origin/master:.github/workflows/deploy.yml 2>/dev/null | sed -n "s/^ *- '!\(.*\)'$/\1/p")
+    # A rename as its two paths, as GitHub's filter sees it; names as they are, not quoted.
+    changed=$(git -c core.quotePath=false diff --no-renames --name-only "$deployed" "$head" 2>/dev/null) || shipped=('?')
+    while IFS= read -r f; do
+      [ -z "$f" ] && continue # an empty commit
+      out=
+      for g in "${unshipped[@]}"; do [[ $f == ${g//\*\*/*} ]] && { out=1; break; }; done
+      [ -z "$out" ] && shipped+=("$f")
+    done <<< "$changed"
+  fi
   deployed_at=$(jq -r '.workflow_runs[0]?.updated_at // empty' "$tmp/deploy" 2>/dev/null)
   rolled_back_at=$(jq -r '.workflow_runs[0]?.updated_at // empty' "$tmp/rollback" 2>/dev/null)
   # ISO timestamps compare as strings. A rollback after the deploy means the site runs an older version than master.
@@ -53,12 +68,20 @@ if [ -n "$token" ]; then
   flakes=$(jq -r '.content // empty' "$tmp/flakes" 2>/dev/null | base64 -d 2>/dev/null)
   [ -n "$flakes" ] && { echo "- Flakes seen most this week (the flake ledger: README.md on branch flake-ledger):"; echo "$flakes" | sed 's/^/    /'; }
   rm -rf "$tmp"
-  case "$deploy" in
-    success) echo "- master's head ${head:0:7} is on the live site (deploy.yml)." ;;
-    rolled-back) echo "- WARNING: the live site was rolled back (rollback.yml) after master's head ${head:0:7} deployed: it runs an older version until a fix lands." ;;
-    failure|cancelled|timed_out) echo "- WARNING: the deploy of master's head ${head:0:7} ended $deploy: the live site runs an older commit. Read the run before new work." ;;
-    *) echo "- Deploy of master's head ${head:0:7}: ${deploy:-unknown}." ;;
-  esac
+  # A head that changes what the site is built from and has no run of its own yet is on its way; otherwise the last run says.
+  if [ "${shipped[0]}" = '?' ]; then
+    echo "- Deploy of master's head ${head:0:7}: unknown, this clone cannot compare it with the last deploy, of ${deployed:0:7}: ${deploy:-unknown}."
+  elif [ ${#shipped[@]} -gt 0 ]; then
+    echo "- Deploy of master's head ${head:0:7}: not started yet (it changes ${shipped[0]}); the last deploy, of ${deployed:0:7}: ${deploy:-unknown}."
+  else
+    [ "$deployed" = "$head" ] && live="master's head ${head:0:7}" || live="master's head ${head:0:7} (nothing the site is built from changed since ${deployed:0:7}, the last deploy)"
+    case "$deploy" in
+      success) echo "- $live is on the live site (deploy.yml)." ;;
+      rolled-back) echo "- WARNING: the live site was rolled back (rollback.yml) after $live deployed: it runs an older version until a fix lands." ;;
+      failure|cancelled|timed_out) echo "- WARNING: the deploy of $live ended $deploy: the live site runs an older commit. Read the run before new work." ;;
+      *) echo "- Deploy of $live: ${deploy:-unknown}." ;;
+    esac
+  fi
 fi
 # Texts a friend's app refused (ADR 0005): a server that tampers, or an app that seals wrong. Urgent either way, so it is
 # asked of PostHog here and not left to a dashboard nobody opens. The live site, the last 7 days, test browsers left out.

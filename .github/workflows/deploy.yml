@@ -5,6 +5,17 @@ name: deploy
 on:
   push:
     branches: [master]
+    # Only a commit that changes what the site is built from: a deploy is a new version for every open tab (its update
+    # bar), so a ticket, the docs or a test alone deploys nothing and the live site stays on the last commit that did. Each
+    # `!` line leaves files out; scripts/claude/session-start.sh reads them from here to tell master's head is still live.
+    paths:
+      - '**'
+      - '!.scratch/**'
+      - '!docs/**'
+      - '!**.md'
+      - '!.claude/**'
+      - '!e2e/**'
+      - '!test/**'
 concurrency: deploy-master
 jobs:
   deploy:

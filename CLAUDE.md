@@ -70,8 +70,9 @@ Rules:
 Every change goes through a ready PR. A push to master deploys the live site, and GitHub accepts only a fast-forward to a
 commit with the `preview e2e passed` status, which the PR's preview run writes on its head (rung 3). So: rebase, review,
 wait for the preview, `git push origin HEAD:master`, then check that `deploy` passed (it waits until the site serves the
-commit). A full send ends there; a full stop ends with the PR ready and rung 3 reached. A bad deploy: `rollback.yml`
-from the Actions tab, then a fix. Prefer small PRs, squashed into one commit per idea.
+commit; a commit that changes only tickets, docs or tests has no run to check, `deploy.yml`'s `paths`, and the site stays
+on the last commit that changed the app). A full send ends there; a full stop ends with the PR ready and rung 3 reached. A
+bad deploy: `rollback.yml` from the Actions tab, then a fix. Prefer small PRs, squashed into one commit per idea.
 
 ## What watches the app
 
