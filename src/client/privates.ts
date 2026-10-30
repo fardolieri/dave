@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, untrack } from 'solid-js';
 import posthog from './posthog';
-import { MAX_TEXT_LENGTH, identityOf, type Identity, type Person } from '../core/protocol';
+import { MAX_TEXT_LENGTH, identityOf, sameIdentity, type Identity, type Person } from '../core/protocol';
 import type { PrivateThread } from '../core/chatlog';
 import { MAX_FILE_BYTES, formatSize, pullsByItself, type FileMeta } from '../core/attachment';
 import { appendPrivate, forgetPrivate, loadPrivate, loadPrivateThreads, textKey, touchPrivateThread } from './history';
@@ -350,7 +350,7 @@ export function createPrivates(opts: { identity: LocalIdentity; name: () => stri
       if (!all.some((t) => t.friend.publicKey === w.to.publicKey)) all.push({ friend: w.to, at: w.at });
     }
     return all.sort((a, b) => b.at - a.at);
-  });
+  }, { equals: (a, b) => a.length === b.length && a.every((t, i) => t.at === b[i]!.at && sameIdentity(t.friend, b[i]!.friend)) });
 
   return {
     /** The conversations, most recent first. */

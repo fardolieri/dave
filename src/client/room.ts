@@ -9,7 +9,7 @@ import { exposeHooks } from './hooks';
 import { big, hashOf, holdSent, holdSentList, keepFile, keptFile, makePreview, noRoom, piecesOf } from './files';
 import {
   CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, MAX_TEXT_LENGTH, PING_FRAME, PING_INTERVAL_MS,
-  identityOf, type ClientMessage, type Identity, type Person, type PrivateTextKey, type RequestId, type ServerMessage, type TextId,
+  identityOf, sameIdentity, type ClientMessage, type Identity, type Person, type PrivateTextKey, type RequestId, type ServerMessage, type TextId,
 } from '../core/protocol';
 import {
   afterJoin, afterWelcome, carried, declare, declared, forgetEnded, forgetWatch, inCallOnly, joinDeclares, leaveCall,
@@ -400,6 +400,17 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const myIdentity = (): Identity => {
     const { name, picture } = carried(latest);
     return you() ?? { publicKey: opts.identity.publicKey, fingerprint: opts.identity.fingerprint, name, ...(picture ? { picture } : {}) };
+  };
+  /**
+   * My waiting lines as last shown, by what they show: each stays the same object while I show the same, so the chat's rows
+   * do not run again for every line that arrives before it.
+   */
+  const waitingLines = new WeakMap<object, Extract<ChatLine, { from: Identity }>>();
+  const waitingLine = (source: object, line: Extract<ChatLine, { from: Identity }>): ChatLine => {
+    const was = waitingLines.get(source);
+    if (was && sameIdentity(was.from, line.from)) return was;
+    waitingLines.set(source, line);
+    return line;
   };
   const push = (line: { kind: 'text'; id: string; from: Identity; text: string; at: number } | { kind: 'file'; id: string; from: Identity; file: FileMeta; at: number } | { kind: 'system'; text: string; at: number }) =>
     setLines((l) => [...l, 'id' in line ? (line as ChatLine) : ({ ...line, id: `sys-${nextId++}` } as ChatLine)]);
@@ -1200,11 +1211,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       const me = myIdentity();
       const mine = [
         // Files first: one sent with a text in the same millisecond was handed over first, and stays first (a stable sort).
-        ...files.map((f): ChatLine => ({ kind: 'file', id: `pending:${f.id}`, from: me, file: f.file, at: f.at, pending: true })),
-        ...waiting.map((u): ChatLine => ({ kind: 'text', id: `pending:${u.id}`, from: me, text: u.text, at: u.at, pending: true })),
+        ...files.map((f) => waitingLine(f, { kind: 'file', id: `pending:${f.id}`, from: me, file: f.file, at: f.at, pending: true })),
+        ...waiting.map((u) => waitingLine(u, { kind: 'text', id: `pending:${u.id}`, from: me, text: u.text, at: u.at, pending: true })),
       ].sort((a, b) => a.at - b.at);
       return [...lines(), ...mine];
-    }),
+    }, { equals: (a, b) => a.length === b.length && a.every((l, i) => l === b[i]) }),
     /** Where an attachment's bytes are (`Attachment`); undefined before its announcement is shown. */
     attachment: (hash: string): Attachment | undefined => attachments()[hash],
     /** The same, read at once, for a decision made in the moment it changed (signal writes are batched). */

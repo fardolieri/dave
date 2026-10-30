@@ -13,6 +13,9 @@ export type Identity = {
   picture?: string;
 };
 
+/** Whether two identities show the same: the same key, under the same name and picture. */
+export const sameIdentity = (a: Identity, b: Identity): boolean => a.publicKey === b.publicKey && a.fingerprint === b.fingerprint && a.name === b.name && a.picture === b.picture;
+
 /** Whether a stored value has an identity's fields, as `identityOf` keeps them. */
 export const isIdentity = (v: unknown): v is Identity => {
   const i = v as Partial<Identity> | null;

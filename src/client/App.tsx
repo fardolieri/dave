@@ -917,6 +917,7 @@ function InvitePanel(props: { link: string; name: string; onClose: () => void })
 
 /** How a friend is shown here, computed by the Workspace from the address book and who else is around. */
 type Label = { shown: string; known: boolean; title: string; picture?: string };
+const sameLabel = (a: Label | undefined, b: Label | undefined): boolean => a === b || (!!a && !!b && a.shown === b.shown && a.known === b.known && a.title === b.title && a.picture === b.picture);
 
 /** The avatar is the way into a friend's profile card. It shows the profile picture (issue #8), else the initial. */
 function Avatar(props: { initial: string; picture?: string; speaking?: boolean; title: string; onOpen: (anchor: HTMLElement) => void }) {
@@ -1724,14 +1725,15 @@ function ShareTile(props: ShareTileProps) {
 function ShareFaces(props: { keys: string[]; label: (publicKey: string) => Label | undefined; tip?: (publicKey: string) => JSX.Element }) {
   return (
     <span class="share-faces ph-no-capture">
-      <For each={props.keys}>{(key) => (
-        <Show when={props.label(key)}>{(l) => (
+      <For each={props.keys}>{(key) => {
+        const label = createMemo(() => props.label(key), { equals: sameLabel });
+        return <Show when={label()}>{(l) => (
           <span class={['face', { tipped: !!props.tip }]} role="group" tabindex={props.tip ? 0 : undefined} aria-label={l().shown}>
             <span class={['avatar', { pic: !!l().picture }]}>{l().picture ?? l().shown[0]}</span>
             <Show when={props.tip}>{(tip) => <span class="share-tip" role="tooltip">{tip()(key)}</span>}</Show>
           </span>
-        )}</Show>
-      )}</For>
+        )}</Show>;
+      }}</For>
     </span>
   );
 }
@@ -2274,7 +2276,7 @@ const continues = (lines: ChatLine[], i: number): boolean => {
 
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g;
 function Linkified(props: { text: string }) {
-  const parts = createMemo(() => props.text.split(URL_RE));
+  const parts = createMemo(() => props.text.split(URL_RE), { equals: sameItems });
   // Odd indices are the URLs captured by the split. Reading i() inside JSX keeps it tracked.
   return <For each={parts()}>{(part, i) => <Show when={i() % 2 === 1} fallback={<>{part}</>}><a href={part} target="_blank" rel="noopener noreferrer">{part}</a></Show>}</For>;
 }
