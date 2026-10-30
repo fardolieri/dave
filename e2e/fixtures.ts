@@ -199,7 +199,7 @@ export class Friend {
 
   async launch(browser: Browser, engine: Engine): Promise<void> {
     const baseURL = originFor(engine);
-    this.expected.push(...environmentNoise(engine));
+    this.expected.push(...environmentNoise(engine), ...(SOLID_DEV ? SOLID_ALLOWED : []));
     const probe = this.options.plainUserAgent ? await browser.newPage() : null;
     const userAgent = probe ? (await probe.evaluate(() => navigator.userAgent)).replace('HeadlessChrome', 'Chrome') : undefined;
     await probe?.close();
@@ -653,21 +653,43 @@ export const test = base.extend<{ crowd: Crowd }>({
  * Whether the app under test is Solid's development build (VITE_SOLID_DEV=1, vite.config.ts). Its diagnostics are then
  * collected: what each friend's console said and what each open page recorded since it loaded (re-runs, their costs, the
  * ones that changed nothing) go to `e2e-solid/`, one file per test and try. Those about correctness (a read that will not
- * update, a write where none belongs, an owner missing) also fail the test, as any console warning does.
+ * update, a write where none belongs, an owner missing) also fail the test, as any console warning does; so do those about
+ * how the code is put together (SOLID_STRUCTURAL), unless SOLID_ALLOWED says why one stays.
  */
 const SOLID_DEV = process.env['VITE_SOLID_DEV'] === '1';
 /**
- * Solid's diagnostics that are collected only: those about speed, which depend on the runner as much as on the app, and
- * the pointer to its guides it prints on its own after a thrown code's first report. The speed codes are read from the
- * list Solid ships, by the kinds its own console footer counts as speed, so a Solid release that adds one needs no edit
- * here. Read only on Solid's development build, so no other run depends on that file.
+ * Solid's speed diagnostics that still fail a test: those its check finds in how the code is put together, with no clock
+ * or rate in it, so they come back on any runner. A frame that shows a value new and one it depends on old (a write from
+ * an effect where a memo belongs), a memo whose equality never holds, a list made anew with the same items.
+ */
+const SOLID_STRUCTURAL = ['EFFECT_RELAY_TEAR', 'EFFECT_WRITES_OWN_SOURCE', 'IMMUTABLE_UPDATE_IN_STORE', 'UNSTABLE_LIST_IDENTITY', 'UNSTABLE_MEMO_OUTPUT'];
+/**
+ * Solid's diagnostics that are collected only: the other ones about speed, which depend on the runner as much as on the
+ * app (time spent, re-runs in a second), and the pointer to its guides it prints on its own after a code's first report.
+ * The speed codes are read from the list Solid ships, by the kinds its own console footer counts as speed, so a Solid
+ * release that adds one needs no edit here. Read only on Solid's development build, so no other run depends on that file.
  */
 const SOLID_COLLECTED_ONLY = SOLID_DEV ? (() => {
   const list: { code: string; kind: string[] }[] = JSON.parse(readFileSync(join(dirname(createRequire(import.meta.url).resolve('solid-js/package.json')), 'diagnostics.json'), 'utf8'));
   const speed = list.filter((d) => d.kind.some((k) => ['perf', 'graph', 'responsiveness'].includes(k))).map((d) => d.code);
-  if (!speed.includes('HOT_SCOPE_RERUNS')) throw new Error('solid-js/diagnostics.json no longer lists the speed codes as e2e/fixtures.ts reads them; update SOLID_COLLECTED_ONLY');
-  return new RegExp(`^\\[(${speed.join('|')})\\] |^\\[[A-Z_]+\\] what it means and how to fix it: `);
+  if (!speed.includes('HOT_SCOPE_RERUNS') || SOLID_STRUCTURAL.some((c) => !speed.includes(c))) throw new Error('solid-js/diagnostics.json no longer lists the speed codes as e2e/fixtures.ts reads them; update SOLID_COLLECTED_ONLY and SOLID_STRUCTURAL');
+  return new RegExp(`^\\[(${speed.filter((c) => !SOLID_STRUCTURAL.includes(c)).join('|')})\\] |^\\[[A-Z_]+\\] what it means and how to fix it: `);
 })() : null;
+/**
+ * The structural diagnostics we keep, each with why: matched by what Solid names in its message (the write and the value
+ * it relayed to), not by the line, which moves with every edit. Any other fails the test, with the line it was warned at.
+ */
+const SOLID_ALLOWED: RegExp[] = [
+  // The call opens and closes a friend's connection as they come and go (client/call.ts) and publishes the connections'
+  // state as it changes: views are what the connections say, not something to compute from the room's presence. Until
+  // the call says who is lost from presence and views together, a row is a frame behind when a friend comes or goes.
+  /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "createRoom\.people": .* by writing "createCall\.views"/,
+  // The room whose call I am in goes to the top of the stored list, however I got in (a Join, a rejoin after a reload):
+  // the order is kept, so it is written, and what reads the list sees it a flush later.
+  /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "createCall\.inCall": .* by writing "rooms"/,
+  // The page wears the top room's look (client/theme.ts): set on the document and told to PostHog as it changes.
+  /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "rooms": .* by writing "theme"/,
+];
 
 async function writeSolidDiagnostics(friends: Friend[], testInfo: TestInfo): Promise<void> {
   const report = [];

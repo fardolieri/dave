@@ -8,7 +8,8 @@ name: e2e
 #     same commit told nothing the preview run did not, and its 16 jobs queued the preview's behind them.
 #   - by hand from the Actions tab: local, or any deployed URL
 #   - weekly, and by hand with `solid_dev`: against a local build on Solid's development build (VITE_SOLID_DEV=1), where
-#     Solid's diagnostics about correctness fail a test and all of them are kept as `e2e-solid-*` (e2e/fixtures.ts). It
+#     Solid's diagnostics about correctness fail a test, so do those about how the code is put together unless e2e/fixtures.ts
+#     allows one with its reason (SOLID_ALLOWED), and all of them are kept as `e2e-solid-*`. It
 #     catches what the production build lets pass, such as a write Solid forbids, before the dev server or a Solid upgrade
 #     trips on it. Its failures stay out of the flake ledger: they are of another build.
 # Each engine is split into shards on runners of their own (Playwright's --shard): the whole suite on one runner took
