@@ -270,5 +270,9 @@
  {
   "match": "^settings\\.spec\\.ts › low bandwidth voice caps the voice.* \\| expect\\(received\\)\\.toBeNull\\(\\)",
   "ticket": "0f721e7 (fixed, 69)"
+ },
+ {
+  "match": "^adversary\\.spec\\.ts › ADR 0004: a server that swaps DTLS fingerprints cannot get a call connected \\| expect\\(locator\\)\\.not\\.toHaveText\\(expected\\) failed",
+  "ticket": "71"
  }
 ]
