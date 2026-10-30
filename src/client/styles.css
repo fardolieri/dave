@@ -168,6 +168,8 @@ aside.side > section.room:first-of-type.selected:not(.folded):has(.room-menu:hov
 /* that room's presence is stale while its socket is down (spec §8.1); the header stays clickable */
 .room.frozen .plist, .room.frozen .roomfaces { opacity: .45; transition: opacity .2s; } /* stale, like the rest of the room, but still the way to a friend's private conversation */
 .room.frozen .actions { opacity: .45; pointer-events: none; transition: opacity .2s; }
+/* clear of the rows below it, as the list of who is here is of the call box: a row hovered lays its ground 4px past it */
+.panel.invite { margin-bottom: 12px; }
 .panel.invite input { width: 100%; font-size: 12px; font-family: monospace; }
 .panel.invite .hint { margin: 0; }
 /* Scanners want dark modules on light ground with a quiet zone, whatever the theme; the viewBox carries a 4-module margin. */
