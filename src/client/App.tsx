@@ -31,6 +31,8 @@ import { place } from './place';
 import { createTabLock } from './tablock';
 import { build, commitUrl, REPO_URL, shortCommit } from './version';
 import { THEMES, THEME_GROUPS, adoptOldTheme, forgetRoomTheme, lookApart, setRoomTheme, showTopTheme, theme, themeOf } from './theme';
+import { closeOverlay, openOverlay, overlayRoom, overlaySupported } from './overlay';
+import type { OverlayModel, OverlayRow } from '../core/overlay';
 import { applyUpdate, downloadProgress, holding, noteOffered, tabSettled, updateReady } from './update';
 
 export default function App() {
@@ -656,8 +658,31 @@ function Workspace(props: WorkspaceProps) {
               // The room's ⋯ menu: below its button, else above it when there is more room there.
               const menuId = `room-menu-${++roomMenus}`;
               const roomMenu = sidebarMenu({ width: ROOM_MENU_W, prefer: 'below' });
+              // The overlay (overlay.ts): who is here and who is in the call, as the room on screen lists them, in a
+              // picture-in-picture window. Worked out from the room, not from the lists on screen: it stays open with the room folded.
+              let box: HTMLElement | undefined;
+              const overlayModel = (): OverlayModel => {
+                const row = (p: Person, speaking: boolean): OverlayRow => {
+                  const label = labelOf(p);
+                  return { key: p.publicKey, name: label.shown, face: label.picture ?? label.shown[0] ?? '?', pic: !!label.picture, you: p.publicKey === me, speaking, muted: p.muted };
+                };
+                const { self, others } = participants();
+                return {
+                  room: l.saved.name,
+                  here: hereIn(l).map((p) => row(p, false)),
+                  call: [
+                    ...(self ? [row(self, l.call.speakingSelf())] : []),
+                    ...others.map((p) => row(p, viewOf(l, p.publicKey)?.speaking ?? false)),
+                    ...lost().map((v): OverlayRow => {
+                      const name = displayName(v.name, contactOf(v.publicKey));
+                      return { key: v.publicKey, name, face: name[0] ?? '?', pic: false, you: false, speaking: false, muted: false, lost: true };
+                    }),
+                  ],
+                };
+              };
+              onCleanup(() => { if (untrack(overlayRoom) === l.saved.id) closeOverlay(); }); // the room forgotten
               return (
-                <section data-theme={themeOf(l.saved.id) || 'default'} data-apart={lookApart(l.saved.id) ? '' : undefined} class={['room', { selected: selected(), folded: !expanded(), 'in-call': inThis(), behind: selected() && !!privates.openWith(), frozen: l.room.status().kind !== 'connected' }]}>
+                <section ref={box} data-theme={themeOf(l.saved.id) || 'default'} data-apart={lookApart(l.saved.id) ? '' : undefined} class={['room', { selected: selected(), folded: !expanded(), 'in-call': inThis(), behind: selected() && !!privates.openWith(), frozen: l.room.status().kind !== 'connected' }]}>
                   {/* The top row is the room's handle (the area its hover shades the box for, styles.css): its name (a button,
                       for the keyboard) and its faces included, it opens the room, back from a private conversation too, or
                       folds the room on screen. The ⋯ and its menu do their own. */}
@@ -699,7 +724,7 @@ function Workspace(props: WorkspaceProps) {
                     {/* The ⋯ of the room open on screen, the top one or not: folded, a room's row is its handle (and, for my
                         call's room, its Unmute, Hear and Leave). Its menu wears the room's look, as everything in its box */}
                     <Show when={expanded()}>
-                      <button class="room-more" ref={roomMenu.anchor} popovertarget={menuId} title={top() ? 'Invite, themes, clear chat history, leave' : 'Put on top, invite, themes, clear chat history, leave'} aria-label={`More for ${l.saved.name}`}>⋯</button>
+                      <button class="room-more" ref={roomMenu.anchor} popovertarget={menuId} title={`${top() ? 'Invite' : 'Put on top, invite'}${overlaySupported ? ', overlay' : ''}, themes, clear chat history, leave`} aria-label={`More for ${l.saved.name}`}>⋯</button>
                       <div class="room-menu" id={menuId} popover="auto" ref={roomMenu.menu} onBeforeToggle={roomMenu.beforeToggle} onToggle={roomMenu.toggle}>
                         {/* Every room but the top one: up to the top, its look the page's. Not while in a call: the call's room
                             is the top one */}
@@ -708,6 +733,10 @@ function Workspace(props: WorkspaceProps) {
                             onClick={() => { roomMenu.close(); const i = links().indexOf(l); if (i > 0) moveRooms(i, 0); }}>Put on top</button>
                         </Show>
                         <button class="link" title="The link that gets a friend into this room" onClick={() => { roomMenu.close(); toggleInvite(l); }}>{inviteOpen() ? 'Hide invite link' : 'Invite'}</button>
+                        <Show when={overlaySupported}>
+                          <button class="link" title="Who is here and who is in the call, in a small window over other apps"
+                            onClick={() => { roomMenu.close(); if (overlayRoom() === l.saved.id) closeOverlay(); else void openOverlay(l.saved.id, overlayModel, () => box ?? null); }}>{overlayRoom() === l.saved.id ? 'Close overlay' : 'Overlay'}</button>
+                        </Show>
                         <Show when={THEMES.length > 0}><button class="link" title="This room's look, in this browser" onClick={(e) => { roomMenu.close(); openThemes(e.currentTarget.closest('section.room')?.querySelector<HTMLElement>('.room-more') ?? e.currentTarget, l.saved.id); }}>Themes</button></Show>
                         <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { roomMenu.close(); if (confirm(`Clear this browser's chat history of ${l.saved.name}? Nothing is stored on the server, so this cannot be undone.`)) void l.room.clearHistory(); }}>Clear chat history</button>
                         <button class="link danger" title="Forget this room in this browser" onClick={() => { roomMenu.close(); leaveRoom(l); }}>Leave {l.saved.name}</button>
