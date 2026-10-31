@@ -274,5 +274,13 @@
  {
   "match": "^adversary\\.spec\\.ts › ADR 0004: a server that swaps DTLS fingerprints cannot get a call connected \\| expect\\(locator\\)\\.not\\.toHaveText\\(expected\\) failed",
   "ticket": "71"
+ },
+ {
+  "match": "^\\S+\\.spec\\.ts › .* \\| console warnings, errors or exceptions nobody expected: .*service worker not registered TypeError: ServiceWorker script at .* encountered an error during installation",
+  "ticket": "72"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › an offer stuck for a friend who then reloads leaves their new connection alone \\(the polite side reloads, the first to join\\) \\| expect\\(locator\\)\\.toHaveCount\\(expected\\) fa",
+  "ticket": "61"
  }
 ]
