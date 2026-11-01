@@ -418,3 +418,25 @@ test('the invite panel stands clear of the rows below it, in every theme', async
   const tight = Object.entries(gaps).filter(([, px]) => px < 8);
   expect(tight, 'themes whose invite panel has less than 8px below it, more than a hovered row\'s 4px').toEqual([]);
 });
+
+// Nov 2026, the owner in tf-campfire: a text of many lines turned the composer into an oval. The looks that make the
+// field a pill rounded it by 999px, which on a field of many lines rounds its whole height away.
+test('regression: in every look a composer of many lines keeps its corners: rounded by at most a quarter of its height', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  await alice.composer.fill('one\ntwo\nthree\nfour\nfive');
+  const corners = () => alice.composer.evaluate((t: HTMLTextAreaElement) => {
+    const cs = getComputedStyle(t);
+    const radius = Math.max(...[cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomLeftRadius, cs.borderBottomRightRadius].map(parseFloat));
+    const frame = ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth'].reduce((sum, p) => sum + parseFloat(cs[p as 'paddingTop']), 0);
+    return { radius, height: t.offsetHeight, lines: (t.offsetHeight - frame) / parseFloat(cs.lineHeight) };
+  });
+  const rounder: string[] = [];
+  for (const look of await themeNames(alice.page)) {
+    await pickTheme(alice.page, look);
+    const c = await corners();
+    expect(c.lines, `${look || 'default'}: the field is five lines tall`).toBeGreaterThan(4.9);
+    // Corners take at most a quarter of its height between them, top and bottom: of five lines, about one line each.
+    if (c.radius > c.height / 4) rounder.push(`${look || 'default'}: ${c.radius}px on a field ${c.height}px tall`);
+  }
+  expect(rounder).toEqual([]);
+});
