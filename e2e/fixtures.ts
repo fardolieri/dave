@@ -327,7 +327,7 @@ export class Friend {
   async isConnected(): Promise<boolean> { return await this.composer.isEnabled() && await this.away.count() === 0; }
 
   // --- the page, as a friend sees it ---
-  get composer(): Locator { return this.page.locator('.chat-field > input'); }
+  get composer(): Locator { return this.page.locator('.chat-field > textarea'); }
   get sendButton(): Locator { return this.page.locator('form.chat-input').getByRole('button', { name: 'Send', exact: true }); }
   /** Files staged above the composer, waiting for Send. */
   get staged(): Locator { return this.page.locator('.staged > li'); }

@@ -26,7 +26,7 @@ a { color: #13325E; }
 button { background: #E9E4C9; color: var(--fg); border: 1px solid #7C7752; border-radius: 9px; font: inherit; font-weight: 700;
   box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); }
 button:active:not(:disabled) { box-shadow: inset 0 2px 0 rgba(0,0,0,.2); }
-input { background: #EEF2E2; color: var(--fg); border: 1px solid #7C7752; border-radius: 6px; box-shadow: inset 0 2px 3px rgba(0,0,0,.12); }
+input, :where(.chat-field) > textarea { background: #EEF2E2; color: var(--fg); border: 1px solid #7C7752; border-radius: 6px; box-shadow: inset 0 2px 3px rgba(0,0,0,.12); }
 button.on:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--rubber); border-color: var(--rubber); color: var(--rubber-fg); box-shadow: inset 0 2px 0 rgba(0,0,0,.5); }
 button.join:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--ok); color: #fff; box-shadow: inset 0 -3px 0 rgba(0,0,0,.3); }
 button.leave:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--bad); color: #fff; box-shadow: inset 0 -3px 0 rgba(0,0,0,.3); }
@@ -79,7 +79,7 @@ button.avatar:hover:not(.speaking):is([data-theme="fd-walkie"][data-theme], [dat
 .chat-new:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--rubber); color: var(--rubber-fg); border-color: var(--rubber); }
 .chat-new:hover:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: #fff; }
 .chat-input:where(:scope, :scope *):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--rubber); }
-.chat-field > input:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--lcd); border-color: #000; }
+.chat-field > textarea:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--lcd); border-color: #000; }
 .chat-input:where(:scope, :scope *) > button:not(.emoji-open):is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { background: var(--chassis); border-color: var(--chassis-dk); color: var(--rubber); }
 .chat-input:where(:scope, :scope *) .emoji-open:is([data-theme="fd-walkie"][data-theme], [data-theme="fd-walkie"][data-theme] *) { color: var(--rubber-fg); }
 

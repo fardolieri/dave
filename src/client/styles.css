@@ -45,7 +45,8 @@ button:disabled { opacity: .5; cursor: default; }
 :where(input, textarea)::placeholder { color: var(--dim); opacity: 1; }
 ::selection { background: color-mix(in srgb, var(--acc) 35%, transparent); }
 :where(:root) { scrollbar-color: var(--line) transparent; }
-input { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; }
+input, :where(.chat-field) > textarea { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; }
+:where(.chat-field) > textarea { line-height: 1.4; } /* not `normal`: the composer measures its lines by it */
 .dim { color: var(--dim); }
 .notice { width: 100%; max-width: 36rem; margin: 3rem auto; padding: 0 1rem; }
 .notice form { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
@@ -209,6 +210,12 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .msg-from { font-weight: 600; } .msg-at { color: var(--dim); font-size: 11px; margin-left: 6px; font-variant-numeric: tabular-nums; }
 /* As wide as its words, so its time shows over them only; on a wide screen no wider than a line the eye can follow back */
 .msg-text { white-space: pre-wrap; word-break: break-word; width: fit-content; max-width: 72ch; line-height: 1.45; }
+/* A text's markdown (core/markdown.ts): quotes with a bar, code in a fixed width on a tint, a long code line scrolling */
+.msg-text blockquote { margin: 2px 0; padding: 0 0 0 10px; border-left: 3px solid color-mix(in srgb, var(--fg) 25%, transparent); color: color-mix(in srgb, var(--fg) 75%, transparent); }
+.msg-text code { font: .9em/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: .1em .3em; border-radius: 4px; background: color-mix(in srgb, var(--fg) 9%, transparent); }
+.msg-text pre { margin: 4px 0; padding: 6px 10px; border-radius: 6px; background: color-mix(in srgb, var(--fg) 9%, transparent); white-space: pre; overflow-x: auto; max-width: 100%; }
+.msg-text pre code { padding: 0; background: none; }
+.msg-text s { opacity: .7; }
 .msg-cont { margin-top: -8px; } /* a follow-on line from the same writer sits under their name: 2px apart instead of the log's 10px */
 .msg-sys { font-size: 12px; color: var(--dim); font-style: italic; } .msg-sys .msg-text { display: inline; }
 /* A private conversation (ADR 0007). One column, centred on a wide screen, the composer under it lined up the same: a
@@ -306,12 +313,34 @@ dialog.viewer img { display: block; max-width: 96vw; max-height: 96dvh; object-f
 .staged .unstage { flex: none; align-self: flex-start; padding: 2px 8px; background: none; border-color: transparent; color: var(--dim); }
 .staged .unstage:hover { color: var(--fg); border-color: var(--line); }
 .chat-field { position: relative; flex: 1; min-width: 0; display: flex; } /* min-width lets it shrink on a narrow phone instead of pushing the page wider */
-/* The text field is the visible box, styled by the themes; the emoji and attach buttons sit over its two ends, centred
-   without a transform (themes move buttons on hover with one). Room for them is kept whatever padding a theme gives the
-   field, hence the !important. The child selector keeps all this off the picker's search field inside the form. */
-.chat-field > input { flex: 1; min-width: 0; padding-inline: 40px !important; }
-.chat-field > .emoji-open { position: absolute; inset-block: 0; margin-block: auto; height: fit-content; left: 2px; z-index: 1; }
+/* The text field is the visible box, styled by the themes; the emoji and attach buttons sit over its two ends, at its
+   bottom line however tall it grows (one line's height, measured: --one-line), centred without a transform (themes move
+   buttons on hover with one). Room for them is kept whatever padding a theme gives the field, hence the !important. The
+   child selector keeps all this off the picker's search field inside the form. A column, so the field fills the row when
+   Send is the taller (a theme's 44 px on a phone) and still grows past it. */
+.chat-field { flex-direction: column; }
+.chat-field > textarea { flex: 1 0 auto; min-width: 0; margin: 0; padding-inline: 40px !important; resize: none; max-height: 50dvh; overflow-y: hidden; white-space: pre-wrap; overflow-wrap: break-word; }
+/* The field's own characters and placeholder are not painted: the mirror over it paints them, markdown and all (Markdown.tsx). */
+.chat-field > textarea, .chat-field > textarea::placeholder { -webkit-text-fill-color: transparent; }
+.chat-field > textarea::placeholder { color: transparent; }
+.chat-mirror { position: absolute; z-index: 0; margin: 0; pointer-events: none; overflow: hidden; white-space: pre-wrap; overflow-wrap: break-word; border-style: solid; border-color: transparent; background: none; }
+/* One line, as the empty field is (Composer's fit), however long: an ellipsis at its end */
+.chat-mirror .md-placeholder { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--dim); }
+/* Nothing in here may change a character's width (see MarkdownMirror). Tints mix the field's text colour (--mirror-ink, set
+   with it): Chromium does not recompute a `color-mix` of currentColor when a parent's colour changes, as with a new look. */
+.chat-mirror .md-marker { opacity: .45; }
+.chat-mirror .md-bold { text-shadow: .03em 0 0 currentColor, -.01em 0 0 currentColor; -webkit-text-stroke: .02em currentColor; }
+.chat-mirror .md-italic { color: color-mix(in srgb, var(--mirror-ink) 65%, var(--acc)); }
+.chat-mirror .md-strike { text-decoration: line-through; }
+.chat-mirror .md-code { border-radius: 3px; background: color-mix(in srgb, var(--mirror-ink) 12%, transparent); }
+.chat-mirror .md-link { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--mirror-ink) 40%, transparent); }
+.chat-mirror .md-quoted { color: color-mix(in srgb, var(--mirror-ink) 72%, transparent); }
+.chat-mirror .md-quote-marker { opacity: 1; color: var(--acc); }
+.chat-mirror :is(.md-code, .md-line-fence) { color: color-mix(in srgb, var(--mirror-ink) 80%, var(--acc)); }
+.chat-field > .emoji-open { position: absolute; inset-block: auto 0; margin: 0; height: var(--one-line, 100%); left: 2px; z-index: 1; }
 .chat-field > .attach-open { left: auto; right: 2px; }
+/* Send stays at the bottom line too, as tall as the field's one line */
+.chat-input > button { align-self: flex-end; min-height: var(--one-line); }
 /* No frame on the two buttons inside the field, hovered or not, whatever a theme gives the emoji button elsewhere: the
    field is their frame. The keyboard's focus ring is an outline, and stays. */
 .chat-field > .emoji-open, .chat-field > .emoji-open:hover { border-color: transparent !important; box-shadow: none !important; }

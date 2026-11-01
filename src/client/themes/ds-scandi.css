@@ -122,7 +122,7 @@ h2 { font-weight: 800; letter-spacing: .06em; }
 button { border-radius: var(--border-radius-sm); font-weight: 700; box-shadow: var(--shadow-sm); }
 button:where(.link, .avatar, .room-name, .edit, .chat-older, .emoji-open), :is(.emoji-tabs, .emoji-grid) button { box-shadow: none; }
 .avatar.speaking { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--color-ring); }
-input, select.picker, dialog.report textarea { border-radius: var(--border-radius-sm); }
+input, :where(.chat-field) > textarea, select.picker, dialog.report textarea { border-radius: var(--border-radius-sm); }
 input:focus, textarea:focus { border-color: var(--color-border-focus); }
 .unread { line-height: 18px; padding: 0 7px; }
 .new { border-radius: var(--border-radius-full); padding: 0 6px; }
@@ -145,7 +145,7 @@ button.room-leave { color: var(--color-text-on-error); font-weight: 800; box-sha
 .chat-log { gap: 12px; }
 .msg-from { font-weight: 800; }
 .msg-text { line-height: 1.5; }
-.chat-field > input { border-radius: var(--border-radius-full); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
+.chat-field > textarea { border-radius: var(--border-radius-full); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
 .chat-input:where(:scope, :scope *) > button:not(.emoji-open) { border-radius: var(--border-radius-full); padding: 8px 18px; background: var(--acc); border-color: var(--acc); color: var(--color-text-on-accent); }
 .chat-new { border-radius: var(--border-radius-full); }
 .consent .bubble { border: 1px solid var(--line); }

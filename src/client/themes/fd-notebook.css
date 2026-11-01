@@ -26,8 +26,8 @@ body:is([data-theme="fd-notebook"][data-theme], [data-theme="fd-notebook"][data-
 h1 { font-family: var(--hand); font-size: 28px; }
 h2 { font-family: var(--hand); text-transform: none; letter-spacing: 0; font-size: 19px; color: var(--ink); }
 button { background: var(--panel2); color: var(--ink); border: 1.5px solid var(--ink); border-radius: var(--wobble); font: inherit; }
-input { background: #FFFFFF; color: var(--ink); border: 0; border-bottom: 1.5px solid var(--ink); border-radius: 0; }
-input:focus-visible { outline: 0; background: #FFFBE0; }
+input, :where(.chat-field) > textarea { background: #FFFFFF; color: var(--ink); border: 0; border-bottom: 1.5px solid var(--ink); border-radius: 0; }
+input:focus-visible, :where(.chat-field) > textarea:focus-visible { outline: 0; background: #FFFBE0; }
 
 button.on:is([data-theme="fd-notebook"][data-theme], [data-theme="fd-notebook"][data-theme] *) { background: var(--acc); border-color: var(--acc); color: #fff; }
 button.join:is([data-theme="fd-notebook"][data-theme], [data-theme="fd-notebook"][data-theme] *) { background: var(--ok); color: #fff; border-color: var(--ok); font-weight: 700; }

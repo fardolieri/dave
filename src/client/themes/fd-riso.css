@@ -46,7 +46,7 @@ h1 { font-weight: 800; font-size: 30px; letter-spacing: -.01em; }
 h2 { text-transform: none; letter-spacing: 0; font-size: 17px; font-weight: 800; color: var(--ink); }
 button { background: var(--panel2); color: var(--ink); border: 2px solid var(--blue); border-radius: 4px; font: inherit; font-weight: 700; box-shadow: var(--slip); }
 button:active:not(:disabled) { box-shadow: 1px 1px 0 var(--pink); }
-input { background: #FAFAFB; color: var(--ink); border: 2px solid var(--blue); border-radius: 4px; }
+input, :where(.chat-field) > textarea { background: #FAFAFB; color: var(--ink); border: 2px solid var(--blue); border-radius: 4px; }
 a { color: var(--blue); }
 
 button.on:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { background: var(--blue); border-color: var(--blue); color: #fff; }

@@ -22,7 +22,7 @@ body:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-
 :scope:is([data-apart], .chat, .chat-input) { font-size: 14px; } /* the same type on a box or chat of this look inside another page */
 h2 { text-transform: none; letter-spacing: .01em; font-size: 13px; font-weight: 700; color: var(--dim); }
 button { border-radius: 3px; font: inherit; font-weight: 600; }
-input { border-radius: 3px; background: #0A1529; }
+input, :where(.chat-field) > textarea { border-radius: 3px; background: #0A1529; }
 
 button.on:not(.link):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { background: var(--acc); border-color: var(--acc); color: #04213A; }
 button.join:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { background: var(--ok); color: #03270F; font-weight: 800; }

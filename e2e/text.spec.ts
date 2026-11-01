@@ -52,6 +52,105 @@ test('text is plain: markup arrives as text and links are clickable', async ({ c
   expect(await bob.page.evaluate(() => (window as unknown as { pwned?: number }).pwned)).toBeUndefined();
 });
 
+test('a text is written over several lines in markdown: its markers stay in the composer, the friend sees bold, a quote and code', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  const field = alice.composer;
+  const oneLine = (await field.boundingBox())!.height;
+  await field.click();
+  await field.pressSequentially('> she said **this**');
+  // Shift+Enter breaks the line and goes on with the quote; on the quote's empty line it ends the quote instead.
+  await field.press('Shift+Enter');
+  await expect(field).toHaveValue('> she said **this**\n> ');
+  await field.press('Shift+Enter');
+  await expect(field).toHaveValue('> she said **this**\n');
+  await field.pressSequentially('and I said ');
+  // Ctrl+B makes the selection bold, its markers typed around it.
+  await field.pressSequentially('no');
+  await field.press('Shift+ArrowLeft');
+  await field.press('Shift+ArrowLeft');
+  await field.press('ControlOrMeta+b');
+  await expect(field).toHaveValue('> she said **this**\nand I said **no**');
+  await field.press('End');
+  await field.pressSequentially(', `twice`');
+  // The markers stay, dimmed; what they mark looks as it will.
+  const mirror = alice.page.locator('.chat-mirror');
+  await expect(mirror).toHaveText('> she said **this**\nand I said **no**, `twice`\u200b');
+  await expect(mirror.locator('.md-bold')).toHaveText(['this', 'no']);
+  await expect(mirror.locator('.md-quote-marker')).toHaveText(['> ']);
+  await expect(mirror.locator('.md-code')).toHaveText(['twice']);
+  expect((await field.boundingBox())!.height, 'the field grew to two lines').toBeGreaterThan(oneLine + 10);
+  await field.press('Enter');
+  await expect(field).toHaveValue('');
+  expect((await field.boundingBox())!.height, 'and shrank back to one').toBeLessThan(oneLine + 1);
+
+  await expect.poll(() => bob.chatTexts()).toEqual(['she said this\nand I said no, twice']);
+  const text = bob.page.locator('.chat-log .msg-text');
+  await expect(text.locator('blockquote')).toHaveText('she said this');
+  await expect(text.locator('strong')).toHaveText(['this', 'no']);
+  await expect(text.locator('code')).toHaveText('twice');
+});
+
+test('the composer grows with its text up to half the screen, then scrolls, its markdown scrolling with it', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const field = alice.composer;
+  await field.fill(Array.from({ length: 60 }, (_, i) => `line **${i + 1}**`).join('\n'));
+  await expect.poll(async () => (await field.boundingBox())!.height).toBeGreaterThan(300);
+  const box = await alice.page.evaluate(() => {
+    const t = document.querySelector<HTMLTextAreaElement>('.chat-field > textarea')!, m = document.querySelector<HTMLElement>('.chat-mirror')!;
+    t.scrollTop = t.scrollHeight;
+    t.dispatchEvent(new Event('scroll'));
+    return { height: t.offsetHeight, half: innerHeight / 2, scrolls: t.scrollHeight > t.clientHeight, field: t.scrollTop, mirror: m.scrollTop, mirrorHeight: m.offsetHeight };
+  });
+  expect(box.height).toBeLessThanOrEqual(box.half + 1);
+  expect(box.scrolls).toBe(true);
+  expect(box.mirrorHeight).toBe(box.height);
+  await expect.poll(() => alice.page.evaluate(() => document.querySelector('.chat-mirror')!.scrollTop)).toBe(box.field);
+});
+
+// Nov 2026, the owner on a phone, PR 120's preview: with the composer at its tallest, a line break typed at the end did
+// not scroll the new line into view, until the next character did.
+test('regression: a line break typed at the end of a composer at its tallest scrolls the new line into view', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const field = alice.composer;
+  await field.fill(Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join('\n'));
+  await field.press('ControlOrMeta+End');
+  await field.press('Shift+Enter');
+  await expect(field).toHaveValue(/line 40\n$/);
+  const atBottom = () => alice.page.evaluate(() => {
+    const t = document.querySelector<HTMLTextAreaElement>('.chat-field > textarea')!, m = document.querySelector<HTMLElement>('.chat-mirror')!;
+    return { field: t.scrollHeight - t.clientHeight - t.scrollTop <= 1, mirror: m.scrollTop === t.scrollTop };
+  });
+  await expect.poll(atBottom, { message: 'the empty last line in view, in the field and its mirror' }).toEqual({ field: true, mirror: true });
+});
+
+// Nov 2026, the owner on a phone, PR 120's preview: the empty composer was two lines tall. It had grown to the longer
+// placeholder it showed while connecting, which wraps at phone width. A placeholder does not size the field: one line.
+test('regression: the empty composer is one line tall at phone width, whatever its placeholder says', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { viewport: { width: 360, height: 740 } });
+  const height = async () => (await alice.composer.boundingBox())!.height;
+  // As it came up, before anything was typed in it (typing measures it again).
+  const loaded = await height();
+  // One line as the field measures it, with one line of text in it, to a pixel (a measured height is rounded to one).
+  await alice.composer.fill('x');
+  const line = await height();
+  const oneLine = async () => Math.abs((await height()) - line) <= 1;
+  expect(Math.abs(loaded - line), 'one line as it came up, connecting first').toBeLessThanOrEqual(1);
+  await alice.composer.fill('');
+  await expect.poll(oneLine, { message: 'one line once emptied' }).toBe(true);
+  await alice.wire.cut();
+  await expect(alice.composer).toHaveAttribute('placeholder', /sent once reconnected/);
+  await expect.poll(oneLine, { message: 'one line with the long placeholder' }).toBe(true);
+  // The placeholder shows on that line, cut short there if longer: it does not wrap.
+  const shown = alice.page.locator('.chat-mirror .md-placeholder');
+  await expect(shown).toHaveText(/^Message Room, sent once reconnected$/);
+  expect(await shown.evaluate((e) => e.getBoundingClientRect().height), 'on one line').toBeLessThanOrEqual(line);
+  alice.wire.restore();
+  await alice.connected();
+  await expect(shown).toHaveText('Message Room');
+  await expect.poll(oneLine, { message: 'one line again' }).toBe(true);
+});
+
 test('a long link with no spaces wraps inside the chat at phone width, under a name and as a follow-on line', async ({ crowd }) => {
   // Each line is only as wide as its words (so its time shows over them only), which must still be no wider than the log.
   const alice = await crowd.open('Alice');

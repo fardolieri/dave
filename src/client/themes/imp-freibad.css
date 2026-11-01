@@ -59,7 +59,7 @@ button:where(:hover:not(:disabled)) { background-color: #d3e9ed; }
 input,
 textarea,
 select.picker { border-color: var(--edge); border-radius: 4px; }
-.chat-field > input { background: #fff; }
+.chat-field > textarea { background: #fff; }
 button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #fff; }
 .side button.on:not(.link):where(:scope *) { background: var(--sign); border-color: var(--sign); color: #111; }
 button.join { background: #5fe39a; color: #062b17; font-weight: 600; }

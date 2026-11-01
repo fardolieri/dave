@@ -142,7 +142,7 @@ button.room-leave { border-radius: var(--border-radius-sm); font-weight: 500; co
 button { background: transparent; border-radius: var(--border-radius-sm); font-weight: 400; letter-spacing: .02em; padding: 8px 14px; }
 button:where(:hover:not(:disabled, .on, .join, .leave, .unblock)) { border-color: var(--dim); }
 button.join, button.leave { font-weight: 500; }
-input, select.picker, dialog.report textarea { border-radius: var(--border-radius-sm); background: var(--panel2); }
+input, :where(.chat-field) > textarea, select.picker, dialog.report textarea { border-radius: var(--border-radius-sm); background: var(--panel2); }
 input:focus, textarea:focus { border-color: var(--dim); }
 .avatar { background: var(--panel2); box-shadow: inset 0 0 0 1px var(--line); font-weight: 400; }
 button.avatar { font-weight: 400; }
@@ -192,7 +192,7 @@ dialog.report, dialog.about { border-radius: var(--border-radius-md); }
 @media (prefers-reduced-motion: no-preference) {
 @scope ([data-theme="ds-ma"]) to ([data-theme]) {
 
-  button, input { transition: border-color var(--duration-slow) var(--easing-default), background-color var(--duration-slow) var(--easing-default), color var(--duration-slow) var(--easing-default); }
+  button, input, textarea { transition: border-color var(--duration-slow) var(--easing-default), background-color var(--duration-slow) var(--easing-default), color var(--duration-slow) var(--easing-default); }
   .msg { animation: ds-ma-ink .6s var(--easing-default) both; }
   /* both animations at once, so the fade-in does not restart when the line stops being pending */
   .msg-pending { animation: ds-ma-ink .6s var(--easing-default) both, msg-pending 0s 1s forwards; }

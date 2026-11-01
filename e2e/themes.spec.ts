@@ -315,7 +315,7 @@ test('a look picked in a second tab stays when the first tab takes the app back,
   alice.watch(second);
   await second.goto('/');
   await second.getByRole('button', { name: 'Use it here instead' }).click();
-  await expect(second.locator('.chat-field > input')).toBeEnabled();
+  await expect(second.locator('.chat-field > textarea')).toBeEnabled();
   await pickTheme(second, look!);
   await expect(box(second, crowd.room.name)).toHaveAttribute('data-theme', look!);
   // Back in the first tab, which takes the app back without a reload: the look is there too.

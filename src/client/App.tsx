@@ -20,6 +20,8 @@ import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, identityOf, normaliseName, type Ident
 import { displayName, formatAgo, knownAgo } from '../core/names';
 import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatStream } from '../core/format';
+import { Markdown, MarkdownMirror } from './Markdown';
+import { quotePrefix } from '../core/markdown';
 import { FOLD_OLDER_MS, olderCount } from '../core/chatlog';
 import { formatDelay, lagLevel } from '../core/lowvoice';
 import { shareTileState } from '../core/invariants';
@@ -1992,7 +1994,9 @@ function Composer(props: {
   const [privateDraft, setPrivateDraft] = createSignal(() => { privateKey(); return ''; });
   const draft = () => (privateKey() ? privateDraft() : roomDraft());
   const setDraft = (text: string) => (privateKey() ? setPrivateDraft : setRoomDraft)(text);
-  let input: HTMLInputElement | undefined;
+  let input: HTMLTextAreaElement | undefined;
+  let mirror: HTMLDivElement | undefined;
+  let form: HTMLFormElement | undefined;
   let emojiButton: HTMLButtonElement | undefined;
   let picker: HTMLInputElement | undefined;
   // A picture pasted from the clipboard (a screenshot) is staged as a file; pasted text stays text. A picture copied in a
@@ -2013,12 +2017,148 @@ function Composer(props: {
   createEffect(privateKey, (key, prev) => { if (key && key !== prev && matchMedia('(pointer: fine)').matches) input?.focus(); });
   /** Why Send cannot send right now while writing privately, or null. */
   const privateHeld = () => (props.privateTo?.blocked ? `Can't write to ${props.privateTo.name} now: ${props.privateTo.blocked}` : null);
+  // The field's and the mirror's (MarkdownMirror shows it, cut to one line).
+  const placeholder = createMemo(() => privateHeld() ?? (props.privateTo && props.writable ? `Message ${props.privateTo.name}${props.connected ? '' : ', sent once reconnected'}` : props.connected ? `Message ${props.roomName}` : props.writable ? `Message ${props.roomName}, sent once reconnected` : holding() ? 'A new version of dave is loading…' : "Can't send while disconnected"));
   const submit = (e: Event) => {
     e.preventDefault();
     const text = draft().trim();
     // Waits for files still being made ready: the text stays, and Send says why.
     if ((!text && !props.staged.length) || !props.writable || !props.staged.every(settled) || privateHeld()) return;
     if (props.onSend(text)) setDraft('');
+  };
+  // The field grows with its text up to half the screen (CSS max-height), then scrolls. The mirror (MarkdownMirror) lies
+  // over it, its box measured to the field's text box, scrolled with it: whatever look the theme gives the field, its
+  // characters fall where the field's are.
+  const fit = () => {
+    if (!input || !mirror || !form) return;
+    const cs = getComputedStyle(input);
+    const borders = px(cs.borderTopWidth) + px(cs.borderBottomWidth);
+    const outside = cs.boxSizing === 'border-box' ? borders : -px(cs.paddingTop) - px(cs.paddingBottom);
+    // One line's height, which the buttons keep at the field's bottom edge however tall it grows.
+    const lineHeight = cs.lineHeight === 'normal' ? px(cs.fontSize) * 1.2 : px(cs.lineHeight); // styles.css gives it one
+    // Rounded as the browser rounds a measured height (scrollHeight), so the field is as tall empty as with one line in it.
+    const oneLine = Math.round(lineHeight + px(cs.paddingTop) + px(cs.paddingBottom)) + borders;
+    form.style.setProperty('--one-line', `${oneLine}px`);
+    // Empty, it is one line, whatever the placeholder says (the mirror shows it, cut short): Chromium counts a placeholder
+    // that wraps (the longer one while connecting, on a phone) in the field's height.
+    const scrolled = input.scrollTop;
+    if (input.value) {
+      input.style.height = 'auto';
+      input.style.height = `${input.scrollHeight + outside}px`;
+    } else input.style.height = `${oneLine - borders + outside}px`;
+    input.style.overflowY = input.value && input.scrollHeight > input.clientHeight + 1 ? 'auto' : 'hidden';
+    input.scrollTop = scrolled;
+    for (const p of MIRRORED) mirror.style.setProperty(p, cs.getPropertyValue(p));
+    mirror.style.setProperty('--mirror-ink', cs.color);
+    mirror.style.left = `${input.offsetLeft}px`;
+    mirror.style.top = `${input.offsetTop}px`;
+    // Not over the field's scrollbar, so its text wraps at the same width.
+    mirror.style.width = `${input.clientWidth + px(cs.borderLeftWidth) + px(cs.borderRightWidth)}px`;
+    mirror.style.height = `${input.offsetHeight}px`;
+    mirror.scrollTop = input.scrollTop;
+  };
+  /**
+   * Keeps the caret in view after an edit of the composer's own (a line break, Ctrl+B): Chromium does not scroll to a
+   * caret on an empty line, as after a line break typed at the end of a field at its tallest, until the next character.
+   * Where the caret is comes from the mirror, whose text is the field's, laid out alike (and a zero-width space after it
+   * for the last line). Typing and pasting are the browser's to show.
+   */
+  let revealNext = false;
+  const reveal = () => {
+    if (!input || !mirror || document.activeElement !== input || input.style.overflowY !== 'auto') return;
+    let left = input.selectionDirection === 'backward' ? input.selectionStart : input.selectionEnd;
+    const walk = document.createTreeWalker(mirror, NodeFilter.SHOW_TEXT);
+    let node: Text | null = null;
+    // Strictly inside a node: the place just after a line break is the next line's start, not the end of the break's line.
+    while (walk.nextNode()) {
+      const text = walk.currentNode as Text;
+      if (left < text.length) { node = text; break; }
+      left -= text.length;
+    }
+    if (!node) return; // the mirror not yet the field's text
+    const range = document.createRange();
+    range.setStart(node, left);
+    const caret = range.getBoundingClientRect();
+    if (!caret.height) return;
+    // The caret's whole line, not its glyph's box: the line's height around the glyph's middle.
+    const cs = getComputedStyle(input);
+    const line = px(cs.lineHeight) || caret.height;
+    const middle = caret.top + caret.height / 2 - mirror.getBoundingClientRect().top - px(cs.borderTopWidth) + mirror.scrollTop;
+    const top = middle - line / 2, bottom = middle + line / 2;
+    const view = input.clientHeight - px(cs.paddingBottom);
+    if (bottom > input.scrollTop + view) input.scrollTop = bottom - view;
+    else if (top < input.scrollTop + px(cs.paddingTop)) input.scrollTop = top - px(cs.paddingTop);
+    mirror.scrollTop = input.scrollTop;
+  };
+  createEffect(draft, () => { fit(); if (revealNext) { revealNext = false; reveal(); } });
+  onSettled(() => {
+    if (!input) return;
+    // A new width (a phone turned, the sidebar), another look (the page's, or the composer's own while its room's differs),
+    // dark mode, or a font loaded: measured again, colour included.
+    // A frame later: the field's new height inside the observer's own callback would be a resize loop.
+    let frame = 0;
+    const observer = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(fit); });
+    observer.observe(input);
+    const themes = new MutationObserver(() => fit());
+    themes.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'], subtree: true });
+    const dark = matchMedia('(prefers-color-scheme: dark)');
+    dark.addEventListener('change', fit);
+    document.fonts.addEventListener('loadingdone', fit);
+    // A look that eases its colours in (ds-ma) is read again once they have arrived.
+    const eased = (e: TransitionEvent) => { if (e.propertyName === 'color') fit(); };
+    input.addEventListener('transitionend', eased);
+    return () => {
+      observer.disconnect(); cancelAnimationFrame(frame); themes.disconnect(); dark.removeEventListener('change', fit);
+      document.fonts.removeEventListener('loadingdone', fit); input?.removeEventListener('transitionend', eased);
+    };
+  });
+  /**
+   * Puts `text` in place of the field's characters from `from` to `to`, as typing would: the browser's undo takes it back.
+   * False, and nothing changed, when the text would not fit: the field's limit would cut it short (a closing marker).
+   */
+  const type = (text: string, from: number, to: number): boolean => {
+    if (!input || input.value.length - (to - from) + text.length > MAX_TEXT_LENGTH) return false;
+    input.focus();
+    input.setSelectionRange(from, to);
+    revealNext = true;
+    if (!document.execCommand('insertText', false, text)) { input.setRangeText(text, from, to, 'end'); setDraft(input.value); }
+    // Chromium leaves the caret before a line break the text now ends with, when what it took out came after the break.
+    input.setSelectionRange(from + text.length, from + text.length);
+    return true;
+  };
+  /** Ctrl+B and Ctrl+I: the selection between two markers, or the markers taken off again. */
+  const wrap = (marker: string) => {
+    if (!input) return;
+    const { selectionStart: at, selectionEnd: to, value } = input;
+    const n = marker.length;
+    if (value.slice(at - n, at) === marker && value.slice(to, to + n) === marker && (n === 2 || (value[at - n - 1] !== '*' && value[to + n] !== '*'))) {
+      if (type(value.slice(at, to), at - n, to + n)) input.setSelectionRange(at - n, to - n);
+    } else if (type(marker + value.slice(at, to) + marker, at, to)) {
+      input.setSelectionRange(at + n, to + n);
+    }
+  };
+  /** A line break, which goes on with the quote the line is in; on a quote's empty line, the quote ends instead. */
+  const lineBreak = () => {
+    if (!input) return;
+    const { selectionStart: at, selectionEnd: to, value } = input;
+    const start = value.lastIndexOf('\n', at - 1) + 1;
+    const quote = quotePrefix(value.slice(start, at));
+    if (quote && at === to && value.slice(start, value.indexOf('\n', at) < 0 ? value.length : value.indexOf('\n', at)) === quote) type('', start, at);
+    else type(`\n${quote}`, at, to);
+  };
+  const onKeyDown = (e: KeyboardEvent) => {
+    // The Enter that ends a word in an input method is the method's. Safari says so only by the key code, 229.
+    if (e.isComposing || e.keyCode === 229) return;
+    const mod = e.ctrlKey || e.metaKey;
+    if (e.key === 'Enter' && !mod && !e.altKey) {
+      e.preventDefault();
+      // A phone's keyboard has no Shift+Enter: Enter breaks the line there, and Send sends.
+      if (e.shiftKey || matchMedia('(pointer: coarse)').matches) lineBreak();
+      else form?.requestSubmit();
+      return;
+    }
+    if (e.key === 'Enter' && mod) { e.preventDefault(); form?.requestSubmit(); return; }
+    if (mod && !e.altKey && !e.shiftKey && (e.key === 'b' || e.key === 'i')) { e.preventDefault(); wrap(e.key === 'b' ? '**' : '*'); }
   };
   const insert = (emoji: string) => {
     const at = input?.selectionStart ?? draft().length;
@@ -2032,7 +2172,7 @@ function Composer(props: {
   };
   // Private, out of PostHog, recordings too (`ph-no-capture`): its placeholder and Send's title name the friend.
   return (
-    <form class={['chat-input', { 'private ph-no-capture': !!props.privateTo }]} data-theme={props.look} onSubmit={submit}>
+    <form ref={form} class={['chat-input', { 'private ph-no-capture': !!props.privateTo }]} data-theme={props.look} onSubmit={submit}>
       <Show when={props.staged.length}>
         <ul class="staged" aria-label="To send">
           {/* Keyed by id: a file made ready is a new entry for the same file, and keeps its row and thumbnail; one replaced by
@@ -2050,11 +2190,13 @@ function Composer(props: {
       <div class="chat-field">
         <button type="button" class="emoji-open" ref={emojiButton} popovertarget="composer-emoji" disabled={!props.writable} title="Emoji" aria-label="Emoji">🙂</button>
         <EmojiPicker id="composer-emoji" anchor={() => emojiButton} onPick={insert} />
-        <input ref={input} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} onPaste={onPaste} disabled={!props.writable} maxlength={MAX_TEXT_LENGTH}
-               placeholder={props.privateTo?.blocked ? `Can't write to ${props.privateTo.name} now: ${props.privateTo.blocked}` : props.privateTo && props.writable ? `Message ${props.privateTo.name}${props.connected ? '' : ', sent once reconnected'}` : props.connected ? `Message ${props.roomName}` : props.writable ? `Message ${props.roomName}, sent once reconnected` : holding() ? 'A new version of dave is loading…' : "Can't send while disconnected"} />
+        <textarea ref={input} rows={1} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} onPaste={onPaste} onKeyDown={onKeyDown}
+               onScroll={() => { if (mirror && input) mirror.scrollTop = input.scrollTop; }} disabled={!props.writable} maxlength={MAX_TEXT_LENGTH} enterkeyhint={matchMedia('(pointer: coarse)').matches ? 'enter' : 'send'}
+               placeholder={placeholder()} />
+        <div class="chat-mirror" ref={mirror} aria-hidden="true"><MarkdownMirror text={draft()} placeholder={placeholder()} /></div>
         {/* Looks like the emoji button, in every theme: the themes style that one by its class */}
         <button type="button" class="emoji-open attach-open" disabled={!props.writable || !!privateHeld()} onClick={() => picker?.click()} title={props.privateTo ? `Send ${props.privateTo.name} a picture, a video or a file` : 'Send a picture, a video or a file'} aria-label="Attach a file">📎</button>
-        {/* Wrapped: the text field is the field's one direct input child (styles and the e2e fixtures find it so) */}
+        {/* Wrapped, so the field's own children are its text field and the buttons over it */}
         <span hidden><input ref={picker} type="file" multiple data-testid="attach" onChange={(e) => { const files = [...(e.currentTarget.files ?? [])]; e.currentTarget.value = ''; for (const f of files) props.onStage(f); }} /></span>
       </div>
       <button disabled={!props.writable || (!draft().trim() && !props.staged.length) || !props.staged.every(settled) || !!privateHeld()}
@@ -2166,12 +2308,12 @@ function ChatLog(props: {
               <Match when={ofKind(l(), 'text')}>
                 {(m) => (
                   <Show when={!continues(lines(), i())} fallback={
-                    <div class={['msg msg-cont', { 'msg-pending': !!m().pending }]}><div class="msg-text" title={m().pending ? 'Not sent yet' : when(m().at)}><Linkified text={m().text} /></div></div>
+                    <div class={['msg msg-cont', { 'msg-pending': !!m().pending }]}><div class="msg-text" title={m().pending ? 'Not sent yet' : when(m().at)}><Markdown text={m().text} /></div></div>
                   }>
                     <div class={['msg', { 'msg-pending': !!m().pending }]}>
                       <span class="msg-from" title={props.label(m().from).title}>{props.label(m().from).shown}</span>
                       <span class="msg-at">{when(m().at)}</span>
-                      <div class="msg-text" title={m().pending ? 'Not sent yet' : undefined}><Linkified text={m().text} /></div>
+                      <div class="msg-text" title={m().pending ? 'Not sent yet' : undefined}><Markdown text={m().text} /></div>
                     </div>
                   </Show>
                 )}
@@ -2320,6 +2462,13 @@ function Picture(props: { src: string; type: string; alt: string; onClick?: () =
   );
 }
 
+/** A computed length in pixels ("8px"), 0 for none ("normal", ""). */
+const px = (v: string) => parseFloat(v) || 0;
+/** What the composer's mirror copies from the text field: everything that places a character. */
+const MIRRORED = ['box-sizing', 'font-family', 'font-size', 'font-weight', 'font-style', 'font-stretch', 'font-variant', 'font-feature-settings', 'font-variation-settings', 'font-kerning', 'font-optical-sizing',
+  'letter-spacing', 'word-spacing', 'line-height', 'text-transform', 'text-indent', 'text-align', 'tab-size', 'direction', 'color',
+  'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width'];
+
 /** How long after a line the same writer's next one still joins it under one name. */
 const GROUP_MS = 5 * 60 * 1000;
 /** The line, if it is of this kind: what a <Match> narrows to. */
@@ -2329,10 +2478,3 @@ const continues = (lines: ChatLine[], i: number): boolean => {
   const l = lines[i], prev = lines[i - 1];
   return l?.kind !== 'system' && !!l && prev?.kind !== undefined && prev.kind !== 'system' && prev.from.publicKey === l.from.publicKey && l.at - prev.at < GROUP_MS;
 };
-
-const URL_RE = /(https?:\/\/[^\s<>"']+)/g;
-function Linkified(props: { text: string }) {
-  const parts = createMemo(() => props.text.split(URL_RE), { equals: sameItems });
-  // Odd indices are the URLs captured by the split. Reading i() inside JSX keeps it tracked.
-  return <For each={parts()}>{(part, i) => <Show when={i() % 2 === 1} fallback={<>{part}</>}><a href={part} target="_blank" rel="noopener noreferrer">{part}</a></Show>}</For>;
-}

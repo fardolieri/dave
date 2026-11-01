@@ -121,7 +121,7 @@ button:where(:hover:not(:disabled, .on, .join, .leave, .unblock, .link, .avatar,
 button.on:where(:not(.link)) { border-color: var(--line); }
 button.join, button.leave, button.unblock { border-color: var(--line); }
 button.link { text-transform: none; font-weight: 400; }
-input, select.picker, dialog.report textarea, dialog.report .field select { border: var(--border-width) solid var(--line); border-radius: 0; }
+input, :where(.chat-field) > textarea, select.picker, dialog.report textarea, dialog.report .field select { border: var(--border-width) solid var(--line); border-radius: 0; }
 select.picker::picker(select) { border: var(--border-width) solid var(--line); border-radius: 0; }
 select.picker option { border-radius: 0; }
 .avatar { border-radius: 0; background: var(--panel2); box-shadow: inset 0 0 0 var(--border-width) var(--line); }

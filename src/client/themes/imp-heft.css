@@ -40,7 +40,7 @@ button:where(:hover:not(:disabled)) { background-color: #e2e8f4; }
 input,
 textarea,
 select.picker { border-color: var(--edge); border-radius: 6px; }
-.chat-field > input { background: #fff; color: var(--ink); }
+.chat-field > textarea { background: #fff; color: var(--ink); }
 button.on:not(.link) { background: var(--ink); border-color: var(--ink); color: #fff; }
 .side button.on:not(.link):where(:scope *) { background: #fff; border-color: #fff; color: #233f94; }
 button.join { background: #8ef0b0; color: #0b3a1d; font-weight: 700; }

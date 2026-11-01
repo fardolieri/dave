@@ -120,7 +120,7 @@ h2, .room-title { font-size: 11px; font-weight: 600; letter-spacing: .14em; }
 /* keys: white, square-ish, a hairline; the label weight carries the hierarchy */
 button { border-radius: var(--border-radius-sm); font-weight: 500; transition: border-color var(--duration-fast) var(--easing-default), background-color var(--duration-fast) var(--easing-default); }
 button:where(:hover:not(:disabled, .on, .join, .leave, .unblock)) { border-color: var(--dim); }
-input, select.picker, dialog.report textarea { border-radius: var(--border-radius-sm); }
+input, :where(.chat-field) > textarea, select.picker, dialog.report textarea { border-radius: var(--border-radius-sm); }
 input:focus, textarea:focus { border-color: var(--color-border-focus); }
 /* the room on screen gets the one orange dot, like a Braun power indicator */
 .room-head { padding-bottom: 6px; border-bottom: 1px solid var(--line); }

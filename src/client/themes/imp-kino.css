@@ -28,7 +28,7 @@ button:where(:hover:not(:disabled)) { border-color: var(--field); background-col
 input,
 textarea,
 select.picker { border-color: var(--field); border-radius: 12px; }
-.chat-field > input { border-radius: 999px; padding: 10px 16px; background: #1e1513; }
+.chat-field > textarea { border-radius: 999px; padding: 10px 16px; background: #1e1513; }
 button.on:not(.link) { background: var(--acc); border-color: var(--acc); color: #0d1a2b; }
 button.join { background: var(--ok); color: #0a2a17; font-weight: 600; }
 button.leave { background: var(--bad); color: #2a0806; font-weight: 600; }
