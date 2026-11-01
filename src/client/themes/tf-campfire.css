@@ -111,7 +111,7 @@ button.unblock:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfi
 .room:where(:scope).selected .room-title:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { color: var(--tf-link); }
 .avatar.speaking:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { box-shadow: 0 0 0 2px var(--ok), 0 0 14px rgba(255,138,61,.45); }
 .share-live:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { border-color: var(--acc); box-shadow: 0 0 20px rgba(255,138,61,.25); }
-.chat-field > textarea:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { border-radius: 999px; padding-left: 14px; }
+.chat-field > textarea:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { border-radius: var(--field-pill); padding-left: 14px; }
 
 }
 @scope ([data-theme="tf-campfire"]) to ([data-theme]) {

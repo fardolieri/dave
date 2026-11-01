@@ -145,7 +145,7 @@ button.room-leave { color: var(--color-text-on-error); font-weight: 800; box-sha
 .chat-log { gap: 12px; }
 .msg-from { font-weight: 800; }
 .msg-text { line-height: 1.5; }
-.chat-field > textarea { border-radius: var(--border-radius-full); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
+.chat-field > textarea { border-radius: var(--field-pill); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
 .chat-input:where(:scope, :scope *) > button:not(.emoji-open) { border-radius: var(--border-radius-full); padding: 8px 18px; background: var(--acc); border-color: var(--acc); color: var(--color-text-on-accent); }
 .chat-new { border-radius: var(--border-radius-full); }
 .consent .bubble { border: 1px solid var(--line); }

@@ -131,7 +131,7 @@ body:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-them
 .msg-text:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { max-width: 68ch; }
 .msg-cont:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { margin-top: -11px; }
 .chat-new:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { background: rgba(58,40,70,.92); border-color: transparent; }
-.chat-field > textarea:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { border-radius: 999px; background: var(--panel); }
+.chat-field > textarea:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { border-radius: var(--field-pill); background: var(--panel); }
 
 .share:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { background: #160E1B; border: 0; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
 .share-live:is([data-theme="fd-lounge"][data-theme], [data-theme="fd-lounge"][data-theme] *) { box-shadow: 0 0 0 2px var(--acc), 0 10px 30px rgba(0,0,0,.35); }

@@ -56,7 +56,7 @@ button.unblock:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="t
 /* the selected room is underlined in marigold, like a label stuck in a seed tray */
 .room:where(:scope).selected .room-title:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { color: var(--fg); text-decoration: underline 3px #f9a620; text-underline-offset: 4px; }
 .unread:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { background: #b7472a; color: #fff; }
-.chat-field > textarea:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { border-radius: 999px; padding-left: 14px; background: #fffdf8; }
+.chat-field > textarea:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { border-radius: var(--field-pill); padding-left: 14px; background: #fffdf8; }
 .share-live:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { border-color: #f9a620; box-shadow: 0 0 0 1px #f9a620; }
 .side:is([data-theme="tf-botanical-garden"][data-theme], [data-theme="tf-botanical-garden"][data-theme] *) { box-shadow: inset -1px 0 0 var(--line); }
 

@@ -166,7 +166,7 @@ dialog.report, dialog.about { border: 3px solid var(--line); border-radius: var(
 .msg-from { font-family: var(--font-family-display); font-weight: 800; }
 .msg-text { line-height: 1.45; }
 .chat-new { border: 2px solid var(--line); color: var(--fg); font-weight: 600; }
-.chat-field > textarea { border-radius: var(--border-radius-full); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
+.chat-field > textarea { border-radius: var(--field-pill); padding: 8px 16px; background: var(--panel2); box-shadow: var(--shadow-sm); }
 .chat-input:where(:scope, :scope *) > button:not(.emoji-open) { border-radius: var(--border-radius-full); padding: 8px 18px; background: var(--acc); color: var(--color-text-on-accent); font-family: var(--font-family-display); font-weight: 800; }
 .consent .bubble { border: 3px solid var(--line); }
 /* the gear button is narrow; the theme's wider padding would push the cog off centre */

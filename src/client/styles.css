@@ -317,8 +317,9 @@ dialog.viewer img { display: block; max-width: 96vw; max-height: 96dvh; object-f
    bottom line however tall it grows (one line's height, measured: --one-line), centred without a transform (themes move
    buttons on hover with one). Room for them is kept whatever padding a theme gives the field, hence the !important. The
    child selector keeps all this off the picker's search field inside the form. A column, so the field fills the row when
-   Send is the taller (a theme's 44 px on a phone) and still grows past it. */
-.chat-field { flex-direction: column; }
+   Send is the taller (a theme's 44 px on a phone) and still grows past it. A look that makes the field a pill rounds it by
+   --field-pill, half of one line, not 999px: a pill on one line, a rounded box as it grows, not an oval. */
+.chat-field { flex-direction: column; --field-pill: calc(var(--one-line, 2.5em) / 2); }
 .chat-field > textarea { flex: 1 0 auto; min-width: 0; margin: 0; padding-inline: 40px !important; resize: none; max-height: 50dvh; overflow-y: hidden; white-space: pre-wrap; overflow-wrap: break-word; }
 /* The field's own characters and placeholder are not painted: the mirror over it paints them, markdown and all (Markdown.tsx). */
 .chat-field > textarea, .chat-field > textarea::placeholder { -webkit-text-fill-color: transparent; }
