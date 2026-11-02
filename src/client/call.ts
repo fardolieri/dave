@@ -27,6 +27,7 @@ import { cueContext, tryUnlockSound } from './sound';
 import { restartOnFailure, type ContextStarter } from './audiofailure';
 import { local, type LocalValue } from './storage';
 import { holding } from './update';
+import { refreshRelayUsage, relaySaving } from './relay';
 import { canRemoveNoise, createVoiceProcessor, type VoiceLevel, type VoiceLoad, type VoiceProcessor } from './voice';
 import { createVoiceGuard, sendRatePct, type ClockSample, type GuardFault } from '../core/voiceclock';
 
@@ -147,6 +148,8 @@ type Peer = {
   view: PeerView;
   /** They asked to receive my share (they are a Viewer of it). */
   viewsMyShare: boolean;
+  /** Whether my share was last set to go to them (applyShareEncoding): read against sendsShareTo, it says when to set it again. */
+  shareActive: boolean;
   remoteShare: MediaStream;
   shareAudio: HTMLAudioElement;
   videoBytesIn: number;
@@ -913,7 +916,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       key, name, pc, closed, markClosed, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, joinSeq: untrack(room.people).find((p) => p.publicKey === key && p.role === 'participant')?.joinSeq ?? null,
       returns: 0, id: crypto.randomUUID().replaceAll('-', ''), remoteId: null, offerN: 0, answerN: undefined, offerSent: null, audio, keepAlive, audioNodes: [], relayOnly, generation: ++generation, link: newLink(initiator, countsOf(key)), timers: {}, iceRestarts: 0, iceIssuedAt,
       view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1, shareVolume: untrack(shareVolumes)[key] ?? 1, shareSound: false, rttMs: null },
-      viewsMyShare: earlyViewers.has(key), viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, sendsRed: false, sendsFec: true, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, shareSoundBytesIn: 0, shareSoundReadAt: 0, watchedAt: 0, shareSoundChecks: 0, videoBytesAt: 0, framesDecoded: null, framesGrewAt: null, holdOpening: false, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
+      viewsMyShare: earlyViewers.has(key), shareActive: false, viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, sendsRed: false, sendsFec: true, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, shareSoundBytesIn: 0, shareSoundReadAt: 0, watchedAt: 0, shareSoundChecks: 0, videoBytesAt: 0, framesDecoded: null, framesGrewAt: null, holdOpening: false, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
     };
     earlyViewers.delete(key);
@@ -1026,10 +1029,17 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
   /** How often parameters changed underneath a setParameters are read again before giving up with a warning. */
   const STALE_PARAMETER_RETRIES = 5;
+  /**
+   * A Viewer my share goes to: subscribed, and not over the relay while it is saved for voice (client/relay.ts). One whose
+   * connection goes through it stays subscribed and gets the share again once it no longer does, or the month is over.
+   * A relay-only connection (ticket 22) goes through it from the start, before the stats say so.
+   */
+  const sendsShareTo = (p: Peer): boolean => p.viewsMyShare && !((p.view.conn === 'relayed' || p.relayOnly) && untrack(relaySaving));
   async function applyShareEncodingNow(peer: Peer, staleRetries: number): Promise<void> {
     if (!shareVideo || peer.pc.connectionState === 'closed') return;
-    const viewers = [...peers.values()].filter((p) => p.viewsMyShare).length;
+    const viewers = [...peers.values()].filter(sendsShareTo).length;
     const enc = shareEncoding(shareSettings(), viewers, peer.viewerScale);
+    peer.shareActive = sendsShareTo(peer);
     for (const slot of [SLOT_INDEX.shareVideo, SLOT_INDEX.shareAudio]) {
       const sender = peer.tx[slot]?.sender;
       if (!sender?.track) continue;
@@ -1038,7 +1048,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         setTimeout(() => void applyShareEncoding(peer), 100);
         return;
       }
-      params.encodings[0]!.active = peer.viewsMyShare;
+      params.encodings[0]!.active = peer.shareActive;
       if (slot === SLOT_INDEX.shareVideo) {
         Object.assign(params.encodings[0]!, { maxBitrate: enc.maxBitrate, maxFramerate: enc.maxFramerate, scaleResolutionDownBy: enc.scaleResolutionDownBy });
         (params as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference = enc.degradationPreference;
@@ -1427,7 +1437,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (!joined) return null;
     const people = untrack(room.people);
     return {
-      at: Date.now(), master: untrack(audioSettings).masterVolume, micTest: testing !== null,
+      at: Date.now(), master: untrack(audioSettings).masterVolume, micTest: testing !== null, relaySaved: untrack(relaySaving),
       peers: [...peers.values()].map((p) => ({
         key: p.key, conn: p.view.conn, watching: p.view.watching, shareLive: p.view.shareLive, volume: p.view.volume, shareVolume: p.view.shareVolume,
         sharing: people.some((q) => q.publicKey === p.key && q.sharing),
@@ -1569,6 +1579,9 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     }
     if (rttMs !== peer.view.rttMs) setView(peer, { rttMs });
     if (relayed !== null && peer.pc.connectionState === 'connected' && peer.view.conn !== (relayed ? 'relayed' : 'direct')) setView(peer, { conn: relayed ? 'relayed' : 'direct' });
+    // Onto the relay or off it, by whatever way the badge got there (a restart that came back direct sets it on its own):
+    // the share stops or goes again, and the budget splits anew.
+    if (shareVideo && peer.viewsMyShare && sendsShareTo(peer) !== peer.shareActive) reapplyShareEncodings();
   }
   /**
    * Every 2 s while the tab shows; hidden, every 10 s is enough for what nobody sees (badges, rates, the round trip), and
@@ -1663,6 +1676,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       }
     }
   }
+  // The relay saved for voice, or no longer: shares stop or go again to Viewers over it.
+  createEffect(relaySaving, () => { reapplyShareEncodings(); });
   createEffect(() => room.people(), (people) => { reconcile(people); }); // block body: never return a value from an effect callback
 
   // Re-declare after our own server reconnect (spec §8.1): peer connections stay, join sequence is fresh.
@@ -2015,6 +2030,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         await failAudioContext(c, stuck);
         return 'failed';
       },
+      /** Asks the Worker for the relay's usage now, rather than on the next round (client/relay.ts). */
+      refreshRelayUsage: () => refreshRelayUsage(),
       /** What the stuck-connecting watchdog does, on demand (ticket 22): tear the connection to `name` down and offer again from a fresh one; `stalled` attempts already counted make the rebuild relay-only. */
       rebuild: async (name: string, stalled = 0) => {
         const peer = [...peers.values()].find((p) => p.name === name);

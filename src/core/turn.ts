@@ -39,6 +39,16 @@ export function orderIceServers(servers: IceServer[]): IceServer[] {
   return [...servers.filter((s) => !isTurns(s)), ...servers.filter(isTurns)];
 }
 
+/** The same servers without TURN (`turn:` and `turns:` URLs), for a connection that must not go through the relay: STUN only. */
+export function withoutTurn(servers: IceServer[]): IceServer[] {
+  const out: IceServer[] = [];
+  for (const s of servers) {
+    const urls = [s.urls].flat().filter((u) => !/^turns?:/.test(u));
+    if (urls.length) out.push({ urls: Array.isArray(s.urls) ? urls : urls[0]! });
+  }
+  return out;
+}
+
 /** The TURN username Cloudflare minted, needed to revoke the credential on leave. */
 export function turnUsername(servers: IceServer[]): string | null {
   return servers.find((s) => s.username)?.username ?? null;

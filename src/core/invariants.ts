@@ -44,11 +44,17 @@ export const INVARIANT_GRACE_MS: Record<InvariantKind, number> = {
 };
 
 /** What a share tile shows (App.tsx ShareTile reads it from here too, so the watch sees what the tile shows). */
-export type ShareTileState = 'own' | 'locked' | 'unreachable' | 'closed' | 'opening' | 'live';
-export function shareTileState(isMe: boolean, inCall: boolean, view: { conn: string; watching: boolean; shareLive: boolean } | undefined): ShareTileState {
+export type ShareTileState = 'own' | 'locked' | 'unreachable' | 'saved' | 'closed' | 'opening' | 'live';
+/**
+ * `relaySaved`: shares keep off the relay this month (core/relayusage.ts). Over a connection through it the tile says so,
+ * whatever came before: the sharer stops sending, and a track that stops getting frames does not always say it is muted
+ * (Firefox), which would leave the last picture standing.
+ */
+export function shareTileState(isMe: boolean, inCall: boolean, view: { conn: string; watching: boolean; shareLive: boolean } | undefined, relaySaved = false): ShareTileState {
   if (isMe) return 'own';
   if (!inCall) return 'locked';
   if (view?.conn === 'unreachable') return 'unreachable';
+  if (relaySaved && view?.conn === 'relayed') return 'saved';
   if (!view?.watching) return 'closed';
   return view.shareLive ? 'live' : 'opening';
 }
@@ -71,8 +77,8 @@ export type PeerFacts = {
   framesGrewAt: number | null;
   connection: string; ice: string;
 };
-/** Read at `at`: the master volume, whether a mic test runs (it silences everyone), every peer. */
-export type CallFacts = { at: number; master: number; micTest: boolean; peers: PeerFacts[] };
+/** Read at `at`: the master volume, whether a mic test runs (it silences everyone), whether shares keep off the relay, every peer. */
+export type CallFacts = { at: number; master: number; micTest: boolean; relaySaved?: boolean; peers: PeerFacts[] };
 export type Breach = { kind: InvariantKind; key: string };
 
 /** Gain nodes hold 32-bit floats: 0.35 reads back as 0.3499999940395355. */
@@ -89,7 +95,7 @@ export function breaches(now: CallFacts): Breach[] {
   const out: Breach[] = [];
   for (const p of now.peers) {
     const decoding = p.framesGrewAt !== null && now.at - p.framesGrewAt <= DECODING_RECENT_MS;
-    if (p.sharing && decoding && shareTileState(false, true, p) === 'opening') out.push({ kind: 'share_opening', key: p.key });
+    if (p.sharing && decoding && shareTileState(false, true, p, now.relaySaved) === 'opening') out.push({ kind: 'share_opening', key: p.key });
     const controls = { master: now.master, micTest: now.micTest, volume: p.volume, shareVolume: p.shareVolume };
     if (p.voiceGain !== null && Math.abs(p.voiceGain - gainFor('voice', controls)) > GAIN_TOLERANCE) out.push({ kind: 'voice_gain', key: p.key });
     if (p.shareGain !== null && Math.abs(p.shareGain - gainFor('share', controls)) > GAIN_TOLERANCE) out.push({ kind: 'share_gain', key: p.key });

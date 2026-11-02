@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import type { Locator, Route } from '@playwright/test';
 import { expect, needHooks, test, type Friend, openMenu } from './fixtures';
+import { monthSoFar } from '../src/core/relayusage';
 
 // Attachments (ADR 0006): the announcement goes sealed through the Room, the bytes from friend to friend over a file
 // link. Bob stays a visitor throughout: file links do not need the call.
@@ -57,6 +58,43 @@ test('a picture reaches a friend who is not in the call, inline, with the same b
   await expect(bob.page.locator('dialog.viewer img')).toBeVisible();
   await bob.page.locator('dialog.viewer').click();
   await expect(bob.page.locator('dialog.viewer')).not.toBeVisible();
+});
+
+test('past 80 % of the relay this month a file link offers no relay, and a picture still comes directly', async ({ crowd }) => {
+  // The Worker's answer is made up (as in settings.spec.ts), and every ICE server a peer connection is made with is kept:
+  // Alice and Bob are not in the call, so each of theirs is a file link's. A preview mints TURN for them; a local build not.
+  const usage = JSON.stringify({ bytes: 850e9, limit: 1e12, since: monthSoFar(Date.now()).from, asOf: Date.now() });
+  const friends: Friend[] = [];
+  for (const name of ['Alice', 'Bob']) {
+    const f = await crowd.open(name, { connect: false });
+    await f.context.route('**/relay-usage', (route) => route.fulfill({ contentType: 'application/json', body: usage }));
+    await f.context.addInitScript(() => {
+      const Real = window.RTCPeerConnection;
+      const urls: string[] = [];
+      (window as unknown as { __iceUrls: string[] }).__iceUrls = urls;
+      window.RTCPeerConnection = class extends Real {
+        constructor(config?: RTCConfiguration) { for (const s of config?.iceServers ?? []) urls.push(...[s.urls].flat()); super(config); }
+      } as typeof RTCPeerConnection;
+    });
+    await f.open();
+    // Known before the file comes: About says so.
+    await openMenu(f.page);
+    await f.page.getByRole('button', { name: 'About' }).click();
+    await expect(f.page.locator('dialog.about dd.relay')).toContainText('This month is past 80%');
+    await f.page.locator('dialog.about').getByRole('button', { name: 'Close' }).click();
+    friends.push(f);
+  }
+  const [alice, bob] = friends as [Friend, Friend];
+  const picture = png(320, 240);
+  await alice.attach({ name: 'stripes.png', mimeType: 'image/png', buffer: picture });
+  const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
+  await expect(shown).toHaveCount(1, { timeout: 30_000 });
+  expect(await bob.page.evaluate(pageHash((await shown.getAttribute('src'))!), (await shown.getAttribute('src'))!)).toBe(sha256(picture));
+  for (const f of [alice, bob]) {
+    const urls = await f.page.evaluate(() => (window as unknown as { __iceUrls: string[] }).__iceUrls);
+    expect(urls.length, `${f.name} made a file link`).toBeGreaterThan(0);
+    expect(urls.filter((u) => /^turns?:/.test(u)), `${f.name}'s file links had no TURN server`).toEqual([]);
+  }
 });
 
 test('regression: a line under a name shows its time over the text or the picture, not over the empty space beside it', async ({ crowd }) => {

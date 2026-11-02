@@ -1,4 +1,5 @@
 import { expect, needHooks, test, type Friend } from './fixtures';
+import { monthSoFar } from '../src/core/relayusage';
 
 // Screen shares. The sharer is always Chromium (its fake screen capture needs no picker); viewers run in the project's engine,
 // so the Firefox project covers Firefox watching a Chromium share.
@@ -349,4 +350,36 @@ test('share settings reach the capture and the encoder live', async ({ crowd, br
   await expect.poll(async () => (await alice.hook<{ settings: { frameRate: number; maxHeight: number } }>('share')).settings).toMatchObject({ frameRate: 15, maxHeight: 720 });
   await expect.poll(async () => (await alice.hook<{ senders: Array<{ name: string; active: boolean; maxFramerate?: number }> }>('share')).senders.find((s) => s.name === 'Bob')).toMatchObject({ active: true, maxFramerate: 15 });
   await expect.poll(async () => (await alice.hook<{ track: { height?: number } | null }>('share')).track?.height ?? 9999).toBeLessThanOrEqual(720);
+});
+
+test('past 80 % of the relay this month a share keeps off it, voice does not, and it goes again once that is over', async ({ crowd }) => {
+  const [alice, bob] = await callOf(crowd, ['Alice', 'Bob']);
+  await needHooks(alice);
+  // The Worker's answer is made up here (as in settings.spec.ts): 850 GB of the free terabyte this month, then 100 GB.
+  let bytes = 850e9;
+  for (const f of [alice, bob]) {
+    await f.context.route('**/relay-usage', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ bytes, limit: 1e12, since: monthSoFar(Date.now()).from, asOf: Date.now() }) }));
+  }
+  const ask = () => Promise.all([alice, bob].map((f) => f.hook('refreshRelayUsage')));
+  await ask();
+  await alice.startShare();
+  await bob.watchShare('Alice');
+  await expect.poll(() => bob.receivingShareFrom('Alice'), { message: 'a direct connection is not the relay: the share goes' }).toBe(true);
+
+  // Onto the relay, as the stuck-connecting watchdog puts a connection there (resilience.spec.ts): Alice rebuilds it relay-only.
+  for (const f of [alice, bob]) f.expectWarning(/signal handling failed/);
+  const r = await alice.hook<string>('rebuild', 'Bob', 1);
+  test.skip(r === 'rebuilt Bob, relayOnly=false', 'no TURN server behind this copy: run it against a preview');
+  expect(r).toBe('rebuilt Bob, relayOnly=true');
+  await expect(bob.badge('Alice')).toHaveText('via relay', { timeout: 45_000 });
+  await expect(bob.tile('Alice')).toHaveClass(/share-saved/);
+  await expect(bob.tile('Alice')).toContainText('goes through the relay');
+  await expect.poll(() => bob.receivingShareFrom('Alice'), { message: 'no share video over the relay', timeout: 20_000 }).toBe(false);
+  await bob.hearing('Alice');
+  await alice.hearing('Bob');
+
+  bytes = 100e9;
+  await ask();
+  await expect(bob.tile('Alice'), 'the same subscription, the share goes again').toHaveClass(/share-live/, { timeout: 20_000 });
+  await expect.poll(() => bob.receivingShareFrom('Alice')).toBe(true);
 });

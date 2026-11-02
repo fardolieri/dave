@@ -62,6 +62,12 @@ describe('invariant rules', () => {
     expect(shareTileState(false, true, undefined)).toBe('closed');
     expect(shareTileState(false, true, view)).toBe('opening');
     expect(shareTileState(false, true, { ...view, shareLive: true })).toBe('live');
+    // The relay saved for voice: a share over it says so, the last picture too, and a direct one is untouched.
+    expect(shareTileState(false, true, { ...view, conn: 'relayed' }, true)).toBe('saved');
+    expect(shareTileState(false, true, { ...view, conn: 'relayed', watching: false }, true)).toBe('saved');
+    expect(shareTileState(false, true, { ...view, conn: 'relayed', shareLive: true }, true)).toBe('saved');
+    expect(shareTileState(false, true, { ...view, conn: 'direct' }, true)).toBe('opening');
+    expect(shareTileState(false, true, { ...view, conn: 'relayed' }, false)).toBe('opening');
     expect(gainFor('share', { master: 0.5, volume: 0.5, shareVolume: 0.5, micTest: false })).toBe(0.25); // the friend's own volume is for their voice only
     expect(gainFor('voice', { master: 0.5, volume: 0.5, shareVolume: 0.5, micTest: false })).toBe(0.25);
   });

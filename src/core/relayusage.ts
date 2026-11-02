@@ -8,6 +8,18 @@ import type { CredentialRequest } from './turn';
  */
 export const RELAY_FREE_BYTES = 1_000_000_000_000;
 
+/**
+ * From this share of the free allowance on, screen shares and files keep off the relay for the rest of the month: a
+ * share stops going to a viewer whose connection runs through it, and a file link gets no TURN server, so it goes direct
+ * or not at all. Voice still goes through it.
+ */
+export const RELAY_SAVE_FROM = 0.8;
+
+/** Whether `u`, read at `now`, says to keep shares and files off the relay. Last month's figure says nothing about this one. */
+export function savesRelay(u: RelayUsage | null, now: number): boolean {
+  return u !== null && u.since === monthSoFar(now).from && u.bytes >= u.limit * RELAY_SAVE_FROM;
+}
+
 /** What the Worker's `/relay-usage` answers: bytes sent since `since` (the 1st of this month, UTC, `YYYY-MM-DD`), as of `asOf`. */
 export type RelayUsage = { bytes: number; limit: number; since: string; asOf: number };
 

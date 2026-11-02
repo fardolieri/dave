@@ -3,6 +3,7 @@ import App from './App';
 import posthog, { startOnLoad } from './posthog';
 import { installConsoleBuffer } from './log';
 import { watchForUpdates, whenOpened } from './update';
+import { watchRelayUsage } from './relay';
 
 declare const __SOLID_DEV__: boolean;
 
@@ -15,6 +16,8 @@ if (__SOLID_DEV__) {
 
 installConsoleBuffer();
 watchForUpdates();
+// How much of the relay's free terabyte this month has used: past 80 %, shares and files keep off it (client/relay.ts).
+watchRelayUsage();
 // Not in a page about to reload onto a new version (ticket 36): its captures wait in PostHog's queue meanwhile.
 void whenOpened().then(startOnLoad);
 

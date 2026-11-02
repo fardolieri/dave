@@ -1,6 +1,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { RELAY_FREE_BYTES, formatBytes, formatRelayUsage, monthSoFar, parseRelayBytes, parseRelayUsage, relayUsageRequest } from '../src/core/relayusage';
+import { RELAY_FREE_BYTES, formatBytes, formatRelayUsage, monthSoFar, parseRelayBytes, parseRelayUsage, relayUsageRequest, savesRelay } from '../src/core/relayusage';
+import { withoutTurn } from '../src/core/turn';
 import { forgetRelayUsage, relayUsage } from '../src/worker/relayusage';
 
 // The answer Cloudflare's GraphQL API gave for this account on 2026-11-02, TURN only (no SFU rows).
@@ -52,6 +53,27 @@ describe('relay usage, as the About dialog shows it', () => {
     expect(parseRelayUsage({ ...u, bytes: -1 })).toBeNull();
     expect(parseRelayUsage({ ...u, since: 'November' })).toBeNull();
     expect(parseRelayUsage({ error: 'unavailable' })).toBeNull();
+  });
+});
+
+describe('keeping shares and files off the relay', () => {
+  const u = { bytes: 0, limit: RELAY_FREE_BYTES, since: '2026-11-01', asOf: NOV_2 };
+  it('from 80 % of the free terabyte this month on, and not on last month’s figure or an unknown one', () => {
+    expect(savesRelay({ ...u, bytes: 799_999_999_999 }, NOV_2)).toBe(false);
+    expect(savesRelay({ ...u, bytes: 800_000_000_000 }, NOV_2)).toBe(true);
+    expect(savesRelay({ ...u, bytes: 1_200_000_000_000 }, NOV_2)).toBe(true);
+    expect(savesRelay({ ...u, bytes: 900_000_000_000, since: '2026-10-01' }, NOV_2), 'October’s, read in November').toBe(false);
+    expect(savesRelay(null, NOV_2)).toBe(false);
+  });
+  it('gives a file link Cloudflare’s STUN only, as minted', () => {
+    // The shape Cloudflare's generate-ice-servers answers, after orderIceServers.
+    const minted = [
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      { urls: ['stun:stun.cloudflare.com:3478', 'turn:turn.cloudflare.com:3478?transport=udp', 'turn:turn.cloudflare.com:3478?transport=tcp'], username: 'u', credential: 'c' },
+      { urls: ['turns:turn.cloudflare.com:5349?transport=tcp'], username: 'u', credential: 'c' },
+    ];
+    expect(withoutTurn(minted)).toEqual([{ urls: 'stun:stun.cloudflare.com:3478' }, { urls: ['stun:stun.cloudflare.com:3478'] }]);
+    expect(withoutTurn([{ urls: 'turn:x:3478', username: 'u', credential: 'c' }])).toEqual([]);
   });
 });
 

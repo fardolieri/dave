@@ -6,7 +6,8 @@ import posthog from './posthog';
 import { signDescription, verifyDescription } from '../core/dtls';
 import { randomHex } from '../core/identity';
 import { CLOSED, closeLatch, keyedChain, unlessClosed } from '../core/signalchain';
-import { STUN_ONLY } from '../core/turn';
+import { STUN_ONLY, withoutTurn } from '../core/turn';
+import { relaySaving } from './relay';
 import { LINK_ICE_TTL_SECONDS } from '../core/mesh';
 import { PULLS_AT_ONCE, listHash, parsePullFrame, pieceCount, type PullFrame } from '../core/attachment';
 import { MAX_CANDIDATES_PER_MESSAGE, type ClientMessage, type IceServer, type LinkData, type ServerMessage } from '../core/protocol';
@@ -67,6 +68,8 @@ type Link = {
   local: Set<string>;
   remote: Set<string>;
   turn: boolean;
+  /** TURN was left out on purpose: files keep off the relay this month (client/relay.ts). */
+  relaySaved: boolean;
   createdAt: number;
   /** When it last moved: made, asked, or a chunk handed to the channel. A dead link stops once its buffer is full. */
   lastActive: number;
@@ -117,13 +120,17 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
     return asking;
   }
 
-  function open(peer: string, id: string, servers: IceServer[]): Link {
+  function open(peer: string, id: string, minted: IceServer[]): Link {
+    // Files keep off the relay once this month has used most of it (client/relay.ts): STUN only, so a link goes direct
+    // or not at all. Both sides open their links here, so neither offers a relay candidate.
+    const relaySaved = relaySaving();
+    const servers = relaySaved ? withoutTurn(minted) : minted;
     const pc = new RTCPeerConnection({ iceServers: servers });
     const channel = pc.createDataChannel('file', { negotiated: true, id: 0, ordered: true });
     channel.binaryType = 'arraybuffer';
     const link: Link = {
       peer, id, pc, channel, latch: closeLatch(), early: [], remoteSet: false, held: [], serving: false, busy: false, opened: false,
-      local: new Set(), remote: new Set(), turn: servers.some((s) => [s.urls].flat().some((u) => String(u).startsWith('turn'))), createdAt: Date.now(), lastActive: Date.now(),
+      local: new Set(), remote: new Set(), turn: servers.some((s) => [s.urls].flat().some((u) => String(u).startsWith('turn'))), relaySaved, createdAt: Date.now(), lastActive: Date.now(),
     };
     links.set(keyOf(peer, id), link);
     channel.addEventListener('open', () => { link.opened = true; });
@@ -148,7 +155,7 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
       const { pc } = link;
       posthog.capture('file_link_failed', {
         side: link.serving ? 'holder' : 'puller', reason, answered: link.remoteSet, connection: pc.connectionState, ice: pc.iceConnectionState,
-        gathering: pc.iceGatheringState, signaling: pc.signalingState, local: [...link.local].sort(), remote: [...link.remote].sort(), turn: link.turn,
+        gathering: pc.iceGatheringState, signaling: pc.signalingState, local: [...link.local].sort(), remote: [...link.remote].sort(), turn: link.turn, relay_saved: link.relaySaved,
       });
     }
     clearTimeout(link.idle);

@@ -20,7 +20,8 @@ import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, identityOf, normaliseName, type Ident
 import { displayName, formatAgo, knownAgo } from '../core/names';
 import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatStream } from '../core/format';
-import { formatRelayUsage, parseRelayUsage, type RelayUsage } from '../core/relayusage';
+import { RELAY_SAVE_FROM, formatRelayUsage, type RelayUsage } from '../core/relayusage';
+import { refreshRelayUsage, relaySaving, relayUsage } from './relay';
 import { Markdown, MarkdownMirror } from './Markdown';
 import { quotePrefix } from '../core/markdown';
 import { FOLD_OLDER_MS, olderCount } from '../core/chatlog';
@@ -1635,7 +1636,7 @@ function ShareTile(props: ShareTileProps) {
     if (stream && props.isMe) play('own'); // a viewer's tile plays from the click that starts watching
   });
   // The invariant watchdog reads the same rule (quality ticket 04).
-  const state = () => shareTileState(props.isMe, props.inCall, props.view);
+  const state = () => shareTileState(props.isMe, props.inCall, props.view, relaySaving());
   const running = () => state() === 'live' || state() === 'opening' || state() === 'own';
   const showsVideo = () => state() === 'live' || state() === 'own';
   // Black-tile check: bytes arrive (the tile is live) but nothing shows. Report it with what the
@@ -1744,6 +1745,7 @@ function ShareTile(props: ShareTileProps) {
         <Match when={state() === 'closed'}><div class="share-note">Click to watch</div></Match>
         <Match when={state() === 'opening'}><div class="share-note"><span class="spinner" /> Opening…</div></Match>
         <Match when={state() === 'unreachable'}><div class="share-note">No connection to {props.name}</div></Match>
+        <Match when={state() === 'saved'}><div class="share-note">Paused: your connection to {props.name} goes through the relay, and this month has used {RELAY_SAVE_FROM * 100}% of its free terabyte. Voice still goes through.</div></Match>
       </Switch>
       <Show when={running()}>
         <div class="share-bar" onClick={(e) => e.stopPropagation()} onPointerEnter={() => setOnControls(true)} onPointerLeave={() => setOnControls(false)}>
@@ -1894,18 +1896,12 @@ const RELAY_TITLE = "What Cloudflare's TURN relay sent this month, for calls and
 function VersionDialog() {
   let dialog: HTMLDialogElement | undefined;
   const deployed = build.target === 'local' ? 'Built' : 'Deployed';
-  // The relay's usage this month, asked of the Worker on every open (it keeps the answer for minutes). Left out until
-  // it comes, and for good where the Worker has no token to ask Cloudflare with (local builds, a Worker without the secret).
-  // Only the latest open's answer is taken, should an earlier one come later.
-  const [relay, setRelay] = createSignal<RelayUsage | 'unknown' | null>(null);
-  let asked = 0;
+  // The relay's usage this month (client/relay.ts), asked again on every open: the Worker keeps its answer for minutes.
+  // Left out where the Worker has no token to ask Cloudflare with (local builds, a Worker without the secret).
+  const relay = relayUsage;
   const open = () => {
     dialog?.showModal();
-    const n = ++asked;
-    fetch('/relay-usage', { cache: 'no-store' })
-      .then(async (res) => (res.status === 204 ? null : (res.ok && parseRelayUsage(await res.json())) || 'unknown'))
-      .catch(() => 'unknown' as const)
-      .then((r) => { if (n === asked) setRelay(r); });
+    void refreshRelayUsage();
   };
   return (
     <div class="about-link">
@@ -1942,7 +1938,8 @@ function VersionDialog() {
                     <meter min={0} max={u().limit} low={u().limit * 0.5} high={u().limit * 0.8} optimum={0} value={u().bytes} />
                   </>
                 )}</Show>
-                <small>Calls and files between friends who cannot reach each other directly go through Cloudflare's relay, free up to 1 TB a month.</small>
+                <small>Calls and files between friends who cannot reach each other directly go through Cloudflare's relay, free up to 1 TB a month.
+                  {relaySaving() ? ` This month is past ${RELAY_SAVE_FROM * 100}%: screen shares and files keep off it until the 1st, voice still goes through.` : ` Past ${RELAY_SAVE_FROM * 100}%, screen shares and files keep off it for the rest of the month.`}</small>
               </dd>
             </>
           )}</Show>
@@ -2376,7 +2373,7 @@ const MEDIA_SIDE = 320;
 /** Why a pull failed, by whom it came from: `null` for a file of mine (report of 2026-10-17: "Alice doesn't have it any
  * more", said to Alice of her own file, read as if it had not gone out). */
 const PULL_FAILED: Record<PullError, (holder: string | null, file: FileMeta) => string> = {
-  unreachable: (h) => `Couldn't reach ${h ?? 'a friend who has it'}`,
+  unreachable: (h) => `Couldn't reach ${h ?? 'a friend who has it'}${relaySaving() ? `: files keep off the relay for the rest of the month (${RELAY_SAVE_FROM * 100}% of its free terabyte used), so only a direct connection would do` : ''}`,
   lost: () => 'The connection dropped',
   'not there': (h, f) => h !== null ? `${h} doesn't have it any more`
     : f.piece ? 'Not kept here: files over 16 MB stay only while the tab that sent them is open, and no friend online has it'
