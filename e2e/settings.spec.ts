@@ -367,6 +367,40 @@ test('a wish goes out as its own event, its words alone, without being asked how
   expect(event.properties, 'nothing about the tab goes with a wish').not.toHaveProperty('report');
 });
 
+test('About shows how much of the free terabyte the TURN relay has sent this month, and nothing where that is not known', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  // The path reaches the Worker, not the single-page app's index.html: no line (204, no token) or an answer in JSON.
+  const real = await alice.page.evaluate(async () => { const r = await fetch('/relay-usage'); return { status: r.status, type: r.headers.get('content-type') }; });
+  expect(real.status === 204 || (real.status === 200 && real.type?.startsWith('application/json')), `the Worker answers: ${JSON.stringify(real)}`).toBe(true);
+  // The Worker's answer is made up here: the live numbers are Cloudflare's, and a local build has no token to ask with.
+  let answer: { status: number; body?: unknown } = { status: 200, body: { bytes: 14_066_575_220, limit: 1e12, since: '2026-11-01', asOf: Date.now() } };
+  // On the context, as fixtures.ts does for /diag/: the page's own routes may not see a request once the service worker
+  // controls the page.
+  await alice.context.route('**/relay-usage', (route) => route.fulfill({ status: answer.status, contentType: 'application/json', body: answer.body === undefined ? undefined : JSON.stringify(answer.body) }));
+  const dialog = alice.page.locator('dialog.about');
+  const about = async () => {
+    await openMenu(alice.page);
+    await alice.page.getByRole('button', { name: 'About' }).click();
+    await expect(dialog).toBeVisible();
+  };
+  await about();
+  await expect(dialog.locator('dt', { hasText: 'Relay this month' })).toBeVisible();
+  await expect(dialog.locator('dd.relay')).toContainText(/14 GB of 1 TB \(1\.4%\) since (1 Nov|Nov 1)/);
+  await expect(dialog.locator('dd.relay meter')).toHaveJSProperty('value', 14_066_575_220);
+  await dialog.getByRole('button', { name: 'Close' }).click();
+
+  answer = { status: 200, body: { error: 'unavailable' } };
+  await about();
+  await expect(dialog.locator('dd.relay')).toContainText('Not known right now');
+  await expect(dialog.locator('dd.relay meter')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Close' }).click();
+
+  answer = { status: 204 };
+  await about();
+  await expect(dialog.locator('dt', { hasText: 'Version' })).toBeVisible();
+  await expect(dialog.locator('dt', { hasText: 'Relay this month' }), 'a Worker without the token: no line at all').toHaveCount(0);
+});
+
 test('phone width: one column, the composer pinned to the bottom of the screen and usable', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob', { viewport: { width: 390, height: 780 } });

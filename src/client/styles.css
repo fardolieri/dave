@@ -676,5 +676,9 @@ dialog.about details.change p { margin: 6px 0 0; padding-left: 10px; border-left
 dialog.about dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 13px; }
 dialog.about dt { color: var(--dim); }
 dialog.about dd { margin: 0; }
+/* The relay's usage this month, a meter of the free terabyte under it, and what it is for in small print. */
+dialog.about dd.relay { display: flex; flex-direction: column; gap: 4px; }
+dialog.about dd.relay meter { width: 100%; height: 8px; }
+dialog.about dd.relay small { color: var(--dim); font-size: 12px; }
 
 /* The design-trial picker (theme.ts): as quiet as the links around it. */

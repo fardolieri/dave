@@ -5,6 +5,8 @@ interface __BaseEnv_Env {
 	UPGRADE_LIMIT: RateLimit;
 	TURN_KEY_ID: "d3d456166c56302f67957272a1ff9ba5";
 	TURN_KEY_API_TOKEN: string;
+	RELAY_USAGE_API_TOKEN?: string;
+	CLOUDFLARE_ACCOUNT_ID?: string;
 	POSTHOG_KEY?: string;
 	POSTHOG_HOST?: string;
 	BUILD_TARGET: string;

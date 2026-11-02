@@ -20,6 +20,7 @@ import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, identityOf, normaliseName, type Ident
 import { displayName, formatAgo, knownAgo } from '../core/names';
 import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatStream } from '../core/format';
+import { formatRelayUsage, parseRelayUsage, type RelayUsage } from '../core/relayusage';
 import { Markdown, MarkdownMirror } from './Markdown';
 import { quotePrefix } from '../core/markdown';
 import { FOLD_OLDER_MS, olderCount } from '../core/chatlog';
@@ -1887,13 +1888,28 @@ function ReportDialog(props: { collect: () => Promise<Report> }) {
 /** Date and 24-hour clock time, always with the day: a version's age is the point. */
 const stamp = (iso: string): string => new Date(iso).toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
+const RELAY_TITLE = "What Cloudflare's TURN relay sent this month, for calls and files between friends who cannot reach each other directly. Cloudflare relays 1 TB a month for free and charges past it. Counted since the 1st (UTC) for the whole account, the live site and every preview together; it lags behind by a few minutes.";
+
 /** Which version of dave this is: the commit it was built from, its message, when it was deployed, and where the code lives. */
 function VersionDialog() {
   let dialog: HTMLDialogElement | undefined;
   const deployed = build.target === 'local' ? 'Built' : 'Deployed';
+  // The relay's usage this month, asked of the Worker on every open (it keeps the answer for minutes). Left out until
+  // it comes, and for good where the Worker has no token to ask Cloudflare with (local builds, a Worker without the secret).
+  // Only the latest open's answer is taken, should an earlier one come later.
+  const [relay, setRelay] = createSignal<RelayUsage | 'unknown' | null>(null);
+  let asked = 0;
+  const open = () => {
+    dialog?.showModal();
+    const n = ++asked;
+    fetch('/relay-usage', { cache: 'no-store' })
+      .then(async (res) => (res.status === 204 ? null : (res.ok && parseRelayUsage(await res.json())) || 'unknown'))
+      .catch(() => 'unknown' as const)
+      .then((r) => { if (n === asked) setRelay(r); });
+  };
   return (
     <div class="about-link">
-      <button class="link" title={`Version ${shortCommit(build.commit)}${build.dirty ? '+' : ''}, ${deployed.toLowerCase()} ${formatAgo(Date.parse(build.builtAt))}`} onClick={() => dialog?.showModal()}>About</button>
+      <button class="link" title={`Version ${shortCommit(build.commit)}${build.dirty ? '+' : ''}, ${deployed.toLowerCase()} ${formatAgo(Date.parse(build.builtAt))}`} onClick={open}>About</button>
       {/* A click on the backdrop reaches the dialog itself, outside its box; its padding is the dialog too, so the box decides. */}
       <dialog class="about" ref={dialog} onClick={(e) => {
         const r = e.currentTarget.getBoundingClientRect();
@@ -1916,6 +1932,20 @@ function VersionDialog() {
           <dd>{stamp(build.builtAt)} ({formatAgo(Date.parse(build.builtAt))}){build.target === 'local' ? ', on a developer\'s machine' : `, to ${build.target === 'live' ? 'the live site' : build.target}`}</dd>
           <dt>Source</dt>
           <dd><a href={REPO_URL} target="_blank" rel="noopener">{REPO_URL.replace(/^https:\/\//, '')}</a></dd>
+          <Show when={relay()}>{(r) => (
+            <>
+              <dt>Relay this month</dt>
+              <dd class="relay" title={RELAY_TITLE}>
+                <Show when={typeof r() === 'object' ? (r() as RelayUsage) : null} fallback="Not known right now">{(u) => (
+                  <>
+                    <span>{formatRelayUsage(u())} since {new Date(`${u().since}T00:00:00Z`).toLocaleDateString([], { day: 'numeric', month: 'short', timeZone: 'UTC' })}</span>
+                    <meter min={0} max={u().limit} low={u().limit * 0.5} high={u().limit * 0.8} optimum={0} value={u().bytes} />
+                  </>
+                )}</Show>
+                <small>Calls and files between friends who cannot reach each other directly go through Cloudflare's relay, free up to 1 TB a month.</small>
+              </dd>
+            </>
+          )}</Show>
         </dl>
         <div class="row"><button onClick={() => dialog?.close()}>Close</button></div>
       </dialog>

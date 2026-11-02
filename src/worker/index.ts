@@ -2,13 +2,16 @@ export { Room } from './room';
 import { isRoomId } from '../core/rooms';
 import { forward, PREFIX } from './posthog';
 import { logUpgradeFailed } from './telemetry';
+import { RELAY_USAGE_PATH, relayUsage } from './relayusage';
 
 // Static assets are served by the platform before this code runs (see wrangler.jsonc),
-// so the Worker only ever sees the WebSocket upgrade, what goes to PostHog (worker/posthog.ts) and true 404s.
+// so the Worker only ever sees the WebSocket upgrade, what goes to PostHog (worker/posthog.ts), the relay's usage for the
+// About dialog (worker/relayusage.ts) and true 404s.
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname.startsWith(`${PREFIX}/`)) return forward(request, env);
+    if (url.pathname === RELAY_USAGE_PATH && request.method === 'GET') return relayUsage(env);
     // One Durable Object per room, named by the room id derived from the invite secret (ADR 0004).
     const roomId = url.pathname.startsWith('/ws/') ? url.pathname.slice(4) : null;
     if (roomId !== null && isRoomId(roomId)) {

@@ -37,10 +37,17 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy
+          # The About dialog's relay usage (src/worker/relayusage.ts) needs a token that can only read the account's analytics.
+          # Named only when the repository has it: wrangler-action fails on a named secret without a value, and the dialog
+          # leaves the line out without it.
           secrets: |
             TURN_KEY_API_TOKEN
+            ${{ secrets.RELAY_USAGE_API_TOKEN != '' && 'RELAY_USAGE_API_TOKEN' || '' }}
+            ${{ secrets.RELAY_USAGE_API_TOKEN != '' && 'CLOUDFLARE_ACCOUNT_ID' || '' }}
         env:
           TURN_KEY_API_TOKEN: ${{ secrets.TURN_KEY_API_TOKEN }}
+          RELAY_USAGE_API_TOKEN: ${{ secrets.RELAY_USAGE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       # The deploy is done when the edge serves this commit's page and files together (ticket 64), not when wrangler returns.
       - name: The live site serves this commit
         run: |

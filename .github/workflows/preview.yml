@@ -68,6 +68,17 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           TURN_KEY_API_TOKEN: ${{ secrets.TURN_KEY_API_TOKEN }}
+      # The About dialog's relay usage (src/worker/relayusage.ts), the whole account's as on the live site. Without the
+      # repository secret the dialog leaves the line out.
+      - name: Relay usage token on the preview's Worker
+        run: |
+          [ -n "$RELAY_USAGE_API_TOKEN" ] || { echo "No RELAY_USAGE_API_TOKEN: the About dialog leaves the relay out."; exit 0; }
+          printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | pnpm exec wrangler secret put CLOUDFLARE_ACCOUNT_ID --name "$WORKER"
+          printf '%s' "$RELAY_USAGE_API_TOKEN" | pnpm exec wrangler secret put RELAY_USAGE_API_TOKEN --name "$WORKER"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          RELAY_USAGE_API_TOKEN: ${{ secrets.RELAY_USAGE_API_TOKEN }}
       - name: Link the preview on the PR
         env:
           GH_TOKEN: ${{ github.token }}

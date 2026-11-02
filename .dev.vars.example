@@ -2,3 +2,7 @@
 TURN_KEY_API_TOKEN=unused-locally
 # The dev server is not a deploy: its server events say so, as its client events do (wrangler.jsonc).
 BUILD_TARGET=local
+# The About dialog's relay usage (src/worker/relayusage.ts). Left empty, the dialog leaves the line out; to try it,
+# a Cloudflare API token with only Account Analytics: Read, and the account's id. `wrangler types` types them from here.
+RELAY_USAGE_API_TOKEN=
+CLOUDFLARE_ACCOUNT_ID=
