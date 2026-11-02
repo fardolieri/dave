@@ -1,16 +1,16 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-01T12:18 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-02T13:24 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 72, branch 265, preview 161.
+Runs recorded: nightly 66, branch 262, preview 162.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
-| 7 | 7 | preview 1, branch 5, nightly 1 | resilience.spec.ts › the call survives the server going away and coming back | console warnings, errors or exceptions nobody expected: Alice: error: WebSocket is already in CLOSING or CLOSED state. | [10-02](https://github.com/fardolieri/dave/actions/runs/37044418538/attempts/1) | [10-11](https://github.com/fardolieri/dave/actions/runs/38169379260/attempts/1) | 41 |
+| 6 | 6 | preview 1, branch 5 | resilience.spec.ts › the call survives the server going away and coming back | console warnings, errors or exceptions nobody expected: Alice: error: WebSocket is already in CLOSING or CLOSED state. | [10-08](https://github.com/fardolieri/dave/actions/runs/37781787357/attempts/1) | [10-11](https://github.com/fardolieri/dave/actions/runs/38169379260/attempts/1) | 41 |
 | 5 | 5 | nightly 1, preview 2, branch 2 | invariants.spec.ts › a share tile left on "Opening…" while its video decodes is reported (share_opening) | expect(received).toBe(expected) // Object.is equality | [10-09](https://github.com/fardolieri/dave/actions/runs/37864990445/attempts/1) | [10-12](https://github.com/fardolieri/dave/actions/runs/38222654333/attempts/1) | 46 |
 | 4 | 4 | nightly 1, branch 2, preview 1 | attachment.spec.ts › a file sent again by a second friend comes from her while the first is away | expect(received).not.toContain(expected) // indexOf | [10-16](https://github.com/fardolieri/dave/actions/runs/38911308957/attempts/1) | [10-18](https://github.com/fardolieri/dave/actions/runs/39171574137/attempts/1) | 59 |
 | 4 | 4 | branch 4 | update.spec.ts › ticket 36: a new version found as the app opens downloads behind a line, the rooms not yet connected, and the page reloads onto it and back into the call | the download shows | [10-11](https://github.com/fardolieri/dave/actions/runs/38141987564/attempts/1) | [10-12](https://github.com/fardolieri/dave/actions/runs/38217296669/attempts/1) | 44 |
