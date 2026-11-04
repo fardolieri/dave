@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 import posthog, { onConsentChange, telemetryOn } from './posthog';
 import { buildAuthMessage, randomHex } from '../core/identity';
-import { openFile, openPrivate, openPrivateFile, openText, sealFile, sealPrivate, sealPrivateFile, sealText, sharedPrivateTextKey, verifyPrivateTextKey } from '../core/sealed';
+import { openFile, openPrivate, openPrivateFile, openProfile, openText, sealFile, sealProfile, type Profile, sealPrivate, sealPrivateFile, sealText, sharedPrivateTextKey, verifyPrivateTextKey } from '../core/sealed';
 import { MAX_FILE_BYTES, MAX_FILE_NAME, PIECED_FROM, PIECE_BYTES, PULLS_AT_ONCE, formatSize, inlineKind, pullsByItself, type FileMeta } from '../core/attachment';
 import { createLinks, PullFailed, type PullError } from './links';
 import { createFileWatchdog } from './invariants';
@@ -9,7 +9,7 @@ import { exposeHooks } from './hooks';
 import { big, hashOf, holdSent, holdSentList, keepFile, keptFile, makePreview, noRoom, piecesOf } from './files';
 import {
   CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, MAX_TEXT_LENGTH, PING_FRAME, PING_INTERVAL_MS,
-  identityOf, sameIdentity, type ClientMessage, type Identity, type Person, type PrivateTextKey, type RequestId, type ServerMessage, type TextId,
+  identityOf, sameIdentity, type ClientMessage, type Identity, type Person, type PrivateTextKey, type RequestId, type ServerMessage, type TextId, type WireIdentity, type WirePerson,
 } from '../core/protocol';
 import {
   afterJoin, afterWelcome, carried, declare, declared, forgetEnded, forgetWatch, inCallOnly, joinDeclares, leaveCall,
@@ -19,6 +19,7 @@ import { beat, heard, heartbeat } from '../core/heartbeat';
 import { tooOld, type UnsentPrivate } from '../core/unsent';
 import type { LocalIdentity } from './identity';
 import { keepUnread, keptUnread } from './unread';
+import { contactOf } from './contacts';
 import { appendHistory, clearHistory, keepUnsent, keepUnsentPrivate, loadHistory, loadUnsent, loadUnsentPrivate, textKey, type StoredText } from './history';
 
 export type ServerStatus =
@@ -130,6 +131,11 @@ const PRIVATE_WAITING_MAX = 8;
  */
 const PRIVATE_FILES_WAITING_MAX = 30;
 const RATE_RETRY_MS = 2_000;
+/**
+ * What a Room says to an auth it cannot read: one from before ADR 0010, after a rollback, says it to this app's. Tried
+ * again, not taken for a wrong invite link.
+ */
+const AUTH_NOT_READ = 'unrecognised message';
 /** How long a waiting private text waits for a friend the Room does not list, once it lists anyone: a reconnect's race, not more. */
 const ABSENT_WAIT_MS = 60_000;
 const ABSENT_GRACE_MS = 10_000;
@@ -199,8 +205,107 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
    */
   const latest = declared(opts.name, opts.picture, telemetryOn());
   const [status, setStatus] = createSignal<ServerStatus>({ kind: 'connecting' });
-  const [you, setYou] = createSignal<Person | null>(null);
-  const [people, setPeople] = createSignal<Person[]>([]);
+  /** Me and everyone attached as the Room lists us, profiles sealed (ADR 0010); `you` and `people` have them opened. */
+  const [wireYou, setYou] = createSignal<WirePerson | null>(null);
+  const [wirePeople, setPeople] = createSignal<WirePerson[]>([]);
+  /**
+   * Profiles opened, by writer and sealed text, each once; null for one that does not open (core/sealed.ts,
+   * `openProfile`). By writer too: one friend's profile listed under another's key must be checked, not taken from here.
+   * `profilesOpening` holds those under way, so a presence that comes meanwhile does not open them again. `profilesOpened` counts
+   * those done, so what shows them reads again.
+   */
+  const profiles = new Map<string, Profile | null>();
+  const profilesOpening = new Map<string, Promise<Profile | null>>();
+  const [profilesOpened, setProfilesOpened] = createSignal(0);
+  /**
+   * The last profile of each friend that presence listed and that opened: what they show as while a new one opens, or one
+   * does not open. Not from a text's tag, which may be older.
+   */
+  const lastProfile = new Map<string, Profile>();
+  const profileKey = (w: WireIdentity): string => `${w.publicKey} ${w.profile}`;
+  /** Opens a profile, once per writer and sealed text. */
+  function openProfileOf(w: WireIdentity): Promise<Profile | null> {
+    const k = profileKey(w);
+    const known = profiles.get(k);
+    if (known !== undefined) return Promise.resolve(known);
+    let under = profilesOpening.get(k);
+    if (!under) {
+      under = openProfile({ key: opts.textKey, roomId: opts.roomId, from: w.publicKey, sealed: w.profile }).then((p) => {
+        if (!p) console.warn('profile rejected'); // only a server that tampers, or a client that cheats, sends one
+        profiles.set(k, p);
+        setProfilesOpened((n) => n + 1);
+        return p;
+      }, (e: unknown) => {
+        // WebCrypto failed here: not cached, and asked again in a moment, when what shows it reads again.
+        console.error('opening a profile failed', e);
+        setTimeout(() => setProfilesOpened((n) => n + 1), RATE_RETRY_MS);
+        return null;
+      }).finally(() => profilesOpening.delete(k));
+      profilesOpening.set(k, under);
+    }
+    return under;
+  }
+  /**
+   * An identity as shown, from one as the Room lists it: its profile as opened, or while it is being opened (a moment, the
+   * first time) or should it not open, the last of theirs that did; else, for me, my name as I declared it; else the name
+   * I know them by, else their fingerprint. Reads `profilesOpened`, so a reactive caller shows the name once it is open.
+   */
+  function shown(w: WireIdentity, listed = true): Identity {
+    profilesOpened();
+    const opened = profiles.get(profileKey(w));
+    if (opened === undefined) void openProfileOf(w);
+    if (opened && listed) lastProfile.set(w.publicKey, opened);
+    const mine = w.publicKey === opts.identity.publicKey ? carried(latest) : null;
+    const p: Profile | undefined = opened ?? lastProfile.get(w.publicKey) ?? (mine ? { name: mine.name, ...(mine.picture ? { picture: mine.picture } : {}) } : undefined);
+    const name = p?.name ?? contactOf(w.publicKey)?.name ?? w.fingerprint;
+    return { publicKey: w.publicKey, fingerprint: w.fingerprint, name, ...(p?.picture ? { picture: p.picture } : {}) };
+  }
+  /** An identity a text came with, once its profile is open: the name it was sent under. */
+  async function fromOf(w: WireIdentity): Promise<Identity> {
+    await openProfileOf(w);
+    return untrack(() => shown(w, false));
+  }
+  const personOf = ({ profile: _sealed, publicKey, fingerprint, ...rest }: WirePerson): Person => ({ ...rest, ...shown({ publicKey, fingerprint, profile: _sealed }) });
+  /**
+   * The same object for a friend who shows the same as before, so lists keyed by object do not draw them again. Every
+   * presence still notifies (the call reconciles on each, client/call.ts), only with the friends unchanged in it as before.
+   */
+  const samePerson = (a: Person, b: Person): boolean => {
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<keyof Person>;
+    for (const k of keys) if (a[k] !== b[k] && JSON.stringify(a[k]) !== JSON.stringify(b[k])) return false;
+    return true;
+  };
+  let shownBefore = new Map<string, Person>();
+  const you = createMemo((): Person | null => { const w = wireYou(); return w ? personOf(w) : null; }, { equals: (a, b) => a === b || (!!a && !!b && samePerson(a, b)) });
+  /** The presence last shown, and as what: a profile opening that changes nobody in it does not notify. */
+  let shownFrom: { wire: WirePerson[]; out: Person[] } | null = null;
+  const people = createMemo((): Person[] => {
+    const wire = wirePeople();
+    const next = new Map<string, Person>();
+    const out = wire.map((w) => {
+      const p = personOf(w);
+      const was = shownBefore.get(w.publicKey);
+      const kept = was && samePerson(was, p) ? was : p;
+      next.set(w.publicKey, kept);
+      return kept;
+    });
+    shownBefore = next;
+    if (shownFrom?.wire === wire && shownFrom.out.length === out.length && out.every((p, i) => p === shownFrom!.out[i])) return shownFrom.out;
+    shownFrom = { wire, out };
+    return out;
+  });
+  /** My profile sealed for this room, as last sealed: sealed again once my name or picture changes, or the last seal failed. */
+  let mySealed: { name: string; picture: string | null; sealed: Promise<string> } | null = null;
+  function myProfile(): Promise<string> {
+    const { name, picture } = carried(latest);
+    if (mySealed?.name !== name || mySealed.picture !== picture) {
+      const profile = { name, ...(picture ? { picture } : {}) };
+      const sealingNow = { name, picture, sealed: sealProfile({ key: opts.textKey, privateKey: opts.identity.keys.privateKey, roomId: opts.roomId, from: opts.identity.publicKey, profile }) };
+      sealingNow.sealed.catch(() => { if (mySealed === sealingNow) mySealed = null; });
+      mySealed = sealingNow;
+    }
+    return mySealed.sealed;
+  }
   const [lines, setLines] = createSignal<ChatLine[]>([]);
   /** Texts from others that arrived live while this room was not the one on screen; kept over a reload (client/unread.ts). */
   const [unread, setUnreadSignal] = createSignal(keptUnread('unreadRooms', opts.roomId));
@@ -287,7 +392,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const privateListeners = new Set<(e: PrivateEvent) => void>();
   const privateNotice = (friend: Identity, text: string): void => { for (const l of privateListeners) l({ kind: 'notice', friend, text, at: Date.now() }); };
   /** The Room's latest presence, read at once (signal writes are batched): who `flushPrivate` may send to. None while no socket is let in. */
-  let listed: Person[] = [];
+  let listed: WirePerson[] = [];
   /** When this socket's first presence came. */
   let listedAt = 0;
   /**
@@ -460,11 +565,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     sealing = sealing.then(() => sealWaiting(waiting, to)).catch((e: unknown) => console.error('sealing a private text failed', e));
   };
   /** Seals a waiting private text for its friend's key as `to` publishes it, then sends what can go. */
-  async function sealWaiting(waiting: (typeof waitingPrivate)[number], to: Person): Promise<void> {
+  async function sealWaiting(waiting: (typeof waitingPrivate)[number], to: Pick<Person, 'publicKey' | 'privateTexts'>): Promise<void> {
     try { await sealFor(waiting, to); } finally { delete waiting.sealing; }
     flushPrivate(); // once it is no longer sealing: a flush may find it must be sealed again, for a newer key
   }
-  async function sealFor(waiting: (typeof waitingPrivate)[number], to: Person): Promise<void> {
+  async function sealFor(waiting: (typeof waitingPrivate)[number], to: Pick<Person, 'publicKey' | 'privateTexts'>): Promise<void> {
     if (disposed || !waitingPrivate.includes(waiting)) return; // gone meanwhile, and said so
     const { id, text } = waiting;
     const published = to.privateTexts;
@@ -529,7 +634,22 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
    */
   function declareLatest(d: Declaration): boolean {
     declare(latest, d);
-    return (!inCallOnly(d) || inCall()) && send(d);
+    return (!inCallOnly(d) || inCall()) && sendDeclaration(d);
+  }
+  /** A declaration out on this socket: my profile sealed first (ADR 0010), everything else as it is. */
+  function sendDeclaration(d: Declaration): boolean {
+    if (d.t !== 'profile') return send(d);
+    const socket = welcomed;
+    if (ws?.readyState !== WebSocket.OPEN || !socket || socket !== ws) return false;
+    const sealed = myProfile();
+    // Only the newest: two renames in a row seal side by side, and the first may finish last.
+    void sealed.then((profile) => { if (welcomed === socket && mySealed?.sealed === sealed) send({ t: 'profile', profile }); }, (e: unknown) => {
+      // Sealed again in a moment, the latest name then: else friends would keep the old one until the next socket.
+      console.error('sealing my profile failed', e);
+      // Not when a newer seal is under way or went out meanwhile: that one carries the latest.
+      setTimeout(() => { if (welcomed === socket && mySealed === null) sendDeclaration({ t: 'profile', ...carried(latest) }); }, RATE_RETRY_MS);
+    });
+    return true;
   }
 
   /**
@@ -554,8 +674,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     }
     // Seen before only once the history is in: after a reload, one the Room brings again before that would count twice.
     await historyLoaded.catch(() => {});
+    const from = await fromOf(m.from);
     if (stopped || seen(m.from.publicKey, m.id)) return;
-    const text: Text = { from: m.from, text: opened.text, at: m.at, id: m.id };
+    const text: Text = { from, text: opened.text, at: m.at, id: m.id };
     push({ kind: 'text', id: textKey(text), from: text.from, text: text.text, at: text.at });
     void appendHistory(opts.roomId, text);
     if (!own) {
@@ -574,7 +695,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       const [mine] = takePrivate((x) => x.id === m.id);
       if (!mine) return;
       if (seen(m.from.publicKey, m.id)) return;
-      const text: Text = { from: m.from, text: mine.text, at: m.at, id: m.id };
+      const text: Text = { from: identityOf(myIdentity()), text: mine.text, at: m.at, id: m.id };
       for (const l of privateListeners) l({ kind: 'text', friend: mine.to, text, ...(mine.file ? { file: mine.file } : {}) });
       return;
     }
@@ -599,13 +720,14 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       posthog.capture('text_rejected', { reason: opened.reason, writer: m.from.fingerprint, own: false, sealed_length: m.sealed.length, kind: m.file ? 'private file' : 'private' });
       return;
     }
-    if (seen(m.from.publicKey, m.id)) return;
-    const text: Text = { from: m.from, text: opened.text, at: m.at, id: m.id };
+    const from = await fromOf(m.from);
+    if (stopped || seen(m.from.publicKey, m.id)) return;
+    const text: Text = { from, text: opened.text, at: m.at, id: m.id };
     const { file } = opened;
     // Its bytes are the friend's to give, pulled from them alone: the conversation has this room know of it, once it is
     // sure the file is new (client/privates.ts), so one sent again is not pulled twice.
     // The message cue is the conversation's to play: it knows a text it has shown already, from before a reload too.
-    for (const l of privateListeners) l({ kind: 'text', friend: identityOf(m.from), text, ...(file ? { file } : {}) });
+    for (const l of privateListeners) l({ kind: 'text', friend: identityOf(from), text, ...(file ? { file } : {}) });
   }
 
   /** An attachment's announcement from the Room: shown like a text, then its bytes are looked for (`arrived`). */
@@ -620,14 +742,15 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       return;
     }
     await historyLoaded.catch(() => {}); // as a text's (received)
+    const from = await fromOf(m.from);
     if (stopped || seen(m.from.publicKey, m.id)) return;
     const { file } = opened;
-    push({ kind: 'file', id: textKey({ from: m.from, at: m.at }), from: m.from, file, at: m.at });
-    void appendHistory(opts.roomId, { from: m.from, text: file.name, at: m.at, id: m.id, file });
+    push({ kind: 'file', id: textKey({ from, at: m.at }), from, file, at: m.at });
+    void appendHistory(opts.roomId, { from, text: file.name, at: m.at, id: m.id, file });
     arrived(file, m.from.publicKey);
     if (!own) {
       setUnread((n) => n + 1);
-      for (const l of textListeners) l({ from: m.from, text: file.name, at: m.at, id: m.id });
+      for (const l of textListeners) l({ from, text: file.name, at: m.at, id: m.id });
     }
   }
 
@@ -964,9 +1087,17 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       switch (m.t) {
         case 'challenge': {
           const { name, picture, telemetry } = carried(latest);
-          const auth = await buildAuthMessage({
-            authKey: opts.authKey, nonce: m.nonce, publicKeyRaw: opts.identity.publicKeyRaw, privateKey: opts.identity.keys.privateKey, name, ...(picture ? { picture } : {}),
-          });
+          // My name and picture go sealed for the room (ADR 0010): the server lists what it cannot read.
+          let profile: string;
+          try {
+            profile = await myProfile();
+          } catch (e) {
+            // Sealed again on the next socket (myProfile forgets a failed seal), which the close brings.
+            console.error('sealing my profile failed', e);
+            socket.close(1000, 'profile not sealed');
+            return;
+          }
+          const auth = await buildAuthMessage({ authKey: opts.authKey, nonce: m.nonce, publicKeyRaw: opts.identity.publicKeyRaw, privateKey: opts.identity.keys.privateKey, profile });
           // Nobody has entered this room yet: our answer also hands the server the verifier (ADR 0004). The PostHog
           // opt-in rides along, so the server reports this socket's refused frames only with consent (ticket 32).
           // Closed while signing (the page reloading, another tab taking over): nothing to answer.
@@ -988,7 +1119,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           attempt = 0;
           setYou(m.you);
           // A rename, a picture or an opt-in changed while the handshake ran went to no socket; the auth had the old one.
-          if (authCarried) for (const d of afterWelcome(latest, authCarried)) send(d);
+          if (authCarried) for (const d of afterWelcome(latest, authCarried)) sendDeclaration(d);
           // Texts the last socket took and never brought back, or written while there was none, in their order; the Room
           // answers them in that order too. One that waited a day is not sent: it would come out of the blue.
           dropTooOld();
@@ -1091,6 +1222,12 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
                 if (unconfirmed.shift()) unconfirmedChanged();
               });
             } else push({ kind: 'system', text: `Dropped: ${m.reason}.`, at: Date.now() });
+          } else if (m.reason === AUTH_NOT_READ) {
+            // Not our secret: a Room that cannot read this app's auth, as one rolled back to before ADR 0010 cannot. Tried
+            // again until the update bar brings the version it can: refused, the room would stop for good. A warning, as
+            // an auth of ours the Room cannot read is a bug anywhere else.
+            console.warn(`room ${opts.roomId.slice(0, 8)}: the server cannot read this app's auth; trying again`);
+            socket.close(1000, 'auth not read');
           } else if (status().kind !== 'refused') {
             // A wrong answer during the handshake: our stored secret is wrong. Retrying cannot help.
             setStatus({ kind: 'refused', reason: m.reason });
@@ -1104,7 +1241,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
         case 'call':
           // The Room has this friend in its call on this socket again: what she declared in it is said again, the asks
           // to watch a share among it. The answer goes on to the call (client/call.ts).
-          if (socket === welcomed && inCall()) for (const d of afterJoin(latest, people())) send(d);
+          if (socket === welcomed && inCall()) for (const d of afterJoin(latest, people())) sendDeclaration(d);
           break;
         case 'left':
           forgetWatch(latest, m.publicKey);
@@ -1295,9 +1432,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     /** Dev aid for scripts/drive.mjs: drops the socket so the reconnect path runs. */
     dropSocket: () => ws?.close(),
     /** Change the name everyone sees; presence brings it back. A later reconnect authenticates with it too. */
-    rename: (next: string) => { declareLatest({ t: 'name', name: next }); },
+    rename: (next: string) => { declareLatest({ t: 'profile', name: next, picture: carried(latest).picture }); },
     /** Choose the emoji everyone sees as your avatar, or null for the initial; presence brings it back. */
-    setPicture: (next: string | null) => { declareLatest({ t: 'picture', picture: next }); },
+    setPicture: (next: string | null) => { declareLatest({ t: 'profile', name: carried(latest).name, picture: next }); },
     /** After stepping back for another tab: reconnect here, which supersedes that tab in turn. */
     takeOver: () => {
       if (status().kind !== 'elsewhere') return;

@@ -13,6 +13,13 @@ export type Identity = {
   picture?: string;
 };
 
+/**
+ * An identity as the server has it (ADR 0010): the key and its fingerprint, and the friend's profile sealed with the room's
+ * text key (core/sealed.ts, `sealProfile`), which it cannot read. A friend's app opens it into an `Identity`.
+ */
+export type WireIdentity = { publicKey: string; fingerprint: string; profile: string };
+export const wireIdentityOf = ({ publicKey, fingerprint, profile }: WireIdentity): WireIdentity => ({ publicKey, fingerprint, profile });
+
 /** Whether two identities show the same: the same key, under the same name and picture. */
 export const sameIdentity = (a: Identity, b: Identity): boolean => a.publicKey === b.publicKey && a.fingerprint === b.fingerprint && a.name === b.name && a.picture === b.picture;
 
@@ -33,8 +40,11 @@ export type Role = 'visitor' | 'participant';
  */
 export type PrivateTextKey = { key: string; sig: string };
 
-/** One attached socket as everyone sees it. This is exactly what the server keeps in the socket attachment. */
-export type Person = Identity & {
+/** One attached socket as everyone sees it, its profile opened (client/room.ts). */
+export type Person = Identity & PresenceState;
+/** One attached socket as the server keeps it in the socket attachment and lists it in presence: its profile sealed. */
+export type WirePerson = WireIdentity & PresenceState;
+export type PresenceState = {
   role: Role;
   /** Order of joining the Call; null for visitors. */
   joinSeq: number | null;
@@ -91,7 +101,7 @@ export type ClientMessage =
    * `authKey` is sent only in answer to a `fresh` challenge: it becomes the room's verifier (ADR 0004).
    * `telemetry` says this browser opted in to PostHog (ticket 32); only then may the server report about this socket there.
    */
-  | { t: 'auth'; publicKey: string; name: string; picture?: string; hmac: string; signature: string; authKey?: string; telemetry?: true; privateTexts?: PrivateTextKey }
+  | { t: 'auth'; publicKey: string; profile: string; hmac: string; signature: string; authKey?: string; telemetry?: true; privateTexts?: PrivateTextKey }
   /** The PostHog opt-in changed while connected (ticket 32). Only the server keeps it; nobody else learns of it. */
   | { t: 'telemetry'; on: boolean }
   | { t: 'ping' }
@@ -115,10 +125,11 @@ export type ClientMessage =
   | { t: 'join'; muted: boolean; sharing?: boolean; id?: RequestId }
   | { t: 'leave' }
   | { t: 'mute'; muted: boolean }
-  /** Change the self-declared display name; everyone learns through presence. Texts already sent keep the old one. */
-  | { t: 'name'; name: string }
-  /** Choose an emoji as the profile picture, or null for none; everyone learns through presence. */
-  | { t: 'picture'; picture: string | null }
+  /**
+   * My profile changed (a new name or picture), sealed again for this room (ADR 0010); everyone learns through presence.
+   * Texts already sent keep the old one.
+   */
+  | { t: 'profile'; profile: string }
   /** Point-to-point signaling to another participant, by public key. */
   | { t: 'signal'; to: string; data: SignalData }
   /** Ask for fresh TURN credentials (before an ICE restart with expired ones). */
@@ -138,17 +149,20 @@ export type ClientMessage =
 export type ServerMessage =
   /** `fresh`: nobody has entered this room yet, so the answer must carry the auth key derived from the secret. */
   | { t: 'challenge'; nonce: string; fresh?: true }
-  | { t: 'welcome'; you: Person }
-  | { t: 'presence'; people: Person[] }
-  /** A sealed text, tagged with who sent it and when the Room got it. Neither is signed: the text inside is (ADR 0005). */
-  | { t: 'sealed'; from: Identity; sealed: string; at: number; id: TextId }
+  | { t: 'welcome'; you: WirePerson }
+  | { t: 'presence'; people: WirePerson[] }
+  /**
+   * A sealed text, tagged with who sent it (their key, and their profile sealed as it was then) and when the Room got it.
+   * The tag is not signed: the text inside is (ADR 0005), and so is the profile (ADR 0010).
+   */
+  | { t: 'sealed'; from: WireIdentity; sealed: string; at: number; id: TextId }
   /** A file's announcement, tagged like a sealed text. */
-  | { t: 'file'; from: Identity; sealed: string; at: number; id: TextId }
+  | { t: 'file'; from: WireIdentity; sealed: string; at: number; id: TextId }
   /**
    * A private text, to the friend it is for and back to its writer, tagged like a sealed text. `key` is the writer's
    * private text key as the Room has it, so the friend can open it after the writer is gone from presence.
    */
-  | { t: 'private'; from: Identity; to: string; key?: PrivateTextKey; sealed: string; at: number; id: TextId; file?: true }
+  | { t: 'private'; from: WireIdentity; to: string; key?: PrivateTextKey; sealed: string; at: number; id: TextId; file?: true }
   /** Reply to join: your place in the Call and the ICE servers to build peer connections with. */
   | { t: 'call'; joinSeq: number; iceServers: IceServer[]; issuedAt: number; id?: RequestId }
   /** A participant left on purpose; peers close that connection at once. A vanished socket only drops out of presence. */
@@ -163,7 +177,7 @@ export type ServerMessage =
    * `ref` names the client message type that was rejected, when known, so the client can attribute it. `id` names the
    * private text refused (ADR 0007): those do not all go to one friend, so the order alone does not say which.
    */
-  | { t: 'error'; reason: string; ref?: ClientMessage['t']; id?: TextId };
+  | { t: 'error'; reason: string; ref?: RefType; id?: TextId };
 
 /** The exact frames the hibernation auto-response matches, so pings never wake the Room. */
 export const PING_FRAME = '{"t":"ping"}';
@@ -192,11 +206,27 @@ export const MAX_SEALED_LENGTH = Math.ceil(((12 + Math.ceil((64 + 3 * MAX_TEXT_L
 export const MAX_SEALED_FILE_LENGTH = Math.ceil(((12 + Math.ceil((64 + MAX_FILE_BODY_BYTES + 1) / 256) * 256 + 16) * 4) / 3);
 /** What the Room answers a plain text with: only an app from before ADR 0005 sends one. */
 export const OUT_OF_DATE = 'this app is out of date, reload the page to send';
+/**
+ * Why a name or picture in plain is refused: only an app from before ADR 0010 sends one. A `name` or `picture` message is
+ * answered with it; an auth is not answered, but closed with CLOSE_OUT_OF_DATE.
+ */
+export const APP_OUT_OF_DATE = 'this app is out of date, reload the page';
+/**
+ * The longest sealed profile a client writes, as MAX_SEALED_LENGTH: its body is JSON of a name and a picture, each
+ * character escaped at worst to six bytes, and the JSON around them.
+ */
+export const MAX_SEALED_PROFILE_LENGTH = Math.ceil(((12 + Math.ceil((64 + 6 * (MAX_NAME_LENGTH + MAX_PICTURE_LENGTH) + 32 + 1) / 256) * 256 + 16) * 4) / 3);
 
 /** Close codes the server uses. 4000 to 4999 are application-defined. */
 export const CLOSE_AUTH_FAILED = 4001;
 /** This identity opened a newer socket (another tab, or a reconnect whose old socket the server had not noticed). */
 export const CLOSE_SUPERSEDED = 4004;
+/**
+ * An app from before ADR 0010 answered the challenge with its name in plain. Closed, not refused: such an app takes a
+ * refusal for a wrong invite link and stops for good, but tries a closed socket again, quietly, until its update bar
+ * (which a deploy brings within minutes) has it reloaded.
+ */
+export const CLOSE_OUT_OF_DATE = 4006;
 
 const B64URL = /^[A-Za-z0-9_-]+$/;
 const str = (v: unknown, max = MAX_MESSAGE_BYTES): v is string => typeof v === 'string' && v.length > 0 && v.length <= max;
@@ -221,11 +251,15 @@ export function normalisePicture(raw: string): string | null {
   return picture.length <= MAX_PICTURE_LENGTH && isSingleEmoji(picture) ? picture : null;
 }
 
+/** What a refusal names: a message type, or one an app before ADR 0010 sent (a name or picture in plain). */
+export type RefType = ClientMessage['t'] | 'name' | 'picture';
 /** Not a wire message: the parser's way of saying why a frame was rejected, and of which type it claimed to be when that is known. */
-export type Invalid = { t: 'invalid'; reason: string; ref?: ClientMessage['t']; id?: TextId };
+export type Invalid = { t: 'invalid'; reason: string; ref?: RefType; id?: TextId };
 const invalid = (reason: string): Invalid => ({ t: 'invalid', reason });
 
-const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'sealed', 'file', 'private', 'link', 'linkice', 'text', 'join', 'leave', 'mute', 'name', 'picture', 'signal', 'ice', 'share', 'subscribe', 'telemetry']);
+const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'sealed', 'file', 'private', 'link', 'linkice', 'text', 'join', 'leave', 'mute', 'profile', 'signal', 'ice', 'share', 'subscribe', 'telemetry']);
+/** A sealed profile as the parser takes it: base64url, no longer than a client writes. */
+const isSealedProfile = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= MAX_SEALED_PROFILE_LENGTH && B64URL.test(v);
 const isClientType = (v: unknown): v is ClientMessage['t'] => typeof v === 'string' && CLIENT_TYPES.has(v);
 
 /**
@@ -265,17 +299,12 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
   const m = value as Record<string, unknown>;
   switch (m.t) {
     case 'auth': {
-      if (!b64(m.publicKey) || !b64(m.hmac) || !b64(m.signature) || !str(m.name, 256)) return invalid('unrecognised message');
+      if (!b64(m.publicKey) || !b64(m.hmac) || !b64(m.signature)) return invalid('unrecognised message');
+      // A name in plain is from an app before ADR 0010: the server is not to learn it, and that app cannot seal one.
+      if (m.profile === undefined && m.name !== undefined) return invalid(APP_OUT_OF_DATE);
+      if (!isSealedProfile(m.profile)) return invalid('unrecognised message');
       if (m.authKey !== undefined && !(b64(m.authKey) && m.authKey.length === 43)) return invalid('unrecognised message');
-      const name = normaliseName(m.name);
-      if (!name) return invalid('invalid name');
-      const auth: Extract<ClientMessage, { t: 'auth' }> = { t: 'auth', publicKey: m.publicKey, name, hmac: m.hmac, signature: m.signature };
-      if (m.picture !== undefined && m.picture !== null) {
-        if (!str(m.picture, 64)) return invalid('unrecognised message');
-        const picture = normalisePicture(m.picture);
-        if (!picture) return invalid('invalid picture');
-        auth.picture = picture;
-      }
+      const auth: Extract<ClientMessage, { t: 'auth' }> = { t: 'auth', publicKey: m.publicKey, profile: m.profile, hmac: m.hmac, signature: m.signature };
       if (typeof m.authKey === 'string') auth.authKey = m.authKey;
       if (m.telemetry === true) auth.telemetry = true;
       // Optional: one of another shape is left out, so the friend still gets in, without private texts (ADR 0007).
@@ -292,17 +321,11 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
       return { t: 'leave' };
     case 'mute':
       return typeof m.muted === 'boolean' ? { t: 'mute', muted: m.muted } : invalid('unrecognised message');
-    case 'name': {
-      if (!str(m.name, 256)) return invalid('unrecognised message');
-      const name = normaliseName(m.name);
-      return name ? { t: 'name', name } : invalid('invalid name');
-    }
-    case 'picture': {
-      if (m.picture === null) return { t: 'picture', picture: null };
-      if (!str(m.picture, 64)) return invalid('unrecognised message');
-      const picture = normalisePicture(m.picture);
-      return picture ? { t: 'picture', picture } : invalid('invalid picture');
-    }
+    case 'profile':
+      return isSealedProfile(m.profile) ? { t: 'profile', profile: m.profile } : invalid('unrecognised message');
+    case 'name':
+    case 'picture':
+      return { ...invalid(APP_OUT_OF_DATE), ref: m.t }; // in plain: an app from before ADR 0010
     case 'ice':
       if (m.id !== undefined && !isRequestId(m.id)) return invalid('unrecognised message');
       return isRequestId(m.id) ? { t: 'ice', id: m.id } : { t: 'ice' };

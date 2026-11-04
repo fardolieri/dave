@@ -1,5 +1,5 @@
 // Mesh rules shared by both ends (ADR 0001). Pure functions, no imports.
-import type { Person } from './protocol';
+import type { PresenceState } from './protocol';
 
 /** Fixed transceiver order on every peer connection: voice audio, share video, share audio. */
 export const SLOT_INDEX = { voice: 0, shareVideo: 1, shareAudio: 2 } as const;
@@ -10,12 +10,12 @@ export function isPolite(myKey: string, theirKey: string): boolean {
 }
 
 /** The newcomer (higher join sequence) creates the connection and sends the first offer. */
-export function initiatesTo(me: Person, them: Person): boolean {
+export function initiatesTo(me: Pick<PresenceState, 'joinSeq'>, them: Pick<PresenceState, 'joinSeq'>): boolean {
   return me.joinSeq !== null && them.joinSeq !== null && me.joinSeq > them.joinSeq;
 }
 
 /** Join sequences are derived from what is attached, never stored (ADR 0002). */
-export function nextJoinSeq(people: Iterable<Person>): number {
+export function nextJoinSeq(people: Iterable<Pick<PresenceState, 'joinSeq'>>): number {
   let max = 0;
   for (const p of people) if (p.joinSeq !== null && p.joinSeq > max) max = p.joinSeq;
   return max + 1;

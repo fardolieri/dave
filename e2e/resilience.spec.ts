@@ -796,3 +796,24 @@ test('a socket the browser could not open, tried again until one gets in, fails 
   await alice.context.setOffline(false);
   await alice.connected(35_000);
 });
+
+test('ADR 0010: a Room that cannot read this app\'s auth, as one rolled back to before it, is tried again, not taken for a wrong link', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  bob.expectWarning(/the server cannot read this app's auth; trying again/);
+  // Bob's next auths reach the Room without their profile, as an app from now reaches a Room from before: it cannot read them.
+  let unread = 0;
+  bob.wire.up = (frame) => {
+    if (!frame.includes('"t":"auth"')) return frame;
+    if (unread++ >= 2) { bob.wire.up = null; return frame; }
+    const { profile: _sealed, ...rest } = JSON.parse(frame) as Record<string, unknown>;
+    return JSON.stringify(rest);
+  };
+  await bob.wire.cut();
+  bob.wire.restore();
+  await bob.connected();
+  expect(unread, 'two auths the Room could not read, then one it could').toBe(3);
+  await expect(bob.page.locator('.banner-bad')).toHaveCount(0);
+  await alice.say('still here');
+  await expect.poll(() => bob.chatTexts()).toEqual(['still here']);
+});

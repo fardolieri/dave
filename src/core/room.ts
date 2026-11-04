@@ -3,7 +3,7 @@
 // Everything here is plain data plus WebCrypto, so it survives hibernation.
 // No Cloudflare, Node, or DOM imports; scripts/check-core-isolation.mjs enforces that.
 import { fromBase64Url, fingerprint, randomNonce, toBase64Url, verifyAnswer } from './identity';
-import { CLOSE_AUTH_FAILED, OUT_OF_DATE, identityOf, parseClientMessage, type ClientMessage, type IceServer, type Person, type ServerMessage, type TextId } from './protocol';
+import { APP_OUT_OF_DATE, CLOSE_AUTH_FAILED, CLOSE_OUT_OF_DATE, OUT_OF_DATE, parseClientMessage, wireIdentityOf, type ClientMessage, type IceServer, type RefType, type ServerMessage, type TextId, type WirePerson as Person } from './protocol';
 import { SIGNAL_BURST, SIGNAL_RATE_PER_SECOND, newBucket, takeToken, type Bucket } from './ratelimit';
 import { LINK_ICE_TTL_SECONDS, nextJoinSeq } from './mesh';
 
@@ -57,7 +57,7 @@ export type Outcome = {
    * listed; a flood would log a flood. The rate limit bounds these too, since every frame takes a token first.
    * `telemetry` is the sender's PostHog opt-in (ticket 32): without it the adapter logs, but sends nothing to PostHog.
    */
-  rejected?: { from: string; reason: string; ref?: ClientMessage['t']; length: number; telemetry: boolean };
+  rejected?: { from: string; reason: string; ref?: RefType; length: number; telemetry: boolean };
 };
 
 export type RoomContext = {
@@ -142,6 +142,8 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
   const msg = parseClientMessage(raw);
 
   if (state.stage === 'challenge') {
+    // An app from before ADR 0010, its name in plain: closed for it to try again, quietly, once it is reloaded (protocol.ts).
+    if (msg.t === 'invalid' && msg.reason === APP_OUT_OF_DATE) return { state, replies: [], close: { code: CLOSE_OUT_OF_DATE, reason: 'app out of date' } };
     if (msg.t === 'invalid') return strike(state, msg.reason);
     if (msg.t !== 'auth') return strike(state, 'unauthenticated');
     // A room nobody has entered takes its verifier from the first correct answer: whoever holds the secret
@@ -157,8 +159,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     const person: Person = {
       publicKey: msg.publicKey,
       fingerprint: await fingerprint(publicKeyRaw),
-      name: msg.name,
-      ...(msg.picture ? { picture: msg.picture } : {}),
+      profile: msg.profile, // sealed (ADR 0010): the name and picture are the friends' to read
       role: 'visitor',
       joinSeq: null,
       sharing: false,
@@ -183,7 +184,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     return { state, replies: [{ t: 'error', reason: 'invalid socket state' }], close: { code: CLOSE_AUTH_FAILED, reason: 'invalid socket state' } };
   }
 
-  const error = (reason: string, ref: ClientMessage['t'] | undefined, id?: TextId): ServerMessage => ({ t: 'error', reason, ...(ref ? { ref } : {}), ...(id !== undefined ? { id } : {}) });
+  const error = (reason: string, ref: RefType | undefined, id?: TextId): ServerMessage => ({ t: 'error', reason, ...(ref ? { ref } : {}), ...(id !== undefined ? { id } : {}) });
 
   // Rate limit every authenticated frame, parseable or not. Signaling has its own generous bucket (see ratelimit.ts), and
   // file links another as generous, so pulls cannot hold up the call's own signaling.
@@ -221,16 +222,16 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       // Normally answered by the hibernation auto-response before reaching here.
       return { state: next, replies: [{ t: 'pong' }] };
     case 'sealed': {
-      return { state: next, replies: [], broadcast: [{ t: 'sealed', from: identityOf(state.person), sealed: msg.sealed, at: ctx.now, id: msg.id }] };
+      return { state: next, replies: [], broadcast: [{ t: 'sealed', from: wireIdentityOf(state.person), sealed: msg.sealed, at: ctx.now, id: msg.id }] };
     }
     case 'file': {
-      return { state: next, replies: [], broadcast: [{ t: 'file', from: identityOf(state.person), sealed: msg.sealed, at: ctx.now, id: msg.id }] };
+      return { state: next, replies: [], broadcast: [{ t: 'file', from: wireIdentityOf(state.person), sealed: msg.sealed, at: ctx.now, id: msg.id }] };
     }
     case 'private': {
       // To one friend here, and back to its writer, who learns it went out (ADR 0007). Nobody else hears of it.
       if (msg.to === state.person.publicKey || !attachedByKey(msg.to)) return { state: next, replies: [error('that friend is not here', 'private', msg.id)] };
       const { privateTexts } = state.person;
-      const m: ServerMessage = { t: 'private', from: identityOf(state.person), to: msg.to, ...(privateTexts ? { key: privateTexts } : {}), sealed: msg.sealed, at: ctx.now, id: msg.id, ...(msg.file ? { file: true as const } : {}) };
+      const m: ServerMessage = { t: 'private', from: wireIdentityOf(state.person), to: msg.to, ...(privateTexts ? { key: privateTexts } : {}), sealed: msg.sealed, at: ctx.now, id: msg.id, ...(msg.file ? { file: true as const } : {}) };
       return { state: next, replies: [m], relay: { to: msg.to, message: m } };
     }
     case 'text':
@@ -276,14 +277,9 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       if (state.person.role !== 'participant' || state.person.muted === msg.muted) return { state: next, replies: [] };
       return { state: { ...next, person: { ...state.person, muted: msg.muted } }, replies: [], presenceChanged: true };
     }
-    case 'name': {
-      if (state.person.name === msg.name) return { state: next, replies: [] };
-      return { state: { ...next, person: { ...state.person, name: msg.name } }, replies: [], presenceChanged: true };
-    }
-    case 'picture': {
-      if ((state.person.picture ?? null) === msg.picture) return { state: next, replies: [] };
-      const { picture: _old, ...person } = state.person;
-      return { state: { ...next, person: msg.picture ? { ...person, picture: msg.picture } : person }, replies: [], presenceChanged: true };
+    case 'profile': {
+      if (state.person.profile === msg.profile) return { state: next, replies: [] };
+      return { state: { ...next, person: { ...state.person, profile: msg.profile } }, replies: [], presenceChanged: true };
     }
     case 'telemetry': {
       const { telemetry: _was, ...rest } = next;

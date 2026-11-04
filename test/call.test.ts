@@ -2,12 +2,12 @@ import { env } from 'cloudflare:workers';
 import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import { generateIdentityKeyPair } from '../src/core/identity';
-import type { IceServer, Person, ServerMessage } from '../src/core/protocol';
+import type { IceServer, ServerMessage, WirePerson as Person } from '../src/core/protocol';
 import { CLOSE_SILENT, SILENT_TIMEOUT_MS } from '../src/worker/room';
 import type { SocketState } from '../src/core/room';
 import { CLOSE_SUPERSEDED, MAX_MESSAGE_BYTES } from '../src/core/protocol';
 import { roomIdOf } from '../src/core/rooms';
-import { authFrame, openRoomSocket, type Challenge, type Keys } from './harness';
+import { authFrame, nameOf, openRoomSocket, type Challenge, type Keys } from './harness';
 
 const SECRET = 'call-test-room';
 type Client = { ws: WebSocket; you: Person; next: (pred?: (m: ServerMessage) => boolean) => Promise<ServerMessage>; closed: Promise<number> };
@@ -50,7 +50,7 @@ describe('joining and leaving the call', () => {
     expect(callA.iceServers.some((s) => String(s.urls).startsWith('stun:'))).toBe(true); // STUN fallback without a TURN token
     expect(typeof callA.issuedAt).toBe('number');
     const snap = await a.next((m) => m.t === 'presence' && inCall(m).length === 2);
-    expect(inCall(snap).map((p) => [p.name, p.muted])).toEqual(expect.arrayContaining([['Alice', false], ['Bob', true]]));
+    expect(inCall(snap).map((p) => [nameOf(p.profile), p.muted])).toEqual(expect.arrayContaining([['Alice', false], ['Bob', true]]));
     a.ws.close(1000); b.ws.close(1000);
   });
 
@@ -62,8 +62,8 @@ describe('joining and leaving the call', () => {
     send(b, { t: 'leave' });
     expect(await a.next((m) => m.t === 'left')).toEqual({ t: 'left', publicKey: b.you.publicKey });
     const people = (m: ServerMessage) => (m as { people: Person[] }).people;
-    const snap = await a.next((m) => m.t === 'presence' && people(m).some((p) => p.name === 'Bob' && p.role === 'visitor') && people(m).some((p) => p.name === 'Alice' && p.role === 'participant'));
-    expect(inCall(snap).map((p) => p.name)).toEqual(['Alice']);
+    const snap = await a.next((m) => m.t === 'presence' && people(m).some((p) => nameOf(p.profile) === 'Bob' && p.role === 'visitor') && people(m).some((p) => nameOf(p.profile) === 'Alice' && p.role === 'participant'));
+    expect(inCall(snap).map((p) => nameOf(p.profile))).toEqual(['Alice']);
     a.ws.close(1000); b.ws.close(1000);
   });
 
@@ -71,8 +71,8 @@ describe('joining and leaving the call', () => {
     const a = await attach('Alice');
     send(a, { t: 'join', muted: false }); await a.next((m) => m.t === 'call');
     send(a, { t: 'mute', muted: true });
-    const snap = await a.next((m) => m.t === 'presence' && inCall(m).some((p) => p.name === 'Alice' && p.muted));
-    expect(inCall(snap).find((p) => p.name === 'Alice')!.muted).toBe(true);
+    const snap = await a.next((m) => m.t === 'presence' && inCall(m).some((p) => nameOf(p.profile) === 'Alice' && p.muted));
+    expect(inCall(snap).find((p) => nameOf(p.profile) === 'Alice')!.muted).toBe(true);
     a.ws.close(1000);
   });
 
@@ -172,7 +172,7 @@ describe('sweep', () => {
     // The close the runtime reports later finds the socket closing and broadcasts nothing, so the sweep's own snapshot is the only one.
     const a = await attach('Alice');
     const b = await attach('Bob');
-    await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => p.name === 'Alice'));
+    await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => nameOf(p.profile) === 'Alice'));
     const stub = env.ROOM.get(env.ROOM.idFromName(await roomIdOf(SECRET)));
     await runInDurableObject(stub, (_i, state) => {
       for (const ws of state.getWebSockets()) {
@@ -182,8 +182,8 @@ describe('sweep', () => {
     });
     expect(await runDurableObjectAlarm(stub)).toBe(true);
     expect(await a.closed).toBe(CLOSE_SILENT);
-    const snap = await b.next((m) => m.t === 'presence' && !(m as { people: Person[] }).people.some((p) => p.name === 'Alice'));
-    expect((snap as { people: Person[] }).people.map((p) => p.name)).toContain('Bob');
+    const snap = await b.next((m) => m.t === 'presence' && !(m as { people: Person[] }).people.some((p) => nameOf(p.profile) === 'Alice'));
+    expect((snap as { people: Person[] }).people.map((p) => nameOf(p.profile))).toContain('Bob');
     b.ws.send('{"t":"ping"}');
     expect((await b.next((m) => m.t === 'pong')).t).toBe('pong'); // Bob was not swept with her
     b.ws.close(1000);
@@ -196,11 +196,11 @@ describe('one socket per identity', () => {
     const bob = await attach('Bob');
     const a1 = await attach('Alice', keys);
     send(a1, { t: 'join', muted: false }); await a1.next((m) => m.t === 'call');
-    await bob.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => p.name === 'Alice' && p.role === 'participant'));
+    await bob.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => nameOf(p.profile) === 'Alice' && p.role === 'participant'));
     const a2 = await attach('Alice', keys); // e.g. a reconnect whose old socket the server never saw die
     expect(await a1.closed).toBe(CLOSE_SUPERSEDED);
-    const snap = await bob.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.filter((p) => p.name === 'Alice').length === 1 && (m as { people: Person[] }).people.some((p) => p.name === 'Alice' && p.role === 'visitor'));
-    expect((snap as { people: Person[] }).people.filter((p) => p.name === 'Alice')).toHaveLength(1);
+    const snap = await bob.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.filter((p) => nameOf(p.profile) === 'Alice').length === 1 && (m as { people: Person[] }).people.some((p) => nameOf(p.profile) === 'Alice' && p.role === 'visitor'));
+    expect((snap as { people: Person[] }).people.filter((p) => nameOf(p.profile) === 'Alice')).toHaveLength(1);
     // the survivor is fully functional: it joins and gets signalled
     send(a2, { t: 'join', muted: false }); await a2.next((m) => m.t === 'call');
     send(bob, { t: 'join', muted: false }); await bob.next((m) => m.t === 'call');
@@ -217,14 +217,14 @@ describe('shares', () => {
     send(a, { t: 'join', muted: false }); await a.next((m) => m.t === 'call');
     send(b, { t: 'join', muted: false }); await b.next((m) => m.t === 'call');
     send(a, { t: 'share', on: true });
-    const snap = await b.next((m) => m.t === 'presence' && inCall(m).some((p) => p.name === 'Alice' && p.sharing));
-    expect(inCall(snap).find((p) => p.name === 'Alice')!.sharing).toBe(true);
+    const snap = await b.next((m) => m.t === 'presence' && inCall(m).some((p) => nameOf(p.profile) === 'Alice' && p.sharing));
+    expect(inCall(snap).find((p) => nameOf(p.profile) === 'Alice')!.sharing).toBe(true);
     send(b, { t: 'subscribe', to: a.you.publicKey, on: true, scale: 2 });
     expect(await a.next((m) => m.t === 'subscribe')).toEqual({ t: 'subscribe', from: b.you.publicKey, on: true, scale: 2 });
     send(b, { t: 'subscribe', to: a.you.publicKey, on: true, scale: 99 }); // out of range: dropped, not rejected
     expect(await a.next((m) => m.t === 'subscribe')).toEqual({ t: 'subscribe', from: b.you.publicKey, on: true });
     send(a, { t: 'share', on: false });
-    await b.next((m) => m.t === 'presence' && inCall(m).some((p) => p.name === 'Alice' && !p.sharing));
+    await b.next((m) => m.t === 'presence' && inCall(m).some((p) => nameOf(p.profile) === 'Alice' && !p.sharing));
     a.ws.close(1000); b.ws.close(1000);
   });
 
@@ -233,13 +233,13 @@ describe('shares', () => {
     const b = await attach('Bob');
     send(a, { t: 'join', muted: false }); await a.next((m) => m.t === 'call');
     send(a, { t: 'share', on: true });
-    await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => p.name === 'Alice' && p.sharing));
+    await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => nameOf(p.profile) === 'Alice' && p.sharing));
     send(a, { t: 'join', muted: false, sharing: true }); await a.next((m) => m.t === 'call');
-    const snap = await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => p.name === 'Alice' && p.joinSeq === 2));
-    expect((snap as { people: Person[] }).people.find((p) => p.name === 'Alice')!.sharing).toBe(true);
+    const snap = await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => nameOf(p.profile) === 'Alice' && p.joinSeq === 2));
+    expect((snap as { people: Person[] }).people.find((p) => nameOf(p.profile) === 'Alice')!.sharing).toBe(true);
     send(a, { t: 'join', muted: false }); await a.next((m) => m.t === 'call'); // without the flag it resets, as before
-    const snap2 = await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => p.name === 'Alice' && p.joinSeq === 3));
-    expect((snap2 as { people: Person[] }).people.find((p) => p.name === 'Alice')!.sharing).toBe(false);
+    const snap2 = await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => nameOf(p.profile) === 'Alice' && p.joinSeq === 3));
+    expect((snap2 as { people: Person[] }).people.find((p) => nameOf(p.profile) === 'Alice')!.sharing).toBe(false);
     a.ws.close(1000); b.ws.close(1000);
   });
 
@@ -248,10 +248,10 @@ describe('shares', () => {
     const b = await attach('Bob');
     send(a, { t: 'join', muted: false }); await a.next((m) => m.t === 'call');
     send(a, { t: 'share', on: true });
-    await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => p.name === 'Alice' && p.sharing));
+    await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => nameOf(p.profile) === 'Alice' && p.sharing));
     send(a, { t: 'leave' });
-    const snap = await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => p.name === 'Alice' && p.role === 'visitor'));
-    expect((snap as { people: Person[] }).people.find((p) => p.name === 'Alice')!.sharing).toBe(false);
+    const snap = await b.next((m) => m.t === 'presence' && (m as { people: Person[] }).people.some((p) => nameOf(p.profile) === 'Alice' && p.role === 'visitor'));
+    expect((snap as { people: Person[] }).people.find((p) => nameOf(p.profile) === 'Alice')!.sharing).toBe(false);
     a.ws.close(1000); b.ws.close(1000);
   });
 

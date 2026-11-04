@@ -62,6 +62,46 @@ test('the shared secret never crosses the wire', async ({ crowd }) => {
 
 // ADR 0005: texts travel sealed with a key the server never has, and signed by their writer inside.
 
+test('ADR 0010: the server never sees a name or picture in plain, from the auth, a rename or a text', async ({ crowd }) => {
+  const alice = await crowd.open('Zebediah', { picture: '🦩' });
+  const bob = await crowd.open('Bob');
+  await expect.poll(() => bob.online()).toContain('Zebediah');
+  await alice.page.locator('aside.side .side-me button.avatar').click();
+  await alice.page.locator('.profile button.edit').click();
+  await alice.page.locator('.profile-edit input').fill('Quentin');
+  await alice.page.locator('.profile-edit button.on').click();
+  await expect.poll(() => bob.online()).toContain('Quentin');
+  await alice.say('hello');
+  await expect.poll(() => bob.chat()).toEqual([{ from: 'Quentin', text: 'hello' }]);
+  for (const f of [alice, bob]) {
+    expect(f.wire.log.filter((l) => /Zebediah|Quentin|🦩|\\ud83e\\udda9/i.test(l.frame)), `${f.name}'s socket`).toEqual([]);
+  }
+  expect(alice.wire.frames('up', 'profile').length, 'the rename went out sealed').toBeGreaterThan(0);
+});
+
+test('ADR 0010: a profile the server passes off as another friend\'s is not believed', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const carol = await crowd.open('Carol');
+  const bob = await crowd.open('Bob');
+  await expect.poll(async () => (await bob.online()).sort()).toEqual(['Alice', 'Bob', 'Carol']);
+  bob.expectWarning(/profile rejected/);
+  // From here on the server lists Alice under Carol's profile, sealed and signed by Carol: it does not open as Alice's.
+  const aliceIs = alice.wire.frames<{ you: { publicKey: string } }>('down', 'welcome')[0]!.you.publicKey;
+  const carolsProfile = carol.wire.frames<{ you: { profile: string } }>('down', 'welcome')[0]!.you.profile;
+  bob.wire.down = (frame) => {
+    if (!frame.includes('"t":"presence"')) return frame;
+    const m = JSON.parse(frame) as { people: Array<{ publicKey: string; profile: string }> };
+    for (const p of m.people) if (p.publicKey === aliceIs) p.profile = carolsProfile;
+    return JSON.stringify(m);
+  };
+  await carol.say('a presence goes round'); // nothing changes presence by itself: Bob's next one comes with his reconnect
+  await bob.wire.cut();
+  bob.wire.restore();
+  await bob.connected();
+  await expect.poll(() => bob.problems.some((p) => p.includes('profile rejected'))).toBe(true);
+  expect((await bob.online()).sort(), 'Alice still shows as Alice, the name Bob opened of hers before').toEqual(['Alice', 'Bob', 'Carol']);
+});
+
 test('ADR 0005: the server never sees a text in plain, on its way in or out', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
@@ -75,10 +115,10 @@ test('ADR 0005: a text the server passes off as from another friend, or tampers 
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   const carol = await crowd.open('Carol');
-  const carolIs = carol.wire.frames<{ you: { publicKey: string; fingerprint: string; name: string } }>('down', 'welcome')[0]!.you;
+  const carolIs = carol.wire.frames<{ you: { publicKey: string; fingerprint: string; profile: string } }>('down', 'welcome')[0]!.you;
   bob.expectWarning(/text rejected: (bad signature|unreadable)/);
-  let tamper: (m: { from: { publicKey: string; fingerprint: string; name: string }; sealed: string }) => void = (m) => {
-    m.from = { publicKey: carolIs.publicKey, fingerprint: carolIs.fingerprint, name: carolIs.name };
+  let tamper: (m: { from: { publicKey: string; fingerprint: string; profile: string }; sealed: string }) => void = (m) => {
+    m.from = { publicKey: carolIs.publicKey, fingerprint: carolIs.fingerprint, profile: carolIs.profile };
   };
   bob.wire.down = (frame) => {
     if (!frame.includes('"t":"sealed"')) return frame;

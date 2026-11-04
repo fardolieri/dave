@@ -4,8 +4,9 @@
 // TURN, and a friend behind a strict NAT could neither pull a file nor call there.
 import { expect, newSecret, test } from './fixtures';
 import { originFor, target, type Engine } from './browsers';
-import { authKeyOf, roomIdOf } from '../src/core/rooms';
-import { buildAuthMessage, exportPublicKey, generateIdentityKeyPair } from '../src/core/identity';
+import { authKeyOf, roomIdOf, textKeyOf } from '../src/core/rooms';
+import { sealProfile } from '../src/core/sealed';
+import { buildAuthMessage, exportPublicKey, generateIdentityKeyPair, toBase64Url } from '../src/core/identity';
 
 type Ice = Array<{ urls: string | string[] }>;
 const hasTurn = (servers: Ice) => servers.some((s) => [s.urls].flat().some((u) => u.startsWith('turn')));
@@ -23,7 +24,8 @@ async function askRoom(origin: string): Promise<{ link: Ice; call: Ice }> {
       ws.onmessage = async (e) => {
         const m = JSON.parse(String(e.data)) as { t: string; nonce?: string; fresh?: boolean; iceServers?: Ice; reason?: string };
         if (m.t === 'challenge') {
-          const auth = await buildAuthMessage({ authKey, nonce: m.nonce!, publicKeyRaw, privateKey: keys.privateKey, name: 'Probe' });
+          const profile = await sealProfile({ key: await textKeyOf(secret), privateKey: keys.privateKey, roomId, from: toBase64Url(publicKeyRaw), profile: { name: 'Probe' } });
+          const auth = await buildAuthMessage({ authKey, nonce: m.nonce!, publicKeyRaw, privateKey: keys.privateKey, profile });
           ws.send(JSON.stringify({ ...auth, ...(m.fresh ? { authKey } : {}) }));
         } else if (m.t === 'welcome') ws.send(JSON.stringify({ t: 'linkice', id: 1 }));
         else if (m.t === 'linkice') { link = m.iceServers!; ws.send(JSON.stringify({ t: 'join', muted: true, id: 2 })); }
