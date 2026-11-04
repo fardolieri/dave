@@ -1,6 +1,6 @@
 // Sealed texts (ADR 0005). A text leaves the writer's browser encrypted with the room's text key, which is derived from
 // the shared secret and never reaches the server, and signed with the writer's identity key inside the encryption. The
-// Room relays (and later stores) what it cannot read; a friend opens it and checks that the identity the server says it
+// Room relays and keeps (ADR 0009) what it cannot read; a friend opens it and checks that the identity the server says it
 // came from wrote it, for this room and under this id.
 //
 // Inside: signature (64 bytes) || UTF-8 text || 0x80 || zeros up to a multiple of 256 bytes, so the length on the wire

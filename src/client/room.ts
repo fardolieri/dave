@@ -9,7 +9,7 @@ import { exposeHooks } from './hooks';
 import { big, hashOf, holdSent, holdSentList, keepFile, keptFile, makePreview, noRoom, piecesOf } from './files';
 import {
   CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, MAX_TEXT_LENGTH, PING_FRAME, PING_INTERVAL_MS,
-  identityOf, sameIdentity, type ClientMessage, type Identity, type Person, type PrivateTextKey, type RequestId, type ServerMessage, type TextId, type WireIdentity, type WirePerson,
+  identityOf, sameIdentity, type ClientMessage, type Identity, type KeptEntry, type Person, type PrivateTextKey, type RequestId, type ServerMessage, type TextId, type WireIdentity, type WirePerson,
 } from '../core/protocol';
 import {
   afterJoin, afterWelcome, carried, declare, declared, forgetEnded, forgetWatch, inCallOnly, joinDeclares, leaveCall,
@@ -20,7 +20,9 @@ import { tooOld, type UnsentPrivate } from '../core/unsent';
 import type { LocalIdentity } from './identity';
 import { keepUnread, keptUnread } from './unread';
 import { contactOf } from './contacts';
-import { appendHistory, clearHistory, keepUnsent, keepUnsentPrivate, loadHistory, loadUnsent, loadUnsentPrivate, textKey, type StoredText } from './history';
+import { mergeByAt } from '../core/chatlog';
+import { syncSince } from '../core/kept';
+import { appendHistory, clearHistory, historyClearedAt, historySyncedTo, keepHistorySynced, keepUnsent, keepUnsentPrivate, loadHistory, loadUnsent, loadUnsentPrivate, textKey, type StoredText } from './history';
 
 export type ServerStatus =
   | { kind: 'connecting' }
@@ -219,7 +221,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const [profilesOpened, setProfilesOpened] = createSignal(0);
   /**
    * The last profile of each friend that presence listed and that opened: what they show as while a new one opens, or one
-   * does not open. Not from a text's tag, which may be older.
+   * does not open. Not from a text's tag, which may be older: a live one by moments, one the server's history brought
+   * (ADR 0009) by weeks.
    */
   const lastProfile = new Map<string, Profile>();
   const profileKey = (w: WireIdentity): string => `${w.publicKey} ${w.profile}`;
@@ -653,6 +656,71 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   }
 
   /**
+   * What one `history` frame brought from the server's history (ADR 0009), all at once: every entry is opened first, and
+   * nothing else happens before all are; then, should the room still be this tab's and its history not cleared since the
+   * sync was asked, every line is shown, kept, counted and pulled in one go, a new device's 500 in one change of the chat
+   * and one write of the history. Otherwise none of it is, and the next welcome's sync brings it again: the room is not
+   * synced any further (`historySynced`) until an answer is shown in full.
+   */
+  async function receivedKept(frame: Extract<ServerMessage, { t: 'history' }>, asked: Asked, socket: WebSocket): Promise<void> {
+    // An entry of another shape (one an earlier build kept, before ADR 0010 sealed the tag) is not this app's to show.
+    const entries = frame.entries.filter((m) => typeof m.from?.profile === 'string' && typeof m.from.publicKey === 'string');
+    const opened = await Promise.all(entries.map(async (m) => {
+      const where = { key: opts.textKey, roomId: opts.roomId, id: m.id, from: m.from.publicKey, sealed: m.sealed };
+      const o = m.t === 'file' ? await openFile(where) : await openText(where);
+      // The writer's name as it was then, sealed in the entry's tag (ADR 0010), for an entry that opens.
+      const from = o.ok ? await fromOf(m.from) : null;
+      return { m, o, from };
+    }));
+    await historyLoaded.catch(() => {});
+    // A tag WebCrypto failed to open is not cached (openProfileOf): shown now, its fallback name would be kept for good.
+    const failed = opened.some((x) => x.from && !profiles.has(profileKey(x.m.from)));
+    if (stopped || welcomed !== socket || asked.clears !== clears || failed) { asked.dropped = true; return; }
+    showKept(opened, asked);
+    // All of it in: this room has everything up to when the Room asked, and what comes live on this socket from now on.
+    if (frame.last && frame.upTo !== undefined && !asked.dropped) {
+      syncedOn = socket;
+      keepHistorySynced(opts.roomId, frame.upTo);
+    }
+  }
+  function showKept(opened: Array<{ m: KeptEntry; o: Awaited<ReturnType<typeof openText>> | Awaited<ReturnType<typeof openFile>>; from: Identity | null }>, asked: Asked): void {
+    const lines_: ChatLine[] = [];
+    const stored: StoredText[] = [];
+    let confirmed = false;
+    let news = 0;
+    for (const { m, o, from } of opened) {
+      const own = m.from.publicKey === opts.identity.publicKey;
+      // My own text the Room took, whether or not it opens here: sending it again cannot help (as a live one, `received`).
+      const i = own && m.t === 'sealed' ? unconfirmed.findIndex((u) => u.id === m.id) : -1;
+      if (i >= 0) { unconfirmed.splice(i, 1); confirmed = true; }
+      if (own && m.t === 'file') setPendingFiles((p) => p.filter((f) => f.id !== m.id));
+      if (!o.ok) {
+        console.warn(`${m.t === 'file' ? 'file' : 'text'} rejected: ${o.reason}`);
+        posthog.capture('text_rejected', { reason: o.reason, writer: m.from.fingerprint, own, sealed_length: m.sealed.length, ...(m.t === 'file' ? { kind: 'file' } : {}), kept: true });
+        continue;
+      }
+      if (!from || seen(m.from.publicKey, m.id)) continue;
+      const id = textKey({ from, at: m.at });
+      if ('file' in o) {
+        lines_.push({ kind: 'file', id, from, file: o.file, at: m.at });
+        stored.push({ from, text: o.file.name, at: m.at, id: m.id, file: o.file });
+        // One the server's history brought pulls by itself as one in this browser's history does: a recent one.
+        void arrived(o.file, m.from.publicKey, Date.now() - m.at < PULL_HISTORY_MS);
+      } else {
+        lines_.push({ kind: 'text', id, from, text: o.text, at: m.at });
+        stored.push({ from, text: o.text, at: m.at, id: m.id });
+      }
+      if (!own) news++;
+    }
+    if (confirmed) unconfirmedChanged();
+    if (!lines_.length) return;
+    setLines((l) => mergeByAt(l, lines_));
+    void appendHistory(opts.roomId, ...stored);
+    // Missed while away: unread, without a chime, a batch arriving at once. New to this browser: not news at all.
+    if (news && asked.came === 'missed') setUnread((n) => n + news);
+  }
+
+  /**
    * A sealed text from the Room: shown and kept if it opens with the room's key and was signed by the friend the Room says
    * sent it. One that does not is dropped with a warning: only a server that tampers, or a client that cheats, sends one.
    */
@@ -753,6 +821,38 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       for (const l of textListeners) l({ from, text: file.name, at: m.at, id: m.id });
     }
   }
+
+  /**
+   * What a socket's `sync` was asked with: `missed` when this browser held some of the room or cleared it, so what comes
+   * is news; `old` when it is new to the room (a new device, a room rejoined). `clears`: how often the history was
+   * cleared here by then; an answer to a sync asked before a clear is not shown after it.
+   */
+  type Asked = { came: 'missed' | 'old'; clears: number; dropped?: true };
+  const asks = new WeakMap<WebSocket, Asked>();
+  /** How often this room's history was cleared here. */
+  let clears = 0;
+  /** The socket whose sync was answered in full and shown: what comes live on it moves `historySynced` on. */
+  let syncedOn: WebSocket | null = null;
+  /**
+   * Asks the server's history (ADR 0009) for what this room got after the newest text this browser has of it, once the
+   * history here is read: after every welcome, so texts sent while the socket was down come too. From where it was
+   * cleared at the earliest (`historyCleared`), so what was cleared stays cleared.
+   */
+  function askHistory(socket: WebSocket): void {
+    void historyLoaded.catch(() => {}).then(() => {
+      if (stopped || welcomed !== socket) return;
+      const newest = newestAt();
+      const cleared = historyClearedAt(opts.roomId);
+      // Nothing held and never cleared: new to this browser, so nothing it brings is news. Cleared, it is.
+      asks.set(socket, { came: newest === null && cleared === null ? 'old' : 'missed', clears });
+      // A room this browser held before the mark was kept: from its newest text, as near as it can know.
+      send({ t: 'sync', since: syncSince(historySyncedTo(opts.roomId) ?? newest, cleared) });
+    });
+  }
+  /** A text or file came live: on a socket synced in full, this room has everything up to it. */
+  const liveKept = (socket: WebSocket, at: number): void => { if (syncedOn === socket && !stopped) keepHistorySynced(opts.roomId, at); };
+  /** The time of the newest text or file shown, by the Room's clock; null for none. */
+  const newestAt = (): number | null => untrack(lines).reduce<number | null>((n, l) => (l.kind !== 'system' && (n === null || l.at > n) ? l.at : n), null);
 
   // A private file to the friend it was for alone, whoever else asks by its hash: their conversation says (`servesPrivate`).
   const links = createLinks({ identity: opts.identity, send: (m) => send(m), serves: async (hash, peer) => {
@@ -1127,6 +1227,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           for (const f of pendingFiles()) if (f.sealed) send({ t: 'file', sealed: f.sealed, id: f.id });
           // Private texts go once the Room's presence lists their friends (`flushPrivate`).
           retryDue();
+          askHistory(socket);
           setStatus({ kind: 'connected' });
           if (everConnected) {
             // No line in the chat about it: the status pill already shows the outage live, and dated lines that stayed
@@ -1151,11 +1252,17 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           sealing = sealing.then(flushPrivate).catch((e: unknown) => console.error('sending private texts failed', e));
           return;
         case 'sealed':
-          opening = opening.then(() => received(m)).catch((e: unknown) => console.error('opening a text failed', e));
+          opening = opening.then(() => received(m)).catch((e: unknown) => console.error('opening a text failed', e)).then(() => liveKept(socket, m.at));
           return;
         case 'file':
-          opening = opening.then(() => receivedFile(m)).catch((e: unknown) => console.error('opening a file failed', e));
+          opening = opening.then(() => receivedFile(m)).catch((e: unknown) => console.error('opening a file failed', e)).then(() => liveKept(socket, m.at));
           return;
+        case 'history': {
+          // What the server kept while this browser was away (ADR 0009), opened in turn with what comes live.
+          const asked = asks.get(socket);
+          if (asked) opening = opening.then(() => receivedKept(m, asked, socket)).catch((e: unknown) => { asked.dropped = true; console.error('opening what the server kept failed', e); });
+          return;
+        }
         case 'private':
           opening = opening.then(() => receivedPrivate(m)).catch((e: unknown) => console.error('opening a private text failed', e));
           return;
@@ -1170,6 +1277,12 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             // chat: an oversized signal once showed as "Not sent" (ticket 30).
             posthog.capture('frame_dropped', { ref: m.ref ?? 'unknown', reason: m.reason });
             if (m.ref === 'link' || m.ref === 'linkice') return; // the pull that sent it times out and says so
+            if (m.ref === 'sync') {
+              // Too many frames at once (a reconnect sends all that waited first): asked again in a moment. Asked too soon
+              // after another: that one brings what there is.
+              if (m.reason === 'rate limited') setTimeout(() => askHistory(socket), RATE_RETRY_MS);
+              return;
+            }
             if (m.ref === 'private') {
               // Named by its id: private texts go to different friends, so the Room's order says nothing about which.
               opening = opening.then(() => {
@@ -1425,8 +1538,14 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       sendPrivate(to, text);
       return true;
     },
-    /** Empties the local history; the server never had it. */
-    clearHistory: async () => { await clearHistory(opts.roomId); setLines([]); setUnread(() => 0); },
+    /** Empties the local history; the server's (ADR 0009) is asked for what comes after this moment only, from now on. */
+    clearHistory: async () => {
+      // The newest text's time, by the Room's clock, which a sync asks by: this browser's own may run ahead or behind.
+      clears++;
+      await clearHistory(opts.roomId, newestAt() ?? Date.now());
+      setLines([]);
+      setUnread(() => 0);
+    },
     /** The room is forgotten in this browser: nothing of it is unread any more. */
     forgetUnread: () => { setUnread(() => 0); unreadLeft = true; },
     /** Dev aid for scripts/drive.mjs: drops the socket so the reconnect path runs. */

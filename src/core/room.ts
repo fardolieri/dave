@@ -3,9 +3,10 @@
 // Everything here is plain data plus WebCrypto, so it survives hibernation.
 // No Cloudflare, Node, or DOM imports; scripts/check-core-isolation.mjs enforces that.
 import { fromBase64Url, fingerprint, randomNonce, toBase64Url, verifyAnswer } from './identity';
-import { APP_OUT_OF_DATE, CLOSE_AUTH_FAILED, CLOSE_OUT_OF_DATE, OUT_OF_DATE, parseClientMessage, wireIdentityOf, type ClientMessage, type IceServer, type RefType, type ServerMessage, type TextId, type WirePerson as Person } from './protocol';
+import { APP_OUT_OF_DATE, CLOSE_AUTH_FAILED, CLOSE_OUT_OF_DATE, OUT_OF_DATE, parseClientMessage, wireIdentityOf, type ClientMessage, type IceServer, type KeptEntry, type RefType, type ServerMessage, type TextId, type WirePerson as Person } from './protocol';
 import { SIGNAL_BURST, SIGNAL_RATE_PER_SECOND, newBucket, takeToken, type Bucket } from './ratelimit';
 import { LINK_ICE_TTL_SECONDS, nextJoinSeq } from './mesh';
+import { SYNC_COOLDOWN_MS, SYNC_MAX, historyFrames } from './kept';
 
 export const MAX_AUTH_ATTEMPTS = 3;
 /** A socket that has not answered its challenge within this window is closed by the sweep. */
@@ -19,7 +20,7 @@ export type SocketState =
    * included (`takeOverTurn`); revoked when she leaves the call, and by nothing else. `joins`: how many times this
    * socket joined the call, so a TURN user minted for an earlier join is told from the call's (settleTurnUser).
    */
-  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; linkBucket?: Bucket; linkIceAt?: number; attachedAt: number; turnUsers?: string[]; joins?: number; telemetry?: true }
+  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; linkBucket?: Bucket; linkIceAt?: number; syncAt?: number; attachedAt: number; turnUsers?: string[]; joins?: number; telemetry?: true }
   /**
    * Told to close (superseded, silent too long, errored) or closed, but still attached until the runtime finishes the handshake; invisible meanwhile.
    * `attachedAt` as it was when attached, for the log of its close (worker/room.ts); none in sockets from before it was kept.
@@ -58,6 +59,8 @@ export type Outcome = {
    * `telemetry` is the sender's PostHog opt-in (ticket 32): without it the adapter logs, but sends nothing to PostHog.
    */
   rejected?: { from: string; reason: string; ref?: RefType; length: number; telemetry: boolean };
+  /** A text or file announcement went out to the room: the adapter hands it to the server's history (ADR 0009). */
+  keep?: KeptEntry;
 };
 
 export type RoomContext = {
@@ -69,6 +72,11 @@ export type RoomContext = {
   others: Iterable<Person>;
   /** Mints ICE servers (TURN credentials) for a participant, or for a file link with a shorter life. Provided by the adapter. */
   mintIce: (ttlSeconds?: number) => Promise<{ iceServers: IceServer[]; turnUser: string | null }>;
+  /**
+   * The room's kept entries the server took after `since`, the newest `max` of them, oldest first (ADR 0009); null when it
+   * could not say. Provided by the adapter; none where nothing is kept (core tests), which answers every sync with none.
+   */
+  history?: (since: number, max: number) => Promise<KeptEntry[] | null>;
 };
 
 /** ICE servers minted for the socket's join number `forJoin` (SocketState `joins`); `turnUser` null when STUN only. */
@@ -221,11 +229,18 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     case 'ping':
       // Normally answered by the hibernation auto-response before reaching here.
       return { state: next, replies: [{ t: 'pong' }] };
-    case 'sealed': {
-      return { state: next, replies: [], broadcast: [{ t: 'sealed', from: wireIdentityOf(state.person), sealed: msg.sealed, at: ctx.now, id: msg.id }] };
-    }
+    case 'sealed':
     case 'file': {
-      return { state: next, replies: [], broadcast: [{ t: 'file', from: wireIdentityOf(state.person), sealed: msg.sealed, at: ctx.now, id: msg.id }] };
+      const m: KeptEntry = { t: msg.t, from: wireIdentityOf(state.person), sealed: msg.sealed, at: ctx.now, id: msg.id };
+      return { state: next, replies: [], broadcast: [m], keep: m };
+    }
+    case 'sync': {
+      // One per welcome is all a client asks; more often is a loop, or a friend reading the free plan's rows away.
+      if (state.syncAt !== undefined && ctx.now - state.syncAt < SYNC_COOLDOWN_MS) return { state: next, replies: [error('asked too soon', 'sync')] };
+      const { since } = msg;
+      const history = ctx.history;
+      const now = ctx.now;
+      return { state: { ...next, syncAt: now }, replies: [], after: async () => ({ replies: historyFrames(history ? await history(since, SYNC_MAX) : [], now), minted: null }) };
     }
     case 'private': {
       // To one friend here, and back to its writer, who learns it went out (ADR 0007). Nobody else hears of it.

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { expect, newSecret, test, openRoomMenu } from './fixtures';
 
-// Text chat as it works today (server relay, history per browser). These tests pin the behaviour friends see, so they
+// Text chat as it works today (server relay, history per browser, and what the server keeps for those away: ADR 0009). These tests pin the behaviour friends see, so they
 // must keep passing through any change to the transport underneath.
 
 test('a text reaches everyone in the room, once, with the sender name', async ({ crowd }) => {
@@ -215,7 +215,7 @@ test('received history survives a reload, and "Clear chat history" empties it', 
   expect(await alice.chatTexts()).toEqual(['one', 'two']);
 });
 
-test('leaving a room forgets its history: the link brings the room back, not the lines', async ({ crowd }) => {
+test('leaving a room forgets its history in this browser: the link brings the room back, and what the server keeps of it', async ({ crowd }) => {
   const other = { secret: newSecret(), name: 'Other' };
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob', { rooms: [crowd.room, other] });
@@ -233,9 +233,75 @@ test('leaving a room forgets its history: the link brings the room back, not the
   await bob.page.goto(`/#${crowd.room.secret}/${encodeURIComponent(crowd.room.name)}`);
   await bob.connected();
   await expect(bob.selectedRoom.locator('.room-title')).toHaveText(crowd.room.name);
-  // A live line after the rejoin: the history, loaded first, would have come before it.
+  // The server's history (ADR 0009) brings the text back; a live line goes after it.
+  await expect.poll(() => bob.chatTexts()).toEqual(['before']);
   await alice.say('after');
-  await expect.poll(() => bob.chatTexts()).toEqual(['after']);
+  await expect.poll(() => bob.chatTexts()).toEqual(['before', 'after']);
+});
+
+test('ADR 0009: a friend away, or on a new device, gets the texts and files sent meanwhile from the server, in order, counted unread without a chime', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice');
+  await alice.say('before anyone came');
+  await alice.attach({ name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('zip') });
+  await alice.say('after the file');
+  // Bob's browser has never seen the room: the server brings what it keeps, nothing unread, as he had nothing of it yet.
+  const bob = await crowd.open('Bob', { rooms: [crowd.room, other] });
+  await expect.poll(() => bob.page.locator('.chat-log .att-card .att-name').allTextContents()).toEqual(['notes.zip']);
+  await expect.poll(() => bob.storedTexts()).toEqual(['before anyone came', 'notes.zip', 'after the file']);
+  // Away: his socket is down while Alice writes, and his room is not on screen.
+  await bob.selectRoom('Other');
+  const unread = bob.page.locator('button.room-name', { hasText: crowd.room.name }).locator('.unread');
+  await expect(unread).toHaveCount(0);
+  await bob.wire.cut();
+  await alice.say('while you were out');
+  await alice.say('and this');
+  const cues = await bob.cues();
+  bob.wire.restore();
+  await bob.connected();
+  await expect(unread).toHaveText('2');
+  expect(await bob.cues(), 'texts the server brought do not chime').toBe(cues);
+  await bob.selectRoom(crowd.room.name);
+  // In order by the Room's clock, each once, over a reload too.
+  await expect.poll(() => bob.storedTexts()).toEqual(['before anyone came', 'notes.zip', 'after the file', 'while you were out', 'and this']);
+  await bob.page.reload();
+  await bob.connected();
+  await alice.say('live again');
+  await expect.poll(() => bob.storedTexts()).toEqual(['before anyone came', 'notes.zip', 'after the file', 'while you were out', 'and this', 'live again']);
+  await expect(bob.page.locator('.chat-log .att-card .att-name')).toHaveText(['notes.zip']);
+});
+
+test('ADR 0009, 0010: a new device shows a writer who has gone by the name the server kept, sealed, with the text', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  await alice.say('left for you');
+  await expect.poll(() => alice.storedTexts()).toEqual(['left for you']);
+  await alice.page.close();
+  // Bob never met Alice: no presence, no address book. Only the entry's tag can say who wrote it.
+  const bob = await crowd.open('Bob');
+  await expect.poll(() => bob.chat()).toEqual([{ from: 'Alice', text: 'left for you' }]);
+});
+
+test('ADR 0009: an answer from the server lost on the way is asked again on the next connect, though live texts came meanwhile', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.say('first');
+  await expect.poll(() => bob.chatTexts()).toEqual(['first']);
+  await bob.wire.cut();
+  await alice.say('missed');
+  // Bob's next socket loses what the server kept; a live text comes on it all the same.
+  bob.wire.down = (frame) => (frame.includes('"t":"history"') ? null : frame);
+  bob.wire.restore();
+  await bob.connected();
+  await expect.poll(() => bob.wire.frames('up', 'sync').length).toBeGreaterThanOrEqual(2);
+  await alice.say('live');
+  await expect.poll(() => bob.chatTexts()).toEqual(['first', 'live']);
+  // The next socket's sync asks from before what was lost, not from the live text.
+  bob.wire.down = null;
+  await bob.wire.cut();
+  bob.wire.restore();
+  await bob.connected();
+  await expect.poll(() => bob.chatTexts()).toEqual(['first', 'missed', 'live']);
+  await expect.poll(() => bob.storedTexts()).toEqual(['first', 'missed', 'live']);
 });
 
 test('texts from more than 18 h before the room came on screen wait behind a button, folded again each time it does', async ({ crowd }) => {

@@ -119,6 +119,11 @@ export type ClientMessage =
    */
   | { t: 'private'; to: string; sealed: string; id: TextId; file?: true }
   | { t: 'text'; text: string; id?: TextId }
+  /**
+   * Ask for the room's texts and file announcements the server keeps (ADR 0009) that it took after `since` (the Room's
+   * clock, ms), the newest SYNC_MAX of them. Asked after every welcome; the answer is one or more `history` frames.
+   */
+  | { t: 'sync'; since: number }
   /** Enter the Call (or re-declare after a server reconnect). */
   /** `sharing` lets a re-join after a server reconnect keep an ongoing share visible to everyone. */
   /** `id` names the request; the answer repeats it (see RequestId). */
@@ -146,6 +151,9 @@ export type ClientMessage =
   /** Ask a sharer to start or stop sending me their share; `scale` asks for a downscaled encoding (small screens). */
   | { t: 'subscribe'; to: string; on: boolean; scale?: number };
 
+/** A text or a file's announcement as the Room broadcast it, and as the server keeps it for those who were away (ADR 0009). */
+export type KeptEntry = { t: 'sealed' | 'file'; from: WireIdentity; sealed: string; at: number; id: TextId };
+
 export type ServerMessage =
   /** `fresh`: nobody has entered this room yet, so the answer must carry the auth key derived from the secret. */
   | { t: 'challenge'; nonce: string; fresh?: true }
@@ -163,6 +171,13 @@ export type ServerMessage =
    * private text key as the Room has it, so the friend can open it after the writer is gone from presence.
    */
   | { t: 'private'; from: WireIdentity; to: string; key?: PrivateTextKey; sealed: string; at: number; id: TextId; file?: true }
+  /**
+   * What the server keeps of this room (ADR 0009), as each frame was broadcast, oldest first: the answer to a `sync`, in
+   * frames of at most SYNC_FRAME_BYTES. On the answer's last frame, `upTo`: the Room's clock when it asked; everything
+   * kept before is in the answer (the newest SYNC_MAX of it), and what comes after comes live. `unavailable` instead,
+   * with no entries, when the server could not say (its daily share used up, the Store failing): not that nothing came.
+   */
+  | { t: 'history'; entries: KeptEntry[]; last?: true; upTo?: number; unavailable?: true }
   /** Reply to join: your place in the Call and the ICE servers to build peer connections with. */
   | { t: 'call'; joinSeq: number; iceServers: IceServer[]; issuedAt: number; id?: RequestId }
   /** A participant left on purpose; peers close that connection at once. A vanished socket only drops out of presence. */
@@ -257,7 +272,7 @@ export type RefType = ClientMessage['t'] | 'name' | 'picture';
 export type Invalid = { t: 'invalid'; reason: string; ref?: RefType; id?: TextId };
 const invalid = (reason: string): Invalid => ({ t: 'invalid', reason });
 
-const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'sealed', 'file', 'private', 'link', 'linkice', 'text', 'join', 'leave', 'mute', 'profile', 'signal', 'ice', 'share', 'subscribe', 'telemetry']);
+const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'sealed', 'file', 'private', 'link', 'linkice', 'text', 'join', 'leave', 'mute', 'profile', 'signal', 'ice', 'share', 'subscribe', 'telemetry', 'sync']);
 /** A sealed profile as the parser takes it: base64url, no longer than a client writes. */
 const isSealedProfile = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= MAX_SEALED_PROFILE_LENGTH && B64URL.test(v);
 const isClientType = (v: unknown): v is ClientMessage['t'] => typeof v === 'string' && CLIENT_TYPES.has(v);
@@ -410,6 +425,8 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
     }
     case 'linkice':
       return isRequestId(m.id) ? { t: 'linkice', id: m.id } : invalid('unrecognised message');
+    case 'sync':
+      return Number.isSafeInteger(m.since) && (m.since as number) >= 0 ? { t: 'sync', since: m.since as number } : invalid('unrecognised message');
     case 'text':
       return invalid(OUT_OF_DATE);
     default:

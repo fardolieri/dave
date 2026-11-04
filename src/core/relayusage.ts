@@ -80,8 +80,9 @@ export function formatBytes(bytes: number): string {
 }
 
 /** "14.1 GB of 1 TB (1.4%)": the share rounded to a tenth below 10 %, then whole. */
-export function formatRelayUsage(u: RelayUsage): string {
-  const pct = (u.bytes / u.limit) * 100;
+export function formatShare(bytes: number, of: number): string {
+  const pct = (bytes / of) * 100;
   const shown = pct > 0 && pct < 0.1 ? '<0.1' : pct < 10 ? (Math.round(pct * 10) / 10).toString() : Math.round(pct).toString();
-  return `${formatBytes(u.bytes)} of ${formatBytes(u.limit)} (${shown}%)`;
+  return `${formatBytes(bytes)} of ${formatBytes(of)} (${shown}%)`;
 }
+export const formatRelayUsage = (u: RelayUsage): string => formatShare(u.bytes, u.limit);
