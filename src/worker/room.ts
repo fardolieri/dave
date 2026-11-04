@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import { CHALLENGE_TIMEOUT_MS, challengeExpired, onMessage, openSocket, presenceSnapshot, settleTurnUser, MAX_TURN_USERS, type Outcome, type SocketState } from '../core/room';
-import { CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, PING_FRAME, PONG_FRAME, type Person, type ServerMessage } from '../core/protocol';
+import { CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, PING_FRAME, PONG_FRAME, type ServerMessage, type WirePerson as Person } from '../core/protocol';
 import { ICE_TTL_SECONDS } from '../core/mesh';
 import { mintIceServers, revokeIce } from './turn';
 import { logRejected } from './telemetry';

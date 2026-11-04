@@ -8,13 +8,13 @@ import { env } from 'cloudflare:workers';
 import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateIdentityKeyPair } from '../src/core/identity';
-import { CLOSE_SUPERSEDED, type Person, type ServerMessage } from '../src/core/protocol';
+import { CLOSE_SUPERSEDED, type WirePerson as Person, type ServerMessage } from '../src/core/protocol';
 import { ICE_TTL_SECONDS } from '../src/core/mesh';
 import type { SocketState } from '../src/core/room';
 import { roomIdOf } from '../src/core/rooms';
 import { CLOSE_SILENT, SILENT_TIMEOUT_MS, type Room } from '../src/worker/room';
 import { mintIceServers, revokeIce } from '../src/worker/turn';
-import { authFrame, openRoomSocket, type Challenge, type Keys } from './harness';
+import { authFrame, nameOf, openRoomSocket, type Challenge, type Keys } from './harness';
 
 vi.mock('../src/worker/turn', () => ({ mintIceServers: vi.fn(), revokeIce: vi.fn() }));
 
@@ -47,7 +47,7 @@ async function attach(secret: string, name: string, keys?: Keys): Promise<Client
 }
 
 const send = (c: Client, m: object) => c.ws.send(JSON.stringify(m));
-const names = (m: ServerMessage) => (m as { people: Person[] }).people.map((p) => p.name).sort();
+const names = (m: ServerMessage) => (m as { people: Person[] }).people.map((p) => nameOf(p.profile)).sort();
 const roomOf = async (secret: string) => env.ROOM.get(env.ROOM.idFromName(await roomIdOf(secret)));
 /**
  * A round trip through the Room: everything it was sent before has been handled, and what it sent back has arrived. A text,

@@ -24,6 +24,10 @@ _Avoid_: Room key, chat password
 A text as it travels: encrypted with the text key and signed by its writer, so the server passes it on without being able to read or forge it.
 _Avoid_: Encrypted message (in UI copy), ciphertext (fine in code)
 
+**Profile**:
+The name and picture a friend shows, sealed with the room's text key and signed by their identity, so the server lists and passes on what it cannot read (ADR 0010). Each friend's app opens it.
+_Avoid_: Account, user info
+
 **Private text**:
 A text to one friend, sealed so that only the two of them can read it, and relayed by a Room the two share to that friend alone. Live, like any text (ADR 0007).
 _Avoid_: DM, whisper, direct message (in UI copy)

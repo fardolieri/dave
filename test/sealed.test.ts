@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { exportPublicKey, fromBase64Url, generateIdentityKeyPair, toBase64Url } from '../src/core/identity';
-import { MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_TEXT_LENGTH } from '../src/core/protocol';
+import { MAX_NAME_LENGTH, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_SEALED_PROFILE_LENGTH, MAX_TEXT_LENGTH } from '../src/core/protocol';
 import { MAX_FILE_NAME, MAX_PREVIEW_LENGTH, type FileMeta } from '../src/core/attachment';
 import { roomIdOf, textKeyOf } from '../src/core/rooms';
-import { generatePrivateTextKeyPair, openFile, openPrivate, openPrivateFile, openText, sealFile, sealPrivate, sealPrivateFile, sealText, sharedPrivateTextKey, signPrivateTextKey, verifyPrivateTextKey } from '../src/core/sealed';
+import { generatePrivateTextKeyPair, openFile, openPrivate, openPrivateFile, openProfile, openText, sealFile, sealProfile, sealPrivate, sealPrivateFile, sealText, sharedPrivateTextKey, signPrivateTextKey, verifyPrivateTextKey } from '../src/core/sealed';
 
 async function writer() {
   const keys = await generateIdentityKeyPair();
@@ -187,4 +187,48 @@ describe('private texts (ADR 0007)', async () => {
     expect((await toBob('€'.repeat(MAX_TEXT_LENGTH))).length).toBeLessThanOrEqual(MAX_SEALED_LENGTH);
     expect(await asBob(await toBob('  '))).toEqual({ ok: false, reason: 'invalid text' });
   });
+});
+
+describe('sealed profiles (ADR 0010)', async () => {
+  const key = await textKeyOf('a secret');
+  const roomId = await roomIdOf('a secret');
+  const alice = await writer();
+  const bob = await writer();
+  const profile = { name: 'Alice', picture: '🦕' };
+  const seal = (p: object = profile, over: Partial<Parameters<typeof sealProfile>[0]> = {}) => sealProfile({ key, roomId, ...alice, profile: p as typeof profile, ...over });
+  const open = (sealed: string, over: Partial<Parameters<typeof openProfile>[0]> = {}) => openProfile({ key, roomId, from: alice.from, sealed, ...over });
+
+  it('round-trips a name and picture, and shows neither on the wire', async () => {
+    const sealed = await seal();
+    expect(await open(sealed)).toEqual(profile);
+    expect(await open(await seal({ name: 'Alice' }))).toEqual({ name: 'Alice' });
+    expect(new TextDecoder().decode(fromBase64Url(sealed)!)).not.toContain('Alice');
+    expect(sealed).not.toContain('Alice');
+  });
+
+  it('opens only in its room, under its writer, and not as a text', async () => {
+    const sealed = await seal();
+    expect(await open(sealed, { roomId: await roomIdOf('another') })).toBeNull();
+    expect(await open(sealed, { key: await textKeyOf('another') })).toBeNull();
+    expect(await open(sealed, { from: bob.from }), 'listed under another identity').toBeNull();
+    expect(await openText({ key, roomId, id: 'profile', from: alice.from, sealed })).toMatchObject({ ok: false });
+    // Bob seals a profile with his own key and the server lists it under Alice: refused.
+    expect(await open(await seal(profile, { privateKey: bob.privateKey }))).toBeNull();
+  });
+
+  it('refuses a name or picture the composer would not make: the server can no longer check them', async () => {
+    for (const bad of [{ name: '  Alice ' }, { name: '' }, { name: 'x'.repeat(MAX_NAME_LENGTH + 1) }, { name: 'Alice', picture: 'ab' }, {}, { name: 7 }]) {
+      expect(await open(await seal(bad)), JSON.stringify(bad)).toBeNull();
+    }
+  });
+
+  it('the longest profile a client can write stays within what the Room takes', async () => {
+    // JSON escapes a control character to six bytes, the most one character can take.
+    for (const name of ['\u0001'.repeat(MAX_NAME_LENGTH), '"'.repeat(MAX_NAME_LENGTH), '😀'.repeat(MAX_NAME_LENGTH / 2)]) {
+      const sealed = await seal({ name, picture: '👨‍👩‍👧‍👦' });
+      expect(sealed.length, JSON.stringify(name)).toBeLessThanOrEqual(MAX_SEALED_PROFILE_LENGTH);
+      expect(await open(sealed), 'and it opens').toEqual({ name, picture: '👨‍👩‍👧‍👦' });
+    }
+  });
+
 });

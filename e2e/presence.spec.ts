@@ -172,8 +172,10 @@ test('a new name and picture chosen during the handshake reach everyone', async 
   await alice.wire.cut();
   alice.wire.restore();
   await expect.poll(() => held.welcome !== undefined, { message: 'Alice\'s socket is back and its welcome held' }).toBe(true);
-  const auths = alice.wire.frames('up', 'auth');
-  expect(auths.at(-1)).toMatchObject({ name: 'Alice', picture: '😀' });
+  const auths = alice.wire.frames<{ profile?: string }>('up', 'auth');
+  // The old name and picture, sealed (ADR 0010): the server sees neither.
+  expect(typeof auths.at(-1)!.profile).toBe('string');
+  expect(auths.at(-1)).not.toHaveProperty('name');
 
   await alice.page.locator('.profile-edit button.on').click();
   await alice.page.locator('.profile').getByRole('button', { name: 'remove the picture' }).click();

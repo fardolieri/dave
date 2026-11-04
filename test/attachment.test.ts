@@ -3,7 +3,7 @@ import {
   AUTO_PULL_BYTES, MAX_FILE_BYTES, MAX_PREVIEW_LENGTH, WHOLE_FILE_MAX, listHash, parsePartialPull, formatSize, inlineKind, keepWithin, parseFileIndex, parseFileMeta, parsePullFrame, pastedImageUrl, pullsByItself,
   type FileMeta,
 } from '../src/core/attachment';
-import { MAX_SEALED_FILE_LENGTH, parseClientMessage, type Person } from '../src/core/protocol';
+import { MAX_SEALED_FILE_LENGTH, parseClientMessage, type WirePerson as Person } from '../src/core/protocol';
 import { onMessage, type RoomContext, type SocketState } from '../src/core/room';
 import { LINK_ICE_TTL_SECONDS } from '../src/core/mesh';
 import { newBucket } from '../src/core/ratelimit';
@@ -119,14 +119,14 @@ describe('files and file links on the wire (ADR 0006)', () => {
 });
 
 describe('the Room and files (ADR 0006)', () => {
-  const person = (publicKey: string, role: Person['role'] = 'visitor'): Person => ({ publicKey, fingerprint: 'f', name: publicKey, role, joinSeq: role === 'participant' ? 1 : null, sharing: false, muted: false });
+  const person = (publicKey: string, role: Person['role'] = 'visitor'): Person => ({ publicKey, fingerprint: 'f', profile: 'cHJvZmlsZQ', role, joinSeq: role === 'participant' ? 1 : null, sharing: false, muted: false });
   const alice: SocketState = { stage: 'attached', person: person('k-alice'), bucket: newBucket(0), attachedAt: 0 };
   const ttls: Array<number | undefined> = [];
   const ctx = (others: Person[]): RoomContext => ({ authKey: 'a', now: 5, others, mintIce: async (ttl) => { ttls.push(ttl); return { iceServers: [{ urls: 'turn:x' }], turnUser: 'u1' }; } });
 
   it('passes an announcement on to everyone, tagged like a text, without reading it', async () => {
     const out = await onMessage(alice, JSON.stringify({ t: 'file', sealed: 'c2Vh', id: 'a1b2' }), ctx([]));
-    expect(out.broadcast).toEqual([{ t: 'file', from: { publicKey: 'k-alice', fingerprint: 'f', name: 'k-alice' }, sealed: 'c2Vh', at: 5, id: 'a1b2' }]);
+    expect(out.broadcast).toEqual([{ t: 'file', from: { publicKey: 'k-alice', fingerprint: 'f', profile: 'cHJvZmlsZQ' }, sealed: 'c2Vh', at: 5, id: 'a1b2' }]);
   });
 
   it('relays link signaling between visitors, and to nobody absent or to oneself', async () => {

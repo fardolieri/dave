@@ -3,10 +3,10 @@ import { runInDurableObject } from 'cloudflare:test';
 import { Room } from '../src/worker/room';
 import { describe, expect, it, vi } from 'vitest';
 import { generateIdentityKeyPair } from '../src/core/identity';
-import { CLOSE_SUPERSEDED, MAX_SEALED_LENGTH, OUT_OF_DATE, PING_FRAME, PONG_FRAME, type Person, type ServerMessage } from '../src/core/protocol';
+import { APP_OUT_OF_DATE, CLOSE_OUT_OF_DATE, CLOSE_SUPERSEDED, MAX_SEALED_LENGTH, OUT_OF_DATE, PING_FRAME, PONG_FRAME, type WirePerson as Person, type ServerMessage } from '../src/core/protocol';
 import { BURST } from '../src/core/ratelimit';
 import { roomIdOf } from '../src/core/rooms';
-import { authFrame, openRoomSocket, type Challenge } from './harness';
+import { authFrame, nameOf, openRoomSocket, pictureOf as sealedPicture, sealProfileFor, type Challenge } from './harness';
 
 const SECRET = 'presence-test-room';
 
@@ -40,12 +40,14 @@ async function attach(name: string, picture?: string, keys?: Keys, secret = SECR
 /** A sealed text as the Room sees one: base64url it cannot read (core/sealed.ts). */
 const sealed = (id: string, sealed = 'c2VhbGVk') => JSON.stringify({ t: 'sealed', sealed, id });
 
-const names = (m: ServerMessage) => (m as { people: Person[] }).people.map((p) => p.name).sort();
+const names = (m: ServerMessage) => (m as { people: Person[] }).people.map((p) => nameOf(p.profile)).sort();
 
 describe('presence', () => {
   it('welcomes as a visitor and broadcasts a full snapshot on every join and leave', async () => {
     const a = await attach('Alice');
-    expect(a.you).toMatchObject({ name: 'Alice', role: 'visitor', joinSeq: null, sharing: false, muted: false });
+    expect(a.you).toMatchObject({ role: 'visitor', joinSeq: null, sharing: false, muted: false });
+    expect(nameOf(a.you.profile)).toBe('Alice');
+    expect(a.you, 'the server has the name sealed only (ADR 0010)').not.toHaveProperty('name');
     expect(names(await a.next((m) => m.t === 'presence'))).toContain('Alice');
 
     const b = await attach('Bob');
@@ -78,41 +80,45 @@ describe('presence', () => {
     a2.ws.close(1000, 'bye');
   });
 
-  it('a name change reaches everyone through presence and tags later texts; blank names are refused', async () => {
+  it('a new profile (ADR 0010) reaches everyone through presence and tags later texts; a name or picture in plain is refused as from an app out of date', async () => {
     const a = await attach('Alice');
-    const b = await attach('Bob');
-    b.ws.send(JSON.stringify({ t: 'name', name: '  Robert  ' }));
+    const b = await attach('Bob', '🐱');
+    b.ws.send(JSON.stringify({ t: 'profile', profile: await sealProfileFor(b.keys, SECRET, 'Robert', '🦖') }));
     const seen = await a.next((m) => m.t === 'presence' && names(m).includes('Robert'));
     expect(names(seen)).toEqual(['Alice', 'Robert']);
     b.ws.send(sealed('hi'));
-    expect(((await a.next((m) => m.t === 'sealed')) as unknown as { from: Person }).from.name).toBe('Robert');
-    b.ws.send(JSON.stringify({ t: 'name', name: '   ' }));
-    expect(await b.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'invalid name', ref: 'name' });
+    const tagged = (await a.next((m) => m.t === 'sealed')) as Extract<ServerMessage, { t: 'sealed' }>;
+    expect([nameOf(tagged.from.profile), sealedPicture(tagged.from.profile)]).toEqual(['Robert', '🦖']);
+    b.ws.send(JSON.stringify({ t: 'name', name: 'Robert' }));
+    expect(await b.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: APP_OUT_OF_DATE, ref: 'name' });
+    b.ws.send(JSON.stringify({ t: 'picture', picture: '🦖' }));
+    expect(await b.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: APP_OUT_OF_DATE, ref: 'picture' });
+    b.ws.send(JSON.stringify({ t: 'profile', profile: 'not base64!' }));
+    expect(await b.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'unrecognised message', ref: 'profile' });
     a.ws.close(1000, 'bye');
     b.ws.close(1000, 'bye');
   });
 
-  it('a profile picture arrives with auth, changes through presence, tags texts, and clears to nothing; non-emoji are refused', async () => {
-    const a = await attach('Alice', '🐱');
-    expect(a.you.picture).toBe('🐱');
-    const b = await attach('Bob');
-    expect(b.you.picture).toBeUndefined();
-    const pictureOf = (m: ServerMessage, name: string) => (m as { people: Person[] }).people.find((p) => p.name === name)?.picture ?? null;
-    b.ws.send(JSON.stringify({ t: 'picture', picture: '🦖' }));
-    const seen = await a.next((m) => m.t === 'presence' && pictureOf(m, 'Bob') === '🦖');
-    expect(pictureOf(seen, 'Alice')).toBe('🐱');
-    b.ws.send(sealed('rawr'));
-    expect(((await a.next((m) => m.t === 'sealed')) as unknown as { from: Person }).from.picture).toBe('🦖');
-    b.ws.send(JSON.stringify({ t: 'picture', picture: null }));
-    // Bob present and without the key, not merely absent (earlier snapshots from before he attached are still queued).
-    const bobs = (m: ServerMessage) => (m.t === 'presence' ? m.people.filter((p) => p.name === 'Bob') : []);
-    const cleared = await a.next((m) => bobs(m).length === 1 && !('picture' in bobs(m)[0]!));
-    expect(bobs(cleared)[0]).not.toHaveProperty('picture');
-    b.ws.send(JSON.stringify({ t: 'picture', picture: 'Bob' }));
-    expect(await b.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'invalid picture', ref: 'picture' });
+  it('an auth with a name in plain, an app from before ADR 0010, is closed for it to try again later, and nobody hears the name', async () => {
+    const secret = 'presence-old-app-room';
+    const a = await attach('Alice', undefined, undefined, secret);
+    const ws = await openRoomSocket(secret);
+    const frames: ServerMessage[] = [];
+    ws.addEventListener('message', (e) => frames.push(JSON.parse(e.data as string) as ServerMessage));
+    const closed = new Promise<number>((resolve) => ws.addEventListener('close', (e) => resolve((e as CloseEvent).code)));
+    while (!frames.some((m) => m.t === 'challenge')) await new Promise((r) => setTimeout(r, 10));
+    const keys = await generateIdentityKeyPair();
+    const { profile: _sealed, ...auth } = await authFrame(frames.find((m) => m.t === 'challenge') as Challenge, keys, secret, 'Old');
+    ws.send(JSON.stringify({ ...auth, name: 'Old' }));
+    // Closed, not refused: such an app takes a refusal for a wrong invite link and stops for good.
+    expect(await closed).toBe(CLOSE_OUT_OF_DATE);
+    expect(frames.map((m) => m.t)).toEqual(['challenge']);
+    a.ws.send(sealed('still-alone'));
+    await a.next((m) => m.t === 'sealed');
+    expect(a.inbox.filter((m) => m.t === 'presence').every((m) => names(m).length === 1)).toBe(true);
     a.ws.close(1000, 'bye');
-    b.ws.close(1000, 'bye');
   });
+
 
   it('rooms are separate: presence and text in one never reach another', async () => {
     const a = await attach('Alice');
@@ -174,9 +180,10 @@ describe('text', () => {
     const seenByA = (await a.next((m) => m.t === 'sealed')) as unknown as { from: Person; sealed: string; id: string; at: number };
     const seenByB = (await b.next((m) => m.t === 'sealed')) as unknown as { from: Person };
     expect(seenByA).toMatchObject({ sealed: 'b3BhcXVl', id: 'c0ffee' });
-    expect(seenByA.from).toEqual({ publicKey: b.you.publicKey, fingerprint: b.you.fingerprint, name: 'Bob' });
+    expect(seenByA.from).toEqual({ publicKey: b.you.publicKey, fingerprint: b.you.fingerprint, profile: b.you.profile });
+    expect(nameOf(seenByA.from.profile)).toBe('Bob');
     expect(typeof seenByA.at).toBe('number');
-    expect(seenByB.from.name).toBe('Bob');
+    expect(nameOf(seenByB.from.profile)).toBe('Bob');
     a.ws.close(1000, 'bye');
     b.ws.close(1000, 'bye');
   });
@@ -190,7 +197,7 @@ describe('text', () => {
     a.ws.send(JSON.stringify({ t: 'private', to: b.you.publicKey, sealed: 'b3BhcXVl', id: 'c0ffee' }));
     const toBob = await b.next((m) => m.t === 'private');
     const back = await a.next((m) => m.t === 'private');
-    expect(toBob).toMatchObject({ t: 'private', from: { publicKey: a.you.publicKey, fingerprint: a.you.fingerprint, name: 'Alice' }, to: b.you.publicKey, key: privateTexts, sealed: 'b3BhcXVl', id: 'c0ffee' });
+    expect(toBob).toMatchObject({ t: 'private', from: { publicKey: a.you.publicKey, fingerprint: a.you.fingerprint, profile: a.you.profile }, to: b.you.publicKey, key: privateTexts, sealed: 'b3BhcXVl', id: 'c0ffee' });
     expect(back).toEqual(toBob);
     // Carol hears of the next text to the room, and of nothing before it.
     a.ws.send(sealed('after'));

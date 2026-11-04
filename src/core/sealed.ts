@@ -15,9 +15,13 @@
 // bytes and the additional data, and under a key only the two of them have: ECDH between the private text keys of the
 // two browsers (`sharedPrivateTextKey`), each browser's own and published signed by its identity key (`signPrivateTextKey`).
 //
+// A friend's profile (ADR 0010), the name and picture friends see, is sealed the same way under `dave profile v1`, with the
+// room's text key, under the id `profile`: the server passes on and lists what it cannot read, and a friend opens it
+// and checks that the identity it is listed under wrote it.
+//
 // WebCrypto only; runs unchanged in browsers, workerd and Node.
 import { fromBase64Url, importPublicKey, signBytes, toBase64Url, verifyBytes } from './identity';
-import { MAX_TEXT_LENGTH } from './protocol';
+import { MAX_TEXT_LENGTH, normaliseName, normalisePicture } from './protocol';
 import { MAX_FILE_BODY_BYTES, parseFileMeta, type FileMeta } from './attachment';
 
 const DOMAIN = 'dave text v1';
@@ -25,6 +29,8 @@ const FILE_DOMAIN = 'dave file v1';
 const PRIVATE_DOMAIN = 'dave private v1';
 const PRIVATE_FILE_DOMAIN = 'dave private file v1';
 const PRIVATE_TEXT_KEY_DOMAIN = 'dave private text key v1';
+const PROFILE_DOMAIN = 'dave profile v1';
+const PROFILE_ID = 'profile';
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 const SIGNATURE_BYTES = 64; // ECDSA P-256 as WebCrypto writes it: r || s
@@ -168,6 +174,32 @@ async function open(input: { key: CryptoKey; roomId: string; id: string; from: s
   const ok = await verifyBytes(publicKey, inner.subarray(0, SIGNATURE_BYTES), textBindingBytes({ ...input, text }, domain));
   if (!ok) return { ok: false, reason: 'bad signature' };
   return { ok: true, text };
+}
+
+/** A friend's profile as opened: the name and picture friends see. */
+export type Profile = { name: string; picture?: string };
+
+/** Writer side: my profile sealed for this room, signed by `from` (my public key, base64url). */
+export function sealProfile(input: { key: CryptoKey; privateKey: CryptoKey; roomId: string; from: string; profile: Profile }): Promise<string> {
+  const { name, picture } = input.profile;
+  return seal({ ...input, id: PROFILE_ID, text: JSON.stringify({ name, ...(picture ? { picture } : {}) }) }, PROFILE_DOMAIN);
+}
+
+/**
+ * Reader side: a profile, if it was sealed with this room's key and signed by `from`, the identity it is listed under, and
+ * holds a name and picture as the composer makes them (the server can no longer check them). Null for anything else.
+ */
+export async function openProfile(input: { key: CryptoKey; roomId: string; from: string; sealed: string }): Promise<Profile | null> {
+  const opened = await open({ ...input, id: PROFILE_ID }, PROFILE_DOMAIN);
+  if (!opened.ok) return null;
+  try {
+    const p = JSON.parse(opened.text) as Partial<Profile> | null;
+    if (!p || typeof p.name !== 'string' || normaliseName(p.name) !== p.name) return null;
+    if (p.picture !== undefined && (typeof p.picture !== 'string' || normalisePicture(p.picture) !== p.picture)) return null;
+    return { name: p.name, ...(p.picture ? { picture: p.picture } : {}) };
+  } catch {
+    return null;
+  }
 }
 
 const ECDH = { name: 'ECDH', namedCurve: 'P-256' } as const;

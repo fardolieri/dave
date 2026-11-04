@@ -77,12 +77,12 @@ describe('buildAuthMessage', () => {
     const keys = await generateIdentityKeyPair();
     const publicKeyRaw = await exportPublicKey(keys.publicKey);
     const nonce = randomNonce();
-    const msg = await buildAuthMessage({ authKey: 's', nonce: toBase64Url(nonce), publicKeyRaw, privateKey: keys.privateKey, name: 'Dave' });
+    const msg = await buildAuthMessage({ authKey: 's', nonce: toBase64Url(nonce), publicKeyRaw, privateKey: keys.privateKey, profile: 'cHJvZmlsZQ' });
     expect(msg.t).toBe('auth');
     expect(await verifyAnswer({ authKey: 's', nonce, publicKeyRaw, hmac: fromBase64Url(msg.hmac)!, signature: fromBase64Url(msg.signature)! })).toBe(true);
   });
   it('rejects a malformed nonce', async () => {
     const keys = await generateIdentityKeyPair();
-    await expect(buildAuthMessage({ authKey: 's', nonce: 'aaaaa', publicKeyRaw: await exportPublicKey(keys.publicKey), privateKey: keys.privateKey, name: 'D' })).rejects.toThrow();
+    await expect(buildAuthMessage({ authKey: 's', nonce: 'aaaaa', publicKeyRaw: await exportPublicKey(keys.publicKey), privateKey: keys.privateKey, profile: 'cHJvZmlsZQ' })).rejects.toThrow();
   });
 });

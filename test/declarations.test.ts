@@ -12,8 +12,7 @@ describe('declarations (quality ticket 10)', () => {
   it('the auth carries the latest name, picture and opt-in', () => {
     const d = declared('Alice', '😀', false);
     expect(carried(d)).toEqual({ name: 'Alice', picture: '😀', telemetry: false });
-    declare(d, { t: 'name', name: 'Alicia' });
-    declare(d, { t: 'picture', picture: null });
+    declare(d, { t: 'profile', name: 'Alicia', picture: null });
     declare(d, { t: 'telemetry', on: true });
     expect(carried(d)).toEqual({ name: 'Alicia', picture: null, telemetry: true });
   });
@@ -22,13 +21,13 @@ describe('declarations (quality ticket 10)', () => {
     const d = declared('Alice', '😀', false);
     const auth = carried(d);
     expect(afterWelcome(d, auth)).toEqual([]);
-    declare(d, { t: 'name', name: 'Alicia' }); // renamed during the handshake (review on 10-10)
-    expect(afterWelcome(d, auth)).toEqual([{ t: 'name', name: 'Alicia' }]);
-    declare(d, { t: 'picture', picture: null });
+    declare(d, { t: 'profile', name: 'Alicia', picture: '😀' }); // renamed during the handshake (review on 10-10)
+    expect(afterWelcome(d, auth)).toEqual([{ t: 'profile', name: 'Alicia', picture: '😀' }]);
+    declare(d, { t: 'profile', name: 'Alicia', picture: null });
     declare(d, { t: 'telemetry', on: true });
-    expect(afterWelcome(d, auth)).toEqual([{ t: 'name', name: 'Alicia' }, { t: 'picture', picture: null }, { t: 'telemetry', on: true }]);
-    declare(d, { t: 'name', name: 'Alice' }); // and back: nothing to say
-    expect(afterWelcome(d, auth).map((m) => m.t)).toEqual(['picture', 'telemetry']);
+    expect(afterWelcome(d, auth)).toEqual([{ t: 'profile', name: 'Alicia', picture: null }, { t: 'telemetry', on: true }]);
+    declare(d, { t: 'profile', name: 'Alice', picture: '😀' }); // and back: nothing to say
+    expect(afterWelcome(d, auth).map((m) => m.t)).toEqual(['telemetry']);
   });
 
   it('a join declares mute and share as declared last, unmuted and not sharing before', () => {

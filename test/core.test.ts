@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, OUT_OF_DATE, type Person } from '../src/core/protocol';
+import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_SEALED_PROFILE_LENGTH, APP_OUT_OF_DATE, OUT_OF_DATE, type WirePerson as Person } from '../src/core/protocol';
 import { onMessage, presenceSnapshot, type SocketState } from '../src/core/room';
 import { newBucket } from '../src/core/ratelimit';
 
@@ -51,43 +51,42 @@ describe('protocol', () => {
     expect(parseClientMessage(huge)).toEqual({ t: 'invalid', reason: 'message too large', ref: 'signal' });
   });
 
-  it('validates auth fields', () => {
-    const ok = { t: 'auth', publicKey: 'AbC-_', name: '  Dave  Smith ', hmac: 'aa', signature: 'bb' };
-    expect(parseClientMessage(JSON.stringify(ok))).toEqual({ ...ok, name: 'Dave Smith' });
+  it('validates auth fields: the profile sealed (ADR 0010), a name in plain refused as from an app out of date', () => {
+    const ok = { t: 'auth', publicKey: 'AbC-_', profile: 'cHJvZmlsZQ', hmac: 'aa', signature: 'bb' };
+    expect(parseClientMessage(JSON.stringify(ok))).toEqual(ok);
     expect(parseClientMessage(JSON.stringify({ ...ok, publicKey: 'not base64url!' }))).toMatchObject({ t: 'invalid' });
-    expect(parseClientMessage(JSON.stringify({ ...ok, name: '   ' }))).toEqual({ t: 'invalid', reason: 'invalid name', ref: 'auth' });
-    expect(parseClientMessage(JSON.stringify({ ...ok, name: 'x'.repeat(33) }))).toEqual({ t: 'invalid', reason: 'invalid name', ref: 'auth' });
+    const { profile: _sealed, ...plain } = ok;
+    expect(parseClientMessage(JSON.stringify({ ...plain, name: 'Dave' }))).toEqual({ t: 'invalid', reason: APP_OUT_OF_DATE, ref: 'auth' });
+    expect(parseClientMessage(JSON.stringify(plain))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'auth' });
+    for (const profile of ['', 'not base64!', 7, 'a'.repeat(MAX_SEALED_PROFILE_LENGTH + 1)]) {
+      expect(parseClientMessage(JSON.stringify({ ...ok, profile }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'auth' });
+    }
+    // A name and picture beside the profile are not taken, so not passed on either.
+    expect(parseClientMessage(JSON.stringify({ ...ok, name: 'Dave', picture: '🐱' }))).toEqual(ok);
     const authKey = 'a'.repeat(43);
-    expect(parseClientMessage(JSON.stringify({ ...ok, authKey }))).toEqual({ ...ok, name: 'Dave Smith', authKey });
+    expect(parseClientMessage(JSON.stringify({ ...ok, authKey }))).toEqual({ ...ok, authKey });
     expect(parseClientMessage(JSON.stringify({ ...ok, authKey: 'short' }))).toMatchObject({ t: 'invalid' });
     expect(parseClientMessage(JSON.stringify({ ...ok, authKey: 42 }))).toMatchObject({ t: 'invalid' });
     // ADR 0007: the private text key and its signature, of the lengths a P-256 point and signature have.
     const privateTexts = { key: 'k'.repeat(87), sig: 's'.repeat(86) };
-    expect(parseClientMessage(JSON.stringify({ ...ok, privateTexts }))).toEqual({ ...ok, name: 'Dave Smith', privateTexts });
+    expect(parseClientMessage(JSON.stringify({ ...ok, privateTexts }))).toEqual({ ...ok, privateTexts });
     // One of another shape is left out: the friend gets in, without private texts.
     for (const bad of [null, 'k', { key: 'k'.repeat(86), sig: 's'.repeat(86) }, { key: 'k'.repeat(87) }, { key: 'k'.repeat(87), sig: '!'.repeat(86) }]) {
-      expect(parseClientMessage(JSON.stringify({ ...ok, privateTexts: bad }))).toEqual({ ...ok, name: 'Dave Smith' });
+      expect(parseClientMessage(JSON.stringify({ ...ok, privateTexts: bad }))).toEqual(ok);
     }
   });
 
-  it('takes one emoji as the profile picture, in auth and on its own; null clears it', () => {
-    const ok = { t: 'auth', publicKey: 'AbC-_', name: 'Dave', hmac: 'aa', signature: 'bb' };
-    expect(parseClientMessage(JSON.stringify({ ...ok, picture: ' 🐱 ' }))).toEqual({ ...ok, picture: '🐱' });
-    expect(parseClientMessage(JSON.stringify({ ...ok, picture: null }))).toEqual(ok);
-    expect(parseClientMessage(JSON.stringify({ ...ok, picture: 'ab' }))).toEqual({ t: 'invalid', reason: 'invalid picture', ref: 'auth' });
-    expect(parseClientMessage(JSON.stringify({ ...ok, picture: '🐱🐱' }))).toEqual({ t: 'invalid', reason: 'invalid picture', ref: 'auth' });
-    expect(parseClientMessage(JSON.stringify({ ...ok, picture: 7 }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'auth' });
-    expect(parseClientMessage(JSON.stringify({ t: 'picture', picture: '👨‍👩‍👧‍👦' }))).toEqual({ t: 'picture', picture: '👨‍👩‍👧‍👦' });
-    expect(parseClientMessage(JSON.stringify({ t: 'picture', picture: null }))).toEqual({ t: 'picture', picture: null });
-    expect(parseClientMessage(JSON.stringify({ t: 'picture', picture: '' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'picture' });
-    expect(parseClientMessage(JSON.stringify({ t: 'picture', picture: 'x' }))).toEqual({ t: 'invalid', reason: 'invalid picture', ref: 'picture' });
-    expect(parseClientMessage(JSON.stringify({ t: 'picture' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'picture' });
+  it('takes a new profile sealed on its own; a name or picture in plain is from an app out of date', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'profile', profile: 'cHJvZmlsZQ' }))).toEqual({ t: 'profile', profile: 'cHJvZmlsZQ' });
+    expect(parseClientMessage(JSON.stringify({ t: 'profile' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'profile' });
+    expect(parseClientMessage(JSON.stringify({ t: 'name', name: 'Dave' }))).toEqual({ t: 'invalid', reason: APP_OUT_OF_DATE, ref: 'name' });
+    expect(parseClientMessage(JSON.stringify({ t: 'picture', picture: '🐱' }))).toEqual({ t: 'invalid', reason: APP_OUT_OF_DATE, ref: 'picture' });
     expect(normalisePicture('☠')).toBeNull(); // text-presentation symbol without the emoji selector
     expect(normalisePicture('🇩🇪')).toBe('🇩🇪');
   });
 
   it('takes the PostHog opt-in in auth and on its own (ticket 32)', () => {
-    const ok = { t: 'auth', publicKey: 'AbC-_', name: 'Dave', hmac: 'aa', signature: 'bb' };
+    const ok = { t: 'auth', publicKey: 'AbC-_', profile: 'cHJvZmlsZQ', hmac: 'aa', signature: 'bb' };
     expect(parseClientMessage(JSON.stringify({ ...ok, telemetry: true }))).toEqual({ ...ok, telemetry: true });
     expect(parseClientMessage(JSON.stringify({ ...ok, telemetry: 'yes' }))).toEqual(ok);
     expect(parseClientMessage(JSON.stringify({ t: 'telemetry', on: false }))).toEqual({ t: 'telemetry', on: false });
@@ -103,7 +102,7 @@ describe('protocol', () => {
 });
 
 describe('presenceSnapshot', () => {
-  const person = (publicKey: string, name: string): Person => ({ publicKey, fingerprint: publicKey.slice(0, 6), name, role: 'visitor', joinSeq: null, sharing: false, muted: false });
+  const person = (publicKey: string, name: string): Person => ({ publicKey, fingerprint: publicKey.slice(0, 6), profile: name, role: 'visitor', joinSeq: null, sharing: false, muted: false });
   const attached = (publicKey: string, name: string, attachedAt: number): SocketState => ({ stage: 'attached', person: person(publicKey, name), bucket: { tokens: 1, at: attachedAt }, attachedAt });
 
   it('lists each identity once, from its newest socket, and skips sockets that are closing or unauthenticated', () => {
@@ -115,12 +114,12 @@ describe('presenceSnapshot', () => {
       { stage: 'closing' },
       null,
     ]);
-    expect(snapshot.people.map((p) => [p.publicKey, p.name])).toEqual([['k-alice', 'Alice renamed'], ['k-bob', 'Bob']]);
+    expect(snapshot.people.map((p) => [p.publicKey, p.profile])).toEqual([['k-alice', 'Alice renamed'], ['k-bob', 'Bob']]);
   });
 });
 
 describe('telemetry consent on the server (ticket 32)', () => {
-  const person: Person = { publicKey: 'k', fingerprint: 'f', name: 'Alice', role: 'visitor', joinSeq: null, sharing: false, muted: false };
+  const person: Person = { publicKey: 'k', fingerprint: 'f', profile: 'cHJvZmlsZQ', role: 'visitor', joinSeq: null, sharing: false, muted: false };
   const ctx = { authKey: 'a', now: 0, others: [], mintIce: async () => ({ iceServers: [], turnUser: null }) };
   const attached: SocketState = { stage: 'attached', person, bucket: newBucket(0), attachedAt: 0 };
 
@@ -140,7 +139,7 @@ describe('telemetry consent on the server (ticket 32)', () => {
 });
 
 describe('who watches a share, in presence', () => {
-  const person: Person = { publicKey: 'k-alice', fingerprint: 'f', name: 'Alice', role: 'participant', joinSeq: 1, sharing: false, muted: false };
+  const person: Person = { publicKey: 'k-alice', fingerprint: 'f', profile: 'cHJvZmlsZQ', role: 'participant', joinSeq: 1, sharing: false, muted: false };
   const ctx = { authKey: 'a', now: 0, others: [], mintIce: async () => ({ iceServers: [], turnUser: null }) };
   const attached: SocketState = { stage: 'attached', person, bucket: newBucket(0), attachedAt: 0 };
   const send = (state: SocketState, m: object) => onMessage(state, JSON.stringify(m), ctx);

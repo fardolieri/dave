@@ -8,7 +8,7 @@ import { authKeyOf, roomIdOf } from '../src/core/rooms';
 import worker from '../src/worker/index';
 import { upstream } from '../src/worker/posthog';
 import { logRejected } from '../src/worker/telemetry';
-import { authFrame, openRoomSocket, wsPath, type Challenge } from './harness';
+import { authFrame, nameOf, openRoomSocket, wsPath, type Challenge } from './harness';
 
 /** A room some test has already entered, so its verifier is set. Tests that need a fresh room make their own secret. */
 const SECRET = 'gate-test-room';
@@ -231,9 +231,9 @@ describe('gate', () => {
     ws.send(JSON.stringify(auth));
     const welcome = await reply;
     expect(welcome.t).toBe('welcome');
-    const you = (welcome as { you: { publicKey: string; fingerprint: string; name: string } }).you;
+    const you = (welcome as { you: { publicKey: string; fingerprint: string; profile: string } }).you;
     expect(you.publicKey).toBe(id.publicKey);
-    expect(you.name).toBe('Dave');
+    expect(nameOf(you.profile)).toBe('Dave');
     expect(you.fingerprint).toMatch(/^[a-z2-9]{6}$/);
     ws.close();
   });
@@ -249,7 +249,7 @@ describe('gate', () => {
     expect(await reply).toEqual({ t: 'error', reason: 'unrecognised message' });
     const done = closed(ws);
     // base64url of length 1 mod 4 used to throw inside decoding and bypass the counter
-    ws.send(JSON.stringify({ t: 'auth', publicKey: 'aaaaa', name: 'x', hmac: 'aa', signature: 'aa' }));
+    ws.send(JSON.stringify({ t: 'auth', publicKey: 'aaaaa', profile: 'cHJvZmlsZQ', hmac: 'aa', signature: 'aa' }));
     expect((await done).code).toBe(CLOSE_AUTH_FAILED);
   });
 
@@ -309,7 +309,7 @@ describe('gate', () => {
     const { hmac } = await answerChallenge({ authKey, nonce, publicKeyRaw: id.publicKeyRaw, privateKey: id.keys.privateKey });
     const { signature } = await answerChallenge({ authKey, nonce, publicKeyRaw: id.publicKeyRaw, privateKey: impostor.keys.privateKey });
     const reply = nextMessage(ws);
-    ws.send(JSON.stringify({ t: 'auth', publicKey: id.publicKey, name: 'Dave', hmac: toBase64Url(hmac), signature: toBase64Url(signature) }));
+    ws.send(JSON.stringify({ t: 'auth', publicKey: id.publicKey, profile: 'cHJvZmlsZQ', hmac: toBase64Url(hmac), signature: toBase64Url(signature) }));
     expect(await reply).toEqual({ t: 'error', reason: 'authentication failed' });
     ws.close();
   });

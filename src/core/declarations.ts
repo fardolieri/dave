@@ -2,9 +2,14 @@
 // it is muted, whether it shares, and whose share it watches. Unlike an event (a text, a signal, a join), only the latest
 // value of each counts, and the Room forgets them all with the socket. client/room.ts keeps the latest here and declares
 // them again on every socket the Room lets in, so no caller has to. Runtime-neutral: plain data only.
-import type { ClientMessage, Person } from './protocol';
+import type { ClientMessage, PresenceState } from './protocol';
 
-export type Declaration = Extract<ClientMessage, { t: 'name' | 'picture' | 'telemetry' | 'mute' | 'share' | 'subscribe' }>;
+/**
+ * My name and picture, as one declaration: they go out together, sealed for the room (ADR 0010, client/room.ts), as
+ * `{ t: 'profile', profile }`. Every other kind goes out as it is.
+ */
+export type ProfileDeclaration = { t: 'profile'; name: string; picture: string | null };
+export type Declaration = ProfileDeclaration | Extract<ClientMessage, { t: 'telemetry' | 'mute' | 'share' | 'subscribe' }>;
 
 /** The latest declaration of each kind, one subscribe per sharer, by `keyOf`. */
 export type Declared = Map<string, Declaration>;
@@ -18,7 +23,8 @@ export type Carried = { name: string; picture: string | null; telemetry: boolean
 
 export function declared(name: string, picture: string | null, telemetry: boolean): Declared {
   const d: Declared = new Map();
-  for (const m of [{ t: 'name', name }, { t: 'picture', picture }, { t: 'telemetry', on: telemetry }] as const) declare(d, m);
+  declare(d, { t: 'profile', name, picture });
+  declare(d, { t: 'telemetry', on: telemetry });
   return d;
 }
 
@@ -27,15 +33,15 @@ export function declare(d: Declared, m: Declaration): void { d.set(keyOf(m), m);
 const get = <T extends Declaration['t']>(d: Declared, t: T) => d.get(t) as Extract<Declaration, { t: T }> | undefined;
 
 export function carried(d: Declared): Carried {
-  return { name: get(d, 'name')!.name, picture: get(d, 'picture')!.picture, telemetry: get(d, 'telemetry')!.on };
+  const { name, picture } = get(d, 'profile')!;
+  return { name, picture, telemetry: get(d, 'telemetry')!.on };
 }
 
 /** After the welcome: what changed since the auth on that socket went out (during the handshake, nothing could be sent). */
 export function afterWelcome(d: Declared, auth: Carried): Declaration[] {
   const now = carried(d);
   const out: Declaration[] = [];
-  if (now.name !== auth.name) out.push(get(d, 'name')!);
-  if (now.picture !== auth.picture) out.push(get(d, 'picture')!);
+  if (now.name !== auth.name || now.picture !== auth.picture) out.push(get(d, 'profile')!);
   if (now.telemetry !== auth.telemetry) out.push(get(d, 'telemetry')!);
   return out;
 }
@@ -51,7 +57,7 @@ export function joinDeclares(d: Declared): { muted: boolean; sharing: boolean } 
  * nothing there; one lost with the last socket is made up for. Mute and share ride in the join itself, but not who
  * watches the share: a new socket starts without them, so a share with viewers is declared again.
  */
-export function afterJoin(d: Declared, people: readonly Person[]): Declaration[] {
+export function afterJoin(d: Declared, people: readonly (PresenceState & { publicKey: string })[]): Declaration[] {
   const sharing = new Set(people.filter((p) => p.role === 'participant' && p.sharing).map((p) => p.publicKey));
   const share = get(d, 'share');
   return [...(share?.on && share.viewers?.length ? [share] : []), ...[...d.values()].filter((m) => m.t === 'subscribe' && sharing.has(m.to))];
@@ -62,7 +68,7 @@ export function afterJoin(d: Declared, people: readonly Person[]): Declaration[]
  * starts unwatched, as client/call.ts does with its intent (reconcile). A friend listed as a visitor or not at all may only
  * be reconnecting, and is kept; one who left on purpose is forgotten by `forgetWatch`.
  */
-export function forgetEnded(d: Declared, people: readonly Person[]): void {
+export function forgetEnded(d: Declared, people: readonly (PresenceState & { publicKey: string })[]): void {
   for (const p of people) if (p.role === 'participant' && !p.sharing) forgetWatch(d, p.publicKey);
 }
 

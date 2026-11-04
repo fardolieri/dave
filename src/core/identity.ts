@@ -139,11 +139,11 @@ export async function buildAuthMessage(input: {
   nonce: string;
   publicKeyRaw: Uint8Array;
   privateKey: CryptoKey;
-  name: string;
-  picture?: string;
-}): Promise<{ t: 'auth'; publicKey: string; name: string; picture?: string; hmac: string; signature: string }> {
+  /** My profile sealed for the room (ADR 0010, core/sealed.ts). */
+  profile: string;
+}): Promise<{ t: 'auth'; publicKey: string; profile: string; hmac: string; signature: string }> {
   const nonce = fromBase64Url(input.nonce);
   if (!nonce) throw new Error('malformed challenge nonce');
   const { hmac, signature } = await answerChallenge({ authKey: input.authKey, nonce, publicKeyRaw: input.publicKeyRaw, privateKey: input.privateKey });
-  return { t: 'auth', publicKey: toBase64Url(input.publicKeyRaw), name: input.name, ...(input.picture ? { picture: input.picture } : {}), hmac: toBase64Url(hmac), signature: toBase64Url(signature) };
+  return { t: 'auth', publicKey: toBase64Url(input.publicKeyRaw), profile: input.profile, hmac: toBase64Url(hmac), signature: toBase64Url(signature) };
 }
