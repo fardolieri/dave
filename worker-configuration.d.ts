@@ -11,11 +11,12 @@ interface __BaseEnv_Env {
 	POSTHOG_HOST?: string;
 	BUILD_TARGET: string;
 	ROOM: DurableObjectNamespace<import("./src/worker/index").Room>;
+	STORE: DurableObjectNamespace<import("./src/worker/index").Store>;
 }
 declare namespace Cloudflare {
 	interface GlobalProps {
 		mainModule: typeof import("./src/worker/index");
-		durableNamespaces: "Room";
+		durableNamespaces: "Room" | "Store";
 	}
 	interface Env extends __BaseEnv_Env {}
 }
