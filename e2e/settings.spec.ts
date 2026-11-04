@@ -389,7 +389,9 @@ test('About shows the relay this month and the free plan today, the figure neare
   const meter = (id: string) => dialog.locator(`.meter[data-meter="${id}"]`);
   await about();
   await expect(dialog.locator('.usage-unknown'), 'nothing known yet').toContainText('not known right now');
-  await expect(dialog.locator('.meter')).toHaveCount(0);
+  // Cloudflare's figures only: the server's history has a section of its own (ADR 0009), with its own test.
+  const cloudflare = dialog.locator('.usage:not([aria-label="Kept on the server"]) .meter');
+  await expect(cloudflare).toHaveCount(0);
   await close();
 
   // The page's day, as the app reads it.
@@ -430,7 +432,51 @@ test('About shows the relay this month and the free plan today, the figure neare
   answer = { status: 204 };
   await about();
   await expect(dialog.locator('dt', { hasText: 'Version' })).toBeVisible();
-  await expect(dialog.locator('.usage'), 'a Worker without the token: no figures at all').toHaveCount(0);
+  await expect(cloudflare, "a Worker without the token: none of Cloudflare's figures").toHaveCount(0);
+});
+
+test('ADR 0009: About shows how full the server\'s history is and how far back it reaches, and says so when that is not known', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { connect: false });
+  // The path reaches the Worker and its Store, which answer in JSON. Asked from the context's own request client.
+  const real = await alice.context.request.get('/history-usage');
+  expect(real.status()).toBe(200);
+  expect(real.headers()['content-type']).toBe('application/json');
+  expect(await real.json()).toMatchObject({ budget: 4_000_000_000 });
+  // Made up from here on, on the context as the relay's test does: the real window is the whole site's.
+  let answer: unknown = { error: 'unavailable' };
+  await alice.context.route('**/history-usage', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(answer) }));
+  await alice.open();
+  const dialog = alice.page.locator('dialog.about');
+  const about = async () => {
+    await openMenu(alice.page);
+    await alice.page.getByRole('button', { name: 'About' }).click();
+    await expect(dialog).toBeVisible();
+  };
+  const close = () => dialog.getByRole('button', { name: 'Close' }).click();
+  await about();
+  const kept = dialog.locator('.usage', { hasText: 'Kept on the server' });
+  await expect(kept, 'nothing known yet').toContainText('Not known right now');
+  await expect(kept.locator('.meter')).toHaveCount(0);
+  await close();
+
+  answer = { bytes: 1_234_567, budget: 4e9, entries: 1100, oldest: Date.UTC(2026, 10, 4, 12), asOf: Date.now() };
+  await about();
+  await expect(kept.locator('.meter[data-meter="kept"]')).toContainText('1.2 MB of 4 GB');
+  await expect(kept.locator('.meter-pct')).toHaveText('<0.1%');
+  await expect(kept.locator('h4')).toContainText(/back to .*2026/);
+  await expect(kept.getByRole('meter')).toHaveAttribute('aria-valuenow', '1234567');
+  await close();
+
+  // A failed ask keeps what was known.
+  answer = { error: 'unavailable' };
+  await about();
+  await expect(kept.locator('.meter')).toContainText('1.2 MB of 4 GB');
+  await close();
+
+  answer = { bytes: 0, budget: 4e9, entries: 0, oldest: null, asOf: Date.now() };
+  await about();
+  await expect(kept.locator('.meter')).toContainText('0 B of 4 GB');
+  await expect(kept.locator('h4')).toContainText('nothing yet');
 });
 
 test('phone width: one column, the composer pinned to the bottom of the screen and usable', async ({ crowd }) => {

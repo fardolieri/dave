@@ -10,6 +10,8 @@ export const STORED_STATE: Record<string, unknown> = {
   "localStorage dave.secret": {"default":null,"shape":"string","fixtures":{"2026-09-06":"s3cr3t"}},
   "localStorage dave.emojiRecent": {"default":[],"shape":["string"],"fixtures":{"2026-09-10":["🎉","😀"]}},
   "localStorage dave.unreadRooms": {"default":{},"shape":{"<key>":"number"},"fixtures":{"2026-10-24, unread kept":{"roomA":3}}},
+  "localStorage dave.historyCleared": {"default":{},"shape":{"<key>":"number"},"fixtures":{"2026-11-04, server history":{"roomA":1762250000000}}},
+  "localStorage dave.historySynced": {"default":{},"shape":{"<key>":"number"},"fixtures":{"2026-11-04, server history":{"roomA":1762250000000}}},
   "localStorage dave.unreadPrivate": {"default":{},"shape":{"<key>":"number"},"fixtures":{"2026-10-24, unread kept":{"pkA":2}}},
   "localStorage dave.test": {"default":false,"shape":"boolean","fixtures":{"2026-09-10, e2e seed":true}},
   "localStorage dave.telemetry": {"default":null,"shape":"string","fixtures":{"2026-09-27, yes":"on","2026-09-27, no":"off"}},

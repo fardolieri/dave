@@ -141,7 +141,8 @@ describe('presence', () => {
       // Eviction destroys the instance and re-creates it from (state, env). Simulate exactly that.
       const fresh = new Room(state, env);
       return {
-        ownKeys: Object.keys(instance).filter((k) => k !== 'ctx' && k !== 'env'),
+        // `keeping`: the server history's keeps under way (ADR 0009), which keep the object awake until done: nothing to lose.
+        ownKeys: Object.keys(instance).filter((k) => k !== 'ctx' && k !== 'env' && k !== 'keeping'),
         fromLiveInstance: names(instance.currentPresence()),
         fromFreshInstance: names(fresh.currentPresence()),
       };

@@ -24,6 +24,10 @@ _Avoid_: Room key, chat password
 A text as it travels: encrypted with the text key and signed by its writer, so the server passes it on without being able to read or forge it.
 _Avoid_: Encrypted message (in UI copy), ciphertext (fine in code)
 
+**Kept history**:
+What the server keeps of every room's sealed texts and file announcements, for friends who were away and for new devices: one window for all rooms, the oldest dropped first past 4 GB (ADR 0009). A browser asks it for what it missed each time it connects. It cannot read what it keeps.
+_Avoid_: Backup, archive, cloud (in UI copy), mailbox
+
 **Profile**:
 The name and picture a friend shows, sealed with the room's text key and signed by their identity, so the server lists and passes on what it cannot read (ADR 0010). Each friend's app opens it.
 _Avoid_: Account, user info

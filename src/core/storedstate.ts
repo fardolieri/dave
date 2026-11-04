@@ -82,6 +82,18 @@ export const LOCAL = {
     map: true,
     fixtures: { '2026-10-24, unread kept': '{"pkA":2}' },
   },
+  historyCleared: {
+    about: "When I last cleared a room's chat history, by room id: the server's history (ADR 0009) is asked for what came after it only, so the texts cleared do not come back (client/history.ts).",
+    parse: parseCounts,
+    map: true,
+    fixtures: { '2026-11-04, server history': '{"roomA":1762250000000}' },
+  },
+  historySynced: {
+    about: "Up to when this browser had everything of a room, by room id, the Room's clock: a sync of the server's history (ADR 0009) asks from there (client/history.ts).",
+    parse: parseCounts,
+    map: true,
+    fixtures: { '2026-11-04, server history': '{"roomA":1762250000000}' },
+  },
   telemetry: { about: 'The telemetry answer (client/posthog.ts).', parse: consent, fixtures: { '2026-09-27, yes': 'on', '2026-09-27, no': 'off' } },
   muted: { about: 'My microphone was muted when last in a call (client/call.ts).', parse: flag, fixtures: { '2026-09-06, muted': 'true', '2026-09-06, unmuted': 'false' } },
   rejoin: {

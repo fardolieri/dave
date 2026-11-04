@@ -198,3 +198,6 @@ export function formatCount(n: number): string {
 /** How full a meter is, as the About dialog says it: below half, past half, past 80 %. */
 export type Fill = 'ok' | 'warn' | 'bad';
 export const fillOf = (part: number, of: number): Fill => (part >= of * 0.8 ? 'bad' : part >= of * 0.5 ? 'warn' : 'ok');
+
+/** "14.1 GB of 1 TB (1.4%)": bytes of a limit, as the server's history says how full it is (core/kept.ts). */
+export const formatShare = (bytes: number, of: number): string => `${formatBytes(bytes)} of ${formatBytes(of)} (${formatPercent(bytes, of)}%)`;

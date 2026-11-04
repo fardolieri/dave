@@ -22,6 +22,7 @@ import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUM
 import { formatBitrate, formatStream } from '../core/format';
 import { FREE_PLAN, RELAY_SAVE_FROM, fillOf, formatBytes, formatCount, formatPercent, monthSoFar, type FreePlanToday, type RelayUsage } from '../core/relayusage';
 import { refreshRelayUsage, relaySaving, relayUsage } from './relay';
+import { parseHistoryUsage, type HistoryUsage } from '../core/kept';
 import { Markdown, MarkdownMirror } from './Markdown';
 import { quotePrefix } from '../core/markdown';
 import { FOLD_OLDER_MS, olderCount } from '../core/chatlog';
@@ -742,7 +743,7 @@ function Workspace(props: WorkspaceProps) {
                             onClick={() => { roomMenu.close(); if (overlayRoom() === l.saved.id) closeOverlay(); else void openOverlay(l.saved.id, overlayModel, () => box ?? null); }}>{overlayRoom() === l.saved.id ? 'Close overlay' : 'Overlay'}</button>
                         </Show>
                         <Show when={THEMES.length > 0}><button class="link" title="This room's look, in this browser" onClick={(e) => { roomMenu.close(); openThemes(e.currentTarget.closest('section.room')?.querySelector<HTMLElement>('.room-more') ?? e.currentTarget, l.saved.id); }}>Themes</button></Show>
-                        <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { roomMenu.close(); if (confirm(`Clear this browser's chat history of ${l.saved.name}? Nothing is stored on the server, so this cannot be undone.`)) void l.room.clearHistory(); }}>Clear chat history</button>
+                        <button class="link" title="Only this browser's copy: the server keeps the room's texts, sealed, for friends who were away" onClick={() => { roomMenu.close(); if (confirm(`Clear this browser's chat history of ${l.saved.name}? The server keeps the room's texts for friends who were away, sealed so that only friends can read them, but does not bring the cleared ones back to this browser. Leaving the room and opening its link again does.`)) void l.room.clearHistory(); }}>Clear chat history</button>
                         <button class="link danger" title="Forget this room in this browser" onClick={() => { roomMenu.close(); leaveRoom(l); }}>Leave {l.saved.name}</button>
                       </div>
                     </Show>
@@ -1967,6 +1968,18 @@ function FreePlanToday(props: { today: FreePlanToday; now: number }) {
   );
 }
 
+const HISTORY_TITLE = "What the server keeps of every room's texts and file announcements, sealed so that only friends can read them, for friends who were away and for new devices. One window for every room of this site: past 4 GB the oldest go first, whichever room they are of. Counted with what their storage costs on top, so a little more than the texts themselves.";
+
+/** The server's history (ADR 0009) as the Worker last told it, 'unknown' when asking failed; null before the first answer. */
+async function askHistoryUsage(): Promise<HistoryUsage | 'unknown'> {
+  try {
+    const res = await fetch('/history-usage', { cache: 'no-store' });
+    return (res.ok && parseHistoryUsage(await res.json())) || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
 /** Which version of dave this is: the commit it was built from, its message, when it was deployed, and where the code lives. */
 function VersionDialog() {
   let dialog: HTMLDialogElement | undefined;
@@ -1980,6 +1993,10 @@ function VersionDialog() {
   let tick: ReturnType<typeof setInterval> | undefined;
   const stopTick = () => { clearInterval(tick); tick = undefined; };
   onCleanup(stopTick);
+  // How full the server's history is, asked on every open: the Worker keeps its answer a minute.
+  // Of several asks under way, the latest one's answer is taken; a failed one keeps what was known.
+  const [history, setHistory] = createSignal<HistoryUsage | 'unknown' | null>(null);
+  let historyAsks = 0;
   const open = () => {
     setNow(Date.now());
     stopTick();
@@ -1991,6 +2008,8 @@ function VersionDialog() {
     }, 30_000);
     dialog?.showModal();
     void refreshRelayUsage();
+    const n = ++historyAsks;
+    void askHistoryUsage().then((u) => { if (n === historyAsks && (u !== 'unknown' || typeof untrack(history) !== 'object' || untrack(history) === null)) setHistory(u); });
   };
   return (
     <div class="about-link">
@@ -2034,6 +2053,20 @@ function VersionDialog() {
               </section>
             </>
           )}</Show>
+        )}</Show>
+        <Show when={history()}>{(h) => (
+          <section class="usage" aria-label="Kept on the server">
+            <Show when={typeof h() === 'object' ? (h() as HistoryUsage) : null} fallback={<><h4>Kept on the server</h4><p class="usage-unknown">Not known right now.</p></>}>{(u) => (
+              <>
+                <h4>Kept on the server <small>{u().oldest === null ? 'nothing yet' : `back to ${new Date(u().oldest!).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}`}</small></h4>
+                <ul>
+                  <UsageMeter id="kept" name="Texts and files" title={HISTORY_TITLE} value={u().bytes} limit={u().budget} shown={`${formatBytes(u().bytes)} of ${formatBytes(u().budget)}`}>
+                    <small class="meter-note">Texts are kept on the server, sealed so only friends can read them, so a friend who was away gets them later. All rooms share 4 GB: once full, the oldest go first.</small>
+                  </UsageMeter>
+                </ul>
+              </>
+            )}</Show>
+          </section>
         )}</Show>
         <div class="row"><button onClick={() => dialog?.close()}>Close</button></div>
       </dialog>
