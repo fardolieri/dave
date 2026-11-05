@@ -3,6 +3,15 @@ import { parseFileMeta, type FileMeta } from './attachment';
 
 /** Texts from more than this long before a room came on screen start out folded away above the log (ticket 38). */
 export const FOLD_OLDER_MS = 18 * 3600 * 1000;
+/** How many of them each "Show older messages" brings on screen, the newest first. */
+export const OLDER_STEP = 200;
+
+/**
+ * What a browser's texts may hold of its budget for texts and files together (client/budget.ts), with `files` held: what
+ * the files leave, and half of it whatever they hold, so files kept up to the budget never push the texts out. Past it,
+ * the oldest texts go; files get what the texts hold less, and make room as the next one is kept (client/files.ts).
+ */
+export const textsMayHold = (budget: number, files: number): number => Math.max(budget / 2, budget - files);
 
 /**
  * How many lines at the start of the log are older than `cutoff`. Only a run from the start folds, so what shows
@@ -62,14 +71,11 @@ export function mergeByAt<T extends { at: number }>(list: readonly T[], items: r
   return out;
 }
 
-/** The history keeps the most recent texts only. */
-export const MAX_HISTORY = 500;
-
 // Only texts count. Until Sep 20 the list also held dated reconnect notes (`{ note, at }`); they are dropped
 // here on read, so the next write leaves them out for good.
 const validText = (m: Partial<StoredText> | null) => !!m && typeof m.at === 'number' && typeof m.text === 'string' && !!m.from?.publicKey;
 /**
- * A stored history as read from IndexedDB: anything but a list of texts is dropped, and the list is capped. An attachment
+ * A stored history as read from IndexedDB: anything but a list of texts is dropped. An attachment
  * that does not parse is dropped too, and so is a private text whose friend does not: it must never show as everyone's.
  */
 export function parseHistory(raw: unknown): StoredText[] {
@@ -79,5 +85,5 @@ export function parseHistory(raw: unknown): StoredText[] {
     if (m!.file === undefined) return [m as StoredText];
     const file = parseFileMeta(m!.file);
     return file ? [{ ...(m as StoredText), file }] : [];
-  }).slice(-MAX_HISTORY);
+  });
 }

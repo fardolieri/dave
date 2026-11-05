@@ -6,9 +6,15 @@ import { fromBase64Url, fingerprint, randomNonce, toBase64Url, verifyAnswer } fr
 import { APP_OUT_OF_DATE, CLOSE_AUTH_FAILED, CLOSE_OUT_OF_DATE, OUT_OF_DATE, parseClientMessage, wireIdentityOf, type ClientMessage, type IceServer, type KeptEntry, type RefType, type ServerMessage, type TextId, type WirePerson as Person } from './protocol';
 import { SIGNAL_BURST, SIGNAL_RATE_PER_SECOND, newBucket, takeToken, type Bucket } from './ratelimit';
 import { LINK_ICE_TTL_SECONDS, nextJoinSeq } from './mesh';
-import { SYNC_COOLDOWN_MS, SYNC_MAX, historyFrames } from './kept';
+import { SYNC_COOLDOWN_MS, historyFrames, pieceId } from './kept';
 
 export const MAX_AUTH_ATTEMPTS = 3;
+/**
+ * Pieces of a file a socket sends up a second (ADR 0009), and asks back: 2 MB up, 4 MB down, a burst of twice that. The
+ * client paces its uploads under it (client/room.ts).
+ */
+export const PIECE_RATE_PER_SECOND = 8;
+export const FETCH_RATE_PER_SECOND = 16;
 /** A socket that has not answered its challenge within this window is closed by the sweep. */
 export const CHALLENGE_TIMEOUT_MS = 10_000;
 
@@ -20,7 +26,7 @@ export type SocketState =
    * included (`takeOverTurn`); revoked when she leaves the call, and by nothing else. `joins`: how many times this
    * socket joined the call, so a TURN user minted for an earlier join is told from the call's (settleTurnUser).
    */
-  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; linkBucket?: Bucket; linkIceAt?: number; syncAt?: number; attachedAt: number; turnUsers?: string[]; joins?: number; telemetry?: true }
+  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; linkBucket?: Bucket; linkIceAt?: number; syncAt?: number; forgetAt?: number; pieceBucket?: Bucket; fetchBucket?: Bucket; attachedAt: number; turnUsers?: string[]; joins?: number; telemetry?: true }
   /**
    * Told to close (superseded, silent too long, errored) or closed, but still attached until the runtime finishes the handshake; invisible meanwhile.
    * `attachedAt` as it was when attached, for the log of its close (worker/room.ts); none in sockets from before it was kept.
@@ -73,10 +79,23 @@ export type RoomContext = {
   /** Mints ICE servers (TURN credentials) for a participant, or for a file link with a shorter life. Provided by the adapter. */
   mintIce: (ttlSeconds?: number) => Promise<{ iceServers: IceServer[]; turnUser: string | null }>;
   /**
-   * The room's kept entries the server took after `since`, the newest `max` of them, oldest first (ADR 0009); null when it
-   * could not say. Provided by the adapter; none where nothing is kept (core tests), which answers every sync with none.
+   * The room's kept entries the server took after `since`, oldest first, as many as one answer brings (core/kept.ts,
+   * SYNC_MAX), and whether there are more (ADR 0009); null when it could not say. Provided by the adapter; none where
+   * nothing is kept (core tests), which answers every sync with none.
    */
-  history?: (since: number, max: number) => Promise<KeptEntry[] | null>;
+  history?: (since: number) => Promise<{ entries: KeptEntry[]; more: boolean } | null>;
+  /** A piece of a kept file by its id, sealed (base64url), whoever sent it up; null when it is not kept, or the server cannot say. */
+  piece?: (id: string) => Promise<string | null>;
+  /**
+   * Keeps a piece of a file sent up, by its id, under its sender (`writer`) and the Room's clock (`at`), as a `forget`
+   * asks by: 'kept', 'not today' (the daily share used up), or 'failed' (try again).
+   */
+  keepPiece?: (writer: string, id: string, sealed: string, at: number) => Promise<'kept' | 'not today' | 'failed'>;
+  /**
+   * Deletes what `writer` wrote in this room up to `before` (the Room's clock) from the server's history: true when all
+   * of it is gone, false when the daily share of writes ran out first or it failed.
+   */
+  forget?: (writer: string, before: number) => Promise<boolean>;
 };
 
 /** ICE servers minted for the socket's join number `forJoin` (SocketState `joins`); `turnUser` null when STUN only. */
@@ -178,7 +197,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     // noticed dying (the client already reconnected) or another tab, which is told so.
     return {
       state: { stage: 'attached', person, bucket: newBucket(ctx.now), attachedAt: ctx.now, ...(msg.telemetry ? { telemetry: true as const } : {}) },
-      replies: [{ t: 'welcome', you: person }],
+      replies: [{ t: 'welcome', you: person, at: ctx.now }],
       presenceChanged: true,
       supersede: msg.publicKey,
       ...(ctx.authKey === null ? { storeAuthKey: authKey } : {}),
@@ -201,6 +220,13 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     const taken = takeToken(state.signalBucket ?? newBucket(ctx.now, SIGNAL_BURST), ctx.now, SIGNAL_RATE_PER_SECOND, SIGNAL_BURST);
     next = { ...state, signalBucket: taken.bucket };
     if (!taken.ok) return { state: next, replies: [error('rate limited', 'signal')] };
+  } else if (msg.t === 'piece' || msg.t === 'fetch') {
+    // A file's pieces go up and come back in their own buckets: an upload of a file's pieces holds up no text, nor a download.
+    const key = msg.t === 'piece' ? 'pieceBucket' : 'fetchBucket';
+    const rate = msg.t === 'piece' ? PIECE_RATE_PER_SECOND : FETCH_RATE_PER_SECOND;
+    const taken = takeToken(state[key] ?? newBucket(ctx.now, rate * 2), ctx.now, rate, rate * 2);
+    next = { ...state, [key]: taken.bucket };
+    if (!taken.ok) return { state: next, replies: [error('rate limited', msg.t)] };
   } else if (msg.t === 'link') {
     const taken = takeToken(state.linkBucket ?? newBucket(ctx.now, SIGNAL_BURST), ctx.now, SIGNAL_RATE_PER_SECOND, SIGNAL_BURST);
     next = { ...state, linkBucket: taken.bucket };
@@ -233,13 +259,44 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       const m: KeptEntry = { t: msg.t, from: wireIdentityOf(state.person), sealed: msg.sealed, at: ctx.now, id: msg.id };
       return { state: next, replies: [], broadcast: [m], keep: m };
     }
+    case 'piece': {
+      const { tag, n, sealed } = msg;
+      const keep = ctx.keepPiece;
+      const writer = state.person.publicKey;
+      const at = ctx.now;
+      return { state: next, replies: [], after: async () => {
+        const kept = keep ? await keep(writer, pieceId(tag, n), sealed, at) : 'not today';
+        return { replies: [{ t: 'kept', tag, n, ok: kept === 'kept', ...(kept === 'failed' ? { again: true as const } : {}) }], minted: null };
+      } };
+    }
+    case 'fetch': {
+      const { tag, n } = msg;
+      const piece = ctx.piece;
+      return { state: next, replies: [], after: async () => {
+        const sealed = piece ? await piece(pieceId(tag, n)) : null;
+        return { replies: [{ t: 'piece', tag, n, ...(sealed ? { sealed } : {}) }], minted: null };
+      } };
+    }
+    case 'forget': {
+      // One per welcome is all a client asks, and again only after a share ran out: more often is a loop.
+      if (state.forgetAt !== undefined && ctx.now - state.forgetAt < SYNC_COOLDOWN_MS) return { state: next, replies: [error('asked too soon', 'forget')] };
+      const before = msg.before ?? ctx.now;
+      const forget = ctx.forget;
+      const writer = state.person.publicKey;
+      return { state: { ...next, forgetAt: ctx.now }, replies: [], after: async () => ({ replies: [{ t: 'forgot', before, done: forget ? await forget(writer, before) : true }], minted: null }) };
+    }
     case 'sync': {
       // One per welcome is all a client asks; more often is a loop, or a friend reading the free plan's rows away.
       if (state.syncAt !== undefined && ctx.now - state.syncAt < SYNC_COOLDOWN_MS) return { state: next, replies: [error('asked too soon', 'sync')] };
       const { since } = msg;
       const history = ctx.history;
       const now = ctx.now;
-      return { state: { ...next, syncAt: now }, replies: [], after: async () => ({ replies: historyFrames(history ? await history(since, SYNC_MAX) : [], now), minted: null }) };
+      return { state: { ...next, syncAt: now }, replies: [], after: async () => {
+        const got = history ? await history(since) : { entries: [], more: false };
+        // Stopped short: up to its last entry, and the browser asks on from there.
+        const last = got?.more ? got.entries.at(-1) : undefined;
+        return { replies: got === null ? historyFrames(null, now) : historyFrames(got.entries, last ? last.at : now, !!last), minted: null };
+      } };
     }
     case 'text':
       return { state: next, replies: [error(OUT_OF_DATE, 'text')] }; // the parser refuses it already

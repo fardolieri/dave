@@ -1,12 +1,19 @@
 import { idbDelete, idbGet, idbRead, idbSet, local, type ParsedIdbKey } from './storage';
-import { MAX_HISTORY, mergeByAt, type PrivateThread, type StoredText } from '../core/chatlog';
+import { mergeByAt, type PrivateThread, type StoredText } from '../core/chatlog';
+import { held, localBudget, textsMay } from './budget';
 import { IDB } from '../core/storedstate';
+import { FROM_JOIN, withinKeep } from '../core/kept';
 import { UNSENT_MAX, type UnsentPrivate, type UnsentText } from '../core/unsent';
 import type { Identity } from '../core/protocol';
 
+/** A delete from the server's history asked up to when the Room gets the ask (`forgettingOf`), not up to a time. */
+export const FORGET_NOW = Number.MAX_SAFE_INTEGER;
+
 /**
  * Chat history kept in this browser (ticket 09), one list per room, in the order of the Room's clock. What reached this
- * browser live, and what the server's history (ADR 0009) brought of what it missed. Capped to the most recent MAX_HISTORY.
+ * browser live, and what the server's history (ADR 0009) brought of what it missed. The window's four weeks of it
+ * (core/kept.ts, HISTORY_KEEP_MS), as the server's, and no more than this browser's budget for texts and files together
+ * allows (client/budget.ts), the oldest of any room going first.
  */
 export type { StoredText };
 /** De-duplication key: sender plus server timestamp. The wire format stays untouched. */
@@ -15,7 +22,47 @@ const keyFor = (roomId: string): `history:${string}` => `history:${roomId}`;
 /** Before rooms, this browser kept one history under a single key. */
 const LEGACY_KEY = 'history';
 
-const read = (key: ParsedIdbKey): Promise<StoredText[]> => idbRead(key);
+type HistoryKey = `history:${string}` | `private:${string}`;
+/** Each history's size, as JSON, and its oldest text's time, as last read or written: what the budget counts. */
+const sizes = new Map<HistoryKey, { bytes: number; oldest: number }>();
+function note(key: HistoryKey, list: readonly StoredText[]): void {
+  held.texts -= sizes.get(key)?.bytes ?? 0;
+  if (!list.length) { sizes.delete(key); return; }
+  const bytes = JSON.stringify(list).length;
+  sizes.set(key, { bytes, oldest: list[0]!.at });
+  held.texts += bytes;
+}
+
+/** Read without what is older than the window (core/kept.ts, HISTORY_KEEP_MS): the next write leaves it out for good. */
+const read = async (key: HistoryKey): Promise<StoredText[]> => {
+  const now = Date.now();
+  const list = (await idbRead(key as ParsedIdbKey)).filter((m) => withinKeep(m.at, now));
+  note(key, list);
+  return list;
+};
+const write = async (key: HistoryKey, list: StoredText[]): Promise<void> => {
+  await idbSet(key, list);
+  note(key, list);
+};
+
+/**
+ * Texts past what this browser's budget leaves them (client/budget.ts, `textsMay`): the oldest go, whichever history they
+ * are in, down to the oldest of the next history each time, until they fit. Files never push them below half the budget;
+ * past it, files make room when the next one is kept (client/files.ts).
+ */
+async function makeRoom(): Promise<void> {
+  const budget = await localBudget();
+  while (held.texts > textsMay(budget) && sizes.size) {
+    const byAge = [...sizes].sort((a, b) => a[1].oldest - b[1].oldest);
+    const [key] = byAge[0]!;
+    const next = byAge[1]?.[1].oldest ?? Infinity;
+    const list = await read(key);
+    let over = held.texts - textsMay(budget);
+    let drop = 0;
+    while (drop < list.length && over > 0 && (drop === 0 || list[drop]!.at <= next)) { over -= JSON.stringify(list[drop]).length; drop++; }
+    await write(key, list.slice(drop));
+  }
+}
 
 export function loadHistory(roomId: string): Promise<StoredText[]> {
   return read(keyFor(roomId));
@@ -47,7 +94,8 @@ function appendTo(key: `history:${string}` | `private:${string}`, items: StoredT
     if (!fresh.length) return;
     // A room's texts by the Room's clock, those the server's history brought too; a private conversation's as they came.
     const next = key.startsWith('private:') ? [...list, ...fresh] : mergeByAt(list, fresh);
-    await idbSet(key, next.slice(-MAX_HISTORY));
+    await write(key, next);
+    await makeRoom();
   }).catch((e) => console.warn('history write failed', e));
   return chain;
 }
@@ -67,6 +115,7 @@ export const appendPrivate = (friend: string, m: StoredText): Promise<void> => a
 export function forgetPrivate(friend: string): Promise<void> {
   chain = chain.then(async () => {
     await idbDelete(`private:${friend}`);
+    note(`private:${friend}`, []);
     await idbSet('privateThreads', (await readThreads()).filter((t) => t.friend.publicKey !== friend));
   }).catch((e) => console.warn('private conversation delete failed', e));
   return chain;
@@ -92,12 +141,12 @@ export function touchPrivateThread(friend: Identity, at: number): Promise<void> 
 }
 
 /**
- * Empties a room's history in this browser. The server's history (ADR 0009) is asked for what comes after `at` only from
- * now on (`historyCleared`), so what was cleared stays cleared.
+ * Empties a room's history in this browser. Its history starts at `at` from now on (`historyFrom`): the server's (ADR
+ * 0009) is asked for what came after it only, so what was cleared stays cleared.
  */
 export function clearHistory(roomId: string, at = Date.now()): Promise<void> {
-  local.set('historyCleared', JSON.stringify({ ...local.read('historyCleared'), [roomId]: at }));
-  chain = chain.then(() => idbSet(keyFor(roomId), [])).catch((e) => console.warn('history clear failed', e));
+  keepHistoryFrom(roomId, at);
+  chain = chain.then(() => write(keyFor(roomId), [])).catch((e) => console.warn('history clear failed', e));
   return chain;
 }
 
@@ -113,21 +162,48 @@ export function keepHistorySynced(roomId: string, at: number): void {
   local.set('historySynced', JSON.stringify({ ...all, [roomId]: at }));
 }
 
-/** When this browser last cleared the room's history, if it did (`clearHistory`). */
-export const historyClearedAt = (roomId: string): number | null => local.read('historyCleared')[roomId] ?? null;
+/**
+ * Where this browser's history of a room starts, by the Room's clock: when it joined the room by its link, or last cleared
+ * it. Nothing older is asked of the server's history. None for a room held before starts were kept (and rooms of two,
+ * which both friends read from their first text): everything the server keeps.
+ */
+export const historyFromAt = (roomId: string): number | null => local.read('historyFrom')[roomId] ?? null;
+export function keepHistoryFrom(roomId: string, at: number): void {
+  local.set('historyFrom', JSON.stringify({ ...local.read('historyFrom'), [roomId]: at }));
+}
+/** A room new to this browser: its history starts where the Room's clock is at its first welcome (core/kept.ts, FROM_JOIN). */
+export const startHistoryAtJoin = (roomId: string): void => keepHistoryFrom(roomId, FROM_JOIN);
+
+/**
+ * Rooms where what I wrote is to be deleted from the server's history (ADR 0009) and the server has not said all of it
+ * is gone, by room id: up to when, by the Room's clock, or FORGET_NOW for up to when the Room gets the ask. Asked again
+ * after every welcome until it is (client/room.ts, `forgetMine`).
+ */
+export const forgettingOf = (roomId: string): number | null => local.read('historyForget')[roomId] ?? null;
+export function keepForgetting(roomId: string, before: number): void {
+  local.set('historyForget', JSON.stringify({ ...local.read('historyForget'), [roomId]: before }));
+}
+export function doneForgetting(roomId: string): void {
+  const all = local.read('historyForget');
+  if (!(roomId in all)) return;
+  delete all[roomId];
+  if (Object.keys(all).length) local.set('historyForget', JSON.stringify(all));
+  else local.remove('historyForget');
+}
 
 /** Leaving a room: its history goes with it, as the leave dialog says. The link brings the room back, not the lines. */
 export function forgetHistory(roomId: string): Promise<void> {
   forgetUnsent(roomId);
-  // Rejoined by its link, the room is new to this browser: the server's history (ADR 0009) brings what it keeps.
-  for (const key of ['historyCleared', 'historySynced'] as const) {
+  // Rejoined by its link, the room is new to this browser, and starts again from then (`startHistoryAtJoin`).
+  // A delete from the server not finished yet goes too: there is no socket left to ask on.
+  for (const key of ['historyFrom', 'historySynced', 'historyForget'] as const) {
     const all = local.read(key);
     if (!(roomId in all)) continue;
     delete all[roomId];
     if (Object.keys(all).length) local.set(key, JSON.stringify(all));
     else local.remove(key);
   }
-  chain = chain.then(() => idbDelete(keyFor(roomId))).catch((e) => console.warn('history delete failed', e));
+  chain = chain.then(async () => { await idbDelete(keyFor(roomId)); note(keyFor(roomId), []); }).catch((e) => console.warn('history delete failed', e));
   return chain;
 }
 
@@ -162,7 +238,7 @@ export function keepUnsentPrivate(roomId: string, texts: UnsentPrivate[]): void 
 /** One-time: the history from before rooms belongs to the room the old single secret became. */
 export function adoptLegacyHistory(roomId: string): Promise<void> {
   chain = chain.then(async () => {
-    const legacy = await read(LEGACY_KEY);
+    const legacy = await idbRead(LEGACY_KEY);
     if (legacy.length > 0 && (await idbGet(keyFor(roomId))) === undefined) await idbSet(keyFor(roomId), legacy);
     await idbDelete(LEGACY_KEY);
   }).catch((e) => console.warn('history migration failed', e));

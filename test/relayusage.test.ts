@@ -1,6 +1,6 @@
 import { env, exports } from 'cloudflare:workers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FREE_PLAN, RELAY_FREE_BYTES, fillOf, formatBytes, formatCount, formatPercent, freePlanRequest, monthSoFar, parseFreePlan, parseRelayBytes, parseRelayUsage, relayUsageRequest, savesRelay } from '../src/core/relayusage';
+import { FREE_PLAN, RELAY_FREE_BYTES, elapsedOf, fillOf, formatBytes, formatCount, formatPercent, freePlanRequest, monthSoFar, parseFreePlan, parseRelayBytes, parseRelayUsage, relayUsageRequest, savesRelay } from '../src/core/relayusage';
 import { withoutTurn } from '../src/core/turn';
 import { forgetRelayUsage, relayUsage } from '../src/worker/relayusage';
 
@@ -177,5 +177,13 @@ describe('the Worker’s /relay-usage', () => {
     expect(api).toHaveBeenCalledTimes(2);
     api.mockImplementation(async () => Response.json(ANSWER));
     expect(await answer(NOV_2 + 61_000)).toMatchObject({ bytes: 14066575220 });
+  });
+
+  it('says how far through its day or month a limit is, UTC, for the pace line', () => {
+    expect(elapsedOf('day', Date.UTC(2026, 10, 5, 0))).toBe(0);
+    expect(elapsedOf('day', Date.UTC(2026, 10, 5, 18))).toBe(0.75);
+    expect(elapsedOf('month', Date.UTC(2026, 10, 1))).toBe(0);
+    expect(elapsedOf('month', Date.UTC(2026, 10, 16))).toBe(0.5); // November: 30 days
+    expect(elapsedOf('month', Date.UTC(2026, 1, 15))).toBe(0.5); // February 2026: 28 days
   });
 });

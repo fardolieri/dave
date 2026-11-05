@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { exportPublicKey, fromBase64Url, generateIdentityKeyPair, toBase64Url } from '../src/core/identity';
-import { MAX_NAME_LENGTH, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_SEALED_PROFILE_LENGTH, MAX_TEXT_LENGTH } from '../src/core/protocol';
+import { MAX_NAME_LENGTH, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_SEALED_PIECE_LENGTH, MAX_SEALED_PROFILE_LENGTH, MAX_TEXT_LENGTH } from '../src/core/protocol';
+import { KEPT_PIECE_BYTES } from '../src/core/kept';
 import { MAX_FILE_NAME, MAX_PREVIEW_LENGTH, type FileMeta } from '../src/core/attachment';
 import { roomIdOf, textKeyOf } from '../src/core/rooms';
-import { generatePrivateTextKeyPair, openFile, openProfile, openText, pairSecret, sealFile, sealProfile, sealText, signPrivateTextKey, verifyPrivateTextKey } from '../src/core/sealed';
+import { generatePrivateTextKeyPair, openFile, openPiece, openProfile, openText, pairSecret, sealFile, sealPiece, sealProfile, sealText, signPrivateTextKey, verifyPrivateTextKey } from '../src/core/sealed';
 
 async function writer() {
   const keys = await generateIdentityKeyPair();
@@ -201,4 +202,32 @@ describe('sealed profiles (ADR 0010)', async () => {
     }
   });
 
+});
+
+describe('sealed pieces of a kept file (ADR 0009)', async () => {
+  const key = await textKeyOf('a secret');
+  const roomId = await roomIdOf('a secret');
+  const bytes = new Uint8Array(KEPT_PIECE_BYTES).map((_, i) => i % 251);
+  const where = { key, roomId, hash: 'h'.repeat(43), n: 2, of: 5 };
+
+  it('round-trips a piece, shows nothing of it, and fits what the Room takes', async () => {
+    const sealed = await sealPiece({ ...where, bytes });
+    const opened = await openPiece({ ...where, sealed });
+    // Byte by byte, not by toEqual, which takes seconds over a whole piece.
+    expect(opened?.length).toBe(bytes.length);
+    expect(opened!.every((b, i) => b === bytes[i])).toBe(true);
+    expect(toBase64Url(sealed).length).toBeLessThanOrEqual(MAX_SEALED_PIECE_LENGTH);
+    expect(sealed.subarray(12, 12 + 64)).not.toEqual(bytes.subarray(0, 64));
+  });
+
+  it('opens only for its room, file, place and count, and never throws', async () => {
+    const sealed = await sealPiece({ ...where, bytes });
+    for (const over of [{ roomId: await roomIdOf('another') }, { key: await textKeyOf('another') }, { hash: 'g'.repeat(43) }, { n: 3 }, { of: 6 }]) {
+      expect(await openPiece({ ...where, ...over, sealed }), JSON.stringify(Object.keys(over))).toBeNull();
+    }
+    expect(await openPiece({ ...where, sealed: sealed.subarray(0, 10) })).toBeNull();
+    const flipped = sealed.slice();
+    flipped[40] = flipped[40]! ^ 1;
+    expect(await openPiece({ ...where, sealed: flipped })).toBeNull();
+  });
 });

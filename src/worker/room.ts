@@ -6,6 +6,7 @@ import { mintIceServers, revokeIce } from './turn';
 import { logRejected } from './telemetry';
 import { STORE_NAME } from './store';
 import type { KeptEntry } from '../core/protocol';
+import { fromBase64Url, toBase64Url } from '../core/identity';
 
 /** A socket whose last sign of life is older than this is dropped by the sweep (spec §4). */
 export const SILENT_TIMEOUT_MS = 90_000;
@@ -83,15 +84,28 @@ export class Room extends DurableObject<Env> {
       now: Date.now(),
       others: others.flatMap((s) => (s && s.stage === 'attached' ? [s.person] : [])),
       mintIce: (ttlSeconds) => mintIceServers(this.env, ttlSeconds),
-      history: async (since, max) => {
+      history: async (since) => {
         const room = this.roomId();
         if (room === undefined) return null;
         // After this room's own keeps under way: a text broadcast a moment ago is in the answer, or comes live.
         await this.keeping;
         try {
-          return await this.store().since(room, since, max);
+          return await this.store().since(room, since);
         } catch (e) {
           console.log('history not served', JSON.stringify({ reason: String(e) }));
+          return null;
+        }
+      },
+      keepPiece: (writer, id, sealed, at) => this.keepPiece(writer, id, sealed, at),
+      forget: (writer, before) => this.forget(writer, before),
+      piece: async (id) => {
+        const room = this.roomId();
+        if (room === undefined) return null;
+        try {
+          const sealed = await this.store().piece(room, id);
+          return sealed ? toBase64Url(sealed) : null;
+        } catch (e) {
+          console.log('piece not served', JSON.stringify({ reason: String(e) }));
           return null;
         }
       },
@@ -250,6 +264,51 @@ export class Room extends DurableObject<Env> {
     );
     this.keeping = kept;
     this.ctx.waitUntil(kept);
+  }
+
+  /**
+   * Hands a piece of a file to the server's history (ADR 0009), and says whether it is kept: beside the texts' keeps, not
+   * after them, so a file's pieces hold up no sync. 'failed' asks the sender's app to send it again; 'not today' not.
+   */
+  private keepPiece(writer: string, id: string, sealed: string, at: number): Promise<'kept' | 'not today' | 'failed'> {
+    const kept = this.keepPieceNow(writer, id, sealed, at);
+    this.pieceKeeps.add(kept);
+    void kept.finally(() => this.pieceKeeps.delete(kept));
+    return kept;
+  }
+  private async keepPieceNow(writer: string, id: string, sealed: string, at: number): Promise<'kept' | 'not today' | 'failed'> {
+    const room = this.roomId();
+    const bytes = fromBase64Url(sealed);
+    if (room === undefined || !bytes) return 'not today';
+    try {
+      if (await this.store().keepPiece(room, writer, id, bytes, at)) return 'kept';
+      console.log('piece not kept', JSON.stringify({ reason: 'daily share used up' }));
+      return 'not today';
+    } catch (e) {
+      console.log('piece not kept', JSON.stringify({ reason: String(e) }));
+      return 'failed';
+    }
+  }
+
+  /** Pieces on their way to the Store: a `forget` waits for them, so none sent before it is kept after it. */
+  private pieceKeeps = new Set<Promise<unknown>>();
+
+  /**
+   * Deletes what a friend wrote in this room from the server's history (ADR 0009): after this room's keeps and pieces
+   * under way, and before those that come after, so what was sent before the `forget` goes and what comes after stays.
+   * False when the Store's daily share of writes ran out first, or it failed: the friend's app asks again.
+   */
+  private forget(writer: string, before: number): Promise<boolean> {
+    const room = this.roomId();
+    if (room === undefined) return Promise.resolve(false);
+    const pieces = [...this.pieceKeeps];
+    const done = this.keeping.then(() => Promise.allSettled(pieces)).then(() => this.store().forget(room, writer, before)).catch((e: unknown) => {
+      console.log('history not forgotten', JSON.stringify({ reason: String(e) }));
+      return false;
+    });
+    this.keeping = done.then(() => {});
+    this.ctx.waitUntil(done);
+    return done;
   }
 
   /**

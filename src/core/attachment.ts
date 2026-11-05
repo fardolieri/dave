@@ -43,7 +43,10 @@ export const pieceCount = (size: number, piece: number): number => Math.ceil(siz
 export const PULLS_AT_ONCE = 2;
 /** Pictures and videos up to this size are pulled as they arrive; anything else waits for a click. */
 export const AUTO_PULL_BYTES = 16 * 1024 * 1024;
-/** What this browser keeps of files, its own and its friends'; the oldest go first. */
+/**
+ * What this browser keeps of texts and files together where it cannot say how much it gives the site (client/budget.ts),
+ * and at least that where it can; the oldest go first.
+ */
 export const FILE_STORE_BUDGET = 300 * 1024 * 1024;
 export const MAX_FILE_NAME = 255;
 /** The preview's longest side, in pixels. */
@@ -135,13 +138,13 @@ export function parsePartialPull(raw: unknown): PartialPull | null {
 /**
  * Keeping `added` within `budget`: the index after it, and the files to let go, oldest first. A file kept already is
  * only moved to the newest end. One larger than the whole budget is not kept at all (it is still shown while the page
- * is open).
+ * is open). Files kept longer than `keepMs` go too, as the history's texts do (core/kept.ts, HISTORY_KEEP_MS).
  */
-export function keepWithin(index: readonly KeptFile[], added: KeptFile, budget = FILE_STORE_BUDGET): { index: KeptFile[]; drop: string[]; kept: boolean } {
-  const rest = index.filter((f) => f.hash !== added.hash);
-  if (added.size > budget) return { index: rest, drop: index.length === rest.length ? [] : [added.hash], kept: false };
+export function keepWithin(index: readonly KeptFile[], added: KeptFile, budget = FILE_STORE_BUDGET, keepMs = Infinity): { index: KeptFile[]; drop: string[]; kept: boolean } {
+  const drop = index.filter((f) => f.hash !== added.hash && added.at - f.at >= keepMs).map((f) => f.hash);
+  const rest = index.filter((f) => f.hash !== added.hash && !drop.includes(f.hash));
+  if (added.size > budget) return { index: rest, drop: index.some((f) => f.hash === added.hash) ? [...drop, added.hash] : drop, kept: false };
   const next = [...rest, added];
-  const drop: string[] = [];
   let total = next.reduce((n, f) => n + f.size, 0);
   while (total > budget) {
     const oldest = next.shift()!;

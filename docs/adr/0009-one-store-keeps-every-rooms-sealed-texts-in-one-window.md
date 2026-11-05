@@ -14,9 +14,12 @@ only what it already relays sealed (ADR 0005, 0006): it cannot read it, and sear
 A new Durable Object class, **Store**, of which there is one (`idFromName('history')`), keeps every text and file
 announcement a Room broadcasts, as it broadcast it: `{ t, from, sealed, at, id }`, in SQLite, by room id. The Room hands
 each one over after its broadcast (`keep`, `waitUntil`); a failure there is logged and changes nothing for friends online.
-After every welcome a browser sends `{ t: 'sync', since }`, and the Room answers with the newest 500 the Store kept after
-it, in `history` frames of about 256 KB, the last saying up to when (`upTo`, the Room's clock), or that it could not say
-(`unavailable`). `since` is where the browser last had everything of the room (`historySynced` in localStorage) less
+After every welcome a browser sends `{ t: 'sync', since }`, and the Room answers with what the Store kept after it,
+oldest first, in `history` frames of about 256 KB, the last saying up to when (`upTo`, the Room's clock), or that it could
+not say (`unavailable`). One answer brings 5,000 entries or 4 MB of them at most (`SYNC_MAX`, `SYNC_BYTES_MAX`); one that
+stops there says `more`, its `upTo` the last entry's time, and the browser asks on from just before it once the Room takes
+another sync, with no overlap, until an answer does not stop short. (It was the newest 500 until 2026-11-08, as many as a
+browser kept of a room; a longer absence left a gap.) `since` is where the browser last had everything of the room (`historySynced` in localStorage) less
 five minutes: moved on by an answer shown in full, and by texts that came live on a socket whose answer was, never by a
 live text alone, which would skip what an answer lost on the way still had to bring. The browser opens a frame's entries
 all first, then shows, keeps and counts them in one go, or none of them should the room have left the tab or its history
@@ -29,6 +32,18 @@ rather than billing; the rest is for the Rooms and the previews, which count aga
 JSON plus 512 bytes, its row and indexes as measured in workerd, so 4 GB counted is a little more than 4 GB on disk. The
 About dialog shows how full it is and how far back it reaches (`/history-usage`).
 
+And it keeps nothing longer than four weeks (`HISTORY_KEEP_MS`; owner, 2026-11-07: "a unified window for both, except
+if the disk size is reached first"), in every browser too: a browser's texts and kept files older than that go as the
+server's do. There is no cap on how many (500 a room until 2026-11-08, owner: "I want the 500 message cap gone"): texts
+and kept files together take no more than a tenth of the storage the browser reports it gives the site, and at least
+300 MB (`client/budget.ts`). Texts may hold what the files leave, and half of it whatever they hold; past that the
+oldest texts of any room go. Files get what the texts leave, the oldest going as the next is kept: files kept up to the
+old 300 MB of their own never push a browser's texts out. "Show older
+messages" brings older lines on screen 200 at a time. The Store gives nothing older (`since`, `piece`), and
+drops it once a day in an alarm at 23:45 UTC (`PRUNE_AT_MS`), oldest first, with what is left of the day's share of
+writes, near the end of the free plan's day so the day's chat had the share first; what does not fit goes the next day,
+unseen meanwhile.
+
 ## Details
 
 - What the server keeps beside the sealed bytes: the writer's key and fingerprint, their profile as it was then, sealed
@@ -39,20 +54,68 @@ About dialog shows how full it is and how far back it reaches (`/history-usage`)
   one SQLite object on this account without an error, though the FAQ says 1 GB per object on the Free plan. One object
   serves every room's keeps and syncs, one at a time: plenty for a group of friends, and the first thing to split should
   that change.
-- The free plan counts rows, the account's: 100,000 written and 5 million read a day, which the Rooms need too (a room's
-  verifier is read on every challenge). So the history takes a share and no more, whoever asks: 10,000 keeps a day
-  (about four rows written each, seven once the window is full and each keep drops an old one), 10,000 syncs (one row
-  each) and 2 million rows read. Past a share, until 00:00 UTC, texts go out live but are not kept, and syncs are
-  answered `unavailable`. A socket may ask once per 10 s.
+- The free plan counts rows and requests, the account's: 100,000 rows written, 5 million read and 100,000 requests a
+  day, which the Rooms need too (a room's verifier is read on every challenge, every socket is a request). So the history
+  takes a share and no more, whoever asks: 85,000 rows written a day, counted as SQLite counts them, what a keep drops
+  from the tail included; 40,000 syncs; 4 million rows read. Past a share, until 00:00 UTC, texts go out live but are not
+  kept, syncs are answered `unavailable`, and files are neither kept nor given. A socket may ask for a sync once per 10 s.
+  The About dialog shows each share's use today beside the window.
+- Syncs are counted in memory and written with the totals every 10 syncs, or sooner with a keep: a row written per sync
+  is as many rows written as syncs. Those writes go on past the share of writes (4,000 a day at most), or an eviction
+  would forget the syncs since. What an eviction forgets is a few syncs of an idle Store's; a busy one stays awake.
+- The shares were 70,000 rows written, 10,000 syncs (one row written each) and 2 million rows read at first. The browser
+  suite run against a preview a few times in one day used up its 10,000 syncs, and every history test went red until
+  midnight UTC (2026-11-05, owner: "be less stingy").
+- Once the window is full, each byte kept drops an older one. A piece dropping texts writes about three rows per text,
+  one dropping pieces four per MB: with files most of the bytes, as they will be, the day's share of writes keeps GBs of
+  files a day; a window full of texts alone, some 20 MB.
+- The tail of the window is cut at every keep, by as much as that keep went past it and no more: the totals row that
+  says how full the window is is read and written by every keep anyway, so the check costs nothing. Cutting 200 MB at
+  once when full would not write less (every entry is deleted once, whenever), only all at once: 200 MB of texts is
+  some 200,000 rows, past the day's writes in one go (owner's question, 2026-11-05).
+- Files up to 16 MB (`KEPT_FILE_MAX`) are kept too, in the same window (owner, 2026-11-05). The sender's app sends each
+  in pieces of 1 MB (256 KB until 2026-11-07: four times the requests, rows and frames a file), sealed with the room's
+  text key and bound to the room, the file's hash and the piece's place (`src/core/sealed.ts`, `sealPiece`), as
+  `{ t: 'piece' }` frames paced under a rate of their own, after the announcement; the server answers each with whether
+  it keeps it (`kept`), and the app sends what it did not keep again, a few times at most. A piece goes by the file's
+  tag, its hash keyed with a key from the room's secret (`pieceTagOf`, core/rooms.ts), not the hash itself, by which
+  whoever holds a copy of a file could tell from the server's storage that it was sent. The Store keeps each piece as an
+  entry of its own (marked `piece`, under its sender's key, id `<tag>:<n>`), so pieces and texts share one order and one
+  tail; a sync brings no pieces. The same file sent by two friends in a room is kept twice, a copy each, so that each can
+  delete theirs (below); it is rare, and a count of who refers to a piece would need the server to read announcements. A friend's app still pulls a file from a friend online
+  first; the server is the last it asks in a round, when no friend gave it (none online, or none reachable), piece by
+  piece (`{ t: 'fetch' }`), and the whole file is checked against the hash its announcement signed before it shows. Larger files go friend to friend only: one 700 MB
+  video would push weeks of every room's texts out of the window. A file whose oldest pieces the tail took is not
+  given: what is left of it waits there to go too.
 - A text sent again after a lost socket is broadcast again under its id (ticket 51); the Store keeps it once (room,
   writer, id). Browsers drop doubles anyway.
-- Clearing a room's history in a browser records when (`historyCleared` in localStorage), and its syncs ask from then on,
-  so the cleared texts stay cleared there. Leaving a room forgets that too: the link brings the room back with what the
-  server keeps of it.
-- What a sync brings into a browser that held nothing of the room (a new device, a room rejoined) is not counted unread;
-  what it brings into one that held some is, without a chime: a batch arrives at once.
-- Not kept yet: private texts (ADR 0007) and file bytes (ADR 0006). Both are tickets in `.scratch/server-history/`;
-  private conversations are to become rooms of two, which then keep their texts like any room (ticket 03).
+- A friend can delete everything they wrote in a room from the server's history: texts, file announcements and the
+  pieces of their files (owner, 2026-11-07), with Clear's "Also delete my messages from the server", one room at a time.
+  The socket asks (`forget`) up to a time: the Room's clock as the last welcome's `at` lets the app tell it, once the
+  socket has sent what it held, plus three seconds for it to arrive (or the next welcome's own, for a Clear without a
+  socket), so an ask repeated after a lost answer deletes nothing written since. What I write while the socket still
+  sends (up to 30 s on a slow link) goes with it: it is ahead of the ask. My texts and files that waited to go never go; the Store drops the room's entries whose writer is the key that socket proved, up to then, after the room's
+  keeps and pieces under way. Friends' copies stay theirs. A drop counts against the day's writes like a keep, and goes
+  no further than the share has room for; the app keeps the ask (`historyForget` in localStorage) and asks again after
+  every welcome until the server says all of it is gone. Identity is
+  per browser: what I wrote from another device, or from a browser whose data is lost, is not this browser's to delete,
+  and goes with the window's tail. Cloudflare keeps 30 days of a Durable Object's storage for point-in-time recovery, so
+  whoever holds the account could bring a dropped entry back within that time: sealed, as it was.
+- A browser's history of a room has a start (`historyFrom` in localStorage), and its syncs ask from there on: when it
+  joined the room by the link, or last cleared it (owner, 2026-11-07: a newcomer does not read what was said before
+  they came). A room joined starts past everything (`FROM_JOIN`) until its first welcome, whose `at`, the Room's clock,
+  becomes the start: the browser's own clock may be off, and a start taken from a sync's answer would wait on an answer
+  that may be lost, or not given that day. A new device and a room rejoined after Leave are joins
+  like any. Rooms of two have no start, as both friends read from the first text and one may write before the other's
+  browser first opens it; nor do rooms a browser held before starts were kept, which keep everything.
+- The start is this browser's choice, not a lock: everyone with the link holds the key that opens the whole window,
+  and the server cannot tell a newcomer from a friend, so an app changed to ask from the beginning gets it. Making it
+  binding needs keys that change over time (a newcomer never holding the old ones), considered and left for now
+  (2026-11-07): it gives "since the link was made", not "since I joined", and no revocation.
+- What a sync brings into a browser that held nothing of a room and has no start (a room of two new to it, a room held
+  from before) is not counted unread; what it brings into one that held some, or has a start, is, without a chime: a
+  batch arrives at once.
+- Private conversations are rooms of two (ADR 0011), and keep their texts and files like any room.
 
 ## Consequences
 

@@ -204,9 +204,9 @@ test('received history survives a reload, and "Clear chat history" empties it', 
   await bob.connected();
   await expect.poll(() => bob.chatTexts()).toEqual(['one', 'two']);
 
-  bob.page.once('dialog', (d) => void d.accept());
   await openRoomMenu(bob.page);
   await bob.page.getByRole('button', { name: 'Clear chat history' }).click();
+  await bob.page.locator('dialog.clear').getByRole('button', { name: 'Clear', exact: true }).click();
   await expect.poll(() => bob.chatTexts()).toEqual([]);
   await bob.page.reload();
   await bob.connected();
@@ -215,7 +215,7 @@ test('received history survives a reload, and "Clear chat history" empties it', 
   expect(await alice.chatTexts()).toEqual(['one', 'two']);
 });
 
-test('leaving a room forgets its history in this browser: the link brings the room back, and what the server keeps of it', async ({ crowd }) => {
+test('leaving a room forgets its history in this browser: the link brings the room back, from then on', async ({ crowd }) => {
   const other = { secret: newSecret(), name: 'Other' };
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob', { rooms: [crowd.room, other] });
@@ -233,19 +233,112 @@ test('leaving a room forgets its history in this browser: the link brings the ro
   await bob.page.goto(`/#${crowd.room.secret}/${encodeURIComponent(crowd.room.name)}`);
   await bob.connected();
   await expect(bob.selectedRoom.locator('.room-title')).toHaveText(crowd.room.name);
-  // The server's history (ADR 0009) brings the text back; a live line goes after it.
-  await expect.poll(() => bob.chatTexts()).toEqual(['before']);
+  // Joined again: what the server keeps from before (ADR 0009) is not brought back; a live line is.
   await alice.say('after');
-  await expect.poll(() => bob.chatTexts()).toEqual(['before', 'after']);
+  await expect.poll(() => bob.chatTexts()).toEqual(['after']);
+  await bob.page.reload();
+  await bob.connected();
+  await expect.poll(() => bob.chatTexts()).toEqual(['after']);
 });
 
-test('ADR 0009: a friend away, or on a new device, gets the texts and files sent meanwhile from the server, in order, counted unread without a chime', async ({ crowd }) => {
+test('ADR 0009: Clear with "Also delete my messages from the server" takes all I wrote in the room off it, files too; friends keep theirs', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.say('mine');
+  await bob.say('his');
+  await alice.attach({ name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('zip') });
+  await expect.poll(() => bob.storedTexts()).toEqual(['mine', 'his', 'notes.zip']);
+  // The file's piece is kept on the server, under its tag (ADR 0009), not its hash.
+  await expect.poll(() => alice.wire.frames<{ ok: boolean }>('down', 'kept').filter((f) => f.ok).length).toBe(1);
+  await openRoomMenu(alice.page);
+  await alice.page.getByRole('button', { name: 'Clear chat history' }).click();
+  const dialog = alice.page.locator('dialog.clear');
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel('Also delete my messages from the server').check();
+  await dialog.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(() => alice.wire.frames<{ done: boolean }>('down', 'forgot').map((f) => f.done)).toEqual([true]);
+  await expect.poll(() => alice.chatTexts()).toEqual([]);
+  // Bob's copy is his.
+  expect(await bob.storedTexts()).toEqual(['mine', 'his', 'notes.zip']);
+  // A browser that holds the room from before starts were kept, and nothing of it: the server has only Bob's text.
+  const carol = await crowd.open('Carol');
+  await expect.poll(() => carol.storedTexts()).toEqual(['his']);
+  // What Alice writes after it stays.
+  await alice.say('after');
+  await expect.poll(() => carol.storedTexts()).toEqual(['his', 'after']);
+  await alice.page.reload();
+  await alice.connected();
+  await expect.poll(() => alice.chatTexts()).toEqual(['after']);
+  expect(alice.wire.frames('up', 'forget'), 'asked once: the server said all of it was gone').toHaveLength(1);
+});
+
+test('ADR 0009: a delete from the server asked while away goes once back, and what waited to go never goes', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.say('mine');
+  await bob.say('his');
+  await expect.poll(() => bob.storedTexts()).toEqual(['mine', 'his']);
+  await alice.wire.cut();
+  const sealedBefore = alice.wire.frames('up', 'sealed').length;
+  await expect(alice.banner).toContainText(/Reconnecting|Server unavailable/);
+  await alice.composer.fill('written while away');
+  await alice.composer.press('Enter');
+  await expect.poll(() => alice.pendingTexts()).toEqual(['written while away']);
+  await openRoomMenu(alice.page);
+  await alice.page.getByRole('button', { name: 'Clear chat history' }).click();
+  const dialog = alice.page.locator('dialog.clear');
+  await dialog.getByLabel('Also delete my messages from the server').check();
+  await dialog.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect.poll(() => alice.pendingTexts()).toEqual([]);
+  // Asked over a reload too: the ask is kept until the server says it is done.
+  await alice.page.reload();
+  alice.wire.restore();
+  await alice.connected();
+  await expect.poll(() => alice.wire.frames<{ done: boolean }>('down', 'forgot').map((f) => f.done)).toEqual([true]);
+  expect(alice.wire.frames('up', 'sealed').length, 'the text that waited never went').toBe(sealedBefore);
+  const carol = await crowd.open('Carol');
+  await expect.poll(() => carol.storedTexts()).toEqual(['his']);
+  expect(await bob.chatTexts()).toEqual(['mine', 'his']);
+});
+
+test('ADR 0009: a friend who joins by the link reads nothing from before, and everything from then on, missed texts too', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice');
+  await alice.say('before you came');
+  await expect.poll(() => alice.storedTexts()).toEqual(['before you came']);
+  const bob = await crowd.open('Bob', { rooms: [other] });
+  // His first answer from the server is lost on the way: where his history starts must not hang on it.
+  bob.wire.down = (frame) => (frame.includes('"t":"history"') ? null : frame);
+  await bob.page.goto(`/#${crowd.room.secret}/${encodeURIComponent(crowd.room.name)}`);
+  await bob.connected();
+  await expect(bob.selectedRoom.locator('.room-title')).toHaveText(crowd.room.name);
+  // His history starts at his welcome, by the Room's clock, and his sync asks from there.
+  const from = () => bob.page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('dave.historyFrom') ?? '{}') as Record<string, number>));
+  await expect.poll(from).toHaveLength(1);
+  const [start] = await from();
+  expect(bob.wire.frames<{ at: number }>('down', 'welcome').map((f) => f.at)).toContain(start);
+  await expect.poll(() => bob.wire.frames<{ since: number }>('up', 'sync').map((f) => f.since)).toContain(start);
+  await alice.say('after');
+  await expect.poll(() => bob.chatTexts()).toEqual(['after']);
+  // Away, then back: the server brings what he missed since he came, still nothing from before.
+  await bob.wire.cut();
+  await alice.say('while you were out');
+  bob.wire.down = null;
+  bob.wire.restore();
+  await bob.connected();
+  await expect.poll(() => bob.chatTexts()).toEqual(['after', 'while you were out']);
+  await expect.poll(() => bob.storedTexts()).toEqual(['after', 'while you were out']);
+});
+
+test('ADR 0009: a friend away, or a browser that held the room before starts were kept, gets the texts and files sent meanwhile from the server, in order, counted unread without a chime', async ({ crowd }) => {
   const other = { secret: newSecret(), name: 'Other' };
   const alice = await crowd.open('Alice');
   await alice.say('before anyone came');
   await alice.attach({ name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('zip') });
   await alice.say('after the file');
-  // Bob's browser has never seen the room: the server brings what it keeps, nothing unread, as he had nothing of it yet.
+  // Bob's browser holds the room from before starts were kept, and nothing of it: the server brings all it keeps, nothing
+  // unread, as he had nothing of it yet.
   const bob = await crowd.open('Bob', { rooms: [crowd.room, other] });
   await expect.poll(() => bob.page.locator('.chat-log .att-card .att-name').allTextContents()).toEqual(['notes.zip']);
   await expect.poll(() => bob.storedTexts()).toEqual(['before anyone came', 'notes.zip', 'after the file']);
@@ -269,6 +362,34 @@ test('ADR 0009: a friend away, or on a new device, gets the texts and files sent
   await alice.say('live again');
   await expect.poll(() => bob.storedTexts()).toEqual(['before anyone came', 'notes.zip', 'after the file', 'while you were out', 'and this', 'live again']);
   await expect(bob.page.locator('.chat-log .att-card .att-name')).toHaveText(['notes.zip']);
+});
+
+test('ADR 0009: an answer from the server that stops short is asked on from where it stopped, with nothing lost between', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.say('first');
+  await expect.poll(() => bob.chatTexts()).toEqual(['first']);
+  await bob.wire.cut();
+  await alice.say('one');
+  await alice.say('two');
+  await alice.say('three');
+  // Bob's next answer stops after its first entry, as one past SYNC_MAX does: "more", up to that entry's time.
+  let cutAt: number | null = null;
+  bob.wire.down = (frame) => {
+    if (cutAt !== null || !frame.includes('"t":"history"') || !frame.includes('"last":true')) return frame;
+    const h = JSON.parse(frame) as { entries: Array<{ at: number }>; upTo: number };
+    const missed = h.entries.filter((e) => e.at > 0);
+    if (missed.length < 3) return frame;
+    cutAt = missed[0]!.at;
+    return JSON.stringify({ ...h, entries: h.entries.filter((e) => e.at <= cutAt!), upTo: cutAt, more: true });
+  };
+  bob.wire.restore();
+  await bob.connected();
+  await expect.poll(() => cutAt).not.toBeNull();
+  // Asked on from just before where it stopped, once the Room takes another sync, and so everything comes, in order.
+  await expect.poll(() => bob.wire.frames<{ since: number }>('up', 'sync').map((f) => f.since), { timeout: 30_000 }).toContainEqual(cutAt! - 1);
+  await expect.poll(() => bob.chatTexts()).toEqual(['first', 'one', 'two', 'three']);
+  await expect.poll(() => bob.storedTexts()).toEqual(['first', 'one', 'two', 'three']);
 });
 
 test('ADR 0009, 0010: a new device shows a writer who has gone by the name the server kept, sealed, with the text', async ({ crowd }) => {
@@ -302,6 +423,35 @@ test('ADR 0009: an answer from the server lost on the way is asked again on the 
   await bob.connected();
   await expect.poll(() => bob.chatTexts()).toEqual(['first', 'missed', 'live']);
   await expect.poll(() => bob.storedTexts()).toEqual(['first', 'missed', 'live']);
+});
+
+test('ADR 0009: texts older than four weeks go from this browser too, as from the server', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.say('a month ago');
+  await alice.say('last week');
+  await expect.poll(() => bob.storedTexts()).toEqual(['a month ago', 'last week']);
+  // Bob's own copy, as if the first had come 29 days ago and the second 7.
+  await bob.page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('dave'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+    const store = () => db.transaction('kv', 'readwrite').objectStore('kv');
+    const keys = await new Promise<IDBValidKey[]>((resolve) => { const r = store().getAllKeys(); r.onsuccess = () => resolve(r.result); });
+    for (const key of keys.filter((k) => String(k).startsWith('history:'))) {
+      const list = await new Promise<Array<{ text: string; at: number }>>((resolve) => { const r = store().get(key); r.onsuccess = () => resolve(r.result); });
+      const aged = list.map((m) => ({ ...m, at: Date.now() - (m.text === 'a month ago' ? 29 : 7) * 24 * 3600_000 }));
+      await new Promise((resolve) => { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(aged, key); tx.oncomplete = resolve; });
+    }
+    db.close();
+  });
+  // The server's copies are minutes old, not a month: its answer, which would bring them again, is kept from Bob here.
+  bob.wire.down = (frame) => (frame.includes('"t":"history"') ? null : frame);
+  await bob.page.reload();
+  await bob.connected();
+  await bob.page.locator('.chat-older').click();
+  await expect.poll(() => bob.chatTexts()).toEqual(['last week']);
+  // The next write leaves it out for good.
+  await alice.say('today');
+  await expect.poll(() => bob.storedTexts()).toEqual(['last week', 'today']);
 });
 
 test('texts from more than 18 h before the room came on screen wait behind a button, folded again each time it does', async ({ crowd }) => {

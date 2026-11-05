@@ -34,13 +34,13 @@
     // which the workflow writes into the built config. Each preview is its own Worker with its own rooms, deleted when the
     // PR closes. Bindings and vars are not inherited from the top level by Wrangler, so they are repeated here; keep them
     // in step with the ones above. One rate-limit namespace for all of them, apart from the live site's (ids are per account),
-    // and higher than its 10: the browser suite (e2e.yml) opens a few dozen sockets a minute from one runner IP. The Room's
-    // per-socket limits still apply.
+    // and higher than its 60: the browser suite (e2e.yml) opens a few hundred sockets a minute from one runner IP, a room
+    // of two's for each pair of friends in a test among them (ADR 0011). The Room's per-socket limits still apply.
     "preview": {
       "name": "dave-preview",
       "vars": { "TURN_KEY_ID": "d3d456166c56302f67957272a1ff9ba5", "POSTHOG_KEY": "phc_qN9fsscYFP3YPfBdoNu4gyK2VsqGaXzALoASMUfJqm7q", "POSTHOG_HOST": "https://eu.i.posthog.com", "BUILD_TARGET": "preview" },
       "durable_objects": { "bindings": [{ "name": "ROOM", "class_name": "Room" }, { "name": "STORE", "class_name": "Store" }] },
-      "ratelimits": [{ "name": "UPGRADE_LIMIT", "namespace_id": "1003", "simple": { "limit": 120, "period": 60 } }]
+      "ratelimits": [{ "name": "UPGRADE_LIMIT", "namespace_id": "1003", "simple": { "limit": 600, "period": 60 } }]
     },
     // Local only, never deployed: the build the Playwright suite runs against (CLOUDFLARE_ENV=e2e, see playwright.config.ts).
     // No upgrade limit, because every browser in a run connects from 127.0.0.1 and the suite reconnects on purpose.
