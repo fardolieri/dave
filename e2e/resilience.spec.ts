@@ -691,6 +691,45 @@ test('a server restart that drops every socket plays no leave or join cue while 
   expect(await bob.cuesPlayed(), 'Bob hears no cue for Alice').toEqual([]);
 });
 
+test('a friend whose server socket drops and comes back plays no join cue for a friend in the room but out of the call', async ({ crowd }) => {
+  // Problem report, 2026-10-28: a friend in the room but out of the call heard a join cue, joined, and was told by the
+  // friends in the call that none of them had left or come back. The fix for the report of Oct 8 keeps a friend whose
+  // socket drops in the call only while I hold a connection to them, and out of the call I hold none.
+  const alice = await crowd.open('Alice', { picture: '😀' });
+  const bob = await crowd.open('Bob', { picture: '🦊' });
+  const carol = await crowd.open('Carol', { picture: '🐙' });
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await bob.connectedTo('Alice');
+  await expect.poll(() => carol.inCall()).toEqual(['Alice', 'Bob']);
+  await needHooks(carol);
+  // Out of the call, Carol's cues start on her first gesture, as anyone's do who has clicked into the page.
+  await carol.composer.click();
+  // Cues only play on a running AudioContext. Headless Firefox on a runner without a sound device never gets one.
+  await expect.poll(() => carol.hook<{ cues: string | null }>('playback').then((p) => p.cues), { timeout: 3000 }).toBe('running').catch(() => {});
+  const cues = await carol.hook<{ cues: string | null }>('playback').then((p) => p.cues);
+  test.skip(cues !== 'running', `no running AudioContext for cues here (${cues}), so no cue can play`);
+  await expect.poll(async () => (await carol.cuesPlayed()).length, { message: 'the join cues are done' }).toBe(0);
+  await carol.page.waitForTimeout(2000);
+  await carol.cuesPlayed();
+
+  // Bob's socket drops and stays away long enough for the Room to tell the others he is gone, then comes back.
+  await bob.wire.cut();
+  await expect(bob.banner).toContainText(/Reconnecting|Server unavailable/);
+  await expect(alice.selectedRoom.locator('li.lost')).toContainText('connection to server lost');
+  bob.wire.restore();
+  await bob.connected();
+  await expect(bob.banner).toHaveCount(0);
+  await expect.poll(() => alice.inCall()).toEqual(['Alice', 'Bob']);
+  await expect.poll(() => carol.inCall()).toEqual(['Alice', 'Bob']);
+  await expect(alice.badge('Bob')).toHaveText('direct');
+  await carol.page.waitForTimeout(2000); // a cue set off by the last presence would have played by now
+
+  // Bob never left the call: Carol, listening from outside it, hears nobody come back.
+  expect(await carol.cuesPlayed(), 'Carol hears no cue for Bob').toEqual([]);
+});
+
 test('a call whose audio device fails under it plays again: the friends\' voices and the cues', async ({ crowd }) => {
   // Soak issues #39, #49, #50, #51: Chromium logged "The AudioContext encountered an error from the audio device or the
   // WebAudio renderer." It then stops that context and leaves it "suspended", and nothing in the app started it again:
