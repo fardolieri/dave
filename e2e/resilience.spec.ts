@@ -389,6 +389,37 @@ test('a late second answer to an offer sent again is never applied to a newer of
   await bob.hearing('Alice');
 });
 
+test('regression: an ICE restart whose offer went unanswered does not hold back the next one, and the call comes back', async ({ crowd }) => {
+  // Problem report, 2026-10-30 (Chrome, Linux): after a friend's router reconnected, the call to the one friend in it stayed
+  // "unreachable" until a reload. Their app restarted ICE when the path went, and that offer got no answer: the socket it
+  // went out on still counted as open (a dead one is given up only after two unanswered pings, up to 90 s). 20 s later the
+  // connection failed and the app restarted ICE again, but a restart asked for while an offer waits for its answer makes
+  // no offer of its own: the connection still waited in have-local-offer, and no further restart was ever armed.
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  const ufrag = (await peerOf(bob))?.remoteUfrag;
+
+  // Alice's first restart, its offer and candidates lost on the way to the server; her socket stays up.
+  let lost = 0;
+  alice.wire.up = (frame) => (frame.includes('"t":"signal"') ? (lost++, null) : frame);
+  await alice.hook('restartIce', 'Bob');
+  await expect.poll(() => lost, { message: 'the offer is lost' }).toBeGreaterThan(0);
+  expect((await peerOf(alice))?.signaling, 'Alice waits for an answer').toBe('have-local-offer');
+  await alice.page.waitForTimeout(1_500); // its candidates gathered, and lost as well
+  alice.wire.up = null;
+
+  // The path still down, the app restarts ICE once more (R8, after the connection failed): this one reaches Bob.
+  await alice.hook('restartIce', 'Bob');
+  await expect.poll(async () => (await peerOf(bob))?.remoteUfrag, { message: 'Bob gets an offer from the second restart', timeout: 10_000 }).not.toBe(ufrag);
+  await expect.poll(async () => (await peerOf(alice))?.signaling, { message: 'Alice got the answer' }).toBe('stable');
+  await alice.hearing('Bob');
+  await bob.hearing('Alice');
+});
+
 test('an offer made while my socket comes back goes out once I am in the call again, and only then', async ({ crowd }) => {
   // Nightly, 2026-10-10 (the two tests above, Firefox): "dropped signal not in the call" in Alice's console. A socket that
   // comes back is open before the server has let her in, and she is a visitor to it until her join: a signal written
