@@ -411,6 +411,15 @@ test('About shows the relay this month and the free plan today, the figure neare
   await expect(meter('stored')).toContainText('83 MB of 5 GB');
   await expect(meter('rowsRead')).toHaveAttribute('data-fill', 'ok');
   await expect(dialog.locator('.usage', { hasText: 'Free plan today' })).toContainText(/resets in \d+ (h|min)/);
+  // A line where an even pace would have each bar by now: the day's on the daily figures, the month's on the relay's,
+  // none on Stored, a total.
+  const paceAt = async (id: string) => parseFloat((await meter(id).locator('.meter-pace').getAttribute('style'))!.replace(/^.*left:\s*/, ''));
+  const elapsed = await alice.page.evaluate(() => { const n = new Date(); return { day: (n.getTime() - Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate())) / 864e5, month: (n.getTime() - Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), 1)) / (Date.UTC(n.getUTCFullYear(), n.getUTCMonth() + 1, 1) - Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), 1)) }; });
+  expect(Math.abs((await paceAt('objectRequests')) - elapsed.day * 100), 'the day so far').toBeLessThan(1);
+  expect(Math.abs((await paceAt('relay')) - elapsed.month * 100), 'the month so far').toBeLessThan(1);
+  await expect(meter('stored').locator('.meter-pace')).toHaveCount(0);
+  await expect(meter('stored')).not.toHaveAttribute('data-ahead');
+  await expect(dialog.locator('.usage-note')).toContainText('even pace');
   await close();
 
   // Yesterday's figures are not today's: the relay stays, the free plan's day goes.
@@ -465,6 +474,30 @@ test('ADR 0009: About shows how full the server\'s history is and how far back i
   await expect(kept.locator('.meter-pct')).toHaveText('<0.1%');
   await expect(kept.locator('h4')).toContainText(/back to .*2026/);
   await expect(kept.getByRole('meter')).toHaveAttribute('aria-valuenow', '1234567');
+  await close();
+
+  // Today's use of the history's own daily shares, the nearest first, each with its pace line; a share used up is
+  // ahead of any pace before midnight, one not touched behind it. Yesterday's are not shown.
+  const day = await alice.page.evaluate(() => new Date().toISOString().slice(0, 10));
+  const shares = { syncs: 40_000, written: 85_000, read: 4_000_000 };
+  answer = { bytes: 1_234_567, budget: 4e9, entries: 1100, oldest: Date.UTC(2026, 10, 4, 12), asOf: Date.now(), today: { day, syncs: 40_000, written: 1_700, read: 0 }, shares };
+  await about();
+  await expect(kept.locator('.meter-name')).toHaveText(['Texts and files', 'Syncs today', 'Rows written today', 'Rows read today']);
+  await expect(kept.locator('.meter[data-meter="kept"] .meter-pace'), 'the window is not a day\'s').toHaveCount(0);
+  const syncs = kept.locator('.meter[data-meter="kept-syncs"]');
+  await expect(syncs).toContainText('40,000 of 40,000');
+  await expect(syncs).toHaveAttribute('data-fill', 'bad');
+  await expect(syncs).toHaveAttribute('data-ahead', 'true');
+  await expect(syncs).toContainText('ahead of an even pace');
+  await expect(syncs.getByRole('meter')).toHaveAttribute('aria-valuetext', /ahead of an even pace/);
+  await expect(kept.locator('.meter[data-meter="kept-written"]')).toContainText('1,700 of 85,000');
+  await expect(kept.locator('.meter[data-meter="kept-read"]')).toHaveAttribute('data-ahead', 'false');
+  await expect(kept.locator('.meter[data-meter="kept-read"]')).not.toContainText('ahead');
+  await expect(kept.locator('.meter-pace')).toHaveCount(3);
+  await close();
+  answer = { bytes: 1_234_567, budget: 4e9, entries: 1100, oldest: Date.UTC(2026, 10, 4, 12), asOf: Date.now(), today: { day: '2020-01-01', syncs: 40_000, written: 1_700, read: 0 }, shares };
+  await about();
+  await expect(kept.locator('.meter')).toHaveCount(1);
   await close();
 
   // A failed ask keeps what was known.

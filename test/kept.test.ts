@@ -1,7 +1,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { HISTORY_BUDGET_BYTES, KEPT_FILE_MAX, ROW_OVERHEAD_BYTES, keptKind, WRITES_PER_DAY, SYNCS_PER_DAY, SYNC_FRAME_BYTES, SYNC_ROWS_PER_DAY, SYNC_OVERLAP_MS, entryBytes, formatHistoryUsage, historyFrames, parseHistoryUsage, syncSince } from '../src/core/kept';
+import { HISTORY_BUDGET_BYTES, KEPT_FILE_MAX, ROW_OVERHEAD_BYTES, keptKind, WRITES_PER_DAY, SYNCS_PER_DAY, SYNCS_PER_WRITE, SYNC_FRAME_BYTES, SYNC_ROWS_PER_DAY, SYNC_OVERLAP_MS, entryBytes, formatHistoryUsage, historyFrames, parseHistoryUsage, syncSince } from '../src/core/kept';
 import { insertByAt, mergeByAt } from '../src/core/chatlog';
 import { exportPublicKey, generateIdentityKeyPair, toBase64Url } from '../src/core/identity';
 import { onMessage, type SocketState } from '../src/core/room';
@@ -32,7 +32,7 @@ describe('the Store', () => {
       expect(s.since('roomA', 0, 2)!.map((e) => e.id), 'the newest of them').toEqual(['id5', 'id6']);
       expect(s.since('roomB', 0, 500)).toEqual([entry(7)]);
       expect(s.since('roomC', 0, 500)).toEqual([]);
-      expect(s.usage(5)).toEqual({ bytes: 7 * entryBytes(JSON.stringify(entry(1))), budget: HISTORY_BUDGET_BYTES, entries: 7, oldest: entry(1).at, asOf: 5 });
+      expect(s.usage(5)).toMatchObject({ bytes: 7 * entryBytes(JSON.stringify(entry(1))), budget: HISTORY_BUDGET_BYTES, entries: 7, oldest: entry(1).at, asOf: 5 });
     });
   });
 
@@ -83,7 +83,7 @@ describe('the Store', () => {
       for (let i = 0; i < 5; i++) expect(s.piece('roomA', `nothing:${i}`, day)).toBeNull();
       expect(totals(), 'no write for a miss').toEqual(before);
       // Misses that read the day's share away: then nothing is given, not even what is kept, nor a sync.
-      (s as unknown as { missed: { day: string; rows: number } }).missed = { day: '2026-11-05', rows: SYNC_ROWS_PER_DAY };
+      (s as unknown as { pending: { day: string; syncs: number; read: number } }).pending = { day: '2026-11-05', syncs: 0, read: SYNC_ROWS_PER_DAY };
       expect(s.piece('roomA', 'hashA:0', day)).toBeNull();
       expect(s.since('roomA', 0, 500, day)).toBeNull();
       expect(s.piece('roomA', 'hashA:0', day + 24 * 3600_000), 'the day after').toEqual(new Uint8Array(10));
@@ -108,6 +108,32 @@ describe('the Store', () => {
       expect(s.since('roomA', 0, 500, next)!.map((e) => e.id), 'the last sync of the day').toEqual(['id1', 'id2']);
       expect(s.since('roomA', 0, 500, next)).toBeNull();
       expect(s.since('roomA', 0, 500, next + 24 * 3600_000)!.map((e) => e.id), 'the day after').toEqual(['id1', 'id2']);
+    });
+  });
+
+  it('counts syncs in memory and writes them with the totals every few, or with a keep; About sees them all', async () => {
+    await runInDurableObject(store('pending'), (s: Store, state) => {
+      const day = Date.UTC(2026, 10, 5, 10);
+      s.keep('roomA', entry(1), HISTORY_BUDGET_BYTES, day);
+      const row = () => state.storage.sql.exec<{ kept: number; syncs: number; read: number }>('SELECT kept, syncs, read FROM totals').one();
+      const before = row();
+      for (let i = 1; i < SYNCS_PER_WRITE; i++) s.since('roomA', 0, 500, day);
+      expect(row(), 'nothing written yet').toEqual(before);
+      expect(s.usage(day).today, 'but counted').toMatchObject({ day: '2026-11-05', syncs: SYNCS_PER_WRITE - 1 });
+      s.since('roomA', 0, 500, day);
+      expect(row(), 'the tenth writes them, and counts its own write').toMatchObject({ kept: before.kept + 1, syncs: SYNCS_PER_WRITE });
+      expect(row().read).toBeGreaterThan(before.read);
+      s.since('roomA', 0, 500, day);
+      s.keep('roomA', entry(2), HISTORY_BUDGET_BYTES, day);
+      expect(row().syncs, 'a keep writes what is pending').toBe(SYNCS_PER_WRITE + 1);
+      expect(s.usage(day)).toMatchObject({ today: { day: '2026-11-05', syncs: SYNCS_PER_WRITE + 1 }, shares: { syncs: SYNCS_PER_DAY, written: WRITES_PER_DAY, read: SYNC_ROWS_PER_DAY } });
+      s.since('roomA', 0, 500, day);
+      expect(s.usage(day + 24 * 3600_000).today, 'a new day starts from none, what was pending of the last one dropped').toEqual({ day: '2026-11-06', syncs: 0, written: 0, read: 0 });
+      // The share of writes used up: syncs are still written every few, or an eviction would forget them, and their share.
+      state.storage.sql.exec('UPDATE totals SET kept = ?', WRITES_PER_DAY);
+      const used = row();
+      for (let i = 0; i < SYNCS_PER_WRITE; i++) s.since('roomA', 0, 500, day);
+      expect(row()).toMatchObject({ kept: WRITES_PER_DAY + 1, syncs: used.syncs + SYNCS_PER_WRITE });
     });
   });
 
@@ -266,5 +292,10 @@ describe('through the Worker', () => {
     expect(formatHistoryUsage({ ...u!, bytes: 1_234_567 })).toBe('1.2 MB of 4 GB (<0.1%)');
     expect(formatHistoryUsage({ ...u!, bytes: 3_000_000_000 })).toBe('3 GB of 4 GB (75%)');
     expect(parseHistoryUsage({ error: 'unavailable' })).toBeNull();
+    expect(u!.today, 'today\'s use of the shares').toMatchObject({ syncs: expect.any(Number), written: expect.any(Number), read: expect.any(Number) });
+    expect(u!.shares).toEqual({ syncs: SYNCS_PER_DAY, written: WRITES_PER_DAY, read: SYNC_ROWS_PER_DAY });
+    const old = { bytes: 1, budget: 2, entries: 1, oldest: null, asOf: 3 };
+    expect(parseHistoryUsage({ ...old, today: { day: '2026-11-05', syncs: 1, written: 2, read: 3 } }), 'no shares: neither').toEqual(old);
+    expect(parseHistoryUsage({ ...old, today: { day: '2026-11-05', syncs: -1, written: 2, read: 3 }, shares: { syncs: 1, written: 1, read: 1 } })).toEqual(old);
   });
 });

@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { HISTORY_BUDGET_BYTES, SYNCS_PER_DAY, SYNC_ROWS_PER_DAY, WRITES_PER_DAY, entryBytes, pieceBytes, type HistoryUsage } from '../core/kept';
+import { HISTORY_BUDGET_BYTES, HISTORY_SHARES, SYNCS_PER_DAY, SYNCS_PER_WRITE, SYNC_ROWS_PER_DAY, WRITES_PER_DAY, entryBytes, pieceBytes, type HistoryUsage } from '../core/kept';
 import type { KeptEntry } from '../core/protocol';
 
 /** The one Store there is: every room's history in one window (ADR 0009). */
@@ -8,7 +8,7 @@ export const STORE_NAME = 'history';
 /** Today, UTC, as the free plan's daily rows count it. */
 const dayOf = (now: number): string => new Date(now).toISOString().slice(0, 10);
 
-/** `written`: rows written today by keeps, what they drop from the window's tail included (the column `kept`). */
+/** `written`: rows written today, what keeps drop from the window's tail included (the column `kept`). */
 type Totals = { bytes: number; entries: number; day: string; written: number; read: number; syncs: number };
 /** The writer a file's pieces are kept under: no friend's key is empty, so a sync never brings them (`since`). */
 const PIECES = '';
@@ -22,8 +22,9 @@ const PIECES = '';
  * entry: one window, one order, one tail.
  *
  * `bytes` per row is what it is counted as (core/kept.ts, entryBytes); `totals` holds their sum, so neither a keep nor
- * the About dialog adds them all up, and what today used of the free plan's rows: rows keeps wrote, rows syncs and fetches
- * read, and syncs. Kept in storage: this object is evicted between syncs minutes apart.
+ * the About dialog adds them all up, and what today used of the free plan's rows: rows written, rows syncs and fetches
+ * read, and syncs. Kept in storage, syncs and what they read a few at a time (`pending`, SYNCS_PER_WRITE): this object is
+ * evicted between syncs minutes apart.
  */
 export class Store extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -37,15 +38,40 @@ export class Store extends DurableObject<Env> {
     sql.exec(`INSERT OR IGNORE INTO totals (one, bytes, entries, day, kept, read, syncs) VALUES (1, 0, 0, '', 0, 0, 0)`);
   }
 
-  /** The totals, today's counts reset on a new day. */
+  /** Syncs, and rows read by them and by fetches that found nothing, today, not yet written with the totals. */
+  private pending = { day: '', syncs: 0, read: 0 };
+
+  /** The totals, today's counts reset on a new day, and what is pending of today counted in. */
   private totals(now: number): Totals {
     const t = this.ctx.storage.sql.exec<Totals>('SELECT bytes, entries, day, kept AS written, read, syncs FROM totals').one();
     const day = dayOf(now);
-    return t.day === day ? { ...t } : { ...t, day, written: 0, read: 0, syncs: 0 };
+    const today = t.day === day ? { ...t } : { ...t, day, written: 0, read: 0, syncs: 0 };
+    if (this.pending.day === day) {
+      today.syncs += this.pending.syncs;
+      today.read += this.pending.read;
+    }
+    return today;
   }
 
+  /** Writes the totals, what was pending with them. */
   private setTotals(t: Totals): void {
     this.ctx.storage.sql.exec('UPDATE totals SET bytes = ?, entries = ?, day = ?, kept = ?, read = ?, syncs = ?', t.bytes, t.entries, t.day, t.written, t.read, t.syncs);
+    this.pending = { day: t.day, syncs: 0, read: 0 };
+  }
+
+  /**
+   * Counts syncs and rows read today, written with the totals every SYNCS_PER_WRITE syncs: past the share of writes too
+   * (SYNCS_PER_DAY / SYNCS_PER_WRITE rows at most), or an eviction would forget them and the syncs share with them.
+   */
+  private count(now: number, syncs: number, read: number): void {
+    const day = dayOf(now);
+    if (this.pending.day !== day) this.pending = { day, syncs: 0, read: 0 };
+    this.pending.syncs += syncs;
+    this.pending.read += read;
+    if (this.pending.syncs < SYNCS_PER_WRITE) return;
+    const t = this.totals(now);
+    t.written += 1;
+    this.setTotals(t);
   }
 
   /**
@@ -93,22 +119,17 @@ export class Store extends DurableObject<Env> {
     });
   }
 
-  /** Rows read today by fetches that found nothing (`piece`). */
-  private missed = { day: '', rows: 0 };
-  /** Rows read today: as the totals keep them, and the misses since this object last woke. */
-  private readToday(t: Totals): number { return t.read + (this.missed.day === t.day ? this.missed.rows : 0); }
-
   /** A piece of a file `room` keeps, sealed; null when it is not kept (any more), or today's share of rows read is used up. */
   piece(room: string, id: string, now = Date.now()): Uint8Array | null {
     const t = this.totals(now);
-    if (this.readToday(t) >= SYNC_ROWS_PER_DAY || t.written >= WRITES_PER_DAY) return null;
+    if (t.read >= SYNC_ROWS_PER_DAY || t.written >= WRITES_PER_DAY) return null;
     const cursor = this.ctx.storage.sql.exec<{ entry: ArrayBuffer }>('SELECT entry FROM entries WHERE room = ? AND writer = ? AND id = ?', room, PIECES, id);
     const row = cursor.toArray()[0];
     // A miss writes nothing: a friend's app asks for a file nobody online has, which the server may never have had. What
-    // misses read is counted in memory, against the same share: an eviction forgets it, the Room's rate bounds it.
+    // misses read is counted in memory, against the same share, and written with the next totals: an eviction before
+    // that forgets it, the Room's rate bounds it.
     if (!row || !(row.entry instanceof ArrayBuffer)) {
-      if (this.missed.day !== t.day) this.missed = { day: t.day, rows: 0 };
-      this.missed.rows += cursor.rowsRead + 1; // and the totals
+      this.count(now, 0, cursor.rowsRead + 1); // and the totals
       return null;
     }
     t.read += cursor.rowsRead;
@@ -123,20 +144,18 @@ export class Store extends DurableObject<Env> {
    */
   since(room: string, since: number, max: number, now = Date.now()): KeptEntry[] | null {
     const t = this.totals(now);
-    if (this.readToday(t) >= SYNC_ROWS_PER_DAY || t.syncs >= SYNCS_PER_DAY) return null;
+    if (t.read >= SYNC_ROWS_PER_DAY || t.syncs >= SYNCS_PER_DAY) return null;
     // Texts and file announcements: not the pieces of files, which a browser asks for one by one (`piece`).
     const cursor = this.ctx.storage.sql.exec<{ entry: string }>('SELECT entry FROM entries WHERE room = ? AND at > ? AND writer != ? ORDER BY at DESC, seq DESC LIMIT ?', room, since, PIECES, max);
     const rows = cursor.toArray();
-    t.read += cursor.rowsRead;
-    t.syncs += 1;
-    this.setTotals(t);
+    this.count(now, 1, cursor.rowsRead);
     return rows.reverse().map((r) => JSON.parse(r.entry) as KeptEntry);
   }
 
-  /** How full the window is, and since when it reaches back. */
+  /** How full the window is, since when it reaches back, and what today used of the daily shares. */
   usage(now = Date.now()): HistoryUsage {
-    const { bytes, entries } = this.totals(now);
+    const { bytes, entries, day, syncs, written, read } = this.totals(now);
     const oldest = this.ctx.storage.sql.exec<{ at: number }>('SELECT at FROM entries ORDER BY seq LIMIT 1').toArray()[0]?.at ?? null;
-    return { bytes, budget: HISTORY_BUDGET_BYTES, entries, oldest, asOf: now };
+    return { bytes, budget: HISTORY_BUDGET_BYTES, entries, oldest, asOf: now, today: { day, syncs, written, read }, shares: HISTORY_SHARES };
   }
 }

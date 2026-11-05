@@ -199,5 +199,18 @@ export function formatCount(n: number): string {
 export type Fill = 'ok' | 'warn' | 'bad';
 export const fillOf = (part: number, of: number): Fill => (part >= of * 0.8 ? 'bad' : part >= of * 0.5 ? 'warn' : 'ok');
 
+/**
+ * How far `now` is through the period a limit resets after, 0 to 1: the day, or the month from the 1st, UTC, as
+ * Cloudflare counts both. A limit used at an even pace stands at this share of itself now; one past it runs out before
+ * the reset if it goes on as it went (the About dialog's pace line).
+ */
+export function elapsedOf(period: 'day' | 'month', now: number): number {
+  const d = new Date(now);
+  const [y, m] = [d.getUTCFullYear(), d.getUTCMonth()];
+  const from = period === 'day' ? Date.UTC(y, m, d.getUTCDate()) : Date.UTC(y, m, 1);
+  const to = period === 'day' ? from + 24 * 3600_000 : Date.UTC(y, m + 1, 1);
+  return (now - from) / (to - from);
+}
+
 /** "14.1 GB of 1 TB (1.4%)": bytes of a limit, as the server's history says how full it is (core/kept.ts). */
 export const formatShare = (bytes: number, of: number): string => `${formatBytes(bytes)} of ${formatBytes(of)} (${formatPercent(bytes, of)}%)`;

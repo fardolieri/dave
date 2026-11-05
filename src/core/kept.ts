@@ -20,18 +20,28 @@ export const ROW_OVERHEAD_BYTES = 512;
 export const entryBytes = (json: string): number => new TextEncoder().encode(json).length + ROW_OVERHEAD_BYTES;
 
 /**
- * The free plan's rows are the account's, 100,000 written and 5 million read a day, and the Rooms need theirs: a room's
- * verifier is read on every challenge. So the history takes a share and no more, whoever asks: past it, until 00:00 UTC,
- * texts go out live but are not kept, a sync is answered `unavailable`, and a file's pieces are neither kept nor given.
- * Writes are counted as SQLite counts them, what a keep drops from the tail of the window included: one piece of a file
- * kept into a window full of texts drops hundreds of them at once. A kept text is about four rows (its row, two
- * indexes, the totals), seven once the window is full; a sync is one (the totals): WRITES_PER_DAY and SYNCS_PER_DAY
- * together are 80,000 of the 100,000. A day of friends chatting is a few thousand texts, and a sync is asked on every
- * welcome.
+ * The free plan's rows and requests are the account's, 100,000 rows written, 5 million read and 100,000 requests a day,
+ * and the Rooms need theirs: a room's verifier is read on every challenge, every socket is a request. So the history
+ * takes a share of each and no more, whoever asks: past it, until 00:00 UTC, texts go out live but are not kept, a sync
+ * is answered `unavailable`, and a file's pieces are neither kept nor given. Writes are counted as SQLite counts them,
+ * what a keep drops from the tail of the window included (one piece of a file kept into a window full of texts drops
+ * hundreds of them at once), and the totals a keep, a piece given or every SYNCS_PER_WRITE syncs write. A kept text is
+ * about four rows (its row, two indexes, the totals), seven once the window is full. A sync is one request to the
+ * Store, asked on every welcome: a browser opens a socket per room and one per friend (ADR 0011), and the browser suite
+ * against a preview a few thousand a run. What is left for the Rooms: 11,000 rows written (the syncs' own writes, below,
+ * go past the share), a million read, and 60,000
+ * requests less what keeps take.
  */
-export const WRITES_PER_DAY = 70_000;
-export const SYNCS_PER_DAY = 10_000;
-export const SYNC_ROWS_PER_DAY = 2_000_000;
+export const WRITES_PER_DAY = 85_000;
+export const SYNCS_PER_DAY = 40_000;
+export const SYNC_ROWS_PER_DAY = 4_000_000;
+/**
+ * Syncs, and the rows they and fetches that found nothing read, are counted in memory and written with the totals every
+ * this many syncs, or sooner with a keep: a row written per sync would be as many rows as syncs. These writes go on
+ * past WRITES_PER_DAY, 4,000 a day at most, or the syncs share would hold only until the next eviction. What an eviction
+ * forgets is a few syncs of an idle object's, never of a busy one's, which stays awake.
+ */
+export const SYNCS_PER_WRITE = 10;
 
 /**
  * Files the server keeps too (ADR 0009), encrypted in the browser: those up to this size, what a friend's app pulls by
@@ -94,13 +104,26 @@ export function historyFrames(entries: readonly KeptEntry[] | null, upTo: number
 }
 
 /** What the Worker's `/history-usage` answers, for the About dialog: the window's fill, and the oldest entry it still has. */
-export type HistoryUsage = { bytes: number; budget: number; entries: number; oldest: number | null; asOf: number };
+/** What today (UTC) used of the history's daily shares, as the Store counts them, and the shares. */
+export type HistoryToday = { day: string; syncs: number; written: number; read: number };
+export const HISTORY_SHARES: Omit<HistoryToday, 'day'> = { syncs: SYNCS_PER_DAY, written: WRITES_PER_DAY, read: SYNC_ROWS_PER_DAY };
 
+export type HistoryUsage = { bytes: number; budget: number; entries: number; oldest: number | null; asOf: number; today?: HistoryToday; shares?: Omit<HistoryToday, 'day'> };
+
+const num = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0;
+
+/** `today` and `shares` only when the Worker sent both, whole: a Worker from before them sends neither. */
 export function parseHistoryUsage(json: unknown): HistoryUsage | null {
   const u = json as Partial<HistoryUsage> | null;
-  const num = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0;
   if (!u || !num(u.bytes) || !num(u.budget) || u.budget === 0 || !num(u.entries) || !num(u.asOf) || !(u.oldest === null || num(u.oldest))) return null;
-  return { bytes: u.bytes, budget: u.budget, entries: u.entries, oldest: u.oldest, asOf: u.asOf };
+  const usage: HistoryUsage = { bytes: u.bytes, budget: u.budget, entries: u.entries, oldest: u.oldest, asOf: u.asOf };
+  const t = u.today as Partial<HistoryToday> | undefined;
+  const s = u.shares as Partial<HistoryToday> | undefined;
+  if (t && s && typeof t.day === 'string' && num(t.syncs) && num(t.written) && num(t.read) && num(s.syncs) && num(s.written) && num(s.read) && s.syncs > 0 && s.written > 0 && s.read > 0) {
+    usage.today = { day: t.day, syncs: t.syncs, written: t.written, read: t.read };
+    usage.shares = { syncs: s.syncs, written: s.written, read: s.read };
+  }
+  return usage;
 }
 
 /** "1.2 MB of 4 GB (<0.1%)", as the relay's line. */

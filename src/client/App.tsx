@@ -20,9 +20,9 @@ import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, identityOf, normaliseName, type Ident
 import { displayName, formatAgo, knownAgo } from '../core/names';
 import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatStream } from '../core/format';
-import { FREE_PLAN, RELAY_SAVE_FROM, fillOf, formatBytes, formatCount, formatPercent, monthSoFar, type FreePlanToday, type RelayUsage } from '../core/relayusage';
+import { FREE_PLAN, RELAY_SAVE_FROM, elapsedOf, fillOf, formatBytes, formatCount, formatPercent, monthSoFar, type FreePlanToday, type RelayUsage } from '../core/relayusage';
 import { refreshRelayUsage, relaySaving, relayUsage } from './relay';
-import { parseHistoryUsage, type HistoryUsage } from '../core/kept';
+import { parseHistoryUsage, type HistoryToday, type HistoryUsage } from '../core/kept';
 import { Markdown, MarkdownMirror } from './Markdown';
 import { quotePrefix } from '../core/markdown';
 import { FOLD_OLDER_MS, olderCount } from '../core/chatlog';
@@ -1939,23 +1939,33 @@ function untilReset(now: number): string {
  * One figure against its limit (stat tile and meter, as the dataviz rules have them): its name, its share, a thin bar
  * filled in the theme's accent, its warning colour past half and its danger colour past 80 %, on a track of the same
  * colour, and the figures under it. Past half the share also says so in words (⚠): never by colour alone.
+ *
+ * A limit that resets has a pace (core/relayusage.ts, elapsedOf): how far through its day or month it is. A line across
+ * the bar marks it, where the bar would stand had the limit been used at an even pace since the reset; a bar past it
+ * runs out before the reset if it goes on so, and says that in words too.
  */
-function UsageMeter(props: { id: string; name: string; title: string; value: number; limit: number; shown: string; children?: JSX.Element }) {
+function UsageMeter(props: { id: string; name: string; title: string; value: number; limit: number; shown: string; pace?: number; children?: JSX.Element }) {
   const fill = () => fillOf(props.value, props.limit);
   const pct = () => formatPercent(props.value, props.limit);
   const width = () => (props.value > 0 ? `max(3px, ${Math.min(100, (props.value / props.limit) * 100)}%)` : '0');
+  const ahead = () => props.pace !== undefined && props.value / props.limit > props.pace;
+  const paceText = () => (props.pace === undefined ? '' : ahead() ? ', ahead of an even pace' : ', within an even pace');
   return (
-    <li class="meter" data-meter={props.id} data-fill={fill()} title={props.title}>
+    <li class="meter" data-meter={props.id} data-fill={fill()} data-ahead={props.pace === undefined ? undefined : String(ahead())} title={props.title}>
       <span class="meter-name">{props.name}</span>
       <span class="meter-pct">{fill() !== 'ok' ? <span aria-hidden="true">⚠ </span> : null}{pct()}%</span>
-      <div class="meter-bar" role="meter" aria-label={props.name} aria-valuemin={0} aria-valuemax={props.limit} aria-valuenow={Math.round(props.value)} aria-valuetext={`${props.shown} (${pct()}%)`}>
+      <div class="meter-bar" role="meter" aria-label={props.name} aria-valuemin={0} aria-valuemax={props.limit} aria-valuenow={Math.round(props.value)} aria-valuetext={`${props.shown} (${pct()}%)${paceText()}`}>
         <i style={{ width: width() }} />
+        <Show when={props.pace !== undefined}><b class="meter-pace" style={{ left: `${(props.pace ?? 0) * 100}%` }} /></Show>
       </div>
-      <span class="meter-fig">{props.shown}</span>
+      <span class="meter-fig">{props.shown}<Show when={ahead()}> · <span class="meter-ahead">ahead of an even pace</span></Show></span>
       {props.children}
     </li>
   );
 }
+
+/** What the pace line means, once under the meters that have it. */
+const PACE_NOTE = 'The line on a bar is where an even pace would have it by now. Past it, the limit runs out before it resets, if use goes on like this.';
 
 /** The free plan's figures for today, the one nearest its limit first: what to keep an eye on. */
 function FreePlanToday(props: { today: FreePlanToday; now: number }) {
@@ -1964,11 +1974,19 @@ function FreePlanToday(props: { today: FreePlanToday; now: number }) {
     <section class="usage" aria-label="Cloudflare free plan today">
       <h4>Free plan today <small>resets in {untilReset(props.now)} (00:00 UTC)</small></h4>
       <ul>
-        <For each={rows()}>{(r) => <UsageMeter id={r.key} name={r.name} title={r.title} value={r.value} limit={r.limit} shown={`${r.shown(r.value)} of ${r.shown(r.limit)}`} />}</For>
+        {/* Stored is a total, not a day's: it has no pace. */}
+        <For each={rows()}>{(r) => <UsageMeter id={r.key} name={r.name} title={r.title} value={r.value} limit={r.limit} shown={`${r.shown(r.value)} of ${r.shown(r.limit)}`} pace={r.key === 'stored' ? undefined : elapsedOf('day', props.now)} />}</For>
       </ul>
     </section>
   );
 }
+
+/** The history's own daily shares (core/kept.ts), carved from the free plan's figures above so the rooms keep theirs. */
+const HISTORY_ROWS: Array<{ key: keyof Omit<HistoryToday, 'day'>; name: string; title: string }> = [
+  { key: 'syncs', name: 'Syncs today', title: "Times a browser asked the server's history for what it missed: one on every socket's welcome, a room's or a friend's. Past this share of the room requests, until midnight UTC, browsers get no history from the server; live texts still come." },
+  { key: 'written', name: 'Rows written today', title: "Rows the server's history wrote: kept texts and pieces of files, old ones dropped from the window, and its own counts. Past this share of the rows written, until midnight UTC, texts and files are sent but not kept." },
+  { key: 'read', name: 'Rows read today', title: "Rows the server's history read for syncs and for pieces of kept files. Past this share of the rows read, until midnight UTC, browsers get no history and no kept files from the server." },
+];
 
 const HISTORY_TITLE = "What the server keeps of every room's texts and files up to 16 MB, sealed so that only friends can read them, for friends who were away and for new devices. One window for every room of this site: past 4 GB the oldest go first, whichever room they are of. Counted with what their storage costs on top, so a little more than the texts themselves.";
 
@@ -1999,6 +2017,13 @@ function VersionDialog() {
   // Of several asks under way, the latest one's answer is taken; a failed one keeps what was known.
   const [history, setHistory] = createSignal<HistoryUsage | 'unknown' | null>(null);
   let historyAsks = 0;
+  // Whether any meter shown has a pace line, as the sections below decide: a figure of this day or month.
+  const paced = () => {
+    const r = relay();
+    const h = history();
+    const { from, to } = monthSoFar(now());
+    return (typeof r === 'object' && r !== null && (r.since === from || r.today?.day === to)) || (typeof h === 'object' && h !== null && h.today?.day === to && !!h.shares);
+  };
   const open = () => {
     setNow(Date.now());
     stopTick();
@@ -2047,7 +2072,7 @@ function VersionDialog() {
               <section class="usage" aria-label="Relay this month">
                 <h4>Relay this month <small>since {new Date(`${u().since}T00:00:00Z`).toLocaleDateString([], { day: 'numeric', month: 'short', timeZone: 'UTC' })}</small></h4>
                 <ul>
-                  <UsageMeter id="relay" name="Relay (TURN)" title={RELAY_TITLE} value={u().bytes} limit={u().limit} shown={`${formatBytes(u().bytes)} of ${formatBytes(u().limit)}`}>
+                  <UsageMeter id="relay" name="Relay (TURN)" title={RELAY_TITLE} value={u().bytes} limit={u().limit} shown={`${formatBytes(u().bytes)} of ${formatBytes(u().limit)}`} pace={u().since === monthSoFar(now()).from ? elapsedOf('month', now()) : undefined}>
                     <small class="meter-note">Calls and files between friends who cannot reach each other directly go through Cloudflare's relay, free up to 1 TB a month.
                       {relaySaving() ? ` This month is past ${RELAY_SAVE_FROM * 100}%: screen shares and files keep off it until the 1st, voice still goes through.` : ` Past ${RELAY_SAVE_FROM * 100}%, screen shares and files keep off it for the rest of the month.`}</small>
                   </UsageMeter>
@@ -2065,11 +2090,18 @@ function VersionDialog() {
                   <UsageMeter id="kept" name="Texts and files" title={HISTORY_TITLE} value={u().bytes} limit={u().budget} shown={`${formatBytes(u().bytes)} of ${formatBytes(u().budget)}`}>
                     <small class="meter-note">Texts, and files up to 16 MB, are kept on the server, sealed so only friends can read them, so a friend who was away gets them later. All rooms share 4 GB: once full, the oldest go first.</small>
                   </UsageMeter>
+                  {/* Its daily shares, today's only: the nearest its share first, as the free plan's. */}
+                  <Show when={u().today?.day === monthSoFar(now()).to && u().shares ? { today: u().today!, shares: u().shares! } : null}>{(d) => (
+                    <For each={HISTORY_ROWS.map((r) => ({ ...r, value: d().today[r.key], limit: d().shares[r.key] })).sort((a, b) => b.value / b.limit - a.value / a.limit)}>{(r) => (
+                      <UsageMeter id={`kept-${r.key}`} name={r.name} title={r.title} value={r.value} limit={r.limit} shown={`${formatCount(r.value)} of ${formatCount(r.limit)}`} pace={elapsedOf('day', now())} />
+                    )}</For>
+                  )}</Show>
                 </ul>
               </>
             )}</Show>
           </section>
         )}</Show>
+        <Show when={paced()}><p class="usage-note">{PACE_NOTE}</p></Show>
         <div class="row"><button onClick={() => dialog?.close()}>Close</button></div>
       </dialog>
     </div>

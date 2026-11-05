@@ -39,11 +39,18 @@ About dialog shows how full it is and how far back it reaches (`/history-usage`)
   one SQLite object on this account without an error, though the FAQ says 1 GB per object on the Free plan. One object
   serves every room's keeps and syncs, one at a time: plenty for a group of friends, and the first thing to split should
   that change.
-- The free plan counts rows, the account's: 100,000 written and 5 million read a day, which the Rooms need too (a room's
-  verifier is read on every challenge). So the history takes a share and no more, whoever asks: 70,000 rows written a
-  day, counted as SQLite counts them, what a keep drops from the tail included; 10,000 syncs (one row each); 2 million
-  rows read. Past a share, until 00:00 UTC, texts go out live but are not kept, syncs are answered `unavailable`, and
-  files are neither kept nor given. A socket may ask for a sync once per 10 s.
+- The free plan counts rows and requests, the account's: 100,000 rows written, 5 million read and 100,000 requests a
+  day, which the Rooms need too (a room's verifier is read on every challenge, every socket is a request). So the history
+  takes a share and no more, whoever asks: 85,000 rows written a day, counted as SQLite counts them, what a keep drops
+  from the tail included; 40,000 syncs; 4 million rows read. Past a share, until 00:00 UTC, texts go out live but are not
+  kept, syncs are answered `unavailable`, and files are neither kept nor given. A socket may ask for a sync once per 10 s.
+  The About dialog shows each share's use today beside the window.
+- Syncs are counted in memory and written with the totals every 10 syncs, or sooner with a keep: a row written per sync
+  is as many rows written as syncs. Those writes go on past the share of writes (4,000 a day at most), or an eviction
+  would forget the syncs since. What an eviction forgets is a few syncs of an idle Store's; a busy one stays awake.
+- The shares were 70,000 rows written, 10,000 syncs (one row written each) and 2 million rows read at first. The browser
+  suite run against a preview a few times in one day used up its 10,000 syncs, and every history test went red until
+  midnight UTC (2026-11-05, owner: "be less stingy").
 - Once the window is full, each byte kept drops an older one. A piece dropping texts writes about three rows per text,
   one dropping pieces three per 256 KB: with files most of the bytes, as they will be, the day's share of writes keeps
   hundreds of MB of files a day; a window full of texts alone, some 20 MB.
