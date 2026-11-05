@@ -27,6 +27,16 @@ export async function loadIdentity(): Promise<LocalIdentity> {
   return { keys, publicKeyRaw, publicKey, fingerprint: await fingerprint(publicKeyRaw), privateTexts: await loadPrivateTextKey(keys.privateKey, publicKey) };
 }
 
+/**
+ * The identity I go by in my room of two with `friend` (ADR 0011): a key of its own, kept for that conversation alone, so
+ * nothing the server sees ties it to my identity or to my rooms. No private text key: none is published there.
+ */
+export async function pairIdentity(friend: string): Promise<LocalIdentity> {
+  const keys = (await idbGet<CryptoKeyPair>(`pairIdentity:${friend}`)) ?? (await idbKeep(`pairIdentity:${friend}`, await generateIdentityKeyPair()));
+  const publicKeyRaw = await exportPublicKey(keys.publicKey);
+  return { keys, publicKeyRaw, publicKey: toBase64Url(publicKeyRaw), fingerprint: await fingerprint(publicKeyRaw), privateTexts: null };
+}
+
 /** The private text key, made on the first load since ADR 0007; null when it cannot be kept, which must not keep the app from opening. */
 async function loadPrivateTextKey(identityKey: CryptoKey, identity: string): Promise<LocalIdentity['privateTexts']> {
   try {

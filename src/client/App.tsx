@@ -266,8 +266,7 @@ function Workspace(props: WorkspaceProps) {
   const links = mapArray(() => props.rooms.map((r) => r.secret), (secret): Link => {
     let last = untrack(() => props.rooms.find((r) => r.secret === secret)!);
     // A deliberate one-time snapshot of name and picture: the socket is created once; changes go through `rename` and `setPicture`.
-    // Private files are served by their conversation's word: to the friend it is with alone (client/privates.ts).
-    const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, textKey: last.textKey, name: untrack(() => props.name), picture: getPicture(), hold: holding, servesPrivate: (hash, peer) => privates.serves(hash, peer) });
+    const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, textKey: last.textKey, name: untrack(() => props.name), picture: getPicture(), hold: holding });
     const call = createCall(room, identity, { mayRejoin: untrack(() => props.mayRejoin) });
     posthog.capture('room_entered');
     // The latest saved entry; the last one seen while the room is being forgotten and its link disposed.
@@ -304,7 +303,11 @@ function Workspace(props: WorkspaceProps) {
     return { shown, known, title, picture: now ? now.picture : id.picture };
   };
   /** My private conversations (ADR 0007), one per friend, whichever rooms we share. */
-  const privates = createPrivates({ identity, name: () => props.name, rooms: () => links().map((l) => ({ room: l.room, name: l.saved.name })), current: () => current()?.room ?? null });
+  // Each conversation its own room of two (ADR 0011): made as a room is, under my name and picture as they are then.
+  const privates = createPrivates({
+    identity, rooms: () => links().map((l) => ({ room: l.room, name: l.saved.name })),
+    makeRoom: (o) => createRoom({ ...o, name: untrack(() => props.name), picture: getPicture(), hold: holding, allNews: true }),
+  });
   createAttention(links, me, privates.onText);
   // The profile card, and the row or avatar it hangs from: mine, or a friend's, whose card has the way to our private
   // conversation. Opening a friend's acknowledges their key. The row it hangs from clicked again puts it away: light
@@ -445,7 +448,7 @@ function Workspace(props: WorkspaceProps) {
     const quiet = setTimeout(() => setFirstConnect(false), QUIET_CONNECT_MS);
     return () => clearTimeout(quiet);
   });
-  const bannerStatus = (l: Link): ServerStatus => (firstConnect() && l.room.status().kind === 'connecting' ? { kind: 'connected' } : l.room.status());
+  const bannerStatus = (room: Link['room']): ServerStatus => (firstConnect() && room.status().kind === 'connecting' ? { kind: 'connected' } : room.status());
   // Bumped when I send or switch rooms: the log jumps to the newest line (the composer and the log are separate grid items).
   const [jumpToken, setJumpToken] = createSignal(0);
   // The same for a private conversation: its own, so the room's log behind it keeps its place.
@@ -572,8 +575,8 @@ function Workspace(props: WorkspaceProps) {
     for (const o of untrack(links)) if (o !== l) o.call.leave();
     void l.call.join();
   };
-  const renameSelf = (n: string) => { for (const l of links()) l.room.rename(n); props.onRename(n); posthog.capture('name_changed'); };
-  const pictureSelf = (pic: string | null) => { for (const l of links()) l.room.setPicture(pic); setPicture(pic); posthog.capture('picture_changed', { cleared: pic === null }); };
+  const renameSelf = (n: string) => { for (const l of links()) l.room.rename(n); privates.rename(n); props.onRename(n); posthog.capture('name_changed'); };
+  const pictureSelf = (pic: string | null) => { for (const l of links()) l.room.setPicture(pic); privates.setPicture(pic); setPicture(pic); posthog.capture('picture_changed', { cleared: pic === null }); };
   // Sidebar footer forms: a new room, a room from a pasted link, and the invite link of the room on screen.
   const [creating, setCreating] = createSignal(false);
   const [joining, setJoining] = createSignal(false);
@@ -594,7 +597,6 @@ function Workspace(props: WorkspaceProps) {
   const leaveRoom = (l: Link) => {
     if (!confirm(`Leave ${l.saved.name}? This browser forgets the room and its chat history. The invite link gets you back in.`)) return;
     if (untrack(active) === l) l.call.leave(); // say goodbye while the socket is still open, so nobody waits out the grace period
-    privates.strand(l.room); // my private texts waiting in it: through another room, else not sent
     forgetRoomTheme(l.saved.id);
     l.room.forgetUnread();
     closeMenu();
@@ -847,7 +849,7 @@ function Workspace(props: WorkspaceProps) {
           <div class="look" data-theme={lookOf(profile()?.roomId)} data-apart={lookOf(profile()?.roomId) ? '' : undefined}><ProfileCard open={profile()} people={withMe()} me={me} label={labelOf} onClose={() => setProfile(null)} onRenameSelf={renameSelf} onPictureSelf={pictureSelf} onMessage={(p) => { setProfile(null); openPrivate(p); }} /></div>
           {/* The state of the room on screen; with a private conversation on screen, of the room that carries it, as its
               composer goes by: a room down behind it is not the conversation's */}
-          <Banner status={bannerStatus((() => { const k = privates.openWith(); const via = k ? privates.via(k) : null; return (via && links().find((l) => l.room === via)) || cur(); })())} onTakeOver={() => { for (const l of links()) l.room.takeOver(); }} />
+          <Banner status={bannerStatus((() => { const k = privates.openWith(); return (k ? privates.via(k) : null) ?? cur().room; })())} onTakeOver={() => { for (const l of links()) l.room.takeOver(); privates.takeOver(); }} />
           <Show when={sharers().length > 0 && stage()}>{(s) => (
             <section class="shares" style={`grid-template-columns: repeat(${sharers().length}, 1fr)`}>
               <For each={sharerKeys()}>

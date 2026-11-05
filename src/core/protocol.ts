@@ -112,12 +112,6 @@ export type ClientMessage =
   | { t: 'sealed'; sealed: string; id: TextId }
   /** A file's announcement, sealed like a text under its own domain (ADR 0006); its bytes never come this way. */
   | { t: 'file'; sealed: string; id: TextId }
-  /**
-   * A private text (ADR 0007), sealed for the one friend `to`: the Room passes it on to them only, and back to me. `file`:
-   * a file's announcement for them instead (ADR 0006), sealed under its own domain, so the flag cannot pass one off as
-   * the other; the Room only takes a longer one for it.
-   */
-  | { t: 'private'; to: string; sealed: string; id: TextId; file?: true }
   | { t: 'text'; text: string; id?: TextId }
   /**
    * Ask for the room's texts and file announcements the server keeps (ADR 0009) that it took after `since` (the Room's
@@ -166,11 +160,6 @@ export type ServerMessage =
   | { t: 'sealed'; from: WireIdentity; sealed: string; at: number; id: TextId }
   /** A file's announcement, tagged like a sealed text. */
   | { t: 'file'; from: WireIdentity; sealed: string; at: number; id: TextId }
-  /**
-   * A private text, to the friend it is for and back to its writer, tagged like a sealed text. `key` is the writer's
-   * private text key as the Room has it, so the friend can open it after the writer is gone from presence.
-   */
-  | { t: 'private'; from: WireIdentity; to: string; key?: PrivateTextKey; sealed: string; at: number; id: TextId; file?: true }
   /**
    * What the server keeps of this room (ADR 0009), as each frame was broadcast, oldest first: the answer to a `sync`, in
    * frames of at most SYNC_FRAME_BYTES. On the answer's last frame, `upTo`: the Room's clock when it asked; everything
@@ -248,6 +237,8 @@ const str = (v: unknown, max = MAX_MESSAGE_BYTES): v is string => typeof v === '
 const b64 = (v: unknown): v is string => str(v, 1024) && B64URL.test(v);
 /** An identity's public key: 65 bytes, base64url. A list of them stays well inside a socket attachment's 16 KB. */
 const isPublicKey = (v: unknown): v is string => b64(v) && v.length === 87;
+/** Whether a text is an identity's public key as the wire writes one: 65 bytes, base64url. */
+export const isPublicKeyText = isPublicKey;
 
 export function normaliseName(raw: string): string | null {
   const name = raw.trim().replace(/\s+/g, ' ');
@@ -266,13 +257,16 @@ export function normalisePicture(raw: string): string | null {
   return picture.length <= MAX_PICTURE_LENGTH && isSingleEmoji(picture) ? picture : null;
 }
 
-/** What a refusal names: a message type, or one an app before ADR 0010 sent (a name or picture in plain). */
-export type RefType = ClientMessage['t'] | 'name' | 'picture';
+/**
+ * What a refusal names: a message type, or one an app before ADR 0010 sent (a name or picture in plain), or before
+ * ADR 0011 (a private text routed to a friend by key).
+ */
+export type RefType = ClientMessage['t'] | 'name' | 'picture' | 'private';
 /** Not a wire message: the parser's way of saying why a frame was rejected, and of which type it claimed to be when that is known. */
 export type Invalid = { t: 'invalid'; reason: string; ref?: RefType; id?: TextId };
 const invalid = (reason: string): Invalid => ({ t: 'invalid', reason });
 
-const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'sealed', 'file', 'private', 'link', 'linkice', 'text', 'join', 'leave', 'mute', 'profile', 'signal', 'ice', 'share', 'subscribe', 'telemetry', 'sync']);
+const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'sealed', 'file', 'link', 'linkice', 'text', 'join', 'leave', 'mute', 'profile', 'signal', 'ice', 'share', 'subscribe', 'telemetry', 'sync']);
 /** A sealed profile as the parser takes it: base64url, no longer than a client writes. */
 const isSealedProfile = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= MAX_SEALED_PROFILE_LENGTH && B64URL.test(v);
 const isClientType = (v: unknown): v is ClientMessage['t'] => typeof v === 'string' && CLIENT_TYPES.has(v);
@@ -393,15 +387,8 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
       if (m.sealed.length > MAX_SEALED_FILE_LENGTH) return invalid('file description too long');
       return { t: 'file', sealed: m.sealed, id: m.id };
     case 'private':
-      if (!isTextId(m.id)) return invalid('unrecognised message');
-      // Refused by its id from here on: the writer's app goes by it (client/room.ts).
-      if (!b64(m.to) || typeof m.sealed !== 'string' || !B64URL.test(m.sealed)) return { ...invalid('unrecognised message'), ref: 'private', id: m.id };
-      if (m.file === true) {
-        if (m.sealed.length > MAX_SEALED_FILE_LENGTH) return { ...invalid('file description too long'), ref: 'private', id: m.id };
-        return { t: 'private', to: m.to, sealed: m.sealed, id: m.id, file: true };
-      }
-      if (m.sealed.length > MAX_SEALED_LENGTH) return { ...invalid(`message longer than ${MAX_TEXT_LENGTH} characters`), ref: 'private', id: m.id };
-      return { t: 'private', to: m.to, sealed: m.sealed, id: m.id };
+      // A private text routed to one friend by key: an app from before ADR 0011, whose rooms of two carry them now.
+      return { ...invalid(APP_OUT_OF_DATE), ref: 'private' };
     case 'link': {
       if (!b64(m.to) || typeof m.data !== 'object' || m.data === null) return invalid('unrecognised message');
       const d = m.data as Record<string, unknown>;

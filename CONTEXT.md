@@ -33,15 +33,19 @@ The name and picture a friend shows, sealed with the room's text key and signed 
 _Avoid_: Account, user info
 
 **Private text**:
-A text to one friend, sealed so that only the two of them can read it, and relayed by a Room the two share to that friend alone. Live, like any text (ADR 0007).
+A text to one friend, in our room of two, so that only the two of us can read it. Kept for the friend while they are away, like any text in a room (ADR 0011).
 _Avoid_: DM, whisper, direct message (in UI copy)
 
 **Private conversation**:
-All private texts and files between me and one friend, apart from every room, whichever room carried them. Opened from the friend's avatar in the sidebar, whose row carries its unread count, with their profile as its head.
+All private texts and files between me and one friend, apart from every room: our room of two, and what this browser kept from before rooms of two. Opened from the friend's avatar in the sidebar, whose row carries its unread count, with their profile as its head.
+
+**Room of two**:
+The room a private conversation is in underneath: its secret derived by the two browsers alone from their private text keys, and entered under a key each makes for it, so the server cannot tell whose it is (ADR 0011). Not listed among the rooms.
+_Avoid_: DM room, pair room (in UI copy)
 _Avoid_: DM, thread (in UI copy), chat
 
 **Private text key**:
-The second keypair of a browser, next to its identity, that private texts to it are sealed with. Published in presence, signed by the identity, so the server cannot slip in its own.
+The second keypair of a browser, next to its identity, that its rooms of two are derived from. Published in presence, signed by the identity, so the server cannot slip in its own.
 _Avoid_: Encryption key, DM key
 
 **Attachment**:

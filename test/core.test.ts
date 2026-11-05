@@ -24,15 +24,10 @@ describe('protocol', () => {
     for (const sealed of [undefined, '', 'not base64!', 7]) {
       expect(parseClientMessage(JSON.stringify({ t: 'sealed', sealed, id: 'a1b2' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'sealed' });
     }
-    // ADR 0007: a private text names its friend; one too long is refused by its id, which the writer's app goes by.
-    expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: 'c2Vh', id: 'a1b2' }))).toEqual({ t: 'private', to: 'pkB', sealed: 'c2Vh', id: 'a1b2' });
-    expect(parseClientMessage(JSON.stringify({ t: 'private', sealed: 'c2Vh', id: 'a1b2' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'private', id: 'a1b2' });
-    expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: 'c2Vh' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'private' });
-    // A file's announcement for one friend: flagged, and taken up to a file description's length.
-    const long = 'x'.repeat(MAX_SEALED_LENGTH + 1);
-    expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: long, id: 'a1b2', file: true }))).toEqual({ t: 'private', to: 'pkB', sealed: long, id: 'a1b2', file: true });
-    expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: 'x'.repeat(MAX_SEALED_FILE_LENGTH + 1), id: 'a1b2', file: true }))).toMatchObject({ t: 'invalid', ref: 'private', id: 'a1b2' });
-    expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: 'x'.repeat(MAX_SEALED_LENGTH + 1), id: 'a1b2' }))).toEqual({ t: 'invalid', reason: 'message longer than 2000 characters', ref: 'private', id: 'a1b2' });
+    // ADR 0011: a private text routed to one friend by key is from an app before rooms of two, however it is made.
+    for (const m of [{ t: 'private', to: 'pkB', sealed: 'c2Vh', id: 'a1b2' }, { t: 'private', to: 'pkB', sealed: 'c2Vh', id: 'a1b2', file: true }, { t: 'private' }]) {
+      expect(parseClientMessage(JSON.stringify(m))).toEqual({ t: 'invalid', reason: APP_OUT_OF_DATE, ref: 'private' });
+    }
     const bad = { t: 'invalid', reason: 'unrecognised message' };
     // ADR 0005: only an app from before sealed texts sends a plain one.
     expect(parseClientMessage(JSON.stringify({ t: 'text', text: 'x', id: 'a1b2' }))).toEqual({ t: 'invalid', reason: OUT_OF_DATE, ref: 'text' });

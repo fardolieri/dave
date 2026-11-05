@@ -209,8 +209,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     const taken = takeToken(state.bucket, ctx.now);
     next = { ...state, bucket: taken.bucket };
     const ref = msg.t === 'invalid' ? msg.ref : msg.t;
-    const id = msg.t === 'private' || (msg.t === 'invalid' && msg.ref === 'private') ? msg.id : undefined;
-    if (!taken.ok) return { state: next, replies: [error('rate limited', ref, id)] };
+    if (!taken.ok) return { state: next, replies: [error('rate limited', ref)] };
   }
   const notInCall = (ref: ClientMessage['t']): Outcome => ({ state: next, replies: [{ t: 'error', reason: 'not in the call', ref }] });
   const attachedByKey = (key: string): boolean => { for (const p of ctx.others) if (p.publicKey === key) return true; return false; };
@@ -241,13 +240,6 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       const history = ctx.history;
       const now = ctx.now;
       return { state: { ...next, syncAt: now }, replies: [], after: async () => ({ replies: historyFrames(history ? await history(since, SYNC_MAX) : [], now), minted: null }) };
-    }
-    case 'private': {
-      // To one friend here, and back to its writer, who learns it went out (ADR 0007). Nobody else hears of it.
-      if (msg.to === state.person.publicKey || !attachedByKey(msg.to)) return { state: next, replies: [error('that friend is not here', 'private', msg.id)] };
-      const { privateTexts } = state.person;
-      const m: ServerMessage = { t: 'private', from: wireIdentityOf(state.person), to: msg.to, ...(privateTexts ? { key: privateTexts } : {}), sealed: msg.sealed, at: ctx.now, id: msg.id, ...(msg.file ? { file: true as const } : {}) };
-      return { state: next, replies: [m], relay: { to: msg.to, message: m } };
     }
     case 'text':
       return { state: next, replies: [error(OUT_OF_DATE, 'text')] }; // the parser refuses it already

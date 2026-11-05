@@ -31,5 +31,5 @@ any, in the browser.
 
 - 01 Texts and file announcements kept, synced on connect, the window, About.
 - 02 File bytes kept, encrypted, in the same window.
-- 03 Private texts kept for their friend.
+- 03 Private conversations as rooms of two, kept and synced like any room (ADR 0011).
 - 04 Older than the newest 500 from the server, on scrolling up.
