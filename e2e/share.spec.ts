@@ -383,3 +383,21 @@ test('past 80 % of the relay this month a share keeps off it, voice does not, an
   await expect(bob.tile('Alice'), 'the same subscription, the share goes again').toHaveClass(/share-live/, { timeout: 20_000 });
   await expect.poll(() => bob.receivingShareFrom('Alice')).toBe(true);
 });
+
+test('regression: a new friend muted and sharing keeps "new" off the badges, centred on the line with them', async ({ crowd }) => {
+  // Nov 2026, production: in the 300px sidebar the name gave way to nothing and "new" spilt over the muted badge, and
+  // sat on the name's baseline, higher than the badges.
+  const [sam, vic] = await callOf(crowd, ['Samantha Featherstonehaugh', 'Vic']);
+  await sam.button('Mute').click();
+  await sam.startShare();
+  const row = vic.selectedRoom.locator('li.prow', { hasText: 'Samantha' });
+  await expect(row.locator('.pflags em')).toHaveText(['muted', 'sharing']);
+  await expect(row.locator('.new')).toBeVisible();
+  // How far "new" runs past the end of who it is or into the badges, and how far its middle is from theirs (px).
+  const layout = () => row.evaluate((li) => {
+    const box = (s: string) => li.querySelector(s)!.getBoundingClientRect();
+    const [who, fresh, flags, em] = [box('.who'), box('.new'), box('.pflags'), box('.pflags em')];
+    return { spill: Math.max(0, Math.round(fresh.right - Math.min(who.right, flags.left))), offCentre: Math.round(Math.abs(fresh.top + fresh.bottom - em.top - em.bottom) / 2) };
+  });
+  await expect.poll(layout).toEqual({ spill: 0, offCentre: 0 });
+});
