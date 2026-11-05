@@ -1481,17 +1481,21 @@ function Lag(props: { ms: number }) {
 }
 
 const NAME_FLOOR_CH = 8;
+const TIGHT_NAME_FLOOR_CH = 3; // .plist .tight .pname .nm's min-width in styles.css
 let measureCtx: CanvasRenderingContext2D | null | undefined;
-/** Whether a participant line holds every badge at full width beside a name of at least NAME_FLOOR_CH characters.
+/** Whether a participant line holds every badge at full width beside a name of at least NAME_FLOOR_CH characters (and its
+ *  "new"), and how narrow who it is may get: its picture, unread count, the name's floor and "new". Below that its parts
+ *  would spill over the badges, so the line sets it as the least width of who it is.
  *  Measured from the badges' natural widths, so the answer does not depend on whether the line is tight right now. */
-function badgesFitWhole(line: HTMLElement): boolean {
+function measureLine(line: HTMLElement): { fits: boolean; whoFloor: (tight: boolean) => number } | null {
   // The line: who it is (picture, unread count, name), then the flags.
   const [who, flags] = [...line.children] as HTMLElement[];
   const avatar = who?.querySelector<HTMLElement>('.avatar');
   const name = who?.querySelector<HTMLElement>('.pname');
-  if (!who || !avatar || !name || !flags) return true;
+  if (!who || !avatar || !name || !flags) return null;
   const gap = (el: HTMLElement) => parseFloat(getComputedStyle(el).columnGap) || 0;
   const count = who.querySelector<HTMLElement>('.unread');
+  const fresh = name.querySelector<HTMLElement>('.new');
   let need = 0;
   for (const badge of flags.children as HTMLCollectionOf<HTMLElement>) {
     const label = badge.querySelector<HTMLElement>('.conn-label');
@@ -1501,8 +1505,12 @@ function badgesFitWhole(line: HTMLElement): boolean {
   need += gap(flags) * Math.max(0, flags.children.length - 1);
   measureCtx ??= document.createElement('canvas').getContext('2d');
   if (measureCtx) measureCtx.font = getComputedStyle(name).font;
-  const floor = (measureCtx?.measureText('0').width ?? 8) * NAME_FLOOR_CH;
-  return avatar.offsetWidth + (count ? count.offsetWidth + gap(who) : 0) + gap(who) + floor + need + gap(line) <= line.clientWidth;
+  const ch = measureCtx?.measureText('0').width ?? 8;
+  const besides = avatar.offsetWidth + (count ? count.offsetWidth + gap(who) : 0) + gap(who) + (fresh ? gap(name) + (parseFloat(getComputedStyle(fresh).marginLeft) || 0) + fresh.offsetWidth : 0);
+  return {
+    fits: besides + ch * NAME_FLOOR_CH + need + gap(line) <= line.clientWidth,
+    whoFloor: (tight) => Math.ceil(besides + ch * (tight ? TIGHT_NAME_FLOOR_CH : NAME_FLOOR_CH)),
+  };
 }
 
 function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: PeerView; speaking: boolean; onVolume?: (v: number) => void; onProfile: (anchor: HTMLElement) => void; unread?: number }) {
@@ -1515,11 +1523,22 @@ function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: 
   onSettled(() => {
     if (!line) return;
     const fit = line;
-    const check = () => setTight(!badgesFitWhole(fit));
+    const check = () => {
+      const m = measureLine(fit), who = fit.firstElementChild as HTMLElement | null;
+      if (!m || !who) return;
+      setTight(!m.fits);
+      who.style.minWidth = `${m.whoFloor(!m.fits)}px`; // a style, not watched: no loop
+    };
     const resize = new ResizeObserver(check), mutation = new MutationObserver(check);
     resize.observe(fit);
     mutation.observe(fit, { childList: true, subtree: true, characterData: true });
-    return () => { resize.disconnect(); mutation.disconnect(); };
+    // Another font leaves the line's box as it was but not the widths measured in it: a look picked (the room's, the
+    // page's), a web font arriving.
+    const look = fit.closest('[data-theme]');
+    if (look) mutation.observe(look, { attributes: true, attributeFilter: ['data-theme'] });
+    mutation.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    document.fonts.addEventListener('loadingdone', check);
+    return () => { resize.disconnect(); mutation.disconnect(); document.fonts.removeEventListener('loadingdone', check); };
   });
   return (
     <li class="prow ph-no-autocapture" ref={row}>

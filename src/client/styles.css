@@ -355,7 +355,7 @@ dialog.viewer img { display: block; max-width: 96vw; max-height: 96dvh; object-f
    the name and the muted/sharing labels shrink together, the name ten times as fast. */
 .plist li.prow { flex-direction: column; align-items: stretch; }
 .plist .pline { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.plist .pname { flex: 1 10 auto; min-width: 0; display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.plist .pname { flex: 1 10 auto; min-width: 0; display: flex; align-items: center; gap: 6px; white-space: nowrap; } /* "new" centred on the line, as the badges are */
 .plist .pname .nm { min-width: 8ch; overflow: hidden; text-overflow: ellipsis; }
 .plist .tight .pname .nm { min-width: 3ch; }
 .plist .pname .new { flex: none; }
@@ -363,6 +363,10 @@ dialog.viewer img { display: block; max-width: 96vw; max-height: 96dvh; object-f
 .plist .pflags > * { flex: none; }
 .plist .tight .pflags > em { flex-shrink: 1; min-width: 2ch; overflow: hidden; text-overflow: ellipsis; }
 .plist .tight .pflags > .conn { width: 8px; overflow: hidden; }
+/* Who it is never gets narrower than its picture, a name of its floor and "new" (the script sets its min-width): narrower,
+   they spilt over the badges. On a line too narrow even for that, the badges give way at their start, clipped, the volume
+   button whole at the end. */
+.plist .tight .pflags { overflow: clip; overflow-clip-margin: 4px; }
 .plist li.lost { opacity: .5; }
 /* Your own row in Online is there from the start, dimmed until the room is connected (App.tsx). Every row fades
    when its opacity changes: yours as it lights up, a dropped participant's as it dims. */
