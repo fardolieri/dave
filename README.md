@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-05T17:53 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-05T18:03 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 57, branch 261, preview 173.
+Runs recorded: nightly 57, branch 261, preview 174.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -25,6 +25,8 @@ Runs recorded: nightly 57, branch 261, preview 173.
 | 2 | 2 | nightly 1, preview 1 | themes.spec.ts › every theme applies, loads its fonts and keeps the console quiet, at desktop and phone width; the pick survives a reload | expect(locator).toHaveCount(expected) failed | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40194632521/attempts/1) | 61 |
 | 2 | 2 | nightly 1, branch 1 | presence.spec.ts › the room whose call I join goes to the top of the list, and stays there after a reload | console warnings, errors or exceptions nobody expected: Alice: error: [JavaScript Error: "Failed to load ‘https://dave-nightly.danielmittereder.workers.dev/asse | [10-24](https://github.com/fardolieri/dave/actions/runs/40046533309/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40191892619/attempts/1) | 62 |
 | 2 | 2 | branch 2 | text.spec.ts › texts from more than 18 h before the room came on screen wait behind a button, folded again each time it does | expect(received).toEqual(expected) // deep equality | [10-12](https://github.com/fardolieri/dave/actions/runs/38222942433/attempts/1) | [10-17](https://github.com/fardolieri/dave/actions/runs/39049062343/attempts/1) | f9efd75 (fixed) |
+| 1 | 1 | preview 1 | text.spec.ts › regression: a text sent again while my history is still being read after a reload counts once and shows once | expect(received).toContain(expected) // indexOf | [11-05](https://github.com/fardolieri/dave/actions/runs/42079021936/attempts/1) | [11-05](https://github.com/fardolieri/dave/actions/runs/42079021936/attempts/1) |  |
+| 1 | 1 | preview 1 | settings.spec.ts › About shows the relay this month and the free plan today, the figure nearest its limit first, and nothing where that is not known | TimeoutError: locator.click: Timeout 15000ms exceeded. | [11-05](https://github.com/fardolieri/dave/actions/runs/42079021936/attempts/1) | [11-05](https://github.com/fardolieri/dave/actions/runs/42079021936/attempts/1) |  |
 | 1 | 1 | preview 1 | resilience.spec.ts › regression: a socket gone silent without a close is given up, and the text written into it arrives once | any other socket of hers given up the same way | [11-05](https://github.com/fardolieri/dave/actions/runs/42069274841/attempts/1) | [11-05](https://github.com/fardolieri/dave/actions/runs/42069274841/attempts/1) |  |
 | 1 | 1 | preview 1 | attachment.spec.ts › ADR 0009: a picture sent while nobody else was there comes from the server, sealed, once its sender is gone | expect(locator).toHaveCount(expected) failed | [11-05](https://github.com/fardolieri/dave/actions/runs/42064671698/attempts/1) | [11-05](https://github.com/fardolieri/dave/actions/runs/42064671698/attempts/1) |  |
 | 1 | 1 | preview 1 | settings.spec.ts › low bandwidth voice caps the voice both ways from one side, and the delay to each friend shows beside the name | expect(locator).toHaveText(expected) failed | [11-05](https://github.com/fardolieri/dave/actions/runs/42064671698/attempts/1) | [11-05](https://github.com/fardolieri/dave/actions/runs/42064671698/attempts/1) | 61 |
