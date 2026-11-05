@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR 0011 for how private texts travel; the private text key stays
 date: 2026-10-19
 ---
 

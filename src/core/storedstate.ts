@@ -22,6 +22,7 @@ import { parseHistory, parsePrivateThreads } from './chatlog';
 import { parseBigIndex, parseFileIndex, parsePartialPull } from './attachment';
 import { parseUnsent, parseUnsentPrivate } from './unsent';
 import { parseCounts, parseRoomThemes } from './unread';
+import { parsePairKeys } from './pairs';
 import { parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes } from './settings';
 
 /** A stored key: what it holds, the parser every read goes through, and stored values from the wild. */
@@ -88,6 +89,12 @@ export const LOCAL = {
     map: true,
     fixtures: { '2026-11-04, server history': '{"roomA":1762250000000}' },
   },
+  pairKeys: {
+    about: "Friends' private text keys as they published them, signed and checked, by friend key, with their fingerprint: what each room of two is derived from, kept to reach a friend online in none of my rooms (ADR 0011, client/privates.ts).",
+    parse: parsePairKeys,
+    map: true,
+    fixtures: { '2026-11-05, rooms of two': `{"${'A'.repeat(87)}":{"key":"${'k'.repeat(87)}","sig":"${'s'.repeat(86)}","fingerprint":"abc234"}}` },
+  },
   historySynced: {
     about: "Up to when this browser had everything of a room, by room id, the Room's clock: a sync of the server's history (ADR 0009) asks from there (client/history.ts).",
     parse: parseCounts,
@@ -147,6 +154,11 @@ export type LocalKey = keyof typeof LOCAL;
 export const IDB = {
   identity: {
     about: 'My identity keypair, a non-extractable CryptoKeyPair (client/identity.ts). Not parsed: a missing one means a new identity, by design.',
+    parse: null,
+    fixtures: {},
+  },
+  'pairIdentity:<friendKey>': {
+    about: 'The key I go by in my room of two with a friend (ADR 0011), a non-extractable ECDSA CryptoKeyPair made for that conversation alone, so the server cannot tell it is me (client/privates.ts). Not parsed: a missing one means a new one, which only the friend learns.',
     parse: null,
     fixtures: {},
   },
@@ -254,7 +266,7 @@ export const IDB = {
     fixtures: { '2026-09-08, before rooms': [{ from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna' }, text: 'hi', at: 1757500000000 }] },
   },
 } satisfies Record<string, StoredKey<unknown>>;
-export type IdbKey = Exclude<keyof typeof IDB, 'history:<roomId>' | 'private:<friendKey>' | 'file:<hash>' | 'partial:<hash>' | 'pieces:<hash>'> | `history:${string}` | `private:${string}` | `file:${string}` | `partial:${string}` | `pieces:${string}`;
+export type IdbKey = Exclude<keyof typeof IDB, 'history:<roomId>' | 'private:<friendKey>' | 'file:<hash>' | 'partial:<hash>' | 'pieces:<hash>' | 'pairIdentity:<friendKey>'> | `history:${string}` | `private:${string}` | `file:${string}` | `partial:${string}` | `pieces:${string}` | `pairIdentity:${string}`;
 
 /** sessionStorage, per tab and gone with it, so a changed shape meets old values only across one reload. Read in place. */
 export const SESSION = {

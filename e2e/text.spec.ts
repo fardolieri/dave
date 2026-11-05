@@ -479,9 +479,12 @@ test('regression: a text sent again while my history is still being read after a
       return req;
     };
   });
-  const welcomes = alice.wire.frames('down', 'welcome').length;
+  // Her rooms' welcomes, under her identity: not her room of two's with Bob (ADR 0011), under a key of its own.
+  const aliceIs = alice.wire.frames<{ you: { publicKey: string } }>('down', 'welcome')[0]!.you.publicKey;
+  const roomWelcomes = () => alice.wire.frames<{ you: { publicKey: string } }>('down', 'welcome').filter((w) => w.you.publicKey === aliceIs).length;
+  const welcomes = roomWelcomes();
   await alice.page.reload();
-  await expect.poll(() => alice.wire.frames('down', 'welcome').length, { timeout: 20_000 }).toBe(welcomes + 2);
+  await expect.poll(roomWelcomes, { timeout: 20_000 }).toBe(welcomes + 2);
   // Bob's next socket sends the text again, while Alice's history is still being read.
   bob.wire.down = null;
   await bob.wire.cut();

@@ -10,10 +10,9 @@
 // An attachment's announcement (ADR 0006) is sealed the same way under its own domain, `dave file v1`: its body is the
 // file's description as JSON (core/attachment.ts), so a text cannot be passed off as a file or a file as a text.
 //
-// A private text (ADR 0007) is sealed the same way under `dave private v1` (a file's announcement for one friend under
-// `dave private file v1`), with the one friend it is for in the signed
-// bytes and the additional data, and under a key only the two of them have: ECDH between the private text keys of the
-// two browsers (`sharedPrivateTextKey`), each browser's own and published signed by its identity key (`signPrivateTextKey`).
+// A private conversation (ADR 0011) is a room of two whose secret only its two browsers derive: ECDH between their private
+// text keys (`pairSecret`), each browser's own and published signed by its identity key (`signPrivateTextKey`, ADR 0007).
+// Its texts are sealed as any room's.
 //
 // A friend's profile (ADR 0010), the name and picture friends see, is sealed the same way under `dave profile v1`, with the
 // room's text key, under the id `profile`: the server passes on and lists what it cannot read, and a friend opens it
@@ -26,10 +25,9 @@ import { MAX_FILE_BODY_BYTES, parseFileMeta, type FileMeta } from './attachment'
 
 const DOMAIN = 'dave text v1';
 const FILE_DOMAIN = 'dave file v1';
-const PRIVATE_DOMAIN = 'dave private v1';
-const PRIVATE_FILE_DOMAIN = 'dave private file v1';
 const PRIVATE_TEXT_KEY_DOMAIN = 'dave private text key v1';
 const PROFILE_DOMAIN = 'dave profile v1';
+const PAIR_DOMAIN = 'dave pair room v1';
 const PROFILE_ID = 'profile';
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
@@ -71,19 +69,6 @@ export function sealFile(input: { key: CryptoKey; privateKey: CryptoKey; roomId:
   return seal({ ...input, text: JSON.stringify(input.file) }, FILE_DOMAIN);
 }
 
-/**
- * Writer side: a private text sealed for the one friend `to` (their identity's public key), with the key the two share
- * (`sharedPrivateTextKey`), signed by `from`.
- */
-export function sealPrivate(input: { key: CryptoKey; privateKey: CryptoKey; roomId: string; id: string; from: string; to: string; text: string }): Promise<string> {
-  return seal(input, PRIVATE_DOMAIN);
-}
-
-/** Writer side: a file's announcement for the one friend `to` (ADR 0006, 0007), sealed like a private text. */
-export function sealPrivateFile(input: { key: CryptoKey; privateKey: CryptoKey; roomId: string; id: string; from: string; to: string; file: FileMeta }): Promise<string> {
-  return seal({ ...input, text: JSON.stringify(input.file) }, PRIVATE_FILE_DOMAIN);
-}
-
 async function seal(input: { key: CryptoKey; privateKey: CryptoKey; roomId: string; id: string; from: string; to?: string; text: string }, domain: string): Promise<string> {
   const signature = await signBytes(input.privateKey, textBindingBytes(input, domain));
   const text = utf8(input.text);
@@ -119,28 +104,6 @@ export type OpenedFile = { ok: true; file: FileMeta } | { ok: false; reason: 'un
 /** Reader side: a file's announcement, on the same terms as a text's. One that does not describe a file is refused. */
 export async function openFile(input: { key: CryptoKey; roomId: string; id: string; from: string; sealed: string }): Promise<OpenedFile> {
   const opened = await open(input, FILE_DOMAIN);
-  if (!opened.ok) return { ok: false, reason: opened.reason === 'invalid text' ? 'invalid file' : opened.reason };
-  let file: FileMeta | null = null;
-  try {
-    file = opened.text.length <= MAX_FILE_BODY_BYTES ? parseFileMeta(JSON.parse(opened.text)) : null;
-  } catch { /* not JSON */ }
-  return file ? { ok: true, file } : { ok: false, reason: 'invalid file' };
-}
-
-/**
- * Reader side: a private text, if it was sealed for `to` with the key `to` shares with `from`, under this room and id,
- * and signed by `from`. On the same terms as a text's otherwise.
- */
-export async function openPrivate(input: { key: CryptoKey; roomId: string; id: string; from: string; to: string; sealed: string }): Promise<OpenedText> {
-  const opened = await open(input, PRIVATE_DOMAIN);
-  if (!opened.ok) return opened;
-  if (opened.text.trim().length === 0 || opened.text.length > MAX_TEXT_LENGTH) return { ok: false, reason: 'invalid text' };
-  return opened;
-}
-
-/** Reader side: a file's announcement for `to`, on the same terms as a private text's. */
-export async function openPrivateFile(input: { key: CryptoKey; roomId: string; id: string; from: string; to: string; sealed: string }): Promise<OpenedFile> {
-  const opened = await open(input, PRIVATE_FILE_DOMAIN);
   if (!opened.ok) return { ok: false, reason: opened.reason === 'invalid text' ? 'invalid file' : opened.reason };
   let file: FileMeta | null = null;
   try {
@@ -228,6 +191,23 @@ export async function verifyPrivateTextKey(input: { identity: string; key: strin
   return verifyBytes(publicKey, signature, privateTextKeyBytes(input.identity, input.key));
 }
 
+/**
+ * The secret of the room of two that is my private conversation with a friend (ADR 0011): ECDH between my private text
+ * key and theirs, as they published it signed, through HKDF bound to both identities, in an order both agree on. The same
+ * both ways, and only the two of us can derive it: being in the room is what says it is them. Null for a key that is no
+ * point. Base64url, as an invite secret, so the room id, its auth key and its text key come from it as any room's.
+ */
+export async function pairSecret(input: { mine: CryptoKey; theirs: string; me: string; them: string }): Promise<string | null> {
+  const theirs = await importPrivateTextKey(input.theirs);
+  if (!theirs) return null;
+  // Workers types spell the field `$public`; every runtime takes `public`.
+  const shared = await crypto.subtle.deriveBits({ name: 'ECDH', public: theirs } as unknown as Parameters<SubtleCrypto['deriveBits']>[0], input.mine, 256);
+  const hkdf = await crypto.subtle.importKey('raw', shared, 'HKDF', false, ['deriveBits']);
+  const pair = [input.me, input.them].sort().join('\n');
+  const bits = await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32) as BufferSource, info: utf8(`${PAIR_DOMAIN}\n${pair}`) as BufferSource }, hkdf, 256);
+  return toBase64Url(new Uint8Array(bits));
+}
+
 async function importPrivateTextKey(key: string): Promise<CryptoKey | null> {
   const raw = fromBase64Url(key);
   if (!raw || raw.length !== 65 || raw[0] !== 0x04) return null;
@@ -238,19 +218,3 @@ async function importPrivateTextKey(key: string): Promise<CryptoKey | null> {
   }
 }
 
-/**
- * The AES-GCM key two friends share for their private texts: ECDH between my private key and their public one, through
- * HKDF bound to both identities, in an order both sides agree on. The same both ways. Null for a key that is no point.
- */
-export async function sharedPrivateTextKey(input: { mine: CryptoKey; theirs: string; me: string; them: string }): Promise<CryptoKey | null> {
-  const theirs = await importPrivateTextKey(input.theirs);
-  if (!theirs) return null;
-  // Workers types spell the field `$public`; every runtime takes `public`.
-  const shared = await crypto.subtle.deriveBits({ name: 'ECDH', public: theirs } as unknown as Parameters<SubtleCrypto['deriveBits']>[0], input.mine, 256);
-  const hkdf = await crypto.subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey']);
-  const pair = [input.me, input.them].sort().join('\n');
-  return crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32) as BufferSource, info: utf8(`${PRIVATE_DOMAIN}\n${pair}`) as BufferSource },
-    hkdf, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'],
-  );
-}

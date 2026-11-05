@@ -189,31 +189,17 @@ describe('text', () => {
     b.ws.close(1000, 'bye');
   });
 
-  it('relays a private text to its friend only, and back to its writer, with the private text key the writer published (ADR 0007)', async () => {
+  it('refuses a private text routed to a friend by key as from an app out of date, and relays it to nobody (ADR 0011)', async () => {
     const privateTexts = { key: 'k'.repeat(87), sig: 's'.repeat(86) };
     const a = await attach('Alice', undefined, undefined, SECRET, { privateTexts });
     const b = await attach('Bob');
-    const c = await attach('Carol');
-    expect(a.you.privateTexts).toEqual(privateTexts);
+    expect(a.you.privateTexts, 'the key is still published, for rooms of two').toEqual(privateTexts);
     a.ws.send(JSON.stringify({ t: 'private', to: b.you.publicKey, sealed: 'b3BhcXVl', id: 'c0ffee' }));
-    const toBob = await b.next((m) => m.t === 'private');
-    const back = await a.next((m) => m.t === 'private');
-    expect(toBob).toMatchObject({ t: 'private', from: { publicKey: a.you.publicKey, fingerprint: a.you.fingerprint, profile: a.you.profile }, to: b.you.publicKey, key: privateTexts, sealed: 'b3BhcXVl', id: 'c0ffee' });
-    expect(back).toEqual(toBob);
-    // Carol hears of the next text to the room, and of nothing before it.
+    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: APP_OUT_OF_DATE, ref: 'private' });
     a.ws.send(sealed('after'));
-    await c.next((m) => m.t === 'sealed');
-    expect(c.inbox.some((m) => m.t === 'private')).toBe(false);
-    a.ws.close(1000, 'bye'); b.ws.close(1000, 'bye'); c.ws.close(1000, 'bye');
-  });
-
-  it('refuses a private text to a friend not here, or to oneself, by its id', async () => {
-    const a = await attach('Alice');
-    a.ws.send(JSON.stringify({ t: 'private', to: 'nobody', sealed: 'b3BhcXVl', id: 'c0ffee' }));
-    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'that friend is not here', ref: 'private', id: 'c0ffee' });
-    a.ws.send(JSON.stringify({ t: 'private', to: a.you.publicKey, sealed: 'b3BhcXVl', id: 'beef' }));
-    expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'that friend is not here', ref: 'private', id: 'beef' });
-    a.ws.close(1000, 'bye');
+    await b.next((m) => m.t === 'sealed');
+    expect(b.inbox.some((m) => (m as { t: string }).t === 'private')).toBe(false);
+    a.ws.close(1000, 'bye'); b.ws.close(1000, 'bye');
   });
 
   it('refuses a plain text as from an app out of date, and relays it to nobody (ADR 0005)', async () => {

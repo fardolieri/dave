@@ -20,9 +20,9 @@ function png(width: number, height: number): Buffer {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', deflateSync(rows)), chunk('IEND', Buffer.alloc(0))]);
 }
 
-// Private conversations (ADR 0007): one per friend, apart from every room. A text travels sealed so that only the two
-// friends can read it, through a room they share, and is relayed by the Room to that friend alone. These pin what each
-// friend sees, and what reaches Carol's browser at all.
+// Private conversations (ADR 0011): one per friend, apart from every room, each a room of two whose secret only the two
+// browsers derive, entered under keys of their own. These pin what each friend sees, what reaches Carol's browser at all,
+// and what the server can tell.
 
 /** Opens the private conversation with a friend from their row in the sidebar's lists: their card, then Message. */
 async function openFromOnline(f: Friend, name: string): Promise<void> {
@@ -248,4 +248,82 @@ test('a private text not read yet is still unread after a reload', async ({ crow
   await bob.page.reload();
   await bob.connected();
   await expect.poll(() => threads(bob)).toEqual([]);
+});
+
+test('ADR 0011: a private text to a friend online nowhere reaches them when they come, unread', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await openFromOnline(alice, 'Bob');
+  await alice.composer.fill('hi');
+  await alice.composer.press('Enter');
+  await expect.poll(() => threads(bob)).toEqual(['Alice (1)']);
+  await openFromList(bob, 'Alice');
+  await bob.page.locator('.private-back').click();
+  // Bob is gone: online in none of Alice's rooms. She can still write to him.
+  await bob.wire.cut();
+  await expect.poll(() => alice.online()).not.toContain('Bob');
+  await expect(alice.composer).toBeEnabled();
+  await alice.composer.fill('for when you are back');
+  await alice.composer.press('Enter');
+  await expect.poll(() => conversation(alice)).toEqual([{ from: 'Alice', text: 'hi' }, { from: 'Alice', text: 'for when you are back' }]);
+  bob.wire.restore();
+  await bob.connected();
+  await expect.poll(() => threads(bob)).toEqual(['Alice (1)']);
+  await openFromList(bob, 'Alice');
+  await expect.poll(() => conversation(bob)).toEqual([{ from: 'Alice', text: 'hi' }, { from: 'Alice', text: 'for when you are back' }]);
+});
+
+test('ADR 0011: the server sees a room of two keys found in no other room, not who is in it', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await openFromOnline(alice, 'Bob');
+  await alice.composer.fill('just us');
+  await alice.composer.press('Enter');
+  await expect.poll(() => threads(bob)).toEqual(['Alice (1)']);
+  type Welcome = { you: { publicKey: string } };
+  const keysOf = (f: Friend) => f.wire.frames<Welcome>('down', 'welcome').map((w) => w.you.publicKey);
+  const aliceIs = keysOf(alice)[0]!;
+  const bobIs = keysOf(bob)[0]!;
+  const alicePair = keysOf(alice).find((k) => k !== aliceIs)!;
+  const bobPair = keysOf(bob).find((k) => k !== bobIs)!;
+  expect(alicePair, 'Alice goes by a key of her own in the room of two').toBeDefined();
+  expect(bobPair).toBeDefined();
+  // In the room of two, presence lists those two keys and nobody's identity; nowhere else are they listed.
+  const presences = (f: Friend) => f.wire.frames<{ people: Array<{ publicKey: string }> }>('down', 'presence').map((p) => p.people.map((x) => x.publicKey));
+  for (const f of [alice, bob]) {
+    for (const people of presences(f)) {
+      const pair = people.includes(alicePair) || people.includes(bobPair);
+      if (pair) expect(people.every((k) => k === alicePair || k === bobPair), 'a room of two lists its two keys only').toBe(true);
+      else expect(people.some((k) => k === alicePair || k === bobPair), 'a room lists no key of a room of two').toBe(false);
+    }
+    // No frame names a friend to deliver to, and the room of two's auth publishes no private text key.
+    expect(f.wire.log.filter((l) => l.frame.startsWith('{"t":"private"'))).toEqual([]);
+  }
+  const auths = alice.wire.frames<{ publicKey: string; privateTexts?: unknown }>('up', 'auth');
+  expect(auths.filter((a) => a.publicKey === alicePair).every((a) => a.privateTexts === undefined)).toBe(true);
+  expect(auths.find((a) => a.publicKey === aliceIs)?.privateTexts, 'published where friends meet, to derive rooms of two from').toBeDefined();
+});
+
+test('ADR 0011: a conversation from before rooms of two is still there, its new texts after it', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await bob.settledOnline('Alice', 'Bob');
+  const aliceIs = alice.wire.frames<{ you: { publicKey: string; fingerprint: string } }>('down', 'welcome')[0]!.you;
+  // What Bob's browser kept of their conversation before (ADR 0007), as that app wrote it.
+  await bob.page.evaluate(async (a) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('dave'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+    const put = (k: string, v: unknown) => new Promise((resolve) => { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = resolve; });
+    const friend = { publicKey: a.publicKey, fingerprint: a.fingerprint, name: 'Alice' };
+    await put(`private:${a.publicKey}`, [{ from: friend, text: 'from before', at: Date.now() - 3600_000, id: '0a1b2c3d4e5f60718293a4b5' }]);
+    await put('privateThreads', [{ friend, at: Date.now() - 3600_000 }]);
+    db.close();
+  }, aliceIs);
+  await bob.page.reload();
+  await bob.connected();
+  await openFromList(bob, 'Alice');
+  await expect.poll(() => conversation(bob)).toEqual([{ from: 'Alice', text: 'from before' }]);
+  await openFromOnline(alice, 'Bob');
+  await alice.composer.fill('and now');
+  await alice.composer.press('Enter');
+  await expect.poll(() => conversation(bob)).toEqual([{ from: 'Alice', text: 'from before' }, { from: 'Alice', text: 'and now' }]);
 });
