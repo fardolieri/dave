@@ -20,7 +20,7 @@ import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, identityOf, normaliseName, type Ident
 import { displayName, formatAgo, knownAgo } from '../core/names';
 import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatStream } from '../core/format';
-import { RELAY_SAVE_FROM, formatRelayUsage, type RelayUsage } from '../core/relayusage';
+import { FREE_PLAN, RELAY_SAVE_FROM, fillOf, formatBytes, formatCount, formatPercent, monthSoFar, type FreePlanToday, type RelayUsage } from '../core/relayusage';
 import { refreshRelayUsage, relaySaving, relayUsage } from './relay';
 import { Markdown, MarkdownMirror } from './Markdown';
 import { quotePrefix } from '../core/markdown';
@@ -1892,6 +1892,62 @@ const stamp = (iso: string): string => new Date(iso).toLocaleString([], { day: '
 
 const RELAY_TITLE = "What Cloudflare's TURN relay sent this month, for calls and files between friends who cannot reach each other directly. Cloudflare relays 1 TB a month for free and charges past it. Counted since the 1st (UTC) for the whole account, the live site and every preview together; it lags behind by a few minutes.";
 
+/**
+ * The free plan's daily figures as the About dialog shows them: what each is, in a friend's words, and in the hover title
+ * what it counts. Every one is the whole account's: the live site's, and every preview's.
+ */
+const FREE_PLAN_ROWS: Array<{ key: keyof typeof FREE_PLAN; name: string; title: string; shown: (n: number) => string }> = [
+  { key: 'objectRequests', name: 'Room requests', shown: formatCount, title: "Requests to the rooms on the server, as Cloudflare bills them: every socket a browser opens, every call to the server's history, every alarm, and one for every 20 frames a room is woken for. Past the limit, no room answers until midnight UTC." },
+  { key: 'workerRequests', name: 'Worker requests', shown: formatCount, title: "Requests to the Worker: every socket's upgrade, and this dialog's own asks. The app's files are free and not counted. Past the limit, nobody can connect until midnight UTC." },
+  { key: 'rowsWritten', name: 'Rows written', shown: formatCount, title: "Rows the rooms and the server's history wrote: a room's key, a kept text, an old one dropped from the window. Past the limit, every room's storage fails until midnight UTC; the history stops keeping before that, at its own share." },
+  { key: 'rowsRead', name: 'Rows read', shown: formatCount, title: "Rows the rooms and the server's history read: every challenge, every sync, every piece of a kept file. Past the limit, every room's storage fails until midnight UTC." },
+  { key: 'compute', name: 'Room time', shown: (n) => `${formatCount(n)} GB-s`, title: 'How long the rooms were awake, in GB-seconds (128 MB a second). A room sleeps between frames, which costs nothing. Past the limit, no room answers until midnight UTC.' },
+  { key: 'stored', name: 'Stored', shown: formatBytes, title: "What every room and the server's history keep, the previews' included: a total, not a day's. Past it, nothing more is kept." },
+];
+
+/** How long until the free plan's day starts again, 00:00 UTC: "6 h 42 min". */
+function untilReset(now: number): string {
+  const left = Math.max(0, Date.parse(`${monthSoFar(now + 24 * 3600_000).to}T00:00:00Z`) - now);
+  const h = Math.floor(left / 3600_000);
+  const m = Math.floor((left % 3600_000) / 60_000);
+  return h ? `${h} h ${m} min` : `${m} min`;
+}
+
+/**
+ * One figure against its limit (stat tile and meter, as the dataviz rules have them): its name, its share, a thin bar
+ * filled in the theme's accent, its warning colour past half and its danger colour past 80 %, on a track of the same
+ * colour, and the figures under it. Past half the share also says so in words (⚠): never by colour alone.
+ */
+function UsageMeter(props: { id: string; name: string; title: string; value: number; limit: number; shown: string; children?: JSX.Element }) {
+  const fill = () => fillOf(props.value, props.limit);
+  const pct = () => formatPercent(props.value, props.limit);
+  const width = () => (props.value > 0 ? `max(3px, ${Math.min(100, (props.value / props.limit) * 100)}%)` : '0');
+  return (
+    <li class="meter" data-meter={props.id} data-fill={fill()} title={props.title}>
+      <span class="meter-name">{props.name}</span>
+      <span class="meter-pct">{fill() !== 'ok' ? <span aria-hidden="true">⚠ </span> : null}{pct()}%</span>
+      <div class="meter-bar" role="meter" aria-label={props.name} aria-valuemin={0} aria-valuemax={props.limit} aria-valuenow={Math.round(props.value)} aria-valuetext={`${props.shown} (${pct()}%)`}>
+        <i style={{ width: width() }} />
+      </div>
+      <span class="meter-fig">{props.shown}</span>
+      {props.children}
+    </li>
+  );
+}
+
+/** The free plan's figures for today, the one nearest its limit first: what to keep an eye on. */
+function FreePlanToday(props: { today: FreePlanToday; now: number }) {
+  const rows = () => FREE_PLAN_ROWS.map((r) => ({ ...r, value: props.today[r.key], limit: FREE_PLAN[r.key] })).sort((a, b) => b.value / b.limit - a.value / a.limit);
+  return (
+    <section class="usage" aria-label="Cloudflare free plan today">
+      <h4>Free plan today <small>resets in {untilReset(props.now)} (00:00 UTC)</small></h4>
+      <ul>
+        <For each={rows()}>{(r) => <UsageMeter id={r.key} name={r.name} title={r.title} value={r.value} limit={r.limit} shown={`${r.shown(r.value)} of ${r.shown(r.limit)}`} />}</For>
+      </ul>
+    </section>
+  );
+}
+
 /** Which version of dave this is: the commit it was built from, its message, when it was deployed, and where the code lives. */
 function VersionDialog() {
   let dialog: HTMLDialogElement | undefined;
@@ -1899,7 +1955,21 @@ function VersionDialog() {
   // The relay's usage this month (client/relay.ts), asked again on every open: the Worker keeps its answer for minutes.
   // Left out where the Worker has no token to ask Cloudflare with (local builds, a Worker without the secret).
   const relay = relayUsage;
+  // The clock the free plan's day is read by: it ticks while the dialog is open, so the countdown counts down and a day
+  // that ended leaves the dialog.
+  const [now, setNow] = createSignal(Date.now());
+  let tick: ReturnType<typeof setInterval> | undefined;
+  const stopTick = () => { clearInterval(tick); tick = undefined; };
+  onCleanup(stopTick);
   const open = () => {
+    setNow(Date.now());
+    stopTick();
+    tick = setInterval(() => {
+      const day = monthSoFar(untrack(now)).to;
+      setNow(Date.now());
+      // A new day while it is open: its figures, at once (the Worker asks Cloudflare anew on a new day).
+      if (monthSoFar(Date.now()).to !== day) void refreshRelayUsage();
+    }, 30_000);
     dialog?.showModal();
     void refreshRelayUsage();
   };
@@ -1907,7 +1977,7 @@ function VersionDialog() {
     <div class="about-link">
       <button class="link" title={`Version ${shortCommit(build.commit)}${build.dirty ? '+' : ''}, ${deployed.toLowerCase()} ${formatAgo(Date.parse(build.builtAt))}`} onClick={open}>About</button>
       {/* A click on the backdrop reaches the dialog itself, outside its box; its padding is the dialog too, so the box decides. */}
-      <dialog class="about" ref={dialog} onClick={(e) => {
+      <dialog class="about" ref={dialog} onClose={stopTick} onClick={(e) => {
         const r = e.currentTarget.getBoundingClientRect();
         if (e.target === e.currentTarget && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) e.currentTarget.close();
       }}>
@@ -1928,22 +1998,24 @@ function VersionDialog() {
           <dd>{stamp(build.builtAt)} ({formatAgo(Date.parse(build.builtAt))}){build.target === 'local' ? ', on a developer\'s machine' : `, to ${build.target === 'live' ? 'the live site' : build.target}`}</dd>
           <dt>Source</dt>
           <dd><a href={REPO_URL} target="_blank" rel="noopener">{REPO_URL.replace(/^https:\/\//, '')}</a></dd>
-          <Show when={relay()}>{(r) => (
+        </dl>
+        {/* What the free plan allows and what is used of it, where the Worker can ask Cloudflare (a token: not local builds). */}
+        <Show when={relay()}>{(r) => (
+          <Show when={typeof r() === 'object' ? (r() as RelayUsage) : null} fallback={<p class="usage-unknown">Cloudflare's figures: not known right now.</p>}>{(u) => (
             <>
-              <dt>Relay this month</dt>
-              <dd class="relay" title={RELAY_TITLE}>
-                <Show when={typeof r() === 'object' ? (r() as RelayUsage) : null} fallback="Not known right now">{(u) => (
-                  <>
-                    <span>{formatRelayUsage(u())} since {new Date(`${u().since}T00:00:00Z`).toLocaleDateString([], { day: 'numeric', month: 'short', timeZone: 'UTC' })}</span>
-                    <meter min={0} max={u().limit} low={u().limit * 0.5} high={u().limit * 0.8} optimum={0} value={u().bytes} />
-                  </>
-                )}</Show>
-                <small>Calls and files between friends who cannot reach each other directly go through Cloudflare's relay, free up to 1 TB a month.
-                  {relaySaving() ? ` This month is past ${RELAY_SAVE_FROM * 100}%: screen shares and files keep off it until the 1st, voice still goes through.` : ` Past ${RELAY_SAVE_FROM * 100}%, screen shares and files keep off it for the rest of the month.`}</small>
-              </dd>
+              <Show when={u().today?.day === monthSoFar(now()).to ? u().today : null}>{(today) => <FreePlanToday today={today()} now={now()} />}</Show>
+              <section class="usage" aria-label="Relay this month">
+                <h4>Relay this month <small>since {new Date(`${u().since}T00:00:00Z`).toLocaleDateString([], { day: 'numeric', month: 'short', timeZone: 'UTC' })}</small></h4>
+                <ul>
+                  <UsageMeter id="relay" name="Relay (TURN)" title={RELAY_TITLE} value={u().bytes} limit={u().limit} shown={`${formatBytes(u().bytes)} of ${formatBytes(u().limit)}`}>
+                    <small class="meter-note">Calls and files between friends who cannot reach each other directly go through Cloudflare's relay, free up to 1 TB a month.
+                      {relaySaving() ? ` This month is past ${RELAY_SAVE_FROM * 100}%: screen shares and files keep off it until the 1st, voice still goes through.` : ` Past ${RELAY_SAVE_FROM * 100}%, screen shares and files keep off it for the rest of the month.`}</small>
+                  </UsageMeter>
+                </ul>
+              </section>
             </>
           )}</Show>
-        </dl>
+        )}</Show>
         <div class="row"><button onClick={() => dialog?.close()}>Close</button></div>
       </dialog>
     </div>

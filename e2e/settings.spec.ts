@@ -367,7 +367,7 @@ test('a wish goes out as its own event, its words alone, without being asked how
   expect(event.properties, 'nothing about the tab goes with a wish').not.toHaveProperty('report');
 });
 
-test('About shows how much of the free terabyte the TURN relay has sent this month, and nothing where that is not known', async ({ crowd }) => {
+test('About shows the relay this month and the free plan today, the figure nearest its limit first, and nothing where that is not known', async ({ crowd }) => {
   const alice = await crowd.open('Alice', { connect: false });
   // The path reaches the Worker, not the single-page app's index.html: no line (204, no token) or an answer in JSON. Asked
   // from the context's own request client, which the route below does not answer.
@@ -386,30 +386,51 @@ test('About shows how much of the free terabyte the TURN relay has sent this mon
     await expect(dialog).toBeVisible();
   };
   const close = () => dialog.getByRole('button', { name: 'Close' }).click();
+  const meter = (id: string) => dialog.locator(`.meter[data-meter="${id}"]`);
   await about();
-  await expect(dialog.locator('dd.relay'), 'nothing known yet').toContainText('Not known right now');
-  await expect(dialog.locator('dd.relay meter')).toHaveCount(0);
+  await expect(dialog.locator('.usage-unknown'), 'nothing known yet').toContainText('not known right now');
+  await expect(dialog.locator('.meter')).toHaveCount(0);
   await close();
 
-  answer = { status: 200, body: { bytes: 14_066_575_220, limit: 1e12, since: '2026-11-01', asOf: Date.now() } };
+  // The page's day, as the app reads it.
+  const day = await alice.page.evaluate(() => new Date().toISOString().slice(0, 10));
+  const today = { day, objectRequests: 78_634, workerRequests: 14_232, rowsWritten: 26_147, rowsRead: 53_650, compute: 1336.5, stored: 83_210_240 };
+  answer = { status: 200, body: { bytes: 14_066_575_220, limit: 1e12, since: '2026-11-01', asOf: Date.now(), today } };
   await about();
-  await expect(dialog.locator('dt', { hasText: 'Relay this month' })).toBeVisible();
-  await expect(dialog.locator('dd.relay')).toContainText(/14 GB of 1 TB \(1\.4%\) since (1 Nov|Nov 1)/);
-  await expect(dialog.locator('dd.relay meter')).toHaveJSProperty('value', 14_066_575_220);
+  await expect(meter('relay')).toContainText('14 GB of 1 TB');
+  await expect(meter('relay')).toContainText('1.4%');
+  await expect(meter('relay').getByRole('meter')).toHaveAttribute('aria-valuenow', '14066575220');
+  await expect(dialog.locator('.usage', { hasText: 'Relay this month' })).toContainText(/since (1 Nov|Nov 1)/);
+  // Today's free plan, the figure nearest its limit first, said in words past half.
+  await expect(dialog.locator('.usage', { hasText: 'Free plan today' }).locator('.meter-name')).toHaveText(['Room requests', 'Rows written', 'Worker requests', 'Room time', 'Stored', 'Rows read']);
+  await expect(meter('objectRequests')).toHaveAttribute('data-fill', 'warn');
+  await expect(meter('objectRequests')).toContainText('⚠ 79%');
+  await expect(meter('objectRequests')).toContainText('78,634 of 100,000');
+  await expect(meter('stored')).toContainText('83 MB of 5 GB');
+  await expect(meter('rowsRead')).toHaveAttribute('data-fill', 'ok');
+  await expect(dialog.locator('.usage', { hasText: 'Free plan today' })).toContainText(/resets in \d+ (h|min)/);
+  await close();
+
+  // Yesterday's figures are not today's: the relay stays, the free plan's day goes.
+  answer = { status: 200, body: { bytes: 14_066_575_220, limit: 1e12, since: '2026-11-01', asOf: Date.now(), today: { ...today, day: '2020-01-01' } } };
+  await needHooks(alice);
+  await alice.hook('refreshRelayUsage');
+  await about();
+  await expect(meter('relay')).toBeVisible();
+  await expect(meter('objectRequests')).toHaveCount(0);
   await close();
 
   // A failed ask keeps what was known: the figure stays, and so does what it decides (client/relay.ts).
   answer = { status: 200, body: { error: 'unavailable' } };
   await about();
-  await needHooks(alice);
   await alice.hook('refreshRelayUsage'); // its answer taken in, not only arrived: the figure is still there after it
-  await expect(dialog.locator('dd.relay')).toContainText('14 GB of 1 TB');
+  await expect(meter('relay')).toContainText('14 GB of 1 TB');
   await close();
 
   answer = { status: 204 };
   await about();
   await expect(dialog.locator('dt', { hasText: 'Version' })).toBeVisible();
-  await expect(dialog.locator('dt', { hasText: 'Relay this month' }), 'a Worker without the token: no line at all').toHaveCount(0);
+  await expect(dialog.locator('.usage'), 'a Worker without the token: no figures at all').toHaveCount(0);
 });
 
 test('phone width: one column, the composer pinned to the bottom of the screen and usable', async ({ crowd }) => {
