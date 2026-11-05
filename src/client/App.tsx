@@ -2017,6 +2017,25 @@ function VersionDialog() {
   // Of several asks under way, the latest one's answer is taken; a failed one keeps what was known.
   const [history, setHistory] = createSignal<HistoryUsage | 'unknown' | null>(null);
   let historyAsks = 0;
+  // The figure nearest its limit of those shown below, for the fold's summary; none while a section is not known, which
+  // could hold a nearer one.
+  const nearest = () => {
+    const r = relay();
+    const h = history();
+    if (r === 'unknown' || h === 'unknown') return null;
+    const { to } = monthSoFar(now());
+    const shown: Array<{ name: string; value: number; limit: number }> = [];
+    if (typeof r === 'object' && r !== null) {
+      shown.push({ name: 'Relay', value: r.bytes, limit: r.limit });
+      if (r.today?.day === to) for (const row of FREE_PLAN_ROWS) shown.push({ name: row.name, value: r.today[row.key], limit: FREE_PLAN[row.key] });
+    }
+    if (typeof h === 'object' && h !== null) {
+      shown.push({ name: 'Kept on the server', value: h.bytes, limit: h.budget });
+      if (h.today?.day === to && h.shares) for (const row of HISTORY_ROWS) shown.push({ name: row.name, value: h.today[row.key], limit: h.shares[row.key] });
+    }
+    const top = shown.sort((a, b) => b.value / b.limit - a.value / a.limit)[0];
+    return top ? { name: top.name, pct: formatPercent(top.value, top.limit), fill: fillOf(top.value, top.limit) } : null;
+  };
   // Whether any meter shown has a pace line, as the sections below decide: a figure of this day or month.
   const paced = () => {
     const r = relay();
@@ -2064,6 +2083,10 @@ function VersionDialog() {
           <dt>Source</dt>
           <dd><a href={REPO_URL} target="_blank" rel="noopener">{REPO_URL.replace(/^https:\/\//, '')}</a></dd>
         </dl>
+        {/* The figures, folded away until asked for; the summary names the one nearest its limit, so a fold hides no warning. */}
+        <Show when={relay() !== null || history() !== null}>
+        <details class="usage-all">
+          <summary>Usage and limits<Show when={nearest()}>{(n) => <small data-fill={n().fill}>{n().fill !== 'ok' ? <span aria-hidden="true">⚠ </span> : null}nearest: {n().name}, {n().pct}%</small>}</Show></summary>
         {/* What the free plan allows and what is used of it, where the Worker can ask Cloudflare (a token: not local builds). */}
         <Show when={relay()}>{(r) => (
           <Show when={typeof r() === 'object' ? (r() as RelayUsage) : null} fallback={<p class="usage-unknown">Cloudflare's figures: not known right now.</p>}>{(u) => (
@@ -2102,6 +2125,8 @@ function VersionDialog() {
           </section>
         )}</Show>
         <Show when={paced()}><p class="usage-note">{PACE_NOTE}</p></Show>
+        </details>
+        </Show>
         <div class="row"><button onClick={() => dialog?.close()}>Close</button></div>
       </dialog>
     </div>

@@ -688,6 +688,12 @@ dialog.about dd { margin: 0; }
  * has a line where an even pace would have the bar by now (`.meter-pace`).
  */
 dialog.about { max-height: 90vh; overflow: auto; }
+/* All of them behind one fold; its summary names the figure nearest its limit, in its colour past half. */
+dialog.about .usage-all { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+dialog.about .usage-all > summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+dialog.about .usage-all > summary small { margin-left: 8px; font-weight: normal; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+dialog.about .usage-all > summary small[data-fill="warn"] span { color: var(--warn); }
+dialog.about .usage-all > summary small[data-fill="bad"] span { color: var(--bad); }
 dialog.about .usage { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 dialog.about .usage h4 { margin: 0 0 10px; font-size: 13px; font-weight: 600; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
 dialog.about .usage h4 small, dialog.about .usage-unknown { color: var(--dim); font-weight: normal; font-size: 12px; }

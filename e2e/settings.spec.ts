@@ -378,17 +378,29 @@ test('About shows the relay this month and the free plan today, the figure neare
   // controls the page), and before the page loads, which asks at once.
   let answer: { status: number; body?: unknown } = { status: 200, body: { error: 'unavailable' } };
   await alice.context.route('**/relay-usage', (route) => route.fulfill({ status: answer.status, contentType: 'application/json', body: answer.body === undefined ? undefined : JSON.stringify(answer.body) }));
+  // The server's history all but empty: its own figures (its test, below) stay out of the nearest named on the fold.
+  await alice.context.route('**/history-usage', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bytes: 1000, budget: 4e9, entries: 1, oldest: null, asOf: Date.now() }) }));
   await alice.open();
   const dialog = alice.page.locator('dialog.about');
+  // The figures are folded away (details.usage-all); the fold stays as it was left between opens of the dialog.
+  const fold = dialog.locator('details.usage-all');
   const about = async () => {
     await openMenu(alice.page);
     await alice.page.getByRole('button', { name: 'About' }).click();
     await expect(dialog).toBeVisible();
+    await expect(fold).toBeVisible();
+    if (!(await fold.evaluate((d) => (d as HTMLDetailsElement).open))) await fold.locator('summary').click();
   };
   const close = () => dialog.getByRole('button', { name: 'Close' }).click();
   const meter = (id: string) => dialog.locator(`.meter[data-meter="${id}"]`);
+  await openMenu(alice.page);
+  await alice.page.getByRole('button', { name: 'About' }).click();
+  await expect(fold, 'folded at first').toBeVisible();
+  expect(await fold.evaluate((d) => (d as HTMLDetailsElement).open)).toBe(false);
+  await expect(fold.locator('summary'), 'no nearest named while a figure is not known').toHaveText('Usage and limits');
+  await dialog.getByRole('button', { name: 'Close' }).click();
   await about();
-  await expect(dialog.locator('.usage-unknown'), 'nothing known yet').toContainText('not known right now');
+  await expect(dialog.locator('.usage-unknown', { hasText: "Cloudflare's figures" }), 'nothing known yet').toContainText('not known right now');
   // Cloudflare's figures only: the server's history has a section of its own (ADR 0009), with its own test.
   const cloudflare = dialog.locator('.usage:not([aria-label="Kept on the server"]) .meter');
   await expect(cloudflare).toHaveCount(0);
@@ -407,6 +419,7 @@ test('About shows the relay this month and the free plan today, the figure neare
   await expect(dialog.locator('.usage', { hasText: 'Free plan today' }).locator('.meter-name')).toHaveText(['Room requests', 'Rows written', 'Worker requests', 'Room time', 'Stored', 'Rows read']);
   await expect(meter('objectRequests')).toHaveAttribute('data-fill', 'warn');
   await expect(meter('objectRequests')).toContainText('⚠ 79%');
+  await expect(fold.locator('summary'), 'the nearest named on the fold').toHaveText('Usage and limits⚠ nearest: Room requests, 79%');
   await expect(meter('objectRequests')).toContainText('78,634 of 100,000');
   await expect(meter('stored')).toContainText('83 MB of 5 GB');
   await expect(meter('rowsRead')).toHaveAttribute('data-fill', 'ok');
@@ -456,10 +469,14 @@ test('ADR 0009: About shows how full the server\'s history is and how far back i
   await alice.context.route('**/history-usage', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(answer) }));
   await alice.open();
   const dialog = alice.page.locator('dialog.about');
+  // The figures are folded away (details.usage-all); the fold stays as it was left between opens of the dialog.
+  const fold = dialog.locator('details.usage-all');
   const about = async () => {
     await openMenu(alice.page);
     await alice.page.getByRole('button', { name: 'About' }).click();
     await expect(dialog).toBeVisible();
+    await expect(fold).toBeVisible();
+    if (!(await fold.evaluate((d) => (d as HTMLDetailsElement).open))) await fold.locator('summary').click();
   };
   const close = () => dialog.getByRole('button', { name: 'Close' }).click();
   await about();
@@ -486,6 +503,7 @@ test('ADR 0009: About shows how full the server\'s history is and how far back i
   await expect(kept.locator('.meter[data-meter="kept"] .meter-pace'), 'the window is not a day\'s').toHaveCount(0);
   const syncs = kept.locator('.meter[data-meter="kept-syncs"]');
   await expect(syncs).toContainText('40,000 of 40,000');
+  await expect(fold.locator('summary')).toContainText('nearest: Syncs today, 100%');
   await expect(syncs).toHaveAttribute('data-fill', 'bad');
   await expect(syncs).toHaveAttribute('data-ahead', 'true');
   await expect(syncs).toContainText('ahead of an even pace');

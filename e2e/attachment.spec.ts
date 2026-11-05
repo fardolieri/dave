@@ -80,6 +80,7 @@ test('past 80 % of the relay this month a file link offers no relay, and a pictu
     // Known before the file comes: About says so.
     await openMenu(f.page);
     await f.page.getByRole('button', { name: 'About' }).click();
+    await f.page.locator('dialog.about details.usage-all summary').click();
     await expect(f.page.locator('dialog.about .meter[data-meter="relay"]')).toContainText('This month is past 80%');
     await f.page.locator('dialog.about').getByRole('button', { name: 'Close' }).click();
     friends.push(f);
