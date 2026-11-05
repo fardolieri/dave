@@ -1,6 +1,6 @@
 # 02 · File bytes kept on the server, encrypted, in the same window
 
-Status: open
+Status: in review (PR #126)
 Blocked by: 01
 
 **Why:** the server keeps a file's announcement (01), but its bytes still come only from a friend who is online and has
@@ -16,3 +16,9 @@ the Store, decrypts, and checks the hash as it does a friend's bytes. Larger fil
 - Upload through the Room's socket (frames of 1 MB hold up everything behind them on the sender's socket, ADR 0006) or
   a Worker path of its own with the room's auth.
 - A Durable Object row holds 2 MB at most: a piece per row.
+
+## Answer
+
+Built as ADR 0009 now says: files up to 16 MB in sealed pieces of 256 KB, over the Room's socket with a rate of their
+own, kept as entries in the same window, fetched only when nobody online can give the file, the whole checked against
+its signed hash. Rooms of two (ADR 0011) keep their files the same way.

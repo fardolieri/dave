@@ -1970,7 +1970,7 @@ function FreePlanToday(props: { today: FreePlanToday; now: number }) {
   );
 }
 
-const HISTORY_TITLE = "What the server keeps of every room's texts and file announcements, sealed so that only friends can read them, for friends who were away and for new devices. One window for every room of this site: past 4 GB the oldest go first, whichever room they are of. Counted with what their storage costs on top, so a little more than the texts themselves.";
+const HISTORY_TITLE = "What the server keeps of every room's texts and files up to 16 MB, sealed so that only friends can read them, for friends who were away and for new devices. One window for every room of this site: past 4 GB the oldest go first, whichever room they are of. Counted with what their storage costs on top, so a little more than the texts themselves.";
 
 /** The server's history (ADR 0009) as the Worker last told it, 'unknown' when asking failed; null before the first answer. */
 async function askHistoryUsage(): Promise<HistoryUsage | 'unknown'> {
@@ -2063,7 +2063,7 @@ function VersionDialog() {
                 <h4>Kept on the server <small>{u().oldest === null ? 'nothing yet' : `back to ${new Date(u().oldest!).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}`}</small></h4>
                 <ul>
                   <UsageMeter id="kept" name="Texts and files" title={HISTORY_TITLE} value={u().bytes} limit={u().budget} shown={`${formatBytes(u().bytes)} of ${formatBytes(u().budget)}`}>
-                    <small class="meter-note">Texts are kept on the server, sealed so only friends can read them, so a friend who was away gets them later. All rooms share 4 GB: once full, the oldest go first.</small>
+                    <small class="meter-note">Texts, and files up to 16 MB, are kept on the server, sealed so only friends can read them, so a friend who was away gets them later. All rooms share 4 GB: once full, the oldest go first.</small>
                   </UsageMeter>
                 </ul>
               </>

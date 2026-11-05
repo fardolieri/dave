@@ -40,10 +40,27 @@ About dialog shows how full it is and how far back it reaches (`/history-usage`)
   serves every room's keeps and syncs, one at a time: plenty for a group of friends, and the first thing to split should
   that change.
 - The free plan counts rows, the account's: 100,000 written and 5 million read a day, which the Rooms need too (a room's
-  verifier is read on every challenge). So the history takes a share and no more, whoever asks: 10,000 keeps a day
-  (about four rows written each, seven once the window is full and each keep drops an old one), 10,000 syncs (one row
-  each) and 2 million rows read. Past a share, until 00:00 UTC, texts go out live but are not kept, and syncs are
-  answered `unavailable`. A socket may ask once per 10 s.
+  verifier is read on every challenge). So the history takes a share and no more, whoever asks: 70,000 rows written a
+  day, counted as SQLite counts them, what a keep drops from the tail included; 10,000 syncs (one row each); 2 million
+  rows read. Past a share, until 00:00 UTC, texts go out live but are not kept, syncs are answered `unavailable`, and
+  files are neither kept nor given. A socket may ask for a sync once per 10 s.
+- Once the window is full, each byte kept drops an older one. A piece dropping texts writes about three rows per text,
+  one dropping pieces three per 256 KB: with files most of the bytes, as they will be, the day's share of writes keeps
+  hundreds of MB of files a day; a window full of texts alone, some 20 MB.
+- The tail of the window is cut at every keep, by as much as that keep went past it and no more: the totals row that
+  says how full the window is is read and written by every keep anyway, so the check costs nothing. Cutting 200 MB at
+  once when full would not write less (every entry is deleted once, whenever), only all at once: 200 MB of texts is
+  some 200,000 rows, past the day's writes in one go (owner's question, 2026-11-05).
+- Files up to 16 MB (`KEPT_FILE_MAX`) are kept too, in the same window (owner, 2026-11-05). The sender's app sends each
+  in pieces of 256 KB, sealed with the room's text key and bound to the room, the file's hash and the piece's place
+  (`src/core/sealed.ts`, `sealPiece`), as `{ t: 'piece' }` frames paced under a rate of their own, after the
+  announcement; the server answers each with whether it keeps it (`kept`), and the app sends what it did not keep
+  again, a few times at most. The Store keeps each piece as an entry of its own (writer none, id `<hash>:<n>`), so pieces
+  and texts share one order and one tail; a sync brings no pieces. A friend's app still pulls a file from a friend online
+  first; the server is the last it asks in a round, when no friend gave it (none online, or none reachable), piece by
+  piece (`{ t: 'fetch' }`), and the whole file is checked against the hash its announcement signed before it shows. Larger files go friend to friend only: one 700 MB
+  video would push weeks of every room's texts out of the window. A file whose oldest pieces the tail took is not
+  given: what is left of it waits there to go too.
 - A text sent again after a lost socket is broadcast again under its id (ticket 51); the Store keeps it once (room,
   writer, id). Browsers drop doubles anyway.
 - Clearing a room's history in a browser records when (`historyCleared` in localStorage), and its syncs ask from then on,
@@ -51,8 +68,7 @@ About dialog shows how full it is and how far back it reaches (`/history-usage`)
   server keeps of it.
 - What a sync brings into a browser that held nothing of the room (a new device, a room rejoined) is not counted unread;
   what it brings into one that held some is, without a chime: a batch arrives at once.
-- Not kept yet: private texts (ADR 0007) and file bytes (ADR 0006). Both are tickets in `.scratch/server-history/`;
-  private conversations are to become rooms of two, which then keep their texts like any room (ticket 03).
+- Private conversations are rooms of two (ADR 0011), and keep their texts and files like any room.
 
 ## Consequences
 

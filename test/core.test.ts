@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_SEALED_PROFILE_LENGTH, APP_OUT_OF_DATE, OUT_OF_DATE, type WirePerson as Person } from '../src/core/protocol';
+import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_SEALED_PIECE_LENGTH, MAX_SEALED_PROFILE_LENGTH, APP_OUT_OF_DATE, OUT_OF_DATE, type WirePerson as Person } from '../src/core/protocol';
 import { onMessage, presenceSnapshot, type SocketState } from '../src/core/room';
 import { newBucket } from '../src/core/ratelimit';
 
@@ -27,6 +27,13 @@ describe('protocol', () => {
     // ADR 0011: a private text routed to one friend by key is from an app before rooms of two, however it is made.
     for (const m of [{ t: 'private', to: 'pkB', sealed: 'c2Vh', id: 'a1b2' }, { t: 'private', to: 'pkB', sealed: 'c2Vh', id: 'a1b2', file: true }, { t: 'private' }]) {
       expect(parseClientMessage(JSON.stringify(m))).toEqual({ t: 'invalid', reason: APP_OUT_OF_DATE, ref: 'private' });
+    }
+    // ADR 0009: a piece of a kept file going up, and one asked back, by the file's hash and the piece's place.
+    const hash = 'h'.repeat(43);
+    expect(parseClientMessage(JSON.stringify({ t: 'piece', hash, n: 3, sealed: 'c2Vh' }))).toEqual({ t: 'piece', hash, n: 3, sealed: 'c2Vh' });
+    expect(parseClientMessage(JSON.stringify({ t: 'fetch', hash, n: 0 }))).toEqual({ t: 'fetch', hash, n: 0 });
+    for (const m of [{ t: 'piece', hash: 'short', n: 0, sealed: 'c2Vh' }, { t: 'piece', hash, n: 64, sealed: 'c2Vh' }, { t: 'piece', hash, n: -1, sealed: 'c2Vh' }, { t: 'piece', hash, n: 0, sealed: 'x'.repeat(MAX_SEALED_PIECE_LENGTH + 1) }, { t: 'piece', hash, n: 0 }, { t: 'fetch', hash, n: 1.5 }]) {
+      expect(parseClientMessage(JSON.stringify(m)), JSON.stringify(m).slice(0, 80)).toMatchObject({ t: 'invalid', ref: m.t });
     }
     const bad = { t: 'invalid', reason: 'unrecognised message' };
     // ADR 0005: only an app from before sealed texts sends a plain one.

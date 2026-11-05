@@ -28,6 +28,7 @@ const FILE_DOMAIN = 'dave file v1';
 const PRIVATE_TEXT_KEY_DOMAIN = 'dave private text key v1';
 const PROFILE_DOMAIN = 'dave profile v1';
 const PAIR_DOMAIN = 'dave pair room v1';
+const PIECE_DOMAIN = 'dave file piece v1';
 const PROFILE_ID = 'profile';
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
@@ -137,6 +138,33 @@ async function open(input: { key: CryptoKey; roomId: string; id: string; from: s
   const ok = await verifyBytes(publicKey, inner.subarray(0, SIGNATURE_BYTES), textBindingBytes({ ...input, text }, domain));
   if (!ok) return { ok: false, reason: 'bad signature' };
   return { ok: true, text };
+}
+
+/**
+ * A piece of a file the server keeps (ADR 0009), sealed in the browser with the room's text key: AES-GCM, the room, the
+ * file's hash, the piece's place and how many there are as the additional data, so the server can neither read a piece
+ * nor pass one off for another. Not signed: the file's hash is, in its announcement, and the whole file is checked
+ * against it once it is put together. Out: iv (12 bytes) || ciphertext and tag.
+ */
+export async function sealPiece(input: { key: CryptoKey; roomId: string; hash: string; n: number; of: number; bytes: Uint8Array }): Promise<Uint8Array> {
+  const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
+  const additionalData = utf8([PIECE_DOMAIN, input.roomId, input.hash, String(input.n), String(input.of)].join('\n'));
+  const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: additionalData as BufferSource }, input.key, input.bytes as BufferSource));
+  const out = new Uint8Array(iv.length + sealed.length);
+  out.set(iv);
+  out.set(sealed, iv.length);
+  return out;
+}
+
+/** A kept piece opened, if it was sealed for this room, file, place and count; null for anything else, never thrown. */
+export async function openPiece(input: { key: CryptoKey; roomId: string; hash: string; n: number; of: number; sealed: Uint8Array }): Promise<Uint8Array | null> {
+  if (input.sealed.length < IV_BYTES + TAG_BYTES) return null;
+  const additionalData = utf8([PIECE_DOMAIN, input.roomId, input.hash, String(input.n), String(input.of)].join('\n'));
+  try {
+    return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: input.sealed.subarray(0, IV_BYTES) as BufferSource, additionalData: additionalData as BufferSource }, input.key, input.sealed.subarray(IV_BYTES) as BufferSource));
+  } catch {
+    return null;
+  }
 }
 
 /** A friend's profile as opened: the name and picture friends see. */

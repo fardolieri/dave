@@ -46,3 +46,23 @@ arrived, this is Cloudflare's, like ticket 55, and the tests' 20 s wait for a fi
 flake): `resilience.spec.ts:454` "an offer stuck for a friend who then reloads leaves their new connection alone (the
 polite side reloads, the first to join)", Firefox, passed on its retry. A `.banner` saying Connecting, Reconnecting or
 Server unavailable was still there after 20 s. PR #114 changes a file card's wording only.
+
+## Comments
+
+2026-11-05, preview run of PR #126 (run 42064671698, head 5a730a4), one try each, both passed on their retry:
+- Firefox 5: `settings.spec.ts:216` "low bandwidth voice caps the voice…": a call badge still "connecting…". First sighting
+  of that error for this test (ledger).
+- Chromium 2: `attachment.spec.ts:1032` "ADR 0009: a picture … comes from the server": the test's own race (Alice left
+  before the server said it kept her pieces), fixed in the test.
+
+Suspected for the first, not shown: PR #126 gives each pair of friends a room of two, so a test opens several sockets
+per browser where it opened one, and the preview's upgrade limit per IP was 120 a minute for the whole suite from one
+runner. A refused upgrade (429) delays the room socket a call's signaling goes through. Raised to 600 in the same PR;
+if this kind of sighting stops after, the limit was a cause here, and maybe for the sockets that never came up above.
+
+2026-11-05, preview run of PR #126 (run 42066686999, head 5ee43a1), Chromium 5, passed on its retry:
+`resilience.spec.ts:756` "a socket gone silent without a close is given up…", "Alice gives the silent socket up
+herself" got `[4009, 4009]`. Not this ticket's cause: the test silenced all of Alice's sockets, her room of two with Bob
+among them when it was made before the silence, and expected one close. The app was right; the test now checks the
+room's socket alone (e2e wire closes carry their socket's URL). Earlier rows of this error (10-24, nightly) predate rooms
+of two and stay this ticket's.

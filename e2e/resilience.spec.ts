@@ -1,3 +1,4 @@
+import { roomIdOf } from '../src/core/rooms';
 import { expect, needHooks, newSecret, test, type Friend } from './fixtures';
 
 test('the call survives the server going away and coming back', async ({ crowd }) => {
@@ -761,7 +762,10 @@ test('regression: a socket gone silent without a close is given up, and the text
   alice.wire.sever();
   await alice.composer.fill('into the silence');
   await alice.composer.press('Enter');
-  const gaveUp = () => alice.wire.closes.filter((c) => c.side === 'page').map((c) => c.code);
+  // The room's socket, given up once. Her room of two's with Bob goes silent too (ADR 0011), and is given up its own way,
+  // as a silent socket or, still connecting, as a handshake that never ended: not this test's.
+  const roomSocket = `/ws/${await roomIdOf(crowd.room.secret)}`;
+  const gaveUp = () => alice.wire.closes.filter((c) => c.side === 'page' && c.url.endsWith(roomSocket)).map((c) => c.code);
   await expect.poll(gaveUp, { message: 'Alice gives the silent socket up herself', timeout: 150_000 }).toEqual([4009]);
   await alice.connected();
   // The Room took it on the new socket, once: it came back to her, and no longer waits.

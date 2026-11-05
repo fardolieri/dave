@@ -6,9 +6,15 @@ import { fromBase64Url, fingerprint, randomNonce, toBase64Url, verifyAnswer } fr
 import { APP_OUT_OF_DATE, CLOSE_AUTH_FAILED, CLOSE_OUT_OF_DATE, OUT_OF_DATE, parseClientMessage, wireIdentityOf, type ClientMessage, type IceServer, type KeptEntry, type RefType, type ServerMessage, type TextId, type WirePerson as Person } from './protocol';
 import { SIGNAL_BURST, SIGNAL_RATE_PER_SECOND, newBucket, takeToken, type Bucket } from './ratelimit';
 import { LINK_ICE_TTL_SECONDS, nextJoinSeq } from './mesh';
-import { SYNC_COOLDOWN_MS, SYNC_MAX, historyFrames } from './kept';
+import { SYNC_COOLDOWN_MS, SYNC_MAX, historyFrames, pieceId } from './kept';
 
 export const MAX_AUTH_ATTEMPTS = 3;
+/**
+ * Pieces of a file a socket sends up a second (ADR 0009), and asks back: 2 MB up, 4 MB down, a burst of twice that. The
+ * client paces its uploads under it (client/room.ts).
+ */
+export const PIECE_RATE_PER_SECOND = 8;
+export const FETCH_RATE_PER_SECOND = 16;
 /** A socket that has not answered its challenge within this window is closed by the sweep. */
 export const CHALLENGE_TIMEOUT_MS = 10_000;
 
@@ -20,7 +26,7 @@ export type SocketState =
    * included (`takeOverTurn`); revoked when she leaves the call, and by nothing else. `joins`: how many times this
    * socket joined the call, so a TURN user minted for an earlier join is told from the call's (settleTurnUser).
    */
-  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; linkBucket?: Bucket; linkIceAt?: number; syncAt?: number; attachedAt: number; turnUsers?: string[]; joins?: number; telemetry?: true }
+  | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; linkBucket?: Bucket; linkIceAt?: number; syncAt?: number; pieceBucket?: Bucket; fetchBucket?: Bucket; attachedAt: number; turnUsers?: string[]; joins?: number; telemetry?: true }
   /**
    * Told to close (superseded, silent too long, errored) or closed, but still attached until the runtime finishes the handshake; invisible meanwhile.
    * `attachedAt` as it was when attached, for the log of its close (worker/room.ts); none in sockets from before it was kept.
@@ -77,6 +83,10 @@ export type RoomContext = {
    * could not say. Provided by the adapter; none where nothing is kept (core tests), which answers every sync with none.
    */
   history?: (since: number, max: number) => Promise<KeptEntry[] | null>;
+  /** A piece of a kept file by its id, sealed (base64url); null when it is not kept, or the server cannot say. */
+  piece?: (id: string) => Promise<string | null>;
+  /** Keeps a piece of a file sent up, by its id: 'kept', 'not today' (the daily share used up), or 'failed' (try again). */
+  keepPiece?: (id: string, sealed: string) => Promise<'kept' | 'not today' | 'failed'>;
 };
 
 /** ICE servers minted for the socket's join number `forJoin` (SocketState `joins`); `turnUser` null when STUN only. */
@@ -201,6 +211,13 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     const taken = takeToken(state.signalBucket ?? newBucket(ctx.now, SIGNAL_BURST), ctx.now, SIGNAL_RATE_PER_SECOND, SIGNAL_BURST);
     next = { ...state, signalBucket: taken.bucket };
     if (!taken.ok) return { state: next, replies: [error('rate limited', 'signal')] };
+  } else if (msg.t === 'piece' || msg.t === 'fetch') {
+    // A file's pieces go up and come back in their own buckets: an upload of 64 pieces holds up no text, nor a download.
+    const key = msg.t === 'piece' ? 'pieceBucket' : 'fetchBucket';
+    const rate = msg.t === 'piece' ? PIECE_RATE_PER_SECOND : FETCH_RATE_PER_SECOND;
+    const taken = takeToken(state[key] ?? newBucket(ctx.now, rate * 2), ctx.now, rate, rate * 2);
+    next = { ...state, [key]: taken.bucket };
+    if (!taken.ok) return { state: next, replies: [error('rate limited', msg.t)] };
   } else if (msg.t === 'link') {
     const taken = takeToken(state.linkBucket ?? newBucket(ctx.now, SIGNAL_BURST), ctx.now, SIGNAL_RATE_PER_SECOND, SIGNAL_BURST);
     next = { ...state, linkBucket: taken.bucket };
@@ -232,6 +249,22 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     case 'file': {
       const m: KeptEntry = { t: msg.t, from: wireIdentityOf(state.person), sealed: msg.sealed, at: ctx.now, id: msg.id };
       return { state: next, replies: [], broadcast: [m], keep: m };
+    }
+    case 'piece': {
+      const { hash, n, sealed } = msg;
+      const keep = ctx.keepPiece;
+      return { state: next, replies: [], after: async () => {
+        const kept = keep ? await keep(pieceId(hash, n), sealed) : 'not today';
+        return { replies: [{ t: 'kept', hash, n, ok: kept === 'kept', ...(kept === 'failed' ? { again: true as const } : {}) }], minted: null };
+      } };
+    }
+    case 'fetch': {
+      const { hash, n } = msg;
+      const piece = ctx.piece;
+      return { state: next, replies: [], after: async () => {
+        const sealed = piece ? await piece(pieceId(hash, n)) : null;
+        return { replies: [{ t: 'piece', hash, n, ...(sealed ? { sealed } : {}) }], minted: null };
+      } };
     }
     case 'sync': {
       // One per welcome is all a client asks; more often is a loop, or a friend reading the free plan's rows away.

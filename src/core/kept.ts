@@ -22,14 +22,35 @@ export const entryBytes = (json: string): number => new TextEncoder().encode(jso
 /**
  * The free plan's rows are the account's, 100,000 written and 5 million read a day, and the Rooms need theirs: a room's
  * verifier is read on every challenge. So the history takes a share and no more, whoever asks: past it, until 00:00 UTC,
- * texts go out live but are not kept, and a sync is answered `unavailable`. A kept text is about four rows written (its
- * row, two indexes, the totals), seven once the window is full (an old one's row and indexes deleted), and a sync one
- * (the totals): 80,000 written at most, of 100,000. A day of friends chatting is a few thousand texts, and a sync is
- * asked on every welcome.
+ * texts go out live but are not kept, a sync is answered `unavailable`, and a file's pieces are neither kept nor given.
+ * Writes are counted as SQLite counts them, what a keep drops from the tail of the window included: one piece of a file
+ * kept into a window full of texts drops hundreds of them at once. A kept text is about four rows (its row, two
+ * indexes, the totals), seven once the window is full; a sync is one (the totals): WRITES_PER_DAY and SYNCS_PER_DAY
+ * together are 80,000 of the 100,000. A day of friends chatting is a few thousand texts, and a sync is asked on every
+ * welcome.
  */
-export const KEEPS_PER_DAY = 10_000;
+export const WRITES_PER_DAY = 70_000;
 export const SYNCS_PER_DAY = 10_000;
 export const SYNC_ROWS_PER_DAY = 2_000_000;
+
+/**
+ * Files the server keeps too (ADR 0009), encrypted in the browser: those up to this size, what a friend's app pulls by
+ * itself (core/attachment.ts, PIECED_FROM). A larger one goes from friend to friend only: one 700 MB video would push
+ * weeks of every room's texts out of the window.
+ */
+export const KEPT_FILE_MAX = 16 * 1024 * 1024;
+/** Whether the server keeps a file of this kind: one of KEPT_FILE_MAX at most, not one that goes in large pieces. */
+export const keptKind = (file: { size: number; piece?: number }): boolean => !file.piece && file.size <= KEPT_FILE_MAX;
+/** A kept file goes up and comes back in pieces of this many bytes, each its own entry in the window and its own frame. */
+export const KEPT_PIECE_BYTES = 256 * 1024;
+/** How many pieces a kept file has at most. */
+export const KEPT_PIECES_MAX = Math.ceil(KEPT_FILE_MAX / KEPT_PIECE_BYTES);
+/** How many pieces a file of `size` bytes goes in; an empty file is one empty piece. */
+export const keptPiecesOf = (size: number): number => Math.max(1, Math.ceil(size / KEPT_PIECE_BYTES));
+/** A piece as the window counts it: its sealed bytes, and its row as a text's. */
+export const pieceBytes = (sealed: number): number => sealed + ROW_OVERHEAD_BYTES;
+/** A piece's id among a room's entries: its file's hash and its place. */
+export const pieceId = (hash: string, n: number): string => `${hash}:${n}`;
 
 /** The most entries one `sync` brings: as many as a browser keeps of a room (core/chatlog.ts, MAX_HISTORY). */
 export const SYNC_MAX = 500;

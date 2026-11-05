@@ -6,6 +6,7 @@ import { mintIceServers, revokeIce } from './turn';
 import { logRejected } from './telemetry';
 import { STORE_NAME } from './store';
 import type { KeptEntry } from '../core/protocol';
+import { fromBase64Url, toBase64Url } from '../core/identity';
 
 /** A socket whose last sign of life is older than this is dropped by the sweep (spec §4). */
 export const SILENT_TIMEOUT_MS = 90_000;
@@ -92,6 +93,18 @@ export class Room extends DurableObject<Env> {
           return await this.store().since(room, since, max);
         } catch (e) {
           console.log('history not served', JSON.stringify({ reason: String(e) }));
+          return null;
+        }
+      },
+      keepPiece: (id, sealed) => this.keepPiece(id, sealed),
+      piece: async (id) => {
+        const room = this.roomId();
+        if (room === undefined) return null;
+        try {
+          const sealed = await this.store().piece(room, id);
+          return sealed ? toBase64Url(sealed) : null;
+        } catch (e) {
+          console.log('piece not served', JSON.stringify({ reason: String(e) }));
           return null;
         }
       },
@@ -250,6 +263,24 @@ export class Room extends DurableObject<Env> {
     );
     this.keeping = kept;
     this.ctx.waitUntil(kept);
+  }
+
+  /**
+   * Hands a piece of a file to the server's history (ADR 0009), and says whether it is kept: beside the texts' keeps, not
+   * after them, so a file's 64 pieces hold up no sync. 'failed' asks the sender's app to send it again; 'not today' not.
+   */
+  private async keepPiece(id: string, sealed: string): Promise<'kept' | 'not today' | 'failed'> {
+    const room = this.roomId();
+    const bytes = fromBase64Url(sealed);
+    if (room === undefined || !bytes) return 'not today';
+    try {
+      if (await this.store().keepPiece(room, id, bytes)) return 'kept';
+      console.log('piece not kept', JSON.stringify({ reason: 'daily share used up' }));
+      return 'not today';
+    } catch (e) {
+      console.log('piece not kept', JSON.stringify({ reason: String(e) }));
+      return 'failed';
+    }
   }
 
   /**

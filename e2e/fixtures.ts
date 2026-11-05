@@ -53,7 +53,7 @@ export class Wire {
    * A server side closed with 1006 on a socket that was let in is the network dropping it (seen against nightly and the
    * previews, ticket 51), not the Room, which closes with a code of its own.
    */
-  readonly closes: Array<{ side: 'page' | 'server'; code?: number; reason?: string; at: number; frames: number }> = [];
+  readonly closes: Array<{ side: 'page' | 'server'; code?: number; reason?: string; at: number; frames: number; url: string }> = [];
   /** Sockets open to the server right now. */
   get open(): number { return this.routes.size; }
   /** Whether the network dropped a socket (see `closes`) at or after this time (`Date.now()`). */
@@ -86,7 +86,7 @@ export class Wire {
     });
     const ended = (side: 'page' | 'server', code?: number, reason?: string) => {
       // Each end of a severed socket closes on its own, unheard by the other: both are recorded.
-      if (!pair.closing || pair.severed) this.closes.push({ side, code, reason, at: Date.now(), frames: this.log.length });
+      if (!pair.closing || pair.severed) this.closes.push({ side, code, reason, at: Date.now(), frames: this.log.length, url: route.url() });
     };
     // A severed socket's close reaches neither end either: each side finds out on its own.
     route.onClose((code, reason) => { ended('page', code, reason); pair.closing = true; this.routes.delete(pair); if (!pair.severed) void server.close({ code, reason }); });
