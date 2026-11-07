@@ -83,9 +83,10 @@ unseen meanwhile.
   writer, id). Browsers drop doubles anyway.
 - A friend can delete everything they wrote in a room from the server's history: texts, file announcements and the
   pieces of their files (owner, 2026-11-07), with Clear's "Also delete my messages from the server", one room at a time.
-  The socket asks (`forget`) up to a time, the Room's clock at the Clear as the last welcome's `at` lets the app tell
-  it (or that welcome's own, for a Clear before any), so an ask repeated after a lost answer deletes nothing written
-  since; the Store drops the room's entries whose writer is the key that socket proved, up to then, after the room's
+  The socket asks (`forget`) up to a time: the Room's clock as the last welcome's `at` lets the app tell it, once the
+  socket has sent what it held, plus three seconds for it to arrive (or the next welcome's own, for a Clear without a
+  socket), so an ask repeated after a lost answer deletes nothing written since. My texts and files that waited to go
+  never go; the Store drops the room's entries whose writer is the key that socket proved, up to then, after the room's
   keeps and pieces under way. Friends' copies stay theirs. A drop counts against the day's writes like a keep, and goes
   no further than the share has room for; the app keeps the ask (`historyForget` in localStorage) and asks again after
   every welcome until the server says all of it is gone. Identity is

@@ -94,10 +94,12 @@ export function createPrivates(opts: {
         watch(friend, room, identity.publicKey);
         return room;
       }));
-      // Deleted before its room of two was made: cleared now, and what I wrote deleted from the server if asked.
+      // Deleted before its room of two was made: cleared now, what waited to go dropped, and what I wrote deleted from the
+      // server if asked.
       const deleted = deletedEarly.get(friend);
       if (deleted !== undefined) {
         deletedEarly.delete(friend);
+        room.dropUnsent();
         if (deleted) room.forgetMine();
         void room.clearHistory();
       }

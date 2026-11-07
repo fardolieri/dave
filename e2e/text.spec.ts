@@ -273,6 +273,35 @@ test('ADR 0009: Clear with "Also delete my messages from the server" takes all I
   expect(alice.wire.frames('up', 'forget'), 'asked once: the server said all of it was gone').toHaveLength(1);
 });
 
+test('ADR 0009: a delete from the server asked while away goes once back, and what waited to go never goes', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.say('mine');
+  await bob.say('his');
+  await expect.poll(() => bob.storedTexts()).toEqual(['mine', 'his']);
+  await alice.wire.cut();
+  const sealedBefore = alice.wire.frames('up', 'sealed').length;
+  await expect(alice.banner).toContainText(/Reconnecting|Server unavailable/);
+  await alice.composer.fill('written while away');
+  await alice.composer.press('Enter');
+  await expect.poll(() => alice.pendingTexts()).toEqual(['written while away']);
+  await openRoomMenu(alice.page);
+  await alice.page.getByRole('button', { name: 'Clear chat history' }).click();
+  const dialog = alice.page.locator('dialog.clear');
+  await dialog.getByLabel('Also delete my messages from the server').check();
+  await dialog.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect.poll(() => alice.pendingTexts()).toEqual([]);
+  // Asked over a reload too: the ask is kept until the server says it is done.
+  await alice.page.reload();
+  alice.wire.restore();
+  await alice.connected();
+  await expect.poll(() => alice.wire.frames<{ done: boolean }>('down', 'forgot').map((f) => f.done)).toEqual([true]);
+  expect(alice.wire.frames('up', 'sealed').length, 'the text that waited never went').toBe(sealedBefore);
+  const carol = await crowd.open('Carol');
+  await expect.poll(() => carol.storedTexts()).toEqual(['his']);
+  expect(await bob.chatTexts()).toEqual(['mine', 'his']);
+});
+
 test('ADR 0009: a friend who joins by the link reads nothing from before, and everything from then on, missed texts too', async ({ crowd }) => {
   const other = { secret: newSecret(), name: 'Other' };
   const alice = await crowd.open('Alice');

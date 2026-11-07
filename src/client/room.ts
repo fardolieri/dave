@@ -96,6 +96,13 @@ type Life = { welcomedAt: number | null; frameAt: number | null };
 const RATE_RETRY_MS = 2_000;
 /** Between two pieces of a file going up to the server: under the Room's rate for them (core/room.ts). */
 const PIECE_GAP_MS = Math.ceil(1250 / PIECE_RATE_PER_SECOND);
+/**
+ * A delete from the server (`forgetMine`) asks up to the Room's clock once the socket has sent what it held, waiting this
+ * long at most, plus this margin: the time a frame takes to arrive, and how far the clock as the last welcome told it may
+ * be behind the Room's.
+ */
+const FORGET_DRAIN_MS = 30_000;
+const FORGET_MARGIN_MS = 3000;
 /** How long a piece asked of the server may take to come. */
 const FETCH_TIMEOUT_MS = 20_000;
 /** How long the server has to say it keeps the pieces sent up, before what it did not say so of goes again. */
@@ -1364,11 +1371,22 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
      * every welcome until the server says all of it is gone. My files still going up stop.
      */
     forgetMine: (): void => {
+      // Mine and not on the server yet: they never go. My files still going up stop.
       uploads.clear();
-      // Up to now by the Room's clock, so an ask repeated later deletes nothing written since; before any welcome in this
-      // page, up to the next one's (`welcome`).
-      keepForgetting(opts.roomId, roomClock === null ? FORGET_NOW : Date.now() + roomClock);
-      if (welcomed) askForget();
+      if (unconfirmed.length) { unconfirmed.length = 0; unconfirmedChanged(); }
+      setPendingFiles([]);
+      // Up to the next welcome's clock, should this page close or lose its socket first; or, with a socket, up to the Room's
+      // clock once what this one still has to send is out, and a moment more for it to arrive (FORGET_MARGIN_MS): an end of
+      // its own, so an ask repeated after a lost answer deletes nothing written since.
+      keepForgetting(opts.roomId, FORGET_NOW);
+      const socket = welcomed;
+      const settle = (waited: number): void => {
+        if (stopped || welcomed !== socket || !socket || roomClock === null || forgettingOf(opts.roomId) !== FORGET_NOW) return;
+        if (socket.bufferedAmount > 0 && waited < FORGET_DRAIN_MS) { setTimeout(() => settle(waited + 100), 100); return; }
+        keepForgetting(opts.roomId, Date.now() + roomClock + FORGET_MARGIN_MS);
+        askForget();
+      };
+      settle(0);
     },
     /** Empties the local history; the server's (ADR 0009) is asked for what comes after this moment only, from now on. */
     clearHistory: async () => {
