@@ -1,6 +1,6 @@
 // What the server keeps of the rooms' chat (ADR 0009): every text and file announcement as the Room broadcast it, sealed,
-// in one window for all rooms together, the oldest dropped first once it holds HISTORY_BUDGET_BYTES. A browser asks for
-// what it missed after every welcome (`sync`), so a friend who was away, or on a new device, still gets it.
+// in one window for all rooms together, the oldest dropped first once it holds HISTORY_BUDGET_BYTES or is older than
+// HISTORY_KEEP_MS. A browser asks for what it missed after every welcome (`sync`), so a friend who was away still gets it.
 import { formatShare } from './relayusage';
 import type { KeptEntry } from './protocol';
 
@@ -10,6 +10,21 @@ import type { KeptEntry } from './protocol';
  * the previews' copies, which count against the same 5 GB. Free fails a write past it rather than billing.
  */
 export const HISTORY_BUDGET_BYTES = 4_000_000_000;
+/**
+ * And for no longer than this (owner, 2026-11-07): four weeks, on the server and in every browser alike, whichever of the
+ * two ends comes first. The server gives nothing older (`since`, `piece`) and drops it once a day (`PRUNE_AT_MS`); a
+ * browser drops its texts and files older than this too (client/history.ts, client/files.ts).
+ */
+export const HISTORY_KEEP_MS = 28 * 24 * 3600_000;
+/** When the server drops what is older than HISTORY_KEEP_MS: at 23:45 UTC, with what is left of the day's writes. */
+export const PRUNE_AT_MS = (23 * 60 + 45) * 60_000;
+/** The next prune after `now`: today's at PRUNE_AT_MS, or tomorrow's once that is past. */
+export function nextPrune(now: number): number {
+  const today = now - (now % (24 * 3600_000)) + PRUNE_AT_MS;
+  return today > now ? today : today + 24 * 3600_000;
+}
+/** Whether something at `at` (the Room's clock) is still inside the window at `now`. */
+export const withinKeep = (at: number, now: number): boolean => at > now - HISTORY_KEEP_MS;
 
 /**
  * What one kept entry is counted as: its JSON, plus what its row and its two indexes cost on top (room, writer and id

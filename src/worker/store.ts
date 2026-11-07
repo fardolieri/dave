@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { HISTORY_BUDGET_BYTES, HISTORY_SHARES, SYNCS_PER_DAY, SYNCS_PER_WRITE, SYNC_ROWS_PER_DAY, WRITES_PER_DAY, entryBytes, pieceBytes, type HistoryUsage } from '../core/kept';
+import { HISTORY_BUDGET_BYTES, HISTORY_KEEP_MS, HISTORY_SHARES, nextPrune, SYNCS_PER_DAY, SYNCS_PER_WRITE, SYNC_ROWS_PER_DAY, WRITES_PER_DAY, entryBytes, pieceBytes, type HistoryUsage } from '../core/kept';
 import type { KeptEntry } from '../core/protocol';
 
 /** The one Store there is: every room's history in one window (ADR 0009). */
@@ -49,6 +49,52 @@ export class Store extends DurableObject<Env> {
     sql.exec('CREATE INDEX IF NOT EXISTS pieces_by_id ON entries (room, id) WHERE piece = 1');
     sql.exec(`CREATE TABLE IF NOT EXISTS totals (one INTEGER PRIMARY KEY CHECK (one = 1), bytes INTEGER NOT NULL, entries INTEGER NOT NULL, day TEXT NOT NULL, kept INTEGER NOT NULL, read INTEGER NOT NULL, syncs INTEGER NOT NULL)`);
     sql.exec(`INSERT OR IGNORE INTO totals (one, bytes, entries, day, kept, read, syncs) VALUES (1, 0, 0, '', 0, 0, 0)`);
+    // The daily prune (`alarm`): set once, and again by every run.
+    void ctx.blockConcurrencyWhile(async () => {
+      if ((await ctx.storage.getAlarm()) === null) await ctx.storage.setAlarm(nextPrune(Date.now()));
+    });
+  }
+
+  /**
+   * Once a day, near the end of the free plan's day (PRUNE_AT_MS), drops every entry older than HISTORY_KEEP_MS, oldest
+   * first, as far as what is left of the day's share of writes goes; what does not fit goes the next day. A sync gives
+   * none of it meanwhile (`since`, `piece`).
+   */
+  async alarm(): Promise<void> {
+    try {
+      this.prune();
+    } finally {
+      await this.ctx.storage.setAlarm(nextPrune(Date.now()));
+    }
+  }
+
+  /** Drops entries older than HISTORY_KEEP_MS, oldest first, within today's share of writes. How many it dropped. */
+  prune(now = Date.now()): number {
+    const sql = this.ctx.storage.sql;
+    return this.ctx.storage.transactionSync(() => {
+      const t = this.totals(now);
+      const fits = Math.floor((WRITES_PER_DAY - t.written - 1) / ROWS_PER_DROP);
+      if (fits <= 0) return 0;
+      // The oldest, read lazily up to the first inside the window: only those rows are read.
+      const cutoff = now - HISTORY_KEEP_MS;
+      let last: number | null = null;
+      let count = 0;
+      const old = sql.exec<{ seq: number; at: number }>('SELECT seq, at FROM entries ORDER BY seq');
+      for (const row of old) {
+        if (row.at > cutoff || count >= fits) break;
+        last = row.seq;
+        count++;
+      }
+      t.read += old.rowsRead;
+      if (last === null) { this.setTotals(t); return 0; }
+      const dropped = sql.exec<{ bytes: number }>('DELETE FROM entries WHERE seq <= ? RETURNING bytes', last);
+      const rows = dropped.toArray();
+      for (const r of rows) t.bytes -= r.bytes;
+      t.entries -= rows.length;
+      t.written += dropped.rowsWritten + 1; // and the totals
+      this.setTotals(t);
+      return rows.length;
+    });
   }
 
   /** Syncs, and rows read by them and by fetches that found nothing, today, not yet written with the totals. */
@@ -139,7 +185,7 @@ export class Store extends DurableObject<Env> {
   piece(room: string, id: string, now = Date.now()): Uint8Array | null {
     const t = this.totals(now);
     if (t.read >= SYNC_ROWS_PER_DAY || t.written >= WRITES_PER_DAY) return null;
-    const cursor = this.ctx.storage.sql.exec<{ entry: ArrayBuffer }>('SELECT entry FROM entries WHERE room = ? AND id = ? AND piece = 1 LIMIT 1', room, id);
+    const cursor = this.ctx.storage.sql.exec<{ entry: ArrayBuffer }>('SELECT entry FROM entries WHERE room = ? AND id = ? AND piece = 1 AND at > ? LIMIT 1', room, id, now - HISTORY_KEEP_MS);
     const row = cursor.toArray()[0];
     // A miss writes nothing: a friend's app asks for a file nobody online has, which the server may never have had. What
     // misses read is counted in memory, against the same share, and written with the next totals: an eviction before
@@ -162,7 +208,9 @@ export class Store extends DurableObject<Env> {
     const t = this.totals(now);
     if (t.read >= SYNC_ROWS_PER_DAY || t.syncs >= SYNCS_PER_DAY) return null;
     // Texts and file announcements: not the pieces of files, which a browser asks for one by one (`piece`).
-    const cursor = this.ctx.storage.sql.exec<{ entry: string }>('SELECT entry FROM entries WHERE room = ? AND at > ? AND piece = 0 ORDER BY at DESC, seq DESC LIMIT ?', room, since, max);
+    // Nothing older than the window, though today's prune may not have dropped it yet.
+    const from = Math.max(since, now - HISTORY_KEEP_MS);
+    const cursor = this.ctx.storage.sql.exec<{ entry: string }>('SELECT entry FROM entries WHERE room = ? AND at > ? AND piece = 0 ORDER BY at DESC, seq DESC LIMIT ?', room, from, max);
     const rows = cursor.toArray();
     this.count(now, 1, cursor.rowsRead);
     return rows.reverse().map((r) => JSON.parse(r.entry) as KeptEntry);

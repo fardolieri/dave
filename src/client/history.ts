@@ -1,16 +1,17 @@
 import { idbDelete, idbGet, idbRead, idbSet, local, type ParsedIdbKey } from './storage';
 import { MAX_HISTORY, mergeByAt, type PrivateThread, type StoredText } from '../core/chatlog';
 import { IDB } from '../core/storedstate';
-import { FROM_JOIN } from '../core/kept';
-
-/** A delete from the server's history asked up to when the Room gets the ask (`forgettingOf`), not up to a time. */
-export const FORGET_NOW = Number.MAX_SAFE_INTEGER;
+import { FROM_JOIN, withinKeep } from '../core/kept';
 import { UNSENT_MAX, type UnsentPrivate, type UnsentText } from '../core/unsent';
 import type { Identity } from '../core/protocol';
 
+/** A delete from the server's history asked up to when the Room gets the ask (`forgettingOf`), not up to a time. */
+export const FORGET_NOW = Number.MAX_SAFE_INTEGER;
+
 /**
  * Chat history kept in this browser (ticket 09), one list per room, in the order of the Room's clock. What reached this
- * browser live, and what the server's history (ADR 0009) brought of what it missed. Capped to the most recent MAX_HISTORY.
+ * browser live, and what the server's history (ADR 0009) brought of what it missed. Capped to the most recent MAX_HISTORY,
+ * and to the window's four weeks (core/kept.ts, HISTORY_KEEP_MS), as the server's.
  */
 export type { StoredText };
 /** De-duplication key: sender plus server timestamp. The wire format stays untouched. */
@@ -19,7 +20,11 @@ const keyFor = (roomId: string): `history:${string}` => `history:${roomId}`;
 /** Before rooms, this browser kept one history under a single key. */
 const LEGACY_KEY = 'history';
 
-const read = (key: ParsedIdbKey): Promise<StoredText[]> => idbRead(key);
+/** Read without what is older than the window (core/kept.ts, HISTORY_KEEP_MS): the next write leaves it out for good. */
+const read = async (key: ParsedIdbKey): Promise<StoredText[]> => {
+  const now = Date.now();
+  return (await idbRead(key)).filter((m) => withinKeep(m.at, now));
+};
 
 export function loadHistory(roomId: string): Promise<StoredText[]> {
   return read(keyFor(roomId));

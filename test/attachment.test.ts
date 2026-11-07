@@ -73,6 +73,10 @@ describe('attachments (ADR 0006)', () => {
     expect(keepWithin(index, f('a', 40, 9), 100)).toEqual({ index: [f('b', 30), f('c', 20), f('a', 40, 9)], drop: [], kept: true });
     // One larger than the whole budget is not kept, and costs nothing else.
     expect(keepWithin(index, f('d', 101), 100)).toEqual({ index, drop: [], kept: false });
+    // Those kept longer than the window go whatever the budget, first.
+    const aged = [f('a', 10, 0), f('b', 10, 50), f('c', 10, 90)];
+    expect(keepWithin(aged, f('d', 10, 100), 1000, 50)).toEqual({ index: [f('c', 10, 90), f('d', 10, 100)], drop: [f('a', 0).hash, f('b', 0).hash], kept: true });
+    expect(keepWithin(aged, f('d', 2000, 100), 1000, 50)).toEqual({ index: [f('c', 10, 90)], drop: [f('a', 0).hash, f('b', 0).hash], kept: false });
   });
 
   it('reads the index of kept files, dropping what is off', () => {

@@ -29,6 +29,13 @@ rather than billing; the rest is for the Rooms and the previews, which count aga
 JSON plus 512 bytes, its row and indexes as measured in workerd, so 4 GB counted is a little more than 4 GB on disk. The
 About dialog shows how full it is and how far back it reaches (`/history-usage`).
 
+And it keeps nothing longer than four weeks (`HISTORY_KEEP_MS`; owner, 2026-11-07: "a unified window for both, except
+if the disk size is reached first"), in every browser too: a browser's texts and kept files older than that go as the
+server's do, and its cap of 500 texts a room still holds as well. The Store gives nothing older (`since`, `piece`), and
+drops it once a day in an alarm at 23:45 UTC (`PRUNE_AT_MS`), oldest first, with what is left of the day's share of
+writes, near the end of the free plan's day so the day's chat had the share first; what does not fit goes the next day,
+unseen meanwhile.
+
 ## Details
 
 - What the server keeps beside the sealed bytes: the writer's key and fingerprint, their profile as it was then, sealed

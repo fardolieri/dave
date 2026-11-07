@@ -1,7 +1,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { HISTORY_BUDGET_BYTES, KEPT_FILE_MAX, ROW_OVERHEAD_BYTES, keptKind, WRITES_PER_DAY, SYNCS_PER_DAY, SYNCS_PER_WRITE, SYNC_FRAME_BYTES, SYNC_ROWS_PER_DAY, SYNC_OVERLAP_MS, FROM_JOIN, entryBytes, formatHistoryUsage, historyFrames, parseHistoryUsage, syncSince } from '../src/core/kept';
+import { HISTORY_BUDGET_BYTES, KEPT_FILE_MAX, ROW_OVERHEAD_BYTES, keptKind, WRITES_PER_DAY, SYNCS_PER_DAY, SYNCS_PER_WRITE, SYNC_FRAME_BYTES, SYNC_ROWS_PER_DAY, SYNC_OVERLAP_MS, FROM_JOIN, HISTORY_KEEP_MS, PRUNE_AT_MS, nextPrune, entryBytes, formatHistoryUsage, historyFrames, parseHistoryUsage, syncSince } from '../src/core/kept';
 import { insertByAt, mergeByAt } from '../src/core/chatlog';
 import { exportPublicKey, generateIdentityKeyPair, toBase64Url } from '../src/core/identity';
 import { onMessage, type SocketState } from '../src/core/room';
@@ -14,8 +14,10 @@ import { authFrame, nameOf, openRoomSocket, type Challenge } from './harness';
 // The server's history (ADR 0009): one Store keeps every room's sealed texts and file announcements in one window, and a
 // browser asks after every welcome for what it missed.
 
+/** An hour ago: inside the window (HISTORY_KEEP_MS), whenever the tests run. */
+const T0 = Date.now() - 3600_000;
 const entry = (n: number, over: Partial<KeptEntry> = {}): KeptEntry => ({
-  t: 'sealed', from: { publicKey: `pk${n % 3}`, fingerprint: 'abc234', profile: 'cHJvZmlsZQ' }, sealed: 'c2VhbGVk'.repeat(40), at: 1_762_250_000_000 + n, id: `id${n}`, ...over,
+  t: 'sealed', from: { publicKey: `pk${n % 3}`, fingerprint: 'abc234', profile: 'cHJvZmlsZQ' }, sealed: 'c2VhbGVk'.repeat(40), at: T0 + n, id: `id${n}`, ...over,
 });
 /** A Store of its own per test: the window is the object's, and tests must not see each other's entries. */
 const store = (name: string) => env.STORE.get(env.STORE.idFromName(name));
@@ -26,9 +28,9 @@ describe('the Store', () => {
       for (let n = 1; n <= 6; n++) s.keep('roomA', entry(n));
       s.keep('roomB', entry(7));
       // The writer's app sent text 2 again after a lost socket: the Room broadcast it again, with a later time.
-      s.keep('roomA', entry(2, { at: 1_762_250_000_100 }));
+      s.keep('roomA', entry(2, { at: T0 + 100 }));
       expect(s.since('roomA', 0, 500)!.map((e) => e.id)).toEqual(['id1', 'id2', 'id3', 'id4', 'id5', 'id6']);
-      expect(s.since('roomA', 1_762_250_000_003, 500)!.map((e) => e.id), 'after a time only').toEqual(['id4', 'id5', 'id6']);
+      expect(s.since('roomA', T0 + 3, 500)!.map((e) => e.id), 'after a time only').toEqual(['id4', 'id5', 'id6']);
       expect(s.since('roomA', 0, 2)!.map((e) => e.id), 'the newest of them').toEqual(['id5', 'id6']);
       expect(s.since('roomB', 0, 500)).toEqual([entry(7)]);
       expect(s.since('roomC', 0, 500)).toEqual([]);
@@ -39,10 +41,10 @@ describe('the Store', () => {
   it('keeps the pieces of a file in the same window as the texts, gives them back one by one, and never in a sync', async () => {
     await runInDurableObject(store('pieces'), (s: Store) => {
       const piece = (fill: number, size = 1000) => new Uint8Array(size).fill(fill);
-      expect(s.keepPiece('roomA', 'pkA', 'tagA:0', piece(1), 1)).toBe(true);
+      expect(s.keepPiece('roomA', 'pkA', 'tagA:0', piece(1), T0 + 1)).toBe(true);
       s.keep('roomA', entry(1));
-      expect(s.keepPiece('roomA', 'pkA', 'tagA:1', piece(2), 2)).toBe(true);
-      expect(s.keepPiece('roomA', 'pkA', 'tagA:1', piece(9), 3), 'sent again after a lost socket: kept once').toBe(true);
+      expect(s.keepPiece('roomA', 'pkA', 'tagA:1', piece(2), T0 + 2)).toBe(true);
+      expect(s.keepPiece('roomA', 'pkA', 'tagA:1', piece(9), T0 + 3), 'sent again after a lost socket: kept once').toBe(true);
       expect(s.piece('roomA', 'tagA:1')).toEqual(piece(2));
       expect(s.piece('roomA', 'tagA:2'), 'not kept').toBeNull();
       expect(s.piece('roomB', 'tagA:0'), "another room's").toBeNull();
@@ -54,49 +56,79 @@ describe('the Store', () => {
 
   it('keeps the same file sent by two friends as two copies, and gives either', async () => {
     await runInDurableObject(store('copies'), (s: Store) => {
-      expect(s.keepPiece('roomA', 'pkA', 'tagA:0', new Uint8Array(10).fill(1), 1)).toBe(true);
-      expect(s.keepPiece('roomA', 'pkB', 'tagA:0', new Uint8Array(10).fill(2), 2)).toBe(true);
+      expect(s.keepPiece('roomA', 'pkA', 'tagA:0', new Uint8Array(10).fill(1), T0 + 1)).toBe(true);
+      expect(s.keepPiece('roomA', 'pkB', 'tagA:0', new Uint8Array(10).fill(2), T0 + 2)).toBe(true);
       expect(s.usage().entries).toBe(2);
       expect(s.piece('roomA', 'tagA:0')).not.toBeNull();
-      expect(s.forget('roomA', 'pkA', 10)).toBe(true);
+      expect(s.forget('roomA', 'pkA', T0 + 10)).toBe(true);
       expect(s.piece('roomA', 'tagA:0'), "the other friend's copy stays").toEqual(new Uint8Array(10).fill(2));
     });
   });
 
   it('forgets what one friend wrote in one room up to a time, texts, announcements and pieces, and nothing else', async () => {
     await runInDurableObject(store('forget'), (s: Store) => {
-      const mine = (n: number, at: number) => entry(n, { at, from: { ...entry(n).from, publicKey: 'pkMe' } });
+      const mine = (n: number, at: number) => entry(n, { at: T0 + at, from: { ...entry(n).from, publicKey: 'pkMe' } });
       s.keep('roomA', mine(1, 10));
-      s.keep('roomA', entry(2, { at: 11 }));
+      s.keep('roomA', entry(2, { at: T0 + 11 }));
       s.keep('roomA', { ...mine(3, 12), t: 'file' });
-      s.keepPiece('roomA', 'pkMe', 'tagA:0', new Uint8Array(100), 13);
+      s.keepPiece('roomA', 'pkMe', 'tagA:0', new Uint8Array(100), T0 + 13);
       s.keep('roomB', mine(4, 14));
       s.keep('roomA', mine(5, 30));
       const before = s.usage();
-      expect(s.forget('roomA', 'pkMe', 20)).toBe(true);
+      expect(s.forget('roomA', 'pkMe', T0 + 20)).toBe(true);
       expect(s.since('roomA', 0, 500)!.map((e) => e.id), "a friend's text, and mine after the time, stay").toEqual(['id2', 'id5']);
       expect(s.piece('roomA', 'tagA:0')).toBeNull();
       expect(s.since('roomB', 0, 500)!.map((e) => e.id), 'another room is not this one').toEqual(['id4']);
       expect(s.usage().entries).toBe(before.entries - 3);
       expect(s.usage().bytes).toBe(before.bytes - entryBytes(JSON.stringify(mine(1, 10))) - entryBytes(JSON.stringify({ ...mine(3, 12), t: 'file' })) - (100 + ROW_OVERHEAD_BYTES));
-      expect(s.forget('roomA', 'pkMe', 20), 'nothing left to forget is done').toBe(true);
+      expect(s.forget('roomA', 'pkMe', T0 + 20), 'nothing left to forget is done').toBe(true);
     });
   });
 
   it('a forget past what the day can write goes as far as the share goes, and on from there when asked again', async () => {
     await runInDurableObject(store('forget-share'), (s: Store, state) => {
-      const day = Date.UTC(2026, 10, 7, 10);
-      for (let n = 1; n <= 30; n++) s.keep('roomA', entry(n, { at: n, from: { ...entry(n).from, publicKey: 'pkMe' } }), HISTORY_BUDGET_BYTES, day);
+      const day = Date.now();
+      for (let n = 1; n <= 30; n++) s.keep('roomA', entry(n, { from: { ...entry(n).from, publicKey: 'pkMe' } }), HISTORY_BUDGET_BYTES, day);
       // Room left today for 10 more drops, not 30.
       state.storage.sql.exec('UPDATE totals SET kept = ?', WRITES_PER_DAY - 1 - 10 * 4);
-      expect(s.forget('roomA', 'pkMe', 100, day)).toBe(false);
+      expect(s.forget('roomA', 'pkMe', T0 + 100, day)).toBe(false);
       expect(s.since('roomA', 0, 500, day)!.length).toBe(20);
       state.storage.sql.exec('UPDATE totals SET kept = ?', WRITES_PER_DAY - 1);
-      expect(s.forget('roomA', 'pkMe', 100, day), 'the share is used up').toBe(false);
+      expect(s.forget('roomA', 'pkMe', T0 + 100, day), 'the share is used up').toBe(false);
       expect(s.since('roomA', 0, 500, day)!.length).toBe(20);
-      expect(s.forget('roomA', 'pkMe', 100, day + 24 * 3600_000), 'the day after').toBe(true);
+      expect(s.forget('roomA', 'pkMe', T0 + 100, day + 24 * 3600_000), 'the day after').toBe(true);
       expect(s.since('roomA', 0, 500, day + 24 * 3600_000)).toEqual([]);
     });
+  });
+
+  it('gives nothing older than four weeks, and drops it once a day within what is left of the day\'s writes', async () => {
+    await runInDurableObject(store('keep'), (s: Store, state) => {
+      const now = Date.now();
+      const old = (n: number) => entry(n, { at: now - HISTORY_KEEP_MS - 1000 + n });
+      for (let n = 1; n <= 5; n++) s.keep('roomA', old(n), HISTORY_BUDGET_BYTES, now);
+      s.keepPiece('roomA', 'pkA', 'tagA:0', new Uint8Array(10), now - HISTORY_KEEP_MS - 1, HISTORY_BUDGET_BYTES, now);
+      s.keep('roomA', entry(6, { at: now - 1000 }), HISTORY_BUDGET_BYTES, now);
+      // Not dropped yet, but not given either.
+      expect(s.since('roomA', 0, 500, now)!.map((e) => e.id)).toEqual(['id6']);
+      expect(s.piece('roomA', 'tagA:0', now)).toBeNull();
+      expect(s.usage(now).entries).toBe(7);
+      // Room for two drops today: the two oldest go, the rest the next day.
+      state.storage.sql.exec('UPDATE totals SET kept = ?', WRITES_PER_DAY - 1 - 2 * 4);
+      expect(s.prune(now)).toBe(2);
+      expect(s.usage(now).entries).toBe(5);
+      const tomorrow = now + 24 * 3600_000;
+      expect(s.prune(tomorrow)).toBe(4);
+      expect(s.usage(tomorrow)).toMatchObject({ entries: 1, bytes: entryBytes(JSON.stringify(entry(6, { at: now - 1000 }))) });
+      expect(s.prune(tomorrow), 'nothing left to drop').toBe(0);
+    });
+  });
+
+  it('prunes next at 23:45 UTC, today\'s or tomorrow\'s', () => {
+    const day = Date.UTC(2026, 10, 7);
+    expect(nextPrune(day + 3600_000)).toBe(day + PRUNE_AT_MS);
+    expect(nextPrune(day + PRUNE_AT_MS)).toBe(day + 24 * 3600_000 + PRUNE_AT_MS);
+    expect(nextPrune(day + PRUNE_AT_MS + 1)).toBe(day + 24 * 3600_000 + PRUNE_AT_MS);
+    expect(new Date(nextPrune(day)).toISOString()).toBe('2026-11-07T23:45:00.000Z');
   });
 
   it('a piece kept into a full window drops as many texts as it takes, and counts what that writes', async () => {
@@ -109,7 +141,7 @@ describe('the Store', () => {
       const written = () => state.storage.sql.exec<{ kept: number }>('SELECT kept FROM totals').one().kept;
       const before = written();
       // One piece the size of ten texts: the ten oldest go, and what that wrote counts against the day.
-      expect(s.keepPiece('roomA', 'pkA', 'tagA:0', new Uint8Array(size * 10 - ROW_OVERHEAD_BYTES), 1, budget)).toBe(true);
+      expect(s.keepPiece('roomA', 'pkA', 'tagA:0', new Uint8Array(size * 10 - ROW_OVERHEAD_BYTES), T0 + 1, budget)).toBe(true);
       expect(s.since('roomA', 0, 500)!.map((e) => e.id)).toEqual(Array.from({ length: 40 }, (_, i) => text(i + 11).id));
       expect(written() - before, 'the texts dropped count against the day too, as SQLite counts rows written').toBeGreaterThanOrEqual(10 + 1);
       expect(s.usage().bytes).toBe(budget);

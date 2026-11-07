@@ -363,6 +363,35 @@ test('ADR 0009: an answer from the server lost on the way is asked again on the 
   await expect.poll(() => bob.storedTexts()).toEqual(['first', 'missed', 'live']);
 });
 
+test('ADR 0009: texts older than four weeks go from this browser too, as from the server', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.say('a month ago');
+  await alice.say('last week');
+  await expect.poll(() => bob.storedTexts()).toEqual(['a month ago', 'last week']);
+  // Bob's own copy, as if the first had come 29 days ago and the second 7.
+  await bob.page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('dave'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+    const store = () => db.transaction('kv', 'readwrite').objectStore('kv');
+    const keys = await new Promise<IDBValidKey[]>((resolve) => { const r = store().getAllKeys(); r.onsuccess = () => resolve(r.result); });
+    for (const key of keys.filter((k) => String(k).startsWith('history:'))) {
+      const list = await new Promise<Array<{ text: string; at: number }>>((resolve) => { const r = store().get(key); r.onsuccess = () => resolve(r.result); });
+      const aged = list.map((m) => ({ ...m, at: Date.now() - (m.text === 'a month ago' ? 29 : 7) * 24 * 3600_000 }));
+      await new Promise((resolve) => { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(aged, key); tx.oncomplete = resolve; });
+    }
+    db.close();
+  });
+  // The server's copies are minutes old, not a month: its answer, which would bring them again, is kept from Bob here.
+  bob.wire.down = (frame) => (frame.includes('"t":"history"') ? null : frame);
+  await bob.page.reload();
+  await bob.connected();
+  await bob.page.locator('.chat-older').click();
+  await expect.poll(() => bob.chatTexts()).toEqual(['last week']);
+  // The next write leaves it out for good.
+  await alice.say('today');
+  await expect.poll(() => bob.storedTexts()).toEqual(['last week', 'today']);
+});
+
 test('texts from more than 18 h before the room came on screen wait behind a button, folded again each time it does', async ({ crowd }) => {
   const other = { secret: newSecret(), name: 'Other' };
   const alice = await crowd.open('Alice');

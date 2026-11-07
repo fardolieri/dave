@@ -6,7 +6,7 @@ import { MAX_FILE_BYTES, MAX_FILE_NAME, PIECED_FROM, PIECE_BYTES, PULLS_AT_ONCE,
 import { createLinks, PullFailed, type PullError } from './links';
 import { createFileWatchdog } from './invariants';
 import { exposeHooks } from './hooks';
-import { big, hashOf, holdSent, holdSentList, keepFile, keptFile, makePreview, noRoom, piecesOf } from './files';
+import { big, hashOf, holdSent, holdSentList, keepFile, keptFile, makePreview, noRoom, piecesOf, sweepFiles } from './files';
 import {
   CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, MAX_TEXT_LENGTH, PING_FRAME, PING_INTERVAL_MS,
   identityOf, sameIdentity, type ClientMessage, type Identity, type KeptEntry, type Person, type PrivateTextKey, type RequestId, type ServerMessage, type TextId, type WireIdentity, type WirePerson,
@@ -651,8 +651,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const movedAt = new Map<string, number>();
   const saving = new Set<string>();
 
-  // Large files past their time go, once a page (ticket 03).
-  if (!sweptBig) { sweptBig = true; void big.sweep(); }
+  // Large files past their time go, once a page (ticket 03), and kept ones past the window's four weeks (ADR 0009).
+  if (!sweptBig) { sweptBig = true; void big.sweep(); void sweepFiles(); }
 
   /** Tries again so far, and the timer of the next, per file. */
   const retries = new Map<string, { tries: number; timer?: ReturnType<typeof setTimeout> }>();
