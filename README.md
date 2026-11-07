@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-06T02:50 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-07T12:41 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 57, branch 260, preview 177.
+Runs recorded: nightly 55, branch 259, preview 178.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -99,4 +99,3 @@ Runs recorded: nightly 57, branch 260, preview 177.
 | 1 | 1 | branch 1 | resilience.spec.ts › an offer stuck for a friend who then reloads leaves their new connection alone (the impolite side reloads, the first to join) | expect(received).toBe(expected) // Object.is equality | [10-09](https://github.com/fardolieri/dave/actions/runs/37887937704/attempts/1) | [10-09](https://github.com/fardolieri/dave/actions/runs/37887937704/attempts/1) | 8444326 (fixed) |
 | 1 | 1 | nightly 1 | settings.spec.ts › low bandwidth voice caps the voice both ways from one side, and the delay to each friend shows beside the name | Alice is back to full voice | [10-08](https://github.com/fardolieri/dave/actions/runs/37784001226/attempts/1) | [10-08](https://github.com/fardolieri/dave/actions/runs/37784001226/attempts/1) | 8a1010e (explained) |
 | 1 | 1 | branch 1 | update.spec.ts › ticket 36: a version left waiting behind the bar is taken by the next reload | console warnings, errors or exceptions nobody expected: Alice: error: [JavaScript Error: "Failed to load ‘http://10.1.0.14:4179/assets/module-D6ZP0uBm.js’. A Se | [10-08](https://github.com/fardolieri/dave/actions/runs/37780036599/attempts/1) | [10-08](https://github.com/fardolieri/dave/actions/runs/37780036599/attempts/1) | 62 |
-| 1 | 1 | nightly 1 | text.spec.ts › texts from more than 18 h before the room came on screen wait behind a button, folded again each time it does | expect(locator).toHaveText(expected) failed | [10-07](https://github.com/fardolieri/dave/actions/runs/37581763252/attempts/1) | [10-07](https://github.com/fardolieri/dave/actions/runs/37581763252/attempts/1) | f9efd75 (fixed) |
