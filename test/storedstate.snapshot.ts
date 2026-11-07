@@ -11,6 +11,7 @@ export const STORED_STATE: Record<string, unknown> = {
   "localStorage dave.emojiRecent": {"default":[],"shape":["string"],"fixtures":{"2026-09-10":["🎉","😀"]}},
   "localStorage dave.unreadRooms": {"default":{},"shape":{"<key>":"number"},"fixtures":{"2026-10-24, unread kept":{"roomA":3}}},
   "localStorage dave.historyFrom": {"default":{},"shape":{"<key>":"number"},"fixtures":{"2026-11-07, history starts":{"roomA":1762250000000,"roomB":9007199254740991}}},
+  "localStorage dave.historyForget": {"default":{},"shape":{"<key>":"number"},"fixtures":{"2026-11-07, deleting from the server":{"roomA":9007199254740991,"roomB":1762250000000}}},
   "localStorage dave.pairKeys": {"default":{},"shape":{"<key>":{"fingerprint":"string","key":"string","sig":"string"}},"fixtures":{"2026-11-05, rooms of two":{"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA":{"key":"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk","sig":"ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss","fingerprint":"abc234"}}}},
   "localStorage dave.historySynced": {"default":{},"shape":{"<key>":"number"},"fixtures":{"2026-11-04, server history":{"roomA":1762250000000}}},
   "localStorage dave.unreadPrivate": {"default":{},"shape":{"<key>":"number"},"fixtures":{"2026-10-24, unread kept":{"pkA":2}}},

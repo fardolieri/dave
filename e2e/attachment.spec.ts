@@ -5,6 +5,7 @@ import { crc32, deflateSync } from 'node:zlib';
 import type { Locator, Route } from '@playwright/test';
 import { expect, needHooks, test, type Friend, openMenu } from './fixtures';
 import { monthSoFar } from '../src/core/relayusage';
+import { KEPT_PIECE_BYTES } from '../src/core/kept';
 
 // Attachments (ADR 0006): the announcement goes sealed through the Room, the bytes from friend to friend over a file
 // link. Bob stays a visitor throughout: file links do not need the call.
@@ -1032,11 +1033,15 @@ test('a browser out of room for a large file says so, and does not call it a dro
 
 test('ADR 0009: a picture sent while nobody else was there comes from the server, sealed, once its sender is gone', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
-  const picture = heavy(png(640, 480), 700 * 1024); // three pieces
+  const picture = heavy(png(640, 480), 2.5 * 1024 * 1024); // three pieces
   await alice.attach({ name: 'stripes.png', mimeType: 'image/png', buffer: picture });
   // All its pieces gone up to the server, sealed: nothing of the picture's bytes in the clear on the wire.
-  const pieces = Math.ceil(picture.length / (256 * 1024));
+  const pieces = Math.ceil(picture.length / KEPT_PIECE_BYTES);
+  expect(pieces).toBe(3);
   await expect.poll(() => new Set(alice.wire.frames<{ n: number }>('up', 'piece').map((p) => p.n)).size).toBe(pieces);
+  // Under the file's tag, not its hash, by which whoever has the picture could tell it was sent.
+  const hash = createHash('sha256').update(picture).digest('base64url');
+  expect(alice.wire.log.filter((l) => l.frame.includes(hash))).toEqual([]);
   // And kept: the server said so of each (on a preview the Store takes a moment; a friend who asks before waits for her).
   await expect.poll(() => new Set(alice.wire.frames<{ n: number; ok: boolean }>('down', 'kept').filter((k) => k.ok).map((k) => k.n)).size).toBe(pieces);
   const plain = picture.subarray(100, 132).toString('base64url');

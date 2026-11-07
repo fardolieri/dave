@@ -89,6 +89,12 @@ export const LOCAL = {
     map: true,
     fixtures: { '2026-11-07, history starts': '{"roomA":1762250000000,"roomB":9007199254740991}' },
   },
+  historyForget: {
+    about: "Rooms where what I wrote is to be deleted from the server's history (ADR 0009) and the server has not said all of it is gone, by room id: up to when, by the Room's clock, or 9007199254740991 for when the Room gets the ask (client/history.ts).",
+    parse: parseCounts,
+    map: true,
+    fixtures: { '2026-11-07, deleting from the server': '{"roomA":9007199254740991,"roomB":1762250000000}' },
+  },
   pairKeys: {
     about: "Friends' private text keys as they published them, signed and checked, by friend key, with their fingerprint: what each room of two is derived from, kept to reach a friend online in none of my rooms (ADR 0011, client/privates.ts).",
     parse: parsePairKeys,

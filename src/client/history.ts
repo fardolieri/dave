@@ -2,6 +2,9 @@ import { idbDelete, idbGet, idbRead, idbSet, local, type ParsedIdbKey } from './
 import { MAX_HISTORY, mergeByAt, type PrivateThread, type StoredText } from '../core/chatlog';
 import { IDB } from '../core/storedstate';
 import { FROM_JOIN } from '../core/kept';
+
+/** A delete from the server's history asked up to when the Room gets the ask (`forgettingOf`), not up to a time. */
+export const FORGET_NOW = Number.MAX_SAFE_INTEGER;
 import { UNSENT_MAX, type UnsentPrivate, type UnsentText } from '../core/unsent';
 import type { Identity } from '../core/protocol';
 
@@ -126,11 +129,29 @@ export function keepHistoryFrom(roomId: string, at: number): void {
 /** A room new to this browser: its history starts where the Room's clock is at its first sync (core/kept.ts, FROM_JOIN). */
 export const startHistoryAtJoin = (roomId: string): void => keepHistoryFrom(roomId, FROM_JOIN);
 
+/**
+ * Rooms where what I wrote is to be deleted from the server's history (ADR 0009) and the server has not said all of it
+ * is gone, by room id: up to when, by the Room's clock, or FORGET_NOW for up to when the Room gets the ask. Asked again
+ * after every welcome until it is (client/room.ts, `forgetMine`).
+ */
+export const forgettingOf = (roomId: string): number | null => local.read('historyForget')[roomId] ?? null;
+export function keepForgetting(roomId: string, before: number): void {
+  local.set('historyForget', JSON.stringify({ ...local.read('historyForget'), [roomId]: before }));
+}
+export function doneForgetting(roomId: string): void {
+  const all = local.read('historyForget');
+  if (!(roomId in all)) return;
+  delete all[roomId];
+  if (Object.keys(all).length) local.set('historyForget', JSON.stringify(all));
+  else local.remove('historyForget');
+}
+
 /** Leaving a room: its history goes with it, as the leave dialog says. The link brings the room back, not the lines. */
 export function forgetHistory(roomId: string): Promise<void> {
   forgetUnsent(roomId);
   // Rejoined by its link, the room is new to this browser, and starts again from then (`startHistoryAtJoin`).
-  for (const key of ['historyFrom', 'historySynced'] as const) {
+  // A delete from the server not finished yet goes too: there is no socket left to ask on.
+  for (const key of ['historyFrom', 'historySynced', 'historyForget'] as const) {
     const all = local.read(key);
     if (!(roomId in all)) continue;
     delete all[roomId];

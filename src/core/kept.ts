@@ -51,8 +51,13 @@ export const SYNCS_PER_WRITE = 10;
 export const KEPT_FILE_MAX = 16 * 1024 * 1024;
 /** Whether the server keeps a file of this kind: one of KEPT_FILE_MAX at most, not one that goes in large pieces. */
 export const keptKind = (file: { size: number; piece?: number }): boolean => !file.piece && file.size <= KEPT_FILE_MAX;
-/** A kept file goes up and comes back in pieces of this many bytes, each its own entry in the window and its own frame. */
-export const KEPT_PIECE_BYTES = 256 * 1024;
+/**
+ * A kept file goes up and comes back in pieces of this many bytes, each its own entry in the window and its own frame:
+ * as friends send each other files (core/attachment.ts, PIECE_BYTES), and well under the 2 MB a row of a Durable
+ * Object's SQLite holds; a Durable Object takes frames up to 32 MiB (developers.cloudflare.com/durable-objects/platform/
+ * limits, 2026-11-07). Larger pieces than the 256 KB before are fewer requests to the Store, rows and frames a file.
+ */
+export const KEPT_PIECE_BYTES = 1024 * 1024;
 /** How many pieces a kept file has at most. */
 export const KEPT_PIECES_MAX = Math.ceil(KEPT_FILE_MAX / KEPT_PIECE_BYTES);
 /** How many pieces a file of `size` bytes goes in; an empty file is one empty piece. */

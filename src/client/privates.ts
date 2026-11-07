@@ -4,7 +4,7 @@ import { identityOf, sameIdentity, type Identity, type Person } from '../core/pr
 import type { PrivateThread, StoredText } from '../core/chatlog';
 import type { PairKey } from '../core/pairs';
 import { pairSecret, verifyPrivateTextKey } from '../core/sealed';
-import { authKeyOf, roomIdOf, textKeyOf } from '../core/rooms';
+import { authKeyOf, pieceKeyOf, roomIdOf, textKeyOf } from '../core/rooms';
 import { forgetPrivate, keepUnsent, loadHistory, loadPrivate, loadPrivateThreads, loadUnsent, textKey, touchPrivateThread } from './history';
 import { tooOld } from '../core/unsent';
 import { local } from './storage';
@@ -16,7 +16,7 @@ type Room = ReturnType<typeof createRoom>;
 const PAIRS_AT_ONCE = 8;
 const PAIR_GAP_MS = 1500;
 /** What a room of two needs to be made: the rest (my name and picture, the hold) the caller adds. */
-export type PairRoomOptions = { identity: LocalIdentity; roomId: string; authKey: string; textKey: CryptoKey };
+export type PairRoomOptions = { identity: LocalIdentity; roomId: string; authKey: string; textKey: CryptoKey; pieceKey: CryptoKey };
 
 /** My room of two with a friend (ADR 0011): the room, the key I go by in it, and the friend's fingerprint to show them by. */
 type Pair = { friend: string; room: Room; mine: string; fingerprint: string; key: string };
@@ -79,7 +79,7 @@ export function createPrivates(opts: {
     try {
       const secret = await pairSecret({ mine: privateTexts.keys.privateKey, theirs: k.key, me, them: friend });
       if (!secret) return;
-      const [identity, roomId, authKey, textKey] = await Promise.all([pairIdentity(friend), roomIdOf(secret), authKeyOf(secret), textKeyOf(secret)]);
+      const [identity, roomId, authKey, textKey, pieceKey] = await Promise.all([pairIdentity(friend), roomIdOf(secret), authKeyOf(secret), textKeyOf(secret), pieceKeyOf(secret)]);
       if (disposed || making.get(friend) !== k.key) return;
       await slot(friend);
       if (disposed || making.get(friend) !== k.key) return;
@@ -88,7 +88,7 @@ export function createPrivates(opts: {
       disposers.get(friend)?.();
       const room = runWithOwner(owner, () => createRoot((dispose) => {
         disposers.set(friend, dispose);
-        const room = opts.makeRoom({ identity, roomId, authKey, textKey });
+        const room = opts.makeRoom({ identity, roomId, authKey, textKey, pieceKey });
         watch(friend, room, identity.publicKey);
         return room;
       }));
@@ -306,8 +306,11 @@ export function createPrivates(opts: {
     connected: (friend: string): boolean => pairOf(friend)?.room.status().kind === 'connected',
     /** Our room of two, if made: its state is the conversation's. */
     via: (friend: string): Room | null => pairOf(friend)?.room ?? null,
-    /** Deletes a conversation from this browser: its texts, what the server keeps of it from here on, its place in the list. */
-    forget: (friend: string): void => {
+    /**
+     * Deletes a conversation from this browser: its texts, what the server keeps of it from here on, its place in the list;
+     * with `mine`, what I wrote in it from the server's history too (ADR 0009).
+     */
+    forget: (friend: string, mine = false): void => {
       if (untrack(openWith) === friend) setOpenWith(null);
       // By the Room's clock, as the room clears it (`clearHistory`): the newest line's, else this browser's.
       forgotten.set(friend, pairs.get(friend)?.room.newestAt() ?? Date.now());
@@ -317,9 +320,10 @@ export function createPrivates(opts: {
       reading.delete(friend);
       // What waits to go to them goes unsent; what the server keeps of it is not brought back (`historyFrom`).
       pairs.get(friend)?.room.dropUnsent();
+      if (mine) pairs.get(friend)?.room.forgetMine();
       void pairs.get(friend)?.room.clearHistory();
       void forgetPrivate(friend);
-      posthog.capture('private_forgotten');
+      posthog.capture('private_forgotten', { mine });
     },
     whereIs,
     /** Whether a conversation's history has been read, so an empty log is an empty conversation. */

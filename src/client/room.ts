@@ -21,9 +21,10 @@ import type { LocalIdentity } from './identity';
 import { keepUnread, keptUnread } from './unread';
 import { contactOf } from './contacts';
 import { mergeByAt } from '../core/chatlog';
+import { pieceTagOf } from '../core/rooms';
 import { FROM_JOIN, KEPT_PIECE_BYTES, keptKind, keptPiecesOf, pieceId, syncSince } from '../core/kept';
 import { PIECE_RATE_PER_SECOND } from '../core/room';
-import { appendHistory, clearHistory, historyFromAt, historySyncedTo, keepHistoryFrom, keepHistorySynced, keepUnsent, loadHistory, loadUnsent, textKey, type StoredText } from './history';
+import { appendHistory, clearHistory, doneForgetting, FORGET_NOW, forgettingOf, historyFromAt, keepForgetting, historySyncedTo, keepHistoryFrom, keepHistorySynced, keepUnsent, loadHistory, loadUnsent, textKey, type StoredText } from './history';
 
 export type ServerStatus =
   | { kind: 'connecting' }
@@ -135,7 +136,7 @@ export async function prepareFile(picked: File): Promise<PreparedFile> {
  * `allNews`: everything the server's history brings counts as missed (unread), even into a browser that held nothing of
  * the room: a room of two (ADR 0011) is new to this browser only once, when its first texts are news indeed.
  */
-export function createRoom(opts: { identity: LocalIdentity; roomId: string; authKey: string; textKey: CryptoKey; name: string; picture: string | null; hold?: () => boolean; allNews?: boolean }) {
+export function createRoom(opts: { identity: LocalIdentity; roomId: string; authKey: string; textKey: CryptoKey; pieceKey: CryptoKey; name: string; picture: string | null; hold?: () => boolean; allNews?: boolean }) {
   /**
    * The latest of everything this friend declares (core/declarations.ts): the auth of every socket carries her name,
    * picture and opt-in, the welcome is followed by what changed meanwhile, her join by what she declared in the call.
@@ -582,6 +583,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       send({ t: 'sync', since: syncSince(historySyncedTo(opts.roomId) ?? newest, from) });
     });
   }
+  /** Asks the server to delete what I wrote here (`forgetMine`), should that wait to be done. */
+  function askForget(): void {
+    const before = forgettingOf(opts.roomId);
+    if (before !== null) send(before === FORGET_NOW ? { t: 'forget' } : { t: 'forget', before });
+  }
   /** A text or file came live: on a socket synced in full, this room has everything up to it. */
   const liveKept = (socket: WebSocket, at: number): void => { if (syncedOn === socket && !stopped) keepHistorySynced(opts.roomId, at); };
   /** The time of the newest text or file shown, by the Room's clock; null for none. */
@@ -764,7 +770,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             if (u.kept.has(n)) continue;
             const bytes = new Uint8Array(await u.blob.slice(n * KEPT_PIECE_BYTES, (n + 1) * KEPT_PIECE_BYTES).arrayBuffer());
             const sealed = await sealPiece({ key: opts.textKey, roomId: opts.roomId, hash, n, of: u.of, bytes });
-            if (welcomed !== socket || !send({ t: 'piece', hash, n, sealed: toBase64Url(sealed) })) return;
+            const tag = await tagOf(hash);
+            if (welcomed !== socket || !send({ t: 'piece', tag, n, sealed: toBase64Url(sealed) })) return;
             // The Room's burst for pieces at once, then under its rate (core/room.ts): a photo is up before the tab goes
             // to the background, where timers slow down; texts go between them.
             if (++sent >= PIECE_RATE_PER_SECOND) await new Promise((r) => setTimeout(r, PIECE_GAP_MS));
@@ -783,20 +790,34 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   }
   /** The server's word on a piece sent up (`kept`): one failed for a moment goes again with the next pass. */
   function keptPiece(m: Extract<ServerMessage, { t: 'kept' }>): void {
-    const u = uploads.get(m.hash);
-    if (!u) return;
-    if (!m.ok) { if (!m.again) uploads.delete(m.hash); return; } // not today: friends online pull it from me, as before
+    const hash = tagged.get(m.tag);
+    const u = hash === undefined ? undefined : uploads.get(hash);
+    if (!u || hash === undefined) return;
+    if (!m.ok) { if (!m.again) uploads.delete(hash); return; } // not today: friends online pull it from me, as before
     u.kept.add(m.n);
-    if (u.kept.size >= u.of) { uploads.delete(m.hash); posthog.capture('file_kept', { bytes: u.file.size, pieces: u.of }); }
+    if (u.kept.size >= u.of) { uploads.delete(hash); posthog.capture('file_kept', { bytes: u.file.size, pieces: u.of }); }
+  }
+  /** Files' tags (core/rooms.ts, pieceTagOf), the name their pieces go by on the server, by hash; and their hashes by tag. */
+  const tags = new Map<string, Promise<string>>();
+  const tagged = new Map<string, string>();
+  function tagOf(hash: string): Promise<string> {
+    let tag = tags.get(hash);
+    if (!tag) {
+      tag = pieceTagOf(opts.pieceKey, hash).then((t) => { tagged.set(t, hash); return t; });
+      tags.set(hash, tag);
+      tag.catch(() => tags.delete(hash));
+    }
+    return tag;
   }
 
-  /** `fetch`es waiting for their `piece`, by piece id: the sealed piece, 'missing' when the server has none, null for no answer. */
+  /** `fetch`es waiting for their `piece`, by piece id (the file's tag and the piece's place): the sealed piece, 'missing' when the server has none, null for no answer. */
   const fetching = new Map<string, (sealed: string | 'missing' | null) => void>();
-  function fetchPiece(hash: string, n: number, signal: AbortSignal): Promise<string | 'missing' | null> {
-    const id = pieceId(hash, n);
+  async function fetchPiece(hash: string, n: number, signal: AbortSignal): Promise<string | 'missing' | null> {
+    const tag = await tagOf(hash);
+    const id = pieceId(tag, n);
     return new Promise((resolve) => {
       fetching.get(id)?.(null);
-      if (signal.aborted || !send({ t: 'fetch', hash, n })) { resolve(null); return; }
+      if (signal.aborted || !send({ t: 'fetch', tag, n })) { resolve(null); return; }
       const timer = setTimeout(() => done(null), FETCH_TIMEOUT_MS);
       const abort = () => done(null);
       signal.addEventListener('abort', abort, { once: true });
@@ -1048,6 +1069,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           setYou(m.you);
           // A rename, a picture or an opt-in changed while the handshake ran went to no socket; the auth had the old one.
           if (authCarried) for (const d of afterWelcome(latest, authCarried)) sendDeclaration(d);
+          // What I wrote here is to go from the server's history: asked first, so the texts sent again below stay.
+          askForget();
           // Texts the last socket took and never brought back, or written while there was none, in their order; the Room
           // answers them in that order too. One that waited a day is not sent: it would come out of the blue.
           dropTooOld();
@@ -1086,10 +1109,16 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           return;
         }
         case 'piece':
-          fetching.get(pieceId(m.hash, m.n))?.(m.sealed ?? 'missing');
+          fetching.get(pieceId(m.tag, m.n))?.(m.sealed ?? 'missing');
           return;
         case 'kept':
           keptPiece(m);
+          return;
+        case 'forgot':
+          // All gone, or the server's share ran out first: then from where it was, after the next welcome.
+          if (forgettingOf(opts.roomId) === null) return;
+          if (m.done) doneForgetting(opts.roomId);
+          else keepForgetting(opts.roomId, m.before);
           return;
         case 'link':
         case 'linkice':
@@ -1316,6 +1345,16 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
      * at once: after what was sent before it and before what is sent after it, a text among them.
      */
     sendPrepared,
+    /**
+     * Deletes everything I wrote in this room from the server's history (ADR 0009): texts, file announcements and the
+     * pieces of my files, up to when the Room gets the ask; what friends have already stays theirs. Asked again after
+     * every welcome until the server says all of it is gone. My files still going up stop.
+     */
+    forgetMine: (): void => {
+      uploads.clear();
+      keepForgetting(opts.roomId, FORGET_NOW);
+      if (welcomed) askForget();
+    },
     /** Empties the local history; the server's (ADR 0009) is asked for what comes after this moment only, from now on. */
     clearHistory: async () => {
       // The newest text's time, by the Room's clock, which a sync asks by: this browser's own may run ahead or behind.

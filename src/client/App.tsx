@@ -266,7 +266,7 @@ function Workspace(props: WorkspaceProps) {
   const links = mapArray(() => props.rooms.map((r) => r.secret), (secret): Link => {
     let last = untrack(() => props.rooms.find((r) => r.secret === secret)!);
     // A deliberate one-time snapshot of name and picture: the socket is created once; changes go through `rename` and `setPicture`.
-    const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, textKey: last.textKey, name: untrack(() => props.name), picture: getPicture(), hold: holding });
+    const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, textKey: last.textKey, pieceKey: last.pieceKey, name: untrack(() => props.name), picture: getPicture(), hold: holding });
     const call = createCall(room, identity, { mayRejoin: untrack(() => props.mayRejoin) });
     posthog.capture('room_entered');
     // The latest saved entry; the last one seen while the room is being forgotten and its link disposed.
@@ -594,6 +594,8 @@ function Workspace(props: WorkspaceProps) {
       if (menuOpenings === opening) closeMenu(); // not a menu opened again since, for something else
     });
   };
+  /** The Clear dialog's question, while it is open (`ClearDialog`). */
+  const [clearAsk, setClearAsk] = createSignal<ClearAsk | null>(null);
   const leaveRoom = (l: Link) => {
     if (!confirm(`Leave ${l.saved.name}? This browser forgets the room and its chat history. The invite link gets you back in.`)) return;
     if (untrack(active) === l) l.call.leave(); // say goodbye while the socket is still open, so nobody waits out the grace period
@@ -745,7 +747,14 @@ function Workspace(props: WorkspaceProps) {
                             onClick={() => { roomMenu.close(); if (overlayRoom() === l.saved.id) closeOverlay(); else void openOverlay(l.saved.id, overlayModel, () => box ?? null); }}>{overlayRoom() === l.saved.id ? 'Close overlay' : 'Overlay'}</button>
                         </Show>
                         <Show when={THEMES.length > 0}><button class="link" title="This room's look, in this browser" onClick={(e) => { roomMenu.close(); openThemes(e.currentTarget.closest('section.room')?.querySelector<HTMLElement>('.room-more') ?? e.currentTarget, l.saved.id); }}>Themes</button></Show>
-                        <button class="link" title="Only this browser's copy: the server keeps the room's texts, sealed, for friends who were away" onClick={() => { roomMenu.close(); if (confirm(`Clear this browser's chat history of ${l.saved.name}? The server keeps the room's texts for friends who were away, sealed so that only friends can read them, but does not bring the cleared ones back to this browser. Leaving the room and opening its link again does.`)) void l.room.clearHistory(); }}>Clear chat history</button>
+                        <button class="link" title="This browser's copy, and if you like, what you wrote from the server" onClick={() => {
+                          roomMenu.close();
+                          setClearAsk({
+                            title: `Clear chat history of ${l.saved.name}?`, action: 'Clear',
+                            text: "This browser's copy goes, and the server does not bring it back here. Friends keep theirs.",
+                            onConfirm: (mine) => { if (mine) l.room.forgetMine(); void l.room.clearHistory(); posthog.capture('history_cleared', { mine }); },
+                          });
+                        }}>Clear chat history</button>
                         <button class="link danger" title="Forget this room in this browser" onClick={() => { roomMenu.close(); leaveRoom(l); }}>Leave {l.saved.name}</button>
                       </div>
                     </Show>
@@ -883,7 +892,15 @@ function Workspace(props: WorkspaceProps) {
                      attachment={(hash) => privates.attachment(hash, pf().key)} onPull={(hash) => privates.pull(hash, pf().key)} onCancel={(hash) => privates.cancelPull(hash, pf().key)}
                      holder={(from) => (from.publicKey === me ? labelOf(pf().friend).shown : labelOf(from).shown)}
                      head={<PrivateHead friend={pf().friend} me={me} label={labelOf} where={privates.onlineIn(pf().key)} blocked={pf().blocked}
-                                        back={cur().saved.name} onBack={() => privates.close()} onForget={() => privates.forget(pf().key)} />} />
+                                        back={cur().saved.name} onBack={() => privates.close()}
+                                        onForget={() => {
+                                          const key = pf().key;
+                                          setClearAsk({
+                                            title: `Delete your conversation with ${labelOf(pf().friend).shown}?`, action: 'Delete',
+                                            text: "It goes from this browser, and the server does not bring it back here. They keep theirs.",
+                                            onConfirm: (mine) => privates.forget(key, mine),
+                                          });
+                                        }} />} />
           )}</Show>
         </div>
         {/* In a private conversation it goes by the room that would carry the text, not the one on screen */}
@@ -894,8 +911,38 @@ function Workspace(props: WorkspaceProps) {
           <Show when={consent() === null || askingConsent()}><TelemetryNotice onAnswer={(c) => { setConsent(c); setAskingConsent(false); }} /></Show>
         </Composer>
         <Show when={dragging()}><div class="drop-hint">Drop to send to {privateFriend() ? labelOf(privateFriend()!.friend).shown : cur().saved.name}</div></Show>
+        <Show when={clearAsk()}>{(ask) => <ClearDialog ask={ask()} onClose={() => setClearAsk(null)} />}</Show>
       </div>
     )}</Show>
+  );
+}
+
+/** What the Clear dialog asks about: a room's history, or a private conversation. */
+type ClearAsk = { title: string; text: string; action: string; onConfirm: (mine: boolean) => void };
+
+/**
+ * Clearing a room's history, or deleting a conversation (ADR 0009): this browser's copy, and, ticked, everything I wrote
+ * in it from the server's history too, so that nobody can fetch it from there any more. Friends' copies stay theirs.
+ */
+function ClearDialog(props: { ask: ClearAsk; onClose: () => void }) {
+  let dialog: HTMLDialogElement | undefined;
+  const [mine, setMine] = createSignal(false);
+  onSettled(() => dialog?.showModal());
+  return (
+    <dialog class="report clear" ref={dialog} onClose={props.onClose}>
+      <h3>{props.ask.title}</h3>
+      <p>{props.ask.text}</p>
+      <label class="check"><input type="checkbox" checked={mine()} onChange={(e) => setMine(e.currentTarget.checked)} /> Also delete my messages from the server</label>
+      <p class="hint">
+        {mine()
+          ? 'Everything you wrote here, files too, goes from the server: friends who were away, and new devices, can no longer get it. Friends who have it already keep it.'
+          : 'The server keeps what you wrote, sealed, for friends who were away, until it drops out of its window.'}
+      </p>
+      <div class="row">
+        <button class="on" onClick={() => { props.ask.onConfirm(mine()); dialog?.close(); }}>{props.ask.action}</button>
+        <button onClick={() => dialog?.close()}>Cancel</button>
+      </div>
+    </dialog>
   );
 }
 
@@ -1337,7 +1384,7 @@ function PrivateHead(props: { friend: Identity; me: string; label: (id: Identity
         <span class={['here', { on: props.where.length > 0 && !props.blocked }]}>
           {props.blocked ? `Can't write now: ${props.blocked}` : props.where.length ? `In ${props.where.join(', ')}` : 'Your rooms with them are reconnecting'}
         </span>
-        <button type="button" class="link" title="Only this browser's copy: nothing is stored on the server" onClick={() => { if (confirm(`Delete your private conversation with ${props.label(props.friend).shown} from this browser? Nothing is stored on the server, so this cannot be undone.`)) props.onForget(); }}>Delete conversation</button>
+        <button type="button" class="link" title="This browser's copy, and if you like, what you wrote from the server" onClick={() => props.onForget()}>Delete conversation</button>
       </p>
     </header>
   );

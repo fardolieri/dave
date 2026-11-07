@@ -52,24 +52,37 @@ About dialog shows how full it is and how far back it reaches (`/history-usage`)
   suite run against a preview a few times in one day used up its 10,000 syncs, and every history test went red until
   midnight UTC (2026-11-05, owner: "be less stingy").
 - Once the window is full, each byte kept drops an older one. A piece dropping texts writes about three rows per text,
-  one dropping pieces three per 256 KB: with files most of the bytes, as they will be, the day's share of writes keeps
-  hundreds of MB of files a day; a window full of texts alone, some 20 MB.
+  one dropping pieces four per MB: with files most of the bytes, as they will be, the day's share of writes keeps GBs of
+  files a day; a window full of texts alone, some 20 MB.
 - The tail of the window is cut at every keep, by as much as that keep went past it and no more: the totals row that
   says how full the window is is read and written by every keep anyway, so the check costs nothing. Cutting 200 MB at
   once when full would not write less (every entry is deleted once, whenever), only all at once: 200 MB of texts is
   some 200,000 rows, past the day's writes in one go (owner's question, 2026-11-05).
 - Files up to 16 MB (`KEPT_FILE_MAX`) are kept too, in the same window (owner, 2026-11-05). The sender's app sends each
-  in pieces of 256 KB, sealed with the room's text key and bound to the room, the file's hash and the piece's place
-  (`src/core/sealed.ts`, `sealPiece`), as `{ t: 'piece' }` frames paced under a rate of their own, after the
-  announcement; the server answers each with whether it keeps it (`kept`), and the app sends what it did not keep
-  again, a few times at most. The Store keeps each piece as an entry of its own (writer none, id `<hash>:<n>`), so pieces
-  and texts share one order and one tail; a sync brings no pieces. A friend's app still pulls a file from a friend online
+  in pieces of 1 MB (256 KB until 2026-11-07: four times the requests, rows and frames a file), sealed with the room's
+  text key and bound to the room, the file's hash and the piece's place (`src/core/sealed.ts`, `sealPiece`), as
+  `{ t: 'piece' }` frames paced under a rate of their own, after the announcement; the server answers each with whether
+  it keeps it (`kept`), and the app sends what it did not keep again, a few times at most. A piece goes by the file's
+  tag, its hash keyed with a key from the room's secret (`pieceTagOf`, core/rooms.ts), not the hash itself, by which
+  whoever holds a copy of a file could tell from the server's storage that it was sent. The Store keeps each piece as an
+  entry of its own (marked `piece`, under its sender's key, id `<tag>:<n>`), so pieces and texts share one order and one
+  tail; a sync brings no pieces. The same file sent by two friends in a room is kept twice, a copy each, so that each can
+  delete theirs (below); it is rare, and a count of who refers to a piece would need the server to read announcements. A friend's app still pulls a file from a friend online
   first; the server is the last it asks in a round, when no friend gave it (none online, or none reachable), piece by
   piece (`{ t: 'fetch' }`), and the whole file is checked against the hash its announcement signed before it shows. Larger files go friend to friend only: one 700 MB
   video would push weeks of every room's texts out of the window. A file whose oldest pieces the tail took is not
   given: what is left of it waits there to go too.
 - A text sent again after a lost socket is broadcast again under its id (ticket 51); the Store keeps it once (room,
   writer, id). Browsers drop doubles anyway.
+- A friend can delete everything they wrote in a room from the server's history: texts, file announcements and the
+  pieces of their files (owner, 2026-11-07), with Clear's "Also delete my messages from the server", one room at a time.
+  The socket asks (`forget`); the Store drops the room's entries whose writer is the key that socket proved, up to the
+  Room's clock then, after the room's keeps and pieces under way. Friends' copies stay theirs. A drop counts against the
+  day's writes like a keep, and goes no further than the share has room for; the app keeps the ask (`historyForget` in
+  localStorage) and asks again, from where it was, after every welcome until the server says all is gone. Identity is
+  per browser: what I wrote from another device, or from a browser whose data is lost, is not this browser's to delete,
+  and goes with the window's tail. Cloudflare keeps 30 days of a Durable Object's storage for point-in-time recovery, so
+  whoever holds the account could bring a dropped entry back within that time: sealed, as it was.
 - A browser's history of a room has a start (`historyFrom` in localStorage), and its syncs ask from there on: when it
   joined the room by the link, or last cleared it (owner, 2026-11-07: a newcomer does not read what was said before
   they came). A room joined starts past everything (`FROM_JOIN`) until its first sync, whose answer's `upTo`, the Room's

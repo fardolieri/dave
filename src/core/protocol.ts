@@ -116,11 +116,17 @@ export type ClientMessage =
   | { t: 'text'; text: string; id?: TextId }
   /**
    * A piece of a file I sent (ADR 0009), sealed with the room's text key (core/sealed.ts, `sealPiece`), for the server to
-   * keep for friends who cannot pull it from anyone online. Answered with `kept`.
+   * keep for friends who cannot pull it from anyone online, under the file's `tag`: its hash keyed with the room's secret
+   * (core/rooms.ts, `pieceTagOf`), so the server cannot tell which file it is. Answered with `kept`.
    */
-  | { t: 'piece'; hash: string; n: number; sealed: string }
-  /** Ask for a piece of a file the server keeps; the answer is a `piece` frame. */
-  | { t: 'fetch'; hash: string; n: number }
+  | { t: 'piece'; tag: string; n: number; sealed: string }
+  /** Ask for a piece of a file the server keeps, by its tag; the answer is a `piece` frame. */
+  | { t: 'fetch'; tag: string; n: number }
+  /**
+   * Delete from the server's history (ADR 0009) every text, file announcement and piece of a file I wrote in this room
+   * up to `before` (the Room's clock), or up to now without it. Answered with `forgot`.
+   */
+  | { t: 'forget'; before?: number }
   /**
    * Ask for the room's texts and file announcements the server keeps (ADR 0009) that it took after `since` (the Room's
    * clock, ms), the newest SYNC_MAX of them. Asked after every welcome; the answer is one or more `history` frames.
@@ -176,12 +182,17 @@ export type ServerMessage =
    */
   | { t: 'history'; entries: KeptEntry[]; last?: true; upTo?: number; unavailable?: true }
   /** A piece of a kept file, as sealed: the answer to a `fetch`. Without `sealed` when the server does not have it (any more). */
-  | { t: 'piece'; hash: string; n: number; sealed?: string }
+  | { t: 'piece'; tag: string; n: number; sealed?: string }
   /**
    * Whether the server keeps a piece sent up. Not `ok`: with `again` when it failed for a moment, and may keep it if sent
    * again; without, when it will not today (its daily share used up).
    */
-  | { t: 'kept'; hash: string; n: number; ok: boolean; again?: true }
+  | { t: 'kept'; tag: string; n: number; ok: boolean; again?: true }
+  /**
+   * The answer to a `forget`: up to when (`before`, the Room's clock, now when it named none), and whether all of it is
+   * gone (`done`); not when the server's daily share of writes ran out first, or it failed: ask again, with `before`.
+   */
+  | { t: 'forgot'; before: number; done: boolean }
   /** Reply to join: your place in the Call and the ICE servers to build peer connections with. */
   | { t: 'call'; joinSeq: number; iceServers: IceServer[]; issuedAt: number; id?: RequestId }
   /** A participant left on purpose; peers close that connection at once. A vanished socket only drops out of presence. */
@@ -281,9 +292,9 @@ export type RefType = ClientMessage['t'] | 'name' | 'picture' | 'private';
 export type Invalid = { t: 'invalid'; reason: string; ref?: RefType; id?: TextId };
 const invalid = (reason: string): Invalid => ({ t: 'invalid', reason });
 
-const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'sealed', 'file', 'link', 'linkice', 'text', 'join', 'leave', 'mute', 'profile', 'signal', 'ice', 'share', 'subscribe', 'telemetry', 'sync', 'piece', 'fetch']);
-/** A file's SHA-256, base64url, as an announcement names it (core/attachment.ts). */
-const isFileHash = (v: unknown): v is string => typeof v === 'string' && v.length === 43 && B64URL.test(v);
+const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'sealed', 'file', 'link', 'linkice', 'text', 'join', 'leave', 'mute', 'profile', 'signal', 'ice', 'share', 'subscribe', 'telemetry', 'sync', 'piece', 'fetch', 'forget']);
+/** A file's tag, its hash keyed with the room's secret (core/rooms.ts, `pieceTagOf`): an HMAC-SHA256, base64url. */
+const isFileTag = (v: unknown): v is string => typeof v === 'string' && v.length === 43 && B64URL.test(v);
 const isPieceIndex = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0 && (v as number) < KEPT_PIECES_MAX;
 /** The longest piece a client sends, sealed and base64url: a whole piece, the iv and the tag. */
 export const MAX_SEALED_PIECE_LENGTH = Math.ceil(((12 + KEPT_PIECE_BYTES + 16) * 4) / 3);
@@ -297,7 +308,8 @@ const isClientType = (v: unknown): v is ClientMessage['t'] => typeof v === 'stri
  * JSON.stringify always writes `t` first.
  */
 export function parseClientMessage(raw: unknown): ClientMessage | Invalid {
-  if (typeof raw === 'string' && raw.length > MAX_MESSAGE_BYTES) {
+  // A piece of a file is the one frame larger than a text: up to a whole sealed piece, and its JSON around it.
+  if (typeof raw === 'string' && raw.length > (raw.startsWith('{"t":"piece"') ? MAX_SEALED_PIECE_LENGTH + 128 : MAX_MESSAGE_BYTES)) {
     const claimed = /^\{"t":"([a-z]+)"/.exec(raw.slice(0, 32))?.[1];
     return isClientType(claimed) ? { ...invalid('message too large'), ref: claimed } : invalid('message too large');
   }
@@ -433,10 +445,13 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
     case 'linkice':
       return isRequestId(m.id) ? { t: 'linkice', id: m.id } : invalid('unrecognised message');
     case 'piece':
-      if (!isFileHash(m.hash) || !isPieceIndex(m.n) || typeof m.sealed !== 'string' || !B64URL.test(m.sealed) || m.sealed.length > MAX_SEALED_PIECE_LENGTH) return invalid('unrecognised message');
-      return { t: 'piece', hash: m.hash, n: m.n, sealed: m.sealed };
+      if (!isFileTag(m.tag) || !isPieceIndex(m.n) || typeof m.sealed !== 'string' || !B64URL.test(m.sealed) || m.sealed.length > MAX_SEALED_PIECE_LENGTH) return invalid('unrecognised message');
+      return { t: 'piece', tag: m.tag, n: m.n, sealed: m.sealed };
     case 'fetch':
-      return isFileHash(m.hash) && isPieceIndex(m.n) ? { t: 'fetch', hash: m.hash, n: m.n } : invalid('unrecognised message');
+      return isFileTag(m.tag) && isPieceIndex(m.n) ? { t: 'fetch', tag: m.tag, n: m.n } : invalid('unrecognised message');
+    case 'forget':
+      if (m.before === undefined) return { t: 'forget' };
+      return Number.isSafeInteger(m.before) && (m.before as number) >= 0 ? { t: 'forget', before: m.before as number } : invalid('unrecognised message');
     case 'sync':
       return Number.isSafeInteger(m.since) && (m.since as number) >= 0 ? { t: 'sync', since: m.since as number } : invalid('unrecognised message');
     case 'text':

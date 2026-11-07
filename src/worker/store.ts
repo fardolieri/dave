@@ -10,16 +10,22 @@ const dayOf = (now: number): string => new Date(now).toISOString().slice(0, 10);
 
 /** `written`: rows written today, what keeps drop from the window's tail included (the column `kept`). */
 type Totals = { bytes: number; entries: number; day: string; written: number; read: number; syncs: number };
-/** The writer a file's pieces are kept under: no friend's key is empty, so a sync never brings them (`since`). */
+/** The writer the pieces of files were kept under before they were kept under their sender's key (`piece`). */
 const PIECES = '';
+/**
+ * What SQLite writes to drop one entry, at most: its row, its two indexes and, for a piece, the pieces' index. A `forget`
+ * drops no more at once than today's share of writes has room for.
+ */
+const ROWS_PER_DROP = 4;
 
 /**
  * The server's copy of every room's texts and file announcements (ADR 0009), as the Rooms broadcast them, and the
  * pieces of the files they announce, up to KEPT_FILE_MAX: all sealed, so it reads none of them. One object for all rooms, so the window is one, oldest first across them: past
  * HISTORY_BUDGET_BYTES, the entries kept longest go, whichever room they are of. Rooms hand it what they broadcast
  * (`keep`, `keepPiece`) and ask it for what a friend missed (`since`, `piece`); the About dialog asks how full it is
- * (`usage`). A piece is an entry like a text, under no writer (`PIECES`) and the id `<hash>:<n>`, its sealed bytes the
- * entry: one window, one order, one tail.
+ * (`usage`). A piece is an entry like a text, marked `piece`, under its sender's key and the id `<tag>:<n>`, its sealed
+ * bytes the entry: one window, one order, one tail. The same file sent by two friends is kept twice, each sender's copy
+ * theirs to delete (`forget`), which drops every entry a friend wrote in a room, pieces too.
  *
  * `bytes` per row is what it is counted as (core/kept.ts, entryBytes); `totals` holds their sum, so neither a keep nor
  * the About dialog adds them all up, and what today used of the free plan's rows: rows written, rows syncs and fetches
@@ -34,6 +40,13 @@ export class Store extends DurableObject<Env> {
     // A text the writer's app sent again after a lost socket (ticket 51) is broadcast again under the same id: kept once.
     sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS entries_by_id ON entries (room, writer, id)');
     sql.exec('CREATE INDEX IF NOT EXISTS entries_by_at ON entries (room, at)');
+    // Pieces were kept under no writer (`PIECES`) before they were kept under their sender's; a sync brings none.
+    if (!sql.exec<{ name: string }>('PRAGMA table_info(entries)').toArray().some((c) => c.name === 'piece')) {
+      sql.exec('ALTER TABLE entries ADD COLUMN piece INTEGER NOT NULL DEFAULT 0');
+      sql.exec('UPDATE entries SET piece = 1 WHERE writer = ?', PIECES);
+    }
+    // A friend's app fetches a piece by its id, not knowing who sent it up.
+    sql.exec('CREATE INDEX IF NOT EXISTS pieces_by_id ON entries (room, id) WHERE piece = 1');
     sql.exec(`CREATE TABLE IF NOT EXISTS totals (one INTEGER PRIMARY KEY CHECK (one = 1), bytes INTEGER NOT NULL, entries INTEGER NOT NULL, day TEXT NOT NULL, kept INTEGER NOT NULL, read INTEGER NOT NULL, syncs INTEGER NOT NULL)`);
     sql.exec(`INSERT OR IGNORE INTO totals (one, bytes, entries, day, kept, read, syncs) VALUES (1, 0, 0, '', 0, 0, 0)`);
   }
@@ -83,17 +96,20 @@ export class Store extends DurableObject<Env> {
     return this.put(room, entry.from.publicKey, entry.id, entry.at, entryBytes(json), json, budget, now);
   }
 
-  /** Keeps a piece of a file (`pieceId`), sealed, as `keep` keeps a text: in the same window, dropping its oldest. */
-  keepPiece(room: string, id: string, sealed: Uint8Array, budget = HISTORY_BUDGET_BYTES, now = Date.now()): boolean {
-    return this.put(room, PIECES, id, now, pieceBytes(sealed.length), sealed, budget, now);
+  /**
+   * Keeps a piece of a file (`pieceId`), sealed, as `keep` keeps a text: under its sender, at `at` by the Room's clock, in
+   * the same window, dropping its oldest.
+   */
+  keepPiece(room: string, writer: string, id: string, sealed: Uint8Array, at: number, budget = HISTORY_BUDGET_BYTES, now = Date.now()): boolean {
+    return this.put(room, writer, id, at, pieceBytes(sealed.length), sealed, budget, now, 1);
   }
 
-  private put(room: string, writer: string, id: string, at: number, bytes: number, entry: string | Uint8Array, budget: number, now: number): boolean {
+  private put(room: string, writer: string, id: string, at: number, bytes: number, entry: string | Uint8Array, budget: number, now: number, piece = 0): boolean {
     const sql = this.ctx.storage.sql;
     return this.ctx.storage.transactionSync(() => {
       const t = this.totals(now);
       if (t.written >= WRITES_PER_DAY) return sql.exec('SELECT 1 FROM entries WHERE room = ? AND writer = ? AND id = ?', room, writer, id).toArray().length > 0;
-      const insert = sql.exec('INSERT INTO entries (room, writer, id, at, bytes, entry) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING seq', room, writer, id, at, bytes, entry);
+      const insert = sql.exec('INSERT INTO entries (room, writer, id, at, bytes, entry, piece) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING seq', room, writer, id, at, bytes, entry, piece);
       const added = insert.toArray();
       if (added.length === 0) return true;
       t.bytes += bytes;
@@ -123,7 +139,7 @@ export class Store extends DurableObject<Env> {
   piece(room: string, id: string, now = Date.now()): Uint8Array | null {
     const t = this.totals(now);
     if (t.read >= SYNC_ROWS_PER_DAY || t.written >= WRITES_PER_DAY) return null;
-    const cursor = this.ctx.storage.sql.exec<{ entry: ArrayBuffer }>('SELECT entry FROM entries WHERE room = ? AND writer = ? AND id = ?', room, PIECES, id);
+    const cursor = this.ctx.storage.sql.exec<{ entry: ArrayBuffer }>('SELECT entry FROM entries WHERE room = ? AND id = ? AND piece = 1 LIMIT 1', room, id);
     const row = cursor.toArray()[0];
     // A miss writes nothing: a friend's app asks for a file nobody online has, which the server may never have had. What
     // misses read is counted in memory, against the same share, and written with the next totals: an eviction before
@@ -146,10 +162,32 @@ export class Store extends DurableObject<Env> {
     const t = this.totals(now);
     if (t.read >= SYNC_ROWS_PER_DAY || t.syncs >= SYNCS_PER_DAY) return null;
     // Texts and file announcements: not the pieces of files, which a browser asks for one by one (`piece`).
-    const cursor = this.ctx.storage.sql.exec<{ entry: string }>('SELECT entry FROM entries WHERE room = ? AND at > ? AND writer != ? ORDER BY at DESC, seq DESC LIMIT ?', room, since, PIECES, max);
+    const cursor = this.ctx.storage.sql.exec<{ entry: string }>('SELECT entry FROM entries WHERE room = ? AND at > ? AND piece = 0 ORDER BY at DESC, seq DESC LIMIT ?', room, since, max);
     const rows = cursor.toArray();
     this.count(now, 1, cursor.rowsRead);
     return rows.reverse().map((r) => JSON.parse(r.entry) as KeptEntry);
+  }
+
+  /**
+   * Drops every entry `writer` wrote in `room` up to `before` (the Room's clock): texts, file announcements and pieces of
+   * files. True when all are gone; false when today's share of writes had room for only some, or none: asked again, it
+   * goes on from there.
+   */
+  forget(room: string, writer: string, before: number, now = Date.now()): boolean {
+    const sql = this.ctx.storage.sql;
+    return this.ctx.storage.transactionSync(() => {
+      const t = this.totals(now);
+      const fits = Math.floor((WRITES_PER_DAY - t.written - 1) / ROWS_PER_DROP);
+      if (fits <= 0) return false;
+      const dropped = sql.exec<{ bytes: number }>('DELETE FROM entries WHERE seq IN (SELECT seq FROM entries WHERE room = ? AND writer = ? AND at <= ? LIMIT ?) RETURNING bytes', room, writer, before, fits);
+      const rows = dropped.toArray();
+      if (rows.length === 0) return true;
+      for (const r of rows) t.bytes -= r.bytes;
+      t.entries -= rows.length;
+      t.written += dropped.rowsWritten + 1; // and the totals
+      this.setTotals(t);
+      return rows.length < fits;
+    });
   }
 
   /** How full the window is, since when it reaches back, and what today used of the daily shares. */

@@ -39,16 +39,63 @@ describe('the Store', () => {
   it('keeps the pieces of a file in the same window as the texts, gives them back one by one, and never in a sync', async () => {
     await runInDurableObject(store('pieces'), (s: Store) => {
       const piece = (fill: number, size = 1000) => new Uint8Array(size).fill(fill);
-      expect(s.keepPiece('roomA', 'hashA:0', piece(1))).toBe(true);
+      expect(s.keepPiece('roomA', 'pkA', 'tagA:0', piece(1), 1)).toBe(true);
       s.keep('roomA', entry(1));
-      expect(s.keepPiece('roomA', 'hashA:1', piece(2))).toBe(true);
-      expect(s.keepPiece('roomA', 'hashA:1', piece(9)), 'sent again after a lost socket: kept once').toBe(true);
-      expect(s.piece('roomA', 'hashA:1')).toEqual(piece(2));
-      expect(s.piece('roomA', 'hashA:2'), 'not kept').toBeNull();
-      expect(s.piece('roomB', 'hashA:0'), "another room's").toBeNull();
+      expect(s.keepPiece('roomA', 'pkA', 'tagA:1', piece(2), 2)).toBe(true);
+      expect(s.keepPiece('roomA', 'pkA', 'tagA:1', piece(9), 3), 'sent again after a lost socket: kept once').toBe(true);
+      expect(s.piece('roomA', 'tagA:1')).toEqual(piece(2));
+      expect(s.piece('roomA', 'tagA:2'), 'not kept').toBeNull();
+      expect(s.piece('roomB', 'tagA:0'), "another room's").toBeNull();
       expect(s.since('roomA', 0, 500)!.map((e) => e.id), 'a sync brings texts and announcements only').toEqual(['id1']);
       expect(s.usage().entries).toBe(3);
       expect(s.usage().bytes).toBe(2 * (1000 + ROW_OVERHEAD_BYTES) + entryBytes(JSON.stringify(entry(1))));
+    });
+  });
+
+  it('keeps the same file sent by two friends as two copies, and gives either', async () => {
+    await runInDurableObject(store('copies'), (s: Store) => {
+      expect(s.keepPiece('roomA', 'pkA', 'tagA:0', new Uint8Array(10).fill(1), 1)).toBe(true);
+      expect(s.keepPiece('roomA', 'pkB', 'tagA:0', new Uint8Array(10).fill(2), 2)).toBe(true);
+      expect(s.usage().entries).toBe(2);
+      expect(s.piece('roomA', 'tagA:0')).not.toBeNull();
+      expect(s.forget('roomA', 'pkA', 10)).toBe(true);
+      expect(s.piece('roomA', 'tagA:0'), "the other friend's copy stays").toEqual(new Uint8Array(10).fill(2));
+    });
+  });
+
+  it('forgets what one friend wrote in one room up to a time, texts, announcements and pieces, and nothing else', async () => {
+    await runInDurableObject(store('forget'), (s: Store) => {
+      const mine = (n: number, at: number) => entry(n, { at, from: { ...entry(n).from, publicKey: 'pkMe' } });
+      s.keep('roomA', mine(1, 10));
+      s.keep('roomA', entry(2, { at: 11 }));
+      s.keep('roomA', { ...mine(3, 12), t: 'file' });
+      s.keepPiece('roomA', 'pkMe', 'tagA:0', new Uint8Array(100), 13);
+      s.keep('roomB', mine(4, 14));
+      s.keep('roomA', mine(5, 30));
+      const before = s.usage();
+      expect(s.forget('roomA', 'pkMe', 20)).toBe(true);
+      expect(s.since('roomA', 0, 500)!.map((e) => e.id), "a friend's text, and mine after the time, stay").toEqual(['id2', 'id5']);
+      expect(s.piece('roomA', 'tagA:0')).toBeNull();
+      expect(s.since('roomB', 0, 500)!.map((e) => e.id), 'another room is not this one').toEqual(['id4']);
+      expect(s.usage().entries).toBe(before.entries - 3);
+      expect(s.usage().bytes).toBe(before.bytes - entryBytes(JSON.stringify(mine(1, 10))) - entryBytes(JSON.stringify({ ...mine(3, 12), t: 'file' })) - (100 + ROW_OVERHEAD_BYTES));
+      expect(s.forget('roomA', 'pkMe', 20), 'nothing left to forget is done').toBe(true);
+    });
+  });
+
+  it('a forget past what the day can write goes as far as the share goes, and on from there when asked again', async () => {
+    await runInDurableObject(store('forget-share'), (s: Store, state) => {
+      const day = Date.UTC(2026, 10, 7, 10);
+      for (let n = 1; n <= 30; n++) s.keep('roomA', entry(n, { at: n, from: { ...entry(n).from, publicKey: 'pkMe' } }), HISTORY_BUDGET_BYTES, day);
+      // Room left today for 10 more drops, not 30.
+      state.storage.sql.exec('UPDATE totals SET kept = ?', WRITES_PER_DAY - 1 - 10 * 4);
+      expect(s.forget('roomA', 'pkMe', 100, day)).toBe(false);
+      expect(s.since('roomA', 0, 500, day)!.length).toBe(20);
+      state.storage.sql.exec('UPDATE totals SET kept = ?', WRITES_PER_DAY - 1);
+      expect(s.forget('roomA', 'pkMe', 100, day), 'the share is used up').toBe(false);
+      expect(s.since('roomA', 0, 500, day)!.length).toBe(20);
+      expect(s.forget('roomA', 'pkMe', 100, day + 24 * 3600_000), 'the day after').toBe(true);
+      expect(s.since('roomA', 0, 500, day + 24 * 3600_000)).toEqual([]);
     });
   });
 
@@ -62,31 +109,31 @@ describe('the Store', () => {
       const written = () => state.storage.sql.exec<{ kept: number }>('SELECT kept FROM totals').one().kept;
       const before = written();
       // One piece the size of ten texts: the ten oldest go, and what that wrote counts against the day.
-      expect(s.keepPiece('roomA', 'hashA:0', new Uint8Array(size * 10 - ROW_OVERHEAD_BYTES), budget)).toBe(true);
+      expect(s.keepPiece('roomA', 'pkA', 'tagA:0', new Uint8Array(size * 10 - ROW_OVERHEAD_BYTES), 1, budget)).toBe(true);
       expect(s.since('roomA', 0, 500)!.map((e) => e.id)).toEqual(Array.from({ length: 40 }, (_, i) => text(i + 11).id));
       expect(written() - before, 'the texts dropped count against the day too, as SQLite counts rows written').toBeGreaterThanOrEqual(10 + 1);
       expect(s.usage().bytes).toBe(budget);
       // The window keeps its order: the piece goes before texts kept after it.
       for (let n = 51; n <= 90; n++) s.keep('roomA', text(n), budget);
-      expect(s.piece('roomA', 'hashA:0'), 'the texts before it go first').not.toBeNull();
+      expect(s.piece('roomA', 'tagA:0'), 'the texts before it go first').not.toBeNull();
       for (let n = 91; n <= 100; n++) s.keep('roomA', text(n), budget);
-      expect(s.piece('roomA', 'hashA:0')).toBeNull();
+      expect(s.piece('roomA', 'tagA:0')).toBeNull();
     });
   });
 
   it('a fetch that finds nothing writes nothing, and counts what it read against the day\'s share', async () => {
     await runInDurableObject(store('misses'), (s: Store, state) => {
       const day = Date.UTC(2026, 10, 5, 10);
-      s.keepPiece('roomA', 'hashA:0', new Uint8Array(10), HISTORY_BUDGET_BYTES, day);
+      s.keepPiece('roomA', 'pkA', 'tagA:0', new Uint8Array(10), day, HISTORY_BUDGET_BYTES, day);
       const totals = () => state.storage.sql.exec<{ kept: number; read: number }>('SELECT kept, read FROM totals').one();
       const before = totals();
       for (let i = 0; i < 5; i++) expect(s.piece('roomA', `nothing:${i}`, day)).toBeNull();
       expect(totals(), 'no write for a miss').toEqual(before);
       // Misses that read the day's share away: then nothing is given, not even what is kept, nor a sync.
       (s as unknown as { pending: { day: string; syncs: number; read: number } }).pending = { day: '2026-11-05', syncs: 0, read: SYNC_ROWS_PER_DAY };
-      expect(s.piece('roomA', 'hashA:0', day)).toBeNull();
+      expect(s.piece('roomA', 'tagA:0', day)).toBeNull();
       expect(s.since('roomA', 0, 500, day)).toBeNull();
-      expect(s.piece('roomA', 'hashA:0', day + 24 * 3600_000), 'the day after').toEqual(new Uint8Array(10));
+      expect(s.piece('roomA', 'tagA:0', day + 24 * 3600_000), 'the day after').toEqual(new Uint8Array(10));
     });
   });
 
@@ -222,16 +269,31 @@ describe('a sync', () => {
     for (const bad of [-1, 1.5, '7', undefined]) {
       expect((await onMessage(state, JSON.stringify({ t: 'sync', since: bad }), ctx)).replies[0]).toMatchObject({ t: 'error', reason: 'unrecognised message', ref: 'sync' });
     }
-    // A piece sent up is answered with whether it is kept, and whether to send it again.
-    const hash = 'h'.repeat(43);
+    // A piece sent up is answered with whether it is kept, and whether to send it again; kept under its sender, at the
+    // Room's clock.
+    const tag = 'h'.repeat(43);
     for (const [kept, reply] of [['kept', { ok: true }], ['not today', { ok: false }], ['failed', { ok: false, again: true }]] as const) {
-      const out = await onMessage(state, JSON.stringify({ t: 'piece', hash, n: 1, sealed: 'c2Vh' }), { ...ctx, keepPiece: async () => kept });
-      expect((await out.after!()).replies).toEqual([{ t: 'kept', hash, n: 1, ...reply }]);
+      const calls: unknown[][] = [];
+      const out = await onMessage(state, JSON.stringify({ t: 'piece', tag, n: 1, sealed: 'c2Vh' }), { ...ctx, keepPiece: async (...a: unknown[]) => { calls.push(a); return kept; } });
+      expect((await out.after!()).replies).toEqual([{ t: 'kept', tag, n: 1, ...reply }]);
+      expect(calls).toEqual([['pkA', `${tag}:1`, 'c2Vh', 1000]]);
     }
-    const fetched = await onMessage(state, JSON.stringify({ t: 'fetch', hash, n: 1 }), { ...ctx, piece: async (id: string) => (id === `${hash}:1` ? 'c2Vh' : null) });
-    expect((await fetched.after!()).replies).toEqual([{ t: 'piece', hash, n: 1, sealed: 'c2Vh' }]);
-    const missing = await onMessage(state, JSON.stringify({ t: 'fetch', hash, n: 2 }), { ...ctx, piece: async () => null });
-    expect((await missing.after!()).replies).toEqual([{ t: 'piece', hash, n: 2 }]);
+    const fetched = await onMessage(state, JSON.stringify({ t: 'fetch', tag, n: 1 }), { ...ctx, piece: async (id: string) => (id === `${tag}:1` ? 'c2Vh' : null) });
+    expect((await fetched.after!()).replies).toEqual([{ t: 'piece', tag, n: 1, sealed: 'c2Vh' }]);
+    const missing = await onMessage(state, JSON.stringify({ t: 'fetch', tag, n: 2 }), { ...ctx, piece: async () => null });
+    expect((await missing.after!()).replies).toEqual([{ t: 'piece', tag, n: 2 }]);
+    // A forget deletes what this socket's friend wrote, up to the Room's clock or the time it names, once per cooldown.
+    const forgets: unknown[][] = [];
+    const forget = async (...a: unknown[]) => { forgets.push(a); return forgets.length > 1; };
+    const f1 = await onMessage(state, JSON.stringify({ t: 'forget' }), { ...ctx, forget });
+    expect((await f1.after!()).replies).toEqual([{ t: 'forgot', before: 1000, done: false }]);
+    expect((await onMessage(f1.state, JSON.stringify({ t: 'forget', before: 900 }), { ...ctx, forget, now: 2000 })).replies).toEqual([{ t: 'error', reason: 'asked too soon', ref: 'forget' }]);
+    const f2 = await onMessage(f1.state, JSON.stringify({ t: 'forget', before: 900 }), { ...ctx, forget, now: 11_000 });
+    expect((await f2.after!()).replies).toEqual([{ t: 'forgot', before: 900, done: true }]);
+    expect(forgets).toEqual([['pkA', 1000], ['pkA', 900]]);
+    for (const bad of [-1, 1.5, '7', null]) {
+      expect((await onMessage(state, JSON.stringify({ t: 'forget', before: bad }), ctx)).replies[0]).toMatchObject({ t: 'error', reason: 'unrecognised message', ref: 'forget' });
+    }
     const sent = await onMessage(state, JSON.stringify({ t: 'file', sealed: 'c2Vh', id: 'f1' }), ctx);
     expect(sent.keep).toEqual({ t: 'file', from: { publicKey: 'pkA', fingerprint: 'abc234', profile: 'cHJvZmlsZQ' }, sealed: 'c2Vh', at: 1000, id: 'f1' });
     expect(sent.broadcast).toEqual([sent.keep]);

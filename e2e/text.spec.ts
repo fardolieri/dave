@@ -204,9 +204,9 @@ test('received history survives a reload, and "Clear chat history" empties it', 
   await bob.connected();
   await expect.poll(() => bob.chatTexts()).toEqual(['one', 'two']);
 
-  bob.page.once('dialog', (d) => void d.accept());
   await openRoomMenu(bob.page);
   await bob.page.getByRole('button', { name: 'Clear chat history' }).click();
+  await bob.page.locator('dialog.clear').getByRole('button', { name: 'Clear', exact: true }).click();
   await expect.poll(() => bob.chatTexts()).toEqual([]);
   await bob.page.reload();
   await bob.connected();
@@ -239,6 +239,38 @@ test('leaving a room forgets its history in this browser: the link brings the ro
   await bob.page.reload();
   await bob.connected();
   await expect.poll(() => bob.chatTexts()).toEqual(['after']);
+});
+
+test('ADR 0009: Clear with "Also delete my messages from the server" takes all I wrote in the room off it, files too; friends keep theirs', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.say('mine');
+  await bob.say('his');
+  await alice.attach({ name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('zip') });
+  await expect.poll(() => bob.storedTexts()).toEqual(['mine', 'his', 'notes.zip']);
+  // The file's piece is kept on the server, under its tag (ADR 0009), not its hash.
+  await expect.poll(() => alice.wire.frames<{ ok: boolean }>('down', 'kept').filter((f) => f.ok).length).toBe(1);
+  await openRoomMenu(alice.page);
+  await alice.page.getByRole('button', { name: 'Clear chat history' }).click();
+  const dialog = alice.page.locator('dialog.clear');
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel('Also delete my messages from the server').check();
+  await dialog.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(() => alice.wire.frames<{ done: boolean }>('down', 'forgot').map((f) => f.done)).toEqual([true]);
+  await expect.poll(() => alice.chatTexts()).toEqual([]);
+  // Bob's copy is his.
+  expect(await bob.storedTexts()).toEqual(['mine', 'his', 'notes.zip']);
+  // A browser that holds the room from before starts were kept, and nothing of it: the server has only Bob's text.
+  const carol = await crowd.open('Carol');
+  await expect.poll(() => carol.storedTexts()).toEqual(['his']);
+  // What Alice writes after it stays.
+  await alice.say('after');
+  await expect.poll(() => carol.storedTexts()).toEqual(['his', 'after']);
+  await alice.page.reload();
+  await alice.connected();
+  await expect.poll(() => alice.chatTexts()).toEqual(['after']);
+  expect(alice.wire.frames('up', 'forget'), 'asked once: the server said all of it was gone').toHaveLength(1);
 });
 
 test('ADR 0009: a friend who joins by the link reads nothing from before, and everything from then on, missed texts too', async ({ crowd }) => {

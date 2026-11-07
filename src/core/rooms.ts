@@ -35,6 +35,19 @@ export const authKeyOf = (secret: string): Promise<string> => derive('auth-key',
 export async function textKeyOf(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', (await deriveBytes('text-key', secret)) as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt']);
 }
+/**
+ * The key a file's tag is made with (`pieceTagOf`): from the secret, so only friends can make it. Not extractable.
+ */
+export async function pieceKeyOf(secret: string): Promise<CryptoKey> {
+  return crypto.subtle.importKey('raw', (await deriveBytes('piece-key', secret)) as BufferSource, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+}
+/**
+ * The name a file's pieces go by on the server (ADR 0009): its hash keyed with the room's secret, HMAC-SHA256, base64url.
+ * Not the hash itself, by which whoever holds a copy of a file could tell from the server's storage that it was sent.
+ */
+export async function pieceTagOf(key: CryptoKey, hash: string): Promise<string> {
+  return toBase64Url(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(hash))));
+}
 export const isRoomId = (text: string): boolean => ROOM_ID_RE.test(text);
 
 /** Room names follow the same rule as display names: 1 to 32 characters, whitespace collapsed. */

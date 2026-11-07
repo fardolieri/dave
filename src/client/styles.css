@@ -605,6 +605,9 @@ dialog.report .ok { margin: 10px 0 0; font-size: 13px; color: var(--ok); }
 dialog.report .warn { margin: 10px 0 0; }
 dialog.report .row, dialog.about .row { display: flex; gap: 6px; margin-top: 12px; }
 dialog.report .row button:first-child { flex: 1; }
+dialog.clear p { margin: 0 0 10px; }
+dialog.clear .check { display: block; margin: 0; }
+dialog.clear .check input { margin: 0 6px 0 0; vertical-align: -1px; }
 
 /* Phone rules come last so they override every desktop placement above. */
 /* Phone width (spec §7.3): one column, presence never clips, shares stack above the chat. The composer is the last

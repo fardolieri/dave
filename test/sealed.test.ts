@@ -212,7 +212,10 @@ describe('sealed pieces of a kept file (ADR 0009)', async () => {
 
   it('round-trips a piece, shows nothing of it, and fits what the Room takes', async () => {
     const sealed = await sealPiece({ ...where, bytes });
-    expect(await openPiece({ ...where, sealed })).toEqual(bytes);
+    const opened = await openPiece({ ...where, sealed });
+    // Byte by byte, not by toEqual, which takes seconds over a whole piece.
+    expect(opened?.length).toBe(bytes.length);
+    expect(opened!.every((b, i) => b === bytes[i])).toBe(true);
     expect(toBase64Url(sealed).length).toBeLessThanOrEqual(MAX_SEALED_PIECE_LENGTH);
     expect(sealed.subarray(12, 12 + 64)).not.toEqual(bytes.subarray(0, 64));
   });

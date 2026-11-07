@@ -28,11 +28,16 @@ describe('protocol', () => {
     for (const m of [{ t: 'private', to: 'pkB', sealed: 'c2Vh', id: 'a1b2' }, { t: 'private', to: 'pkB', sealed: 'c2Vh', id: 'a1b2', file: true }, { t: 'private' }]) {
       expect(parseClientMessage(JSON.stringify(m))).toEqual({ t: 'invalid', reason: APP_OUT_OF_DATE, ref: 'private' });
     }
-    // ADR 0009: a piece of a kept file going up, and one asked back, by the file's hash and the piece's place.
-    const hash = 'h'.repeat(43);
-    expect(parseClientMessage(JSON.stringify({ t: 'piece', hash, n: 3, sealed: 'c2Vh' }))).toEqual({ t: 'piece', hash, n: 3, sealed: 'c2Vh' });
-    expect(parseClientMessage(JSON.stringify({ t: 'fetch', hash, n: 0 }))).toEqual({ t: 'fetch', hash, n: 0 });
-    for (const m of [{ t: 'piece', hash: 'short', n: 0, sealed: 'c2Vh' }, { t: 'piece', hash, n: 64, sealed: 'c2Vh' }, { t: 'piece', hash, n: -1, sealed: 'c2Vh' }, { t: 'piece', hash, n: 0, sealed: 'x'.repeat(MAX_SEALED_PIECE_LENGTH + 1) }, { t: 'piece', hash, n: 0 }, { t: 'fetch', hash, n: 1.5 }]) {
+    // ADR 0009: a piece of a kept file going up, and one asked back, by the file's tag and the piece's place; a whole
+    // sealed piece is larger than any text.
+    const tag = 'h'.repeat(43);
+    expect(parseClientMessage(JSON.stringify({ t: 'piece', tag, n: 3, sealed: 'c2Vh' }))).toEqual({ t: 'piece', tag, n: 3, sealed: 'c2Vh' });
+    const whole = 'x'.repeat(MAX_SEALED_PIECE_LENGTH);
+    expect(parseClientMessage(JSON.stringify({ t: 'piece', tag, n: 15, sealed: whole }))).toEqual({ t: 'piece', tag, n: 15, sealed: whole });
+    expect(parseClientMessage(JSON.stringify({ t: 'fetch', tag, n: 0 }))).toEqual({ t: 'fetch', tag, n: 0 });
+    expect(parseClientMessage(JSON.stringify({ t: 'forget' }))).toEqual({ t: 'forget' });
+    expect(parseClientMessage(JSON.stringify({ t: 'forget', before: 42 }))).toEqual({ t: 'forget', before: 42 });
+    for (const m of [{ t: 'piece', tag: 'short', n: 0, sealed: 'c2Vh' }, { t: 'piece', tag, n: 16, sealed: 'c2Vh' }, { t: 'piece', tag, n: -1, sealed: 'c2Vh' }, { t: 'piece', tag, n: 0, sealed: 'x'.repeat(MAX_SEALED_PIECE_LENGTH + 1) }, { t: 'piece', tag, n: 0 }, { t: 'fetch', tag, n: 1.5 }, { t: 'piece', hash: tag, n: 0, sealed: 'c2Vh' }, { t: 'sealed', sealed: 'x'.repeat(MAX_SEALED_PIECE_LENGTH), id: 'a1b2' }]) {
       expect(parseClientMessage(JSON.stringify(m)), JSON.stringify(m).slice(0, 80)).toMatchObject({ t: 'invalid', ref: m.t });
     }
     const bad = { t: 'invalid', reason: 'unrecognised message' };
