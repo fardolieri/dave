@@ -1,5 +1,5 @@
 import { authKeyOf, DEFAULT_ROOM_NAME, roomIdOf, textKeyOf, type InviteLink, type StoredRoom } from '../core/rooms';
-import { adoptLegacyHistory, forgetHistory } from './history';
+import { adoptLegacyHistory, forgetHistory, startHistoryAtJoin } from './history';
 import { local } from './storage';
 
 /**
@@ -39,9 +39,10 @@ export async function loadRooms(): Promise<SavedRoom[]> {
 /** Adds a room from an invite link, or takes the link's name for a room already known. Persists. */
 export async function addRoom(rooms: SavedRoom[], link: InviteLink): Promise<SavedRoom[]> {
   const known = rooms.find((r) => r.secret === link.secret);
-  const next = known
-    ? rooms.map((r) => (r === known && r.name !== link.name ? { ...r, name: link.name } : r))
-    : [...rooms, await withKeys({ secret: link.secret, name: link.name, addedAt: Date.now() })];
+  const added = known ? null : await withKeys({ secret: link.secret, name: link.name, addedAt: Date.now() });
+  const next = added ? [...rooms, added] : rooms.map((r) => (r === known && r.name !== link.name ? { ...r, name: link.name } : r));
+  // Joined now: what the room said before is not this browser's to read back from the server (ADR 0009).
+  if (added) startHistoryAtJoin(added.id);
   write(next);
   return next;
 }

@@ -75,12 +75,19 @@ export const SYNC_OVERLAP_MS = 5 * 60_000;
 export const SYNC_COOLDOWN_MS = 10_000;
 
 /**
- * Where a browser asks from: after the point it last had everything up to (less the overlap), or after it last cleared
- * the room's history, whichever is later; from the start when it has no such point and never cleared. The point is the
- * room's `historySynced` (client/history.ts), or for a room synced before it was kept, the newest text it holds.
+ * Where a room joined in this browser starts its history until its first sync is answered: past everything, so that sync
+ * brings nothing, and its answer (`upTo`, the Room's clock) becomes the start (client/history.ts, `historyFrom`).
  */
-export function syncSince(syncedTo: number | null, clearedAt: number | null): number {
-  return Math.max(0, syncedTo === null ? 0 : syncedTo - SYNC_OVERLAP_MS, clearedAt ?? 0);
+export const FROM_JOIN = Number.MAX_SAFE_INTEGER;
+
+/**
+ * Where a browser asks from: after the point it last had everything up to (less the overlap), or after where its history
+ * of the room starts (joined or last cleared), whichever is later; from the start when it has neither, a room this
+ * browser held before starts were kept. The point is the room's `historySynced` (client/history.ts), or for a room
+ * synced before it was kept, the newest text it holds.
+ */
+export function syncSince(syncedTo: number | null, from: number | null): number {
+  return Math.max(0, syncedTo === null ? 0 : syncedTo - SYNC_OVERLAP_MS, from ?? 0);
 }
 
 type HistoryFrame = { t: 'history'; entries: KeptEntry[]; last?: true; upTo?: number; unavailable?: true };

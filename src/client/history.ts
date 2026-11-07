@@ -1,6 +1,7 @@
 import { idbDelete, idbGet, idbRead, idbSet, local, type ParsedIdbKey } from './storage';
 import { MAX_HISTORY, mergeByAt, type PrivateThread, type StoredText } from '../core/chatlog';
 import { IDB } from '../core/storedstate';
+import { FROM_JOIN } from '../core/kept';
 import { UNSENT_MAX, type UnsentPrivate, type UnsentText } from '../core/unsent';
 import type { Identity } from '../core/protocol';
 
@@ -92,11 +93,11 @@ export function touchPrivateThread(friend: Identity, at: number): Promise<void> 
 }
 
 /**
- * Empties a room's history in this browser. The server's history (ADR 0009) is asked for what comes after `at` only from
- * now on (`historyCleared`), so what was cleared stays cleared.
+ * Empties a room's history in this browser. Its history starts at `at` from now on (`historyFrom`): the server's (ADR
+ * 0009) is asked for what came after it only, so what was cleared stays cleared.
  */
 export function clearHistory(roomId: string, at = Date.now()): Promise<void> {
-  local.set('historyCleared', JSON.stringify({ ...local.read('historyCleared'), [roomId]: at }));
+  keepHistoryFrom(roomId, at);
   chain = chain.then(() => idbSet(keyFor(roomId), [])).catch((e) => console.warn('history clear failed', e));
   return chain;
 }
@@ -113,14 +114,23 @@ export function keepHistorySynced(roomId: string, at: number): void {
   local.set('historySynced', JSON.stringify({ ...all, [roomId]: at }));
 }
 
-/** When this browser last cleared the room's history, if it did (`clearHistory`). */
-export const historyClearedAt = (roomId: string): number | null => local.read('historyCleared')[roomId] ?? null;
+/**
+ * Where this browser's history of a room starts, by the Room's clock: when it joined the room by its link, or last cleared
+ * it. Nothing older is asked of the server's history. None for a room held before starts were kept (and rooms of two,
+ * which both friends read from their first text): everything the server keeps.
+ */
+export const historyFromAt = (roomId: string): number | null => local.read('historyFrom')[roomId] ?? null;
+export function keepHistoryFrom(roomId: string, at: number): void {
+  local.set('historyFrom', JSON.stringify({ ...local.read('historyFrom'), [roomId]: at }));
+}
+/** A room new to this browser: its history starts where the Room's clock is at its first sync (core/kept.ts, FROM_JOIN). */
+export const startHistoryAtJoin = (roomId: string): void => keepHistoryFrom(roomId, FROM_JOIN);
 
 /** Leaving a room: its history goes with it, as the leave dialog says. The link brings the room back, not the lines. */
 export function forgetHistory(roomId: string): Promise<void> {
   forgetUnsent(roomId);
-  // Rejoined by its link, the room is new to this browser: the server's history (ADR 0009) brings what it keeps.
-  for (const key of ['historyCleared', 'historySynced'] as const) {
+  // Rejoined by its link, the room is new to this browser, and starts again from then (`startHistoryAtJoin`).
+  for (const key of ['historyFrom', 'historySynced'] as const) {
     const all = local.read(key);
     if (!(roomId in all)) continue;
     delete all[roomId];

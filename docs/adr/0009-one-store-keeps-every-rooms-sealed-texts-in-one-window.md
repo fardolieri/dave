@@ -70,11 +70,19 @@ About dialog shows how full it is and how far back it reaches (`/history-usage`)
   given: what is left of it waits there to go too.
 - A text sent again after a lost socket is broadcast again under its id (ticket 51); the Store keeps it once (room,
   writer, id). Browsers drop doubles anyway.
-- Clearing a room's history in a browser records when (`historyCleared` in localStorage), and its syncs ask from then on,
-  so the cleared texts stay cleared there. Leaving a room forgets that too: the link brings the room back with what the
-  server keeps of it.
-- What a sync brings into a browser that held nothing of the room (a new device, a room rejoined) is not counted unread;
-  what it brings into one that held some is, without a chime: a batch arrives at once.
+- A browser's history of a room has a start (`historyFrom` in localStorage), and its syncs ask from there on: when it
+  joined the room by the link, or last cleared it (owner, 2026-11-07: a newcomer does not read what was said before
+  they came). A room joined starts past everything (`FROM_JOIN`) until its first sync, whose answer's `upTo`, the Room's
+  clock, becomes the start: the browser's own clock may be off. A new device and a room rejoined after Leave are joins
+  like any. Rooms of two have no start, as both friends read from the first text and one may write before the other's
+  browser first opens it; nor do rooms a browser held before starts were kept, which keep everything.
+- The start is this browser's choice, not a lock: everyone with the link holds the key that opens the whole window,
+  and the server cannot tell a newcomer from a friend, so an app changed to ask from the beginning gets it. Making it
+  binding needs keys that change over time (a newcomer never holding the old ones), considered and left for now
+  (2026-11-07): it gives "since the link was made", not "since I joined", and no revocation.
+- What a sync brings into a browser that held nothing of a room and has no start (a room of two new to it, a room held
+  from before) is not counted unread; what it brings into one that held some, or has a start, is, without a chime: a
+  batch arrives at once.
 - Private conversations are rooms of two (ADR 0011), and keep their texts and files like any room.
 
 ## Consequences

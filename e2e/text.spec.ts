@@ -215,7 +215,7 @@ test('received history survives a reload, and "Clear chat history" empties it', 
   expect(await alice.chatTexts()).toEqual(['one', 'two']);
 });
 
-test('leaving a room forgets its history in this browser: the link brings the room back, and what the server keeps of it', async ({ crowd }) => {
+test('leaving a room forgets its history in this browser: the link brings the room back, from then on', async ({ crowd }) => {
   const other = { secret: newSecret(), name: 'Other' };
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob', { rooms: [crowd.room, other] });
@@ -233,19 +233,46 @@ test('leaving a room forgets its history in this browser: the link brings the ro
   await bob.page.goto(`/#${crowd.room.secret}/${encodeURIComponent(crowd.room.name)}`);
   await bob.connected();
   await expect(bob.selectedRoom.locator('.room-title')).toHaveText(crowd.room.name);
-  // The server's history (ADR 0009) brings the text back; a live line goes after it.
-  await expect.poll(() => bob.chatTexts()).toEqual(['before']);
+  // Joined again: what the server keeps from before (ADR 0009) is not brought back; a live line is.
   await alice.say('after');
-  await expect.poll(() => bob.chatTexts()).toEqual(['before', 'after']);
+  await expect.poll(() => bob.chatTexts()).toEqual(['after']);
+  await bob.page.reload();
+  await bob.connected();
+  await expect.poll(() => bob.chatTexts()).toEqual(['after']);
 });
 
-test('ADR 0009: a friend away, or on a new device, gets the texts and files sent meanwhile from the server, in order, counted unread without a chime', async ({ crowd }) => {
+test('ADR 0009: a friend who joins by the link reads nothing from before, and everything from then on, missed texts too', async ({ crowd }) => {
+  const other = { secret: newSecret(), name: 'Other' };
+  const alice = await crowd.open('Alice');
+  await alice.say('before you came');
+  await expect.poll(() => alice.storedTexts()).toEqual(['before you came']);
+  const bob = await crowd.open('Bob', { rooms: [other] });
+  await bob.page.goto(`/#${crowd.room.secret}/${encodeURIComponent(crowd.room.name)}`);
+  await bob.connected();
+  await expect(bob.selectedRoom.locator('.room-title')).toHaveText(crowd.room.name);
+  // His first sync asks past everything: its answer says where the Room's clock was, which is where his history starts.
+  await expect.poll(() => bob.wire.frames<{ since: number }>('up', 'sync').map((f) => f.since)).toContain(Number.MAX_SAFE_INTEGER);
+  const from = () => bob.page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('dave.historyFrom') ?? '{}') as Record<string, number>));
+  await expect.poll(async () => (await from()).every((at) => at < Number.MAX_SAFE_INTEGER) && (await from()).length).toBe(1);
+  await alice.say('after');
+  await expect.poll(() => bob.chatTexts()).toEqual(['after']);
+  // Away, then back: the server brings what he missed since he came, still nothing from before.
+  await bob.wire.cut();
+  await alice.say('while you were out');
+  bob.wire.restore();
+  await bob.connected();
+  await expect.poll(() => bob.chatTexts()).toEqual(['after', 'while you were out']);
+  await expect.poll(() => bob.storedTexts()).toEqual(['after', 'while you were out']);
+});
+
+test('ADR 0009: a friend away, or a browser that held the room before starts were kept, gets the texts and files sent meanwhile from the server, in order, counted unread without a chime', async ({ crowd }) => {
   const other = { secret: newSecret(), name: 'Other' };
   const alice = await crowd.open('Alice');
   await alice.say('before anyone came');
   await alice.attach({ name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('zip') });
   await alice.say('after the file');
-  // Bob's browser has never seen the room: the server brings what it keeps, nothing unread, as he had nothing of it yet.
+  // Bob's browser holds the room from before starts were kept, and nothing of it: the server brings all it keeps, nothing
+  // unread, as he had nothing of it yet.
   const bob = await crowd.open('Bob', { rooms: [crowd.room, other] });
   await expect.poll(() => bob.page.locator('.chat-log .att-card .att-name').allTextContents()).toEqual(['notes.zip']);
   await expect.poll(() => bob.storedTexts()).toEqual(['before anyone came', 'notes.zip', 'after the file']);

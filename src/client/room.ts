@@ -21,9 +21,9 @@ import type { LocalIdentity } from './identity';
 import { keepUnread, keptUnread } from './unread';
 import { contactOf } from './contacts';
 import { mergeByAt } from '../core/chatlog';
-import { KEPT_PIECE_BYTES, keptKind, keptPiecesOf, pieceId, syncSince } from '../core/kept';
+import { FROM_JOIN, KEPT_PIECE_BYTES, keptKind, keptPiecesOf, pieceId, syncSince } from '../core/kept';
 import { PIECE_RATE_PER_SECOND } from '../core/room';
-import { appendHistory, clearHistory, historyClearedAt, historySyncedTo, keepHistorySynced, keepUnsent, loadHistory, loadUnsent, textKey, type StoredText } from './history';
+import { appendHistory, clearHistory, historyFromAt, historySyncedTo, keepHistoryFrom, keepHistorySynced, keepUnsent, loadHistory, loadUnsent, textKey, type StoredText } from './history';
 
 export type ServerStatus =
   | { kind: 'connecting' }
@@ -455,6 +455,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     // All of it in: this room has everything up to when the Room asked, and what comes live on this socket from now on.
     if (frame.last && frame.upTo !== undefined && !asked.dropped) {
       syncedOn = socket;
+      // Joined: the history starts where the Room's clock was, which this browser's own may not be.
+      if (asked.joining && historyFromAt(opts.roomId) === FROM_JOIN) keepHistoryFrom(opts.roomId, frame.upTo);
       keepHistorySynced(opts.roomId, frame.upTo);
     }
   }
@@ -553,11 +555,12 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   }
 
   /**
-   * What a socket's `sync` was asked with: `missed` when this browser held some of the room or cleared it, so what comes
-   * is news; `old` when it is new to the room (a new device, a room rejoined). `clears`: how often the history was
-   * cleared here by then; an answer to a sync asked before a clear is not shown after it.
+   * What a socket's `sync` was asked with: `missed` when this browser held some of the room, or its history has a start,
+   * so what comes is news; `old` when it is new to a room of two. `clears`: how often the history was cleared here by
+   * then; an answer to a sync asked before a clear is not shown after it. `joining`: asked before the start of a room
+   * joined here was known, which the answer's `upTo` then is.
    */
-  type Asked = { came: 'missed' | 'old'; clears: number; dropped?: true };
+  type Asked = { came: 'missed' | 'old'; clears: number; joining?: true; dropped?: true };
   const asks = new WeakMap<WebSocket, Asked>();
   /** How often this room's history was cleared here. */
   let clears = 0;
@@ -565,18 +568,18 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   let syncedOn: WebSocket | null = null;
   /**
    * Asks the server's history (ADR 0009) for what this room got after the newest text this browser has of it, once the
-   * history here is read: after every welcome, so texts sent while the socket was down come too. From where it was
-   * cleared at the earliest (`historyCleared`), so what was cleared stays cleared.
+   * history here is read: after every welcome, so texts sent while the socket was down come too. From where its history
+   * here starts at the earliest (`historyFrom`): what came before this browser joined, or was cleared, stays out.
    */
   function askHistory(socket: WebSocket): void {
     void historyLoaded.catch(() => {}).then(() => {
       if (stopped || welcomed !== socket) return;
       const newest = newestAt();
-      const cleared = historyClearedAt(opts.roomId);
-      // Nothing held and never cleared: new to this browser, so nothing it brings is news. Cleared, it is.
-      asks.set(socket, { came: newest === null && cleared === null && !opts.allNews ? 'old' : 'missed', clears });
+      const from = historyFromAt(opts.roomId);
+      // Nothing held and no start: a room of two new to this browser, so nothing it brings is news. Otherwise it is.
+      asks.set(socket, { came: newest === null && from === null && !opts.allNews ? 'old' : 'missed', clears, ...(from === FROM_JOIN ? { joining: true as const } : {}) });
       // A room this browser held before the mark was kept: from its newest text, as near as it can know.
-      send({ t: 'sync', since: syncSince(historySyncedTo(opts.roomId) ?? newest, cleared) });
+      send({ t: 'sync', since: syncSince(historySyncedTo(opts.roomId) ?? newest, from) });
     });
   }
   /** A text or file came live: on a socket synced in full, this room has everything up to it. */

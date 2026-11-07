@@ -315,7 +315,7 @@ export function createPrivates(opts: {
       commitThreads(threadList.filter((t) => t.friend.publicKey !== friend));
       setArchives(({ [friend]: _gone, ...rest }) => rest);
       reading.delete(friend);
-      // What waits to go to them goes unsent; what the server keeps of it is not brought back (`historyCleared`).
+      // What waits to go to them goes unsent; what the server keeps of it is not brought back (`historyFrom`).
       pairs.get(friend)?.room.dropUnsent();
       void pairs.get(friend)?.room.clearHistory();
       void forgetPrivate(friend);

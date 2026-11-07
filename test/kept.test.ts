@@ -1,7 +1,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { HISTORY_BUDGET_BYTES, KEPT_FILE_MAX, ROW_OVERHEAD_BYTES, keptKind, WRITES_PER_DAY, SYNCS_PER_DAY, SYNCS_PER_WRITE, SYNC_FRAME_BYTES, SYNC_ROWS_PER_DAY, SYNC_OVERLAP_MS, entryBytes, formatHistoryUsage, historyFrames, parseHistoryUsage, syncSince } from '../src/core/kept';
+import { HISTORY_BUDGET_BYTES, KEPT_FILE_MAX, ROW_OVERHEAD_BYTES, keptKind, WRITES_PER_DAY, SYNCS_PER_DAY, SYNCS_PER_WRITE, SYNC_FRAME_BYTES, SYNC_ROWS_PER_DAY, SYNC_OVERLAP_MS, FROM_JOIN, entryBytes, formatHistoryUsage, historyFrames, parseHistoryUsage, syncSince } from '../src/core/kept';
 import { insertByAt, mergeByAt } from '../src/core/chatlog';
 import { exportPublicKey, generateIdentityKeyPair, toBase64Url } from '../src/core/identity';
 import { onMessage, type SocketState } from '../src/core/room';
@@ -182,11 +182,14 @@ describe('a sync', () => {
     expect(frames.map((f) => f.upTo)).toEqual([...frames.slice(1).map(() => undefined), 77]);
   });
 
-  it('asks from where it last had everything less the overlap, from where it was cleared at the earliest, from the start for nothing', () => {
+  it('asks from where it last had everything less the overlap, from where its history starts at the earliest, from the start for nothing', () => {
     expect(syncSince(null, null)).toBe(0);
     expect(syncSince(1_000_000_000, null)).toBe(1_000_000_000 - SYNC_OVERLAP_MS);
     expect(syncSince(1_000_000_000, 1_000_000_500)).toBe(1_000_000_500);
     expect(syncSince(null, 7)).toBe(7);
+    // Joined and not synced yet: past everything, so the first sync brings nothing and says where the Room's clock is.
+    expect(syncSince(null, FROM_JOIN)).toBe(FROM_JOIN);
+    expect(syncSince(1_000_000_000, FROM_JOIN)).toBe(FROM_JOIN);
   });
 
   it('places a text the server brought where its time says, a live one last', () => {
