@@ -5,8 +5,9 @@
 // Large files (attachments ticket 03) go in pieces to the Origin Private File System instead, where they are written as
 // they come and never held whole: `big` below. Their lists of piece hashes and how far a pull got are in IndexedDB.
 import { idbDelete, idbGet, idbSet } from './storage';
-import { MAX_PREVIEW_LENGTH, PIECE_BYTES, PREVIEW_SIDE, inlineKind, keepWithin, listHash, parseBigIndex, parseFileIndex, parsePartialPull } from '../core/attachment';
+import { FILE_STORE_BUDGET, MAX_PREVIEW_LENGTH, PIECE_BYTES, PREVIEW_SIDE, inlineKind, keepWithin, listHash, parseBigIndex, parseFileIndex, parsePartialPull } from '../core/attachment';
 import { toBase64Url } from '../core/identity';
+import { HISTORY_KEEP_MS } from '../core/kept';
 import type { WriterAnswer, WriterAsk } from './filewriter';
 
 export async function hashOf(blob: Blob): Promise<string> {
@@ -24,11 +25,22 @@ const serial = <T>(f: () => Promise<T>): Promise<T> => {
 /** Keeps a file whose hash was checked; the oldest others go if the budget needs it. Fails quietly: it is still shown. */
 export function keepFile(hash: string, blob: Blob): Promise<void> {
   return serial(async () => {
-    const { index, drop, kept } = keepWithin(parseFileIndex(await idbGet<unknown>('files')), { hash, size: blob.size, at: Date.now() });
+    const { index, drop, kept } = keepWithin(parseFileIndex(await idbGet<unknown>('files')), { hash, size: blob.size, at: Date.now() }, FILE_STORE_BUDGET, HISTORY_KEEP_MS);
     for (const h of drop) await idbDelete(`file:${h}`);
     if (kept) await idbSet(`file:${hash}`, blob);
     await idbSet('files', index);
   }).catch((e: unknown) => console.warn('keeping a file failed', e));
+}
+
+/** Kept files older than HISTORY_KEEP_MS go, as the history's texts do: once a page, besides when a file is kept. */
+export function sweepFiles(now = Date.now()): Promise<void> {
+  return serial(async () => {
+    const index = parseFileIndex(await idbGet<unknown>('files'));
+    const old = index.filter((f) => now - f.at >= HISTORY_KEEP_MS);
+    if (!old.length) return;
+    for (const f of old) await idbDelete(`file:${f.hash}`);
+    await idbSet('files', index.filter((f) => !old.includes(f)));
+  }).catch((e: unknown) => console.warn('dropping old files failed', e));
 }
 
 /**

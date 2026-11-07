@@ -22,6 +22,7 @@ import { parseHistory, parsePrivateThreads } from './chatlog';
 import { parseBigIndex, parseFileIndex, parsePartialPull } from './attachment';
 import { parseUnsent, parseUnsentPrivate } from './unsent';
 import { parseCounts, parseRoomThemes } from './unread';
+import { parsePairKeys } from './pairs';
 import { parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes } from './settings';
 
 /** A stored key: what it holds, the parser every read goes through, and stored values from the wild. */
@@ -82,6 +83,30 @@ export const LOCAL = {
     map: true,
     fixtures: { '2026-10-24, unread kept': '{"pkA":2}' },
   },
+  historyFrom: {
+    about: "Where my history of a room starts, by room id, the Room's clock: when I joined it by its link (9007199254740991 until its first sync says when) or last cleared it. The server's history (ADR 0009) is asked for what came after it only (client/history.ts).",
+    parse: parseCounts,
+    map: true,
+    fixtures: { '2026-11-07, history starts': '{"roomA":1762250000000,"roomB":9007199254740991}' },
+  },
+  historyForget: {
+    about: "Rooms where what I wrote is to be deleted from the server's history (ADR 0009) and the server has not said all of it is gone, by room id: up to when, by the Room's clock, or 9007199254740991 for when the Room gets the ask (client/history.ts).",
+    parse: parseCounts,
+    map: true,
+    fixtures: { '2026-11-07, deleting from the server': '{"roomA":9007199254740991,"roomB":1762250000000}' },
+  },
+  pairKeys: {
+    about: "Friends' private text keys as they published them, signed and checked, by friend key, with their fingerprint: what each room of two is derived from, kept to reach a friend online in none of my rooms (ADR 0011, client/privates.ts).",
+    parse: parsePairKeys,
+    map: true,
+    fixtures: { '2026-11-05, rooms of two': `{"${'A'.repeat(87)}":{"key":"${'k'.repeat(87)}","sig":"${'s'.repeat(86)}","fingerprint":"abc234"}}` },
+  },
+  historySynced: {
+    about: "Up to when this browser had everything of a room, by room id, the Room's clock: a sync of the server's history (ADR 0009) asks from there (client/history.ts).",
+    parse: parseCounts,
+    map: true,
+    fixtures: { '2026-11-04, server history': '{"roomA":1762250000000}' },
+  },
   telemetry: { about: 'The telemetry answer (client/posthog.ts).', parse: consent, fixtures: { '2026-09-27, yes': 'on', '2026-09-27, no': 'off' } },
   muted: { about: 'My microphone was muted when last in a call (client/call.ts).', parse: flag, fixtures: { '2026-09-06, muted': 'true', '2026-09-06, unmuted': 'false' } },
   rejoin: {
@@ -135,6 +160,11 @@ export type LocalKey = keyof typeof LOCAL;
 export const IDB = {
   identity: {
     about: 'My identity keypair, a non-extractable CryptoKeyPair (client/identity.ts). Not parsed: a missing one means a new identity, by design.',
+    parse: null,
+    fixtures: {},
+  },
+  'pairIdentity:<friendKey>': {
+    about: 'The key I go by in my room of two with a friend (ADR 0011), a non-extractable ECDSA CryptoKeyPair made for that conversation alone, so the server cannot tell it is me (client/privates.ts). Not parsed: a missing one means a new one, which only the friend learns.',
     parse: null,
     fixtures: {},
   },
@@ -242,7 +272,7 @@ export const IDB = {
     fixtures: { '2026-09-08, before rooms': [{ from: { publicKey: 'pkA', fingerprint: 'ABC123', name: 'Anna' }, text: 'hi', at: 1757500000000 }] },
   },
 } satisfies Record<string, StoredKey<unknown>>;
-export type IdbKey = Exclude<keyof typeof IDB, 'history:<roomId>' | 'private:<friendKey>' | 'file:<hash>' | 'partial:<hash>' | 'pieces:<hash>'> | `history:${string}` | `private:${string}` | `file:${string}` | `partial:${string}` | `pieces:${string}`;
+export type IdbKey = Exclude<keyof typeof IDB, 'history:<roomId>' | 'private:<friendKey>' | 'file:<hash>' | 'partial:<hash>' | 'pieces:<hash>' | 'pairIdentity:<friendKey>'> | `history:${string}` | `private:${string}` | `file:${string}` | `partial:${string}` | `pieces:${string}` | `pairIdentity:${string}`;
 
 /** sessionStorage, per tab and gone with it, so a changed shape meets old values only across one reload. Read in place. */
 export const SESSION = {

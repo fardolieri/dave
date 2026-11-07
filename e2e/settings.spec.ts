@@ -378,18 +378,32 @@ test('About shows the relay this month and the free plan today, the figure neare
   // controls the page), and before the page loads, which asks at once.
   let answer: { status: number; body?: unknown } = { status: 200, body: { error: 'unavailable' } };
   await alice.context.route('**/relay-usage', (route) => route.fulfill({ status: answer.status, contentType: 'application/json', body: answer.body === undefined ? undefined : JSON.stringify(answer.body) }));
+  // The server's history all but empty: its own figures (its test, below) stay out of the nearest named on the fold.
+  await alice.context.route('**/history-usage', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bytes: 1000, budget: 4e9, entries: 1, oldest: null, asOf: Date.now() }) }));
   await alice.open();
   const dialog = alice.page.locator('dialog.about');
+  // The figures are folded away (details.usage-all); the fold stays as it was left between opens of the dialog.
+  const fold = dialog.locator('details.usage-all');
   const about = async () => {
     await openMenu(alice.page);
     await alice.page.getByRole('button', { name: 'About' }).click();
     await expect(dialog).toBeVisible();
+    await expect(fold).toBeVisible();
+    if (!(await fold.evaluate((d) => (d as HTMLDetailsElement).open))) await fold.locator('summary').click();
   };
   const close = () => dialog.getByRole('button', { name: 'Close' }).click();
   const meter = (id: string) => dialog.locator(`.meter[data-meter="${id}"]`);
+  await openMenu(alice.page);
+  await alice.page.getByRole('button', { name: 'About' }).click();
+  await expect(fold, 'folded at first').toBeVisible();
+  expect(await fold.evaluate((d) => (d as HTMLDetailsElement).open)).toBe(false);
+  await expect(fold.locator('summary'), 'no nearest named while a figure is not known').toHaveText('Usage and limits');
+  await dialog.getByRole('button', { name: 'Close' }).click();
   await about();
-  await expect(dialog.locator('.usage-unknown'), 'nothing known yet').toContainText('not known right now');
-  await expect(dialog.locator('.meter')).toHaveCount(0);
+  await expect(dialog.locator('.usage-unknown', { hasText: "Cloudflare's figures" }), 'nothing known yet').toContainText('not known right now');
+  // Cloudflare's figures only: the server's history has a section of its own (ADR 0009), with its own test.
+  const cloudflare = dialog.locator('.usage:not([aria-label="Kept on the server"]) .meter');
+  await expect(cloudflare).toHaveCount(0);
   await close();
 
   // The page's day, as the app reads it.
@@ -405,10 +419,20 @@ test('About shows the relay this month and the free plan today, the figure neare
   await expect(dialog.locator('.usage', { hasText: 'Free plan today' }).locator('.meter-name')).toHaveText(['Room requests', 'Rows written', 'Worker requests', 'Room time', 'Stored', 'Rows read']);
   await expect(meter('objectRequests')).toHaveAttribute('data-fill', 'warn');
   await expect(meter('objectRequests')).toContainText('⚠ 79%');
+  await expect(fold.locator('summary'), 'the nearest named on the fold').toHaveText('Usage and limits⚠ nearest: Room requests, 79%');
   await expect(meter('objectRequests')).toContainText('78,634 of 100,000');
   await expect(meter('stored')).toContainText('83 MB of 5 GB');
   await expect(meter('rowsRead')).toHaveAttribute('data-fill', 'ok');
   await expect(dialog.locator('.usage', { hasText: 'Free plan today' })).toContainText(/resets in \d+ (h|min)/);
+  // A line where an even pace would have each bar by now: the day's on the daily figures, the month's on the relay's,
+  // none on Stored, a total.
+  const paceAt = async (id: string) => parseFloat((await meter(id).locator('.meter-pace').getAttribute('style'))!.replace(/^.*left:\s*/, ''));
+  const elapsed = await alice.page.evaluate(() => { const n = new Date(); return { day: (n.getTime() - Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate())) / 864e5, month: (n.getTime() - Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), 1)) / (Date.UTC(n.getUTCFullYear(), n.getUTCMonth() + 1, 1) - Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), 1)) }; });
+  expect(Math.abs((await paceAt('objectRequests')) - elapsed.day * 100), 'the day so far').toBeLessThan(1);
+  expect(Math.abs((await paceAt('relay')) - elapsed.month * 100), 'the month so far').toBeLessThan(1);
+  await expect(meter('stored').locator('.meter-pace')).toHaveCount(0);
+  await expect(meter('stored')).not.toHaveAttribute('data-ahead');
+  await expect(dialog.locator('.usage-note')).toContainText('even pace');
   await close();
 
   // Yesterday's figures are not today's: the relay stays, the free plan's day goes.
@@ -430,7 +454,80 @@ test('About shows the relay this month and the free plan today, the figure neare
   answer = { status: 204 };
   await about();
   await expect(dialog.locator('dt', { hasText: 'Version' })).toBeVisible();
-  await expect(dialog.locator('.usage'), 'a Worker without the token: no figures at all').toHaveCount(0);
+  await expect(cloudflare, "a Worker without the token: none of Cloudflare's figures").toHaveCount(0);
+});
+
+test('ADR 0009: About shows how full the server\'s history is and how far back it reaches, and says so when that is not known', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { connect: false });
+  // The path reaches the Worker and its Store, which answer in JSON. Asked from the context's own request client.
+  const real = await alice.context.request.get('/history-usage');
+  expect(real.status()).toBe(200);
+  expect(real.headers()['content-type']).toBe('application/json');
+  expect(await real.json()).toMatchObject({ budget: 4_000_000_000 });
+  // Made up from here on, on the context as the relay's test does: the real window is the whole site's.
+  let answer: unknown = { error: 'unavailable' };
+  await alice.context.route('**/history-usage', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(answer) }));
+  await alice.open();
+  const dialog = alice.page.locator('dialog.about');
+  // The figures are folded away (details.usage-all); the fold stays as it was left between opens of the dialog.
+  const fold = dialog.locator('details.usage-all');
+  const about = async () => {
+    await openMenu(alice.page);
+    await alice.page.getByRole('button', { name: 'About' }).click();
+    await expect(dialog).toBeVisible();
+    await expect(fold).toBeVisible();
+    if (!(await fold.evaluate((d) => (d as HTMLDetailsElement).open))) await fold.locator('summary').click();
+  };
+  const close = () => dialog.getByRole('button', { name: 'Close' }).click();
+  await about();
+  const kept = dialog.locator('.usage', { hasText: 'Kept on the server' });
+  await expect(kept, 'nothing known yet').toContainText('Not known right now');
+  await expect(kept.locator('.meter')).toHaveCount(0);
+  await close();
+
+  answer = { bytes: 1_234_567, budget: 4e9, entries: 1100, oldest: Date.UTC(2026, 10, 4, 12), asOf: Date.now() };
+  await about();
+  await expect(kept.locator('.meter[data-meter="kept"]')).toContainText('1.2 MB of 4 GB');
+  await expect(kept.locator('.meter-pct')).toHaveText('<0.1%');
+  await expect(kept.locator('h4')).toContainText(/back to .*2026/);
+  await expect(kept.getByRole('meter')).toHaveAttribute('aria-valuenow', '1234567');
+  await close();
+
+  // Today's use of the history's own daily shares, the nearest first, each with its pace line; a share used up is
+  // ahead of any pace before midnight, one not touched behind it. Yesterday's are not shown.
+  const day = await alice.page.evaluate(() => new Date().toISOString().slice(0, 10));
+  const shares = { syncs: 40_000, written: 85_000, read: 4_000_000 };
+  answer = { bytes: 1_234_567, budget: 4e9, entries: 1100, oldest: Date.UTC(2026, 10, 4, 12), asOf: Date.now(), today: { day, syncs: 40_000, written: 1_700, read: 0 }, shares };
+  await about();
+  await expect(kept.locator('.meter-name')).toHaveText(['Texts and files', 'Syncs today', 'Rows written today', 'Rows read today']);
+  await expect(kept.locator('.meter[data-meter="kept"] .meter-pace'), 'the window is not a day\'s').toHaveCount(0);
+  const syncs = kept.locator('.meter[data-meter="kept-syncs"]');
+  await expect(syncs).toContainText('40,000 of 40,000');
+  await expect(fold.locator('summary')).toContainText('nearest: Syncs today, 100%');
+  await expect(syncs).toHaveAttribute('data-fill', 'bad');
+  await expect(syncs).toHaveAttribute('data-ahead', 'true');
+  await expect(syncs).toContainText('ahead of an even pace');
+  await expect(syncs.getByRole('meter')).toHaveAttribute('aria-valuetext', /ahead of an even pace/);
+  await expect(kept.locator('.meter[data-meter="kept-written"]')).toContainText('1,700 of 85,000');
+  await expect(kept.locator('.meter[data-meter="kept-read"]')).toHaveAttribute('data-ahead', 'false');
+  await expect(kept.locator('.meter[data-meter="kept-read"]')).not.toContainText('ahead');
+  await expect(kept.locator('.meter-pace')).toHaveCount(3);
+  await close();
+  answer = { bytes: 1_234_567, budget: 4e9, entries: 1100, oldest: Date.UTC(2026, 10, 4, 12), asOf: Date.now(), today: { day: '2020-01-01', syncs: 40_000, written: 1_700, read: 0 }, shares };
+  await about();
+  await expect(kept.locator('.meter')).toHaveCount(1);
+  await close();
+
+  // A failed ask keeps what was known.
+  answer = { error: 'unavailable' };
+  await about();
+  await expect(kept.locator('.meter')).toContainText('1.2 MB of 4 GB');
+  await close();
+
+  answer = { bytes: 0, budget: 4e9, entries: 0, oldest: null, asOf: Date.now() };
+  await about();
+  await expect(kept.locator('.meter')).toContainText('0 B of 4 GB');
+  await expect(kept.locator('h4')).toContainText('nothing yet');
 });
 
 test('phone width: one column, the composer pinned to the bottom of the screen and usable', async ({ crowd }) => {

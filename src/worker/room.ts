@@ -4,6 +4,9 @@ import { CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, PING_FRAME, PONG_FRAME, type Serve
 import { ICE_TTL_SECONDS } from '../core/mesh';
 import { mintIceServers, revokeIce } from './turn';
 import { logRejected } from './telemetry';
+import { STORE_NAME } from './store';
+import type { KeptEntry } from '../core/protocol';
+import { fromBase64Url, toBase64Url } from '../core/identity';
 
 /** A socket whose last sign of life is older than this is dropped by the sweep (spec §4). */
 export const SILENT_TIMEOUT_MS = 90_000;
@@ -21,6 +24,11 @@ const AUTH_KEY = 'authKey';
  * after ICE_TTL_SECONDS, and the sweep then forgets them.
  */
 const AWAY_PREFIX = 'away:';
+/**
+ * Storage key of the room id as the first socket's URL had it (`/ws/<room id>`), for the server's history (ADR 0009): in
+ * case the runtime does not give this object the name it was made from (`ctx.id.name`).
+ */
+const ROOM_ID = 'roomId';
 type Away = { users: string[]; since: number };
 /** An entry as stored, or null for one of a shape this build does not know (an earlier build's): no entry. */
 const awayOf = (v: unknown): Away | null => {
@@ -42,7 +50,8 @@ function logEnd(event: 'close' | 'error', code: number | null, state: SocketStat
 // One Room per room id (ADR 0004). Uses the WebSocket Hibernation API so the object can be
 // evicted while sockets stay attached. The per-socket state machine lives in
 // the attachment (16 KB cap); this class deliberately has no fields of its own,
-// so nothing is lost when the object is evicted and re-created.
+// so nothing is lost when the object is evicted and re-created. One exception, `keeping`: work under way, which keeps
+// the object awake until it is done.
 export class Room extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -57,6 +66,8 @@ export class Room extends DurableObject<Env> {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     this.ctx.acceptWebSocket(server);
+    const fromUrl = new URL(request.url).pathname.split('/').pop();
+    if (this.ctx.id.name === undefined && fromUrl && this.ctx.storage.kv.get(ROOM_ID) === undefined) this.ctx.storage.kv.put(ROOM_ID, fromUrl);
     const authKey = await this.ctx.storage.get<string>(AUTH_KEY);
     await this.apply(server, openSocket(Date.now(), authKey === undefined));
     await this.scheduleSweep(CHALLENGE_TIMEOUT_MS);
@@ -73,6 +84,31 @@ export class Room extends DurableObject<Env> {
       now: Date.now(),
       others: others.flatMap((s) => (s && s.stage === 'attached' ? [s.person] : [])),
       mintIce: (ttlSeconds) => mintIceServers(this.env, ttlSeconds),
+      history: async (since, max) => {
+        const room = this.roomId();
+        if (room === undefined) return null;
+        // After this room's own keeps under way: a text broadcast a moment ago is in the answer, or comes live.
+        await this.keeping;
+        try {
+          return await this.store().since(room, since, max);
+        } catch (e) {
+          console.log('history not served', JSON.stringify({ reason: String(e) }));
+          return null;
+        }
+      },
+      keepPiece: (writer, id, sealed, at) => this.keepPiece(writer, id, sealed, at),
+      forget: (writer, before) => this.forget(writer, before),
+      piece: async (id) => {
+        const room = this.roomId();
+        if (room === undefined) return null;
+        try {
+          const sealed = await this.store().piece(room, id);
+          return sealed ? toBase64Url(sealed) : null;
+        } catch (e) {
+          console.log('piece not served', JSON.stringify({ reason: String(e) }));
+          return null;
+        }
+      },
     });
     await this.apply(ws, outcome);
   }
@@ -156,6 +192,7 @@ export class Room extends DurableObject<Env> {
     for (const user of outcome.revokeTurn ?? []) this.ctx.waitUntil(revokeIce(this.env, user));
     if (outcome.close) ws.close(outcome.close.code, outcome.close.reason);
     if (outcome.rejected) logRejected(this.env, this.ctx, outcome.rejected);
+    if (outcome.keep) this.keep(outcome.keep);
     if (outcome.after) {
       // State is already stored; other messages may interleave with this I/O safely, a Leave or the close among them.
       const { replies, minted } = await outcome.after();
@@ -211,6 +248,82 @@ export class Room extends DurableObject<Env> {
     if (state?.stage !== 'attached' || !away) return;
     this.ctx.storage.kv.delete(key);
     ws.serializeAttachment({ ...state, turnUsers: [...away.users, ...(state.turnUsers ?? [])].slice(-MAX_TURN_USERS) });
+  }
+
+  /**
+   * Hands a text or file announcement just broadcast to the server's history (ADR 0009, worker/store.ts). The room is the
+   * name this object was made from, its room id. Should the Store not take it (the free plan's daily writes used up, say),
+   * the room goes on as before: friends online have it, and only those away miss it.
+   */
+  private keep(entry: KeptEntry): void {
+    const room = this.roomId();
+    if (room === undefined) { console.log('history not kept', JSON.stringify({ reason: 'no room id' })); return; }
+    const kept = this.keeping.then(() => this.store().keep(room, entry)).then(
+      (ok) => { if (!ok) console.log('history not kept', JSON.stringify({ reason: 'daily share used up' })); },
+      (e: unknown) => console.log('history not kept', JSON.stringify({ reason: String(e) })),
+    );
+    this.keeping = kept;
+    this.ctx.waitUntil(kept);
+  }
+
+  /**
+   * Hands a piece of a file to the server's history (ADR 0009), and says whether it is kept: beside the texts' keeps, not
+   * after them, so a file's pieces hold up no sync. 'failed' asks the sender's app to send it again; 'not today' not.
+   */
+  private keepPiece(writer: string, id: string, sealed: string, at: number): Promise<'kept' | 'not today' | 'failed'> {
+    const kept = this.keepPieceNow(writer, id, sealed, at);
+    this.pieceKeeps.add(kept);
+    void kept.finally(() => this.pieceKeeps.delete(kept));
+    return kept;
+  }
+  private async keepPieceNow(writer: string, id: string, sealed: string, at: number): Promise<'kept' | 'not today' | 'failed'> {
+    const room = this.roomId();
+    const bytes = fromBase64Url(sealed);
+    if (room === undefined || !bytes) return 'not today';
+    try {
+      if (await this.store().keepPiece(room, writer, id, bytes, at)) return 'kept';
+      console.log('piece not kept', JSON.stringify({ reason: 'daily share used up' }));
+      return 'not today';
+    } catch (e) {
+      console.log('piece not kept', JSON.stringify({ reason: String(e) }));
+      return 'failed';
+    }
+  }
+
+  /** Pieces on their way to the Store: a `forget` waits for them, so none sent before it is kept after it. */
+  private pieceKeeps = new Set<Promise<unknown>>();
+
+  /**
+   * Deletes what a friend wrote in this room from the server's history (ADR 0009): after this room's keeps and pieces
+   * under way, and before those that come after, so what was sent before the `forget` goes and what comes after stays.
+   * False when the Store's daily share of writes ran out first, or it failed: the friend's app asks again.
+   */
+  private forget(writer: string, before: number): Promise<boolean> {
+    const room = this.roomId();
+    if (room === undefined) return Promise.resolve(false);
+    const pieces = [...this.pieceKeeps];
+    const done = this.keeping.then(() => Promise.allSettled(pieces)).then(() => this.store().forget(room, writer, before)).catch((e: unknown) => {
+      console.log('history not forgotten', JSON.stringify({ reason: String(e) }));
+      return false;
+    });
+    this.keeping = done.then(() => {});
+    this.ctx.waitUntil(done);
+    return done;
+  }
+
+  /**
+   * This room's keeps, one after another, so they reach the Store in the order they were broadcast and a sync waits for
+   * them. A field, though this class keeps none (above): the object stays awake while one is under way, and once they are
+   * done there is nothing to wait for.
+   */
+  private keeping: Promise<void> = Promise.resolve();
+
+  private roomId(): string | undefined {
+    return this.ctx.id.name ?? this.ctx.storage.kv.get<string>(ROOM_ID);
+  }
+
+  private store() {
+    return this.env.STORE.get(this.env.STORE.idFromName(STORE_NAME));
   }
 
   /** The presence snapshot as computed right now from attachments alone. Public so tests can compare a fresh instance's view. */

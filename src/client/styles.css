@@ -605,6 +605,9 @@ dialog.report .ok { margin: 10px 0 0; font-size: 13px; color: var(--ok); }
 dialog.report .warn { margin: 10px 0 0; }
 dialog.report .row, dialog.about .row { display: flex; gap: 6px; margin-top: 12px; }
 dialog.report .row button:first-child { flex: 1; }
+dialog.clear p { margin: 0 0 10px; }
+dialog.clear .check { display: block; margin: 0; }
+dialog.clear .check input { margin: 0 6px 0 0; vertical-align: -1px; }
 
 /* Phone rules come last so they override every desktop placement above. */
 /* Phone width (spec §7.3): one column, presence never clips, shares stack above the chat. The composer is the last
@@ -684,9 +687,16 @@ dialog.about dd { margin: 0; }
 /*
  * What the free plan allows and what is used of it: one meter per figure (client/App.tsx, UsageMeter). The fill is the
  * theme's accent, its warning colour past half and its danger colour past 80 %, on a track of the same colour; the share
- * says so in words too. Figures in even-width digits, so they line up and do not jump as they change.
+ * says so in words too. Figures in even-width digits, so they line up and do not jump as they change. A limit that resets
+ * has a line where an even pace would have the bar by now (`.meter-pace`).
  */
 dialog.about { max-height: 90vh; overflow: auto; }
+/* All of them behind one fold; its summary names the figure nearest its limit, in its colour past half. */
+dialog.about .usage-all { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+dialog.about .usage-all > summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+dialog.about .usage-all > summary small { margin-left: 8px; font-weight: normal; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+dialog.about .usage-all > summary small[data-fill="warn"] span { color: var(--warn); }
+dialog.about .usage-all > summary small[data-fill="bad"] span { color: var(--bad); }
 dialog.about .usage { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 dialog.about .usage h4 { margin: 0 0 10px; font-size: 13px; font-weight: 600; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
 dialog.about .usage h4 small, dialog.about .usage-unknown { color: var(--dim); font-weight: normal; font-size: 12px; }
@@ -698,9 +708,13 @@ dialog.about .meter-name { font-size: 13px; }
 dialog.about .meter[data-fill="warn"] .meter-name, dialog.about .meter[data-fill="bad"] .meter-name { font-weight: 600; }
 dialog.about .meter-pct { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
 dialog.about .meter-pct span { color: var(--m); }
-dialog.about .meter-bar { grid-column: 1 / -1; height: 6px; border-radius: 3px; overflow: hidden; background: color-mix(in srgb, var(--m) 18%, transparent); }
+dialog.about .meter-bar { grid-column: 1 / -1; position: relative; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--m) 18%, transparent); }
 dialog.about .meter-bar > i { display: block; height: 100%; border-radius: 3px; background: var(--m); }
 dialog.about .meter-fig { grid-column: 1 / -1; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
 dialog.about .meter-note { grid-column: 1 / -1; font-size: 12px; color: var(--dim); }
+/* The pace line: a tick in the text colour standing out past the bar, ringed in the dialog's surface so it parts from the fill. */
+dialog.about .meter-pace { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--fg); box-shadow: 0 0 0 1px var(--panel); }
+dialog.about .meter-ahead { color: var(--fg); }
+dialog.about .usage-note { margin: 12px 0 0; font-size: 12px; color: var(--dim); }
 
 /* The design-trial picker (theme.ts): as quiet as the links around it. */

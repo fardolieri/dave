@@ -53,7 +53,7 @@ export class Wire {
    * A server side closed with 1006 on a socket that was let in is the network dropping it (seen against nightly and the
    * previews, ticket 51), not the Room, which closes with a code of its own.
    */
-  readonly closes: Array<{ side: 'page' | 'server'; code?: number; reason?: string; at: number; frames: number }> = [];
+  readonly closes: Array<{ side: 'page' | 'server'; code?: number; reason?: string; at: number; frames: number; url: string }> = [];
   /** Sockets open to the server right now. */
   get open(): number { return this.routes.size; }
   /** Whether the network dropped a socket (see `closes`) at or after this time (`Date.now()`). */
@@ -82,10 +82,11 @@ export class Wire {
       if (pair.severed) return;
       const out = this.down ? this.down(frame, (f) => { if (!pair.closing) route.send(f); }) : frame;
       if (out !== null) route.send(out);
+      else this.heldOn.set(frame, route.url());
     });
     const ended = (side: 'page' | 'server', code?: number, reason?: string) => {
       // Each end of a severed socket closes on its own, unheard by the other: both are recorded.
-      if (!pair.closing || pair.severed) this.closes.push({ side, code, reason, at: Date.now(), frames: this.log.length });
+      if (!pair.closing || pair.severed) this.closes.push({ side, code, reason, at: Date.now(), frames: this.log.length, url: route.url() });
     };
     // A severed socket's close reaches neither end either: each side finds out on its own.
     route.onClose((code, reason) => { ended('page', code, reason); pair.closing = true; this.routes.delete(pair); if (!pair.severed) void server.close({ code, reason }); });
@@ -128,8 +129,16 @@ export class Wire {
     for (let waited = 0; open.some((p) => this.routes.has(p)) && waited < 2_000; waited += 50) await new Promise((r) => setTimeout(r, 50));
   }
 
-  /** Sends a frame to the page as if the server had, e.g. one a `down` tamper held back earlier. */
-  deliver(frame: string): void { for (const { page } of this.routes) page.send(frame); }
+  /** The room each frame a `down` tamper held back came for, by its socket's URL: a browser has one per room and one per room of two (ADR 0011). */
+  private readonly heldOn = new Map<string, string>();
+  /**
+   * Sends a frame to the page as if the server had: one a `down` tamper held back earlier on the open sockets to the room
+   * it came for, the socket it came on or the one that replaced it; any other frame on every socket.
+   */
+  deliver(frame: string): void {
+    const url = this.heldOn.get(frame);
+    for (const { page } of this.routes) if (url === undefined || page.url() === url) page.send(frame);
+  }
 
   /** Parsed frames of one type in one direction, as seen by the proxy (before tampering). */
   frames<T = Record<string, unknown>>(dir: 'up' | 'down', t?: string): T[] {

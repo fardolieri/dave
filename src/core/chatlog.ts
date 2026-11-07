@@ -38,6 +38,30 @@ export function parsePrivateThreads(raw: unknown): PrivateThread[] {
   });
 }
 
+/**
+ * The list with `item` after every entry of the same time or earlier: texts the server's history brings (ADR 0009) are
+ * older than some already shown, and go where their time says. One newer than all, as a live text is, goes last.
+ */
+export function insertByAt<T extends { at: number }>(list: readonly T[], item: T): T[] {
+  let i = list.length;
+  while (i > 0 && list[i - 1]!.at > item.at) i--;
+  return [...list.slice(0, i), item, ...list.slice(i)];
+}
+
+/**
+ * The list with `items` put in one after another as `insertByAt` puts one, in one copy: a sync's batch (ADR 0009). The
+ * same places on a list out of order too (a system line has this browser's clock, a live text goes last).
+ */
+export function mergeByAt<T extends { at: number }>(list: readonly T[], items: readonly T[]): T[] {
+  const out = [...list];
+  for (const item of items) {
+    let i = out.length;
+    while (i > 0 && out[i - 1]!.at > item.at) i--;
+    out.splice(i, 0, item);
+  }
+  return out;
+}
+
 /** The history keeps the most recent texts only. */
 export const MAX_HISTORY = 500;
 

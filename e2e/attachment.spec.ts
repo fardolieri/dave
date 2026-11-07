@@ -5,6 +5,7 @@ import { crc32, deflateSync } from 'node:zlib';
 import type { Locator, Route } from '@playwright/test';
 import { expect, needHooks, test, type Friend, openMenu } from './fixtures';
 import { monthSoFar } from '../src/core/relayusage';
+import { KEPT_PIECE_BYTES } from '../src/core/kept';
 
 // Attachments (ADR 0006): the announcement goes sealed through the Room, the bytes from friend to friend over a file
 // link. Bob stays a visitor throughout: file links do not need the call.
@@ -80,6 +81,7 @@ test('past 80 % of the relay this month a file link offers no relay, and a pictu
     // Known before the file comes: About says so.
     await openMenu(f.page);
     await f.page.getByRole('button', { name: 'About' }).click();
+    await f.page.locator('dialog.about details.usage-all summary').click();
     await expect(f.page.locator('dialog.about .meter[data-meter="relay"]')).toContainText('This month is past 80%');
     await f.page.locator('dialog.about').getByRole('button', { name: 'Close' }).click();
     friends.push(f);
@@ -535,6 +537,8 @@ test('a picture that could not be pulled while its sender was frozen is pulled o
   const bob = await crowd.open('Bob');
   // Alice's tab is in the background: her socket is still there, but nothing she is sent is answered.
   alice.wire.down = (frame) => (frame.includes('"t":"link"') ? null : frame);
+  // From her alone: the server does not get to keep it (ADR 0009), else it would give it while she cannot be reached.
+  alice.wire.up = (frame) => (frame.startsWith('{"t":"piece"') ? null : frame);
   const picture = png(640, 480);
   await alice.attach({ name: 'stripes.png', mimeType: 'image/png', buffer: picture });
   await expect(bob.page.locator('.chat-log .att-media figcaption')).toContainText("Couldn't reach Alice", { timeout: 45_000 });
@@ -585,8 +589,9 @@ test('regression: a pull tried again after its friend could not be reached is an
   test.slow();
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
-  // Alice's answers never reach Bob: his pulls do not connect, and give up.
-  alice.wire.up = (frame) => (frame.startsWith('{"t":"link"') ? null : frame);
+  // Alice's answers never reach Bob: his pulls do not connect, and give up. Nor does the server get to keep the files
+  // (ADR 0009), else it would give them while she cannot be reached.
+  alice.wire.up = (frame) => (frame.startsWith('{"t":"link"') || frame.startsWith('{"t":"piece"') ? null : frame);
   for (const [i, name] of ['one.png', 'two.png'].entries()) {
     await alice.attach({ name, mimeType: 'image/png', buffer: png(64 + i, 48) });
   }
@@ -707,6 +712,8 @@ test('a picture that could not be pulled while its sender was briefly away comes
   const bob = await crowd.open('Bob');
   const held: string[] = [];
   alice.wire.down = (frame) => { if (!frame.includes('"t":"link"')) return frame; held.push(frame); return null; };
+  // From her alone: the server does not get to keep it (ADR 0009), else it would give it while she cannot be reached.
+  alice.wire.up = (frame) => (frame.startsWith('{"t":"piece"') ? null : frame);
   const picture = png(640, 480);
   await alice.attach({ name: 'stripes.png', mimeType: 'image/png', buffer: picture });
   await expect(bob.page.locator('.chat-log .att-media figcaption')).toContainText("Couldn't reach Alice. Trying again soon.", { timeout: 45_000 });
@@ -766,6 +773,8 @@ test('a file comes from a friend who pulled it once its sender is gone, past one
   const carol = await crowd.open('Carol');
   const dave = await crowd.open('Dave');
   const notes = randomBytes(40_000);
+  // Friend to friend only: the server does not get to keep it (ADR 0009), else it would give it once Alice is gone.
+  alice.wire.up = (frame) => (frame.startsWith('{"t":"piece"') ? null : frame);
   await alice.attach({ name: 'notes.zip', mimeType: 'application/zip', buffer: notes });
   const bobs = bob.page.locator('.chat-log .att-card');
   await bobs.getByRole('button', { name: /⬇/ }).click();
@@ -1020,4 +1029,44 @@ test('a browser out of room for a large file says so, and does not call it a dro
   await media.locator('button.att-get').click();
   await expect(media).toContainText("This browser can't keep files this large", { timeout: 60_000 });
   await expect(media).not.toContainText('Trying again soon');
+});
+
+test('ADR 0009: a picture sent while nobody else was there comes from the server, sealed, once its sender is gone', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const picture = heavy(png(640, 480), 2.5 * 1024 * 1024); // three pieces
+  await alice.attach({ name: 'stripes.png', mimeType: 'image/png', buffer: picture });
+  // All its pieces gone up to the server, sealed: nothing of the picture's bytes in the clear on the wire.
+  const pieces = Math.ceil(picture.length / KEPT_PIECE_BYTES);
+  expect(pieces).toBe(3);
+  await expect.poll(() => new Set(alice.wire.frames<{ n: number }>('up', 'piece').map((p) => p.n)).size).toBe(pieces);
+  // Under the file's tag, not its hash, by which whoever has the picture could tell it was sent.
+  const hash = createHash('sha256').update(picture).digest('base64url');
+  expect(alice.wire.log.filter((l) => l.frame.includes(hash))).toEqual([]);
+  // And kept: the server said so of each (on a preview the Store takes a moment; a friend who asks before waits for her).
+  await expect.poll(() => new Set(alice.wire.frames<{ n: number; ok: boolean }>('down', 'kept').filter((k) => k.ok).map((k) => k.n)).size).toBe(pieces);
+  const plain = picture.subarray(100, 132).toString('base64url');
+  expect(alice.wire.log.filter((l) => l.frame.includes(plain))).toEqual([]);
+  await alice.page.close();
+  // Bob was never there with Alice: nobody online has it, so the server gives it, and his app checks it.
+  const bob = await crowd.open('Bob');
+  const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
+  await expect(shown).toHaveCount(1, { timeout: 30_000 });
+  const url = (await shown.getAttribute('src'))!;
+  expect(await bob.page.evaluate(pageHash(url), url)).toBe(sha256(picture));
+  expect(bob.wire.frames('up', 'fetch').length).toBe(pieces);
+});
+
+test('ADR 0009: a picture whose sender is online but cannot be reached comes from the server', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  // Alice's tab answers no file link (a frozen phone, a network that lets nothing through): she is online all the same.
+  alice.wire.down = (frame) => (frame.includes('"t":"link"') ? null : frame);
+  const picture = heavy(png(640, 480), 300 * 1024); // two pieces
+  await alice.attach({ name: 'stripes.png', mimeType: 'image/png', buffer: picture });
+  const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
+  await expect(shown).toHaveCount(1, { timeout: 60_000 });
+  const url = (await shown.getAttribute('src'))!;
+  expect(await bob.page.evaluate(pageHash(url), url)).toBe(sha256(picture));
+  expect(await bob.online()).toContain('Alice');
+  expect(bob.wire.frames('up', 'fetch').length, 'from the server, after Alice could not be reached').toBeGreaterThan(0);
 });

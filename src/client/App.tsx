@@ -20,8 +20,9 @@ import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, identityOf, normaliseName, type Ident
 import { displayName, formatAgo, knownAgo } from '../core/names';
 import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatStream } from '../core/format';
-import { FREE_PLAN, RELAY_SAVE_FROM, fillOf, formatBytes, formatCount, formatPercent, monthSoFar, type FreePlanToday, type RelayUsage } from '../core/relayusage';
+import { FREE_PLAN, RELAY_SAVE_FROM, elapsedOf, fillOf, formatBytes, formatCount, formatPercent, monthSoFar, type FreePlanToday, type RelayUsage } from '../core/relayusage';
 import { refreshRelayUsage, relaySaving, relayUsage } from './relay';
+import { parseHistoryUsage, type HistoryToday, type HistoryUsage } from '../core/kept';
 import { Markdown, MarkdownMirror } from './Markdown';
 import { quotePrefix } from '../core/markdown';
 import { FOLD_OLDER_MS, olderCount } from '../core/chatlog';
@@ -265,8 +266,7 @@ function Workspace(props: WorkspaceProps) {
   const links = mapArray(() => props.rooms.map((r) => r.secret), (secret): Link => {
     let last = untrack(() => props.rooms.find((r) => r.secret === secret)!);
     // A deliberate one-time snapshot of name and picture: the socket is created once; changes go through `rename` and `setPicture`.
-    // Private files are served by their conversation's word: to the friend it is with alone (client/privates.ts).
-    const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, textKey: last.textKey, name: untrack(() => props.name), picture: getPicture(), hold: holding, servesPrivate: (hash, peer) => privates.serves(hash, peer) });
+    const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, textKey: last.textKey, pieceKey: last.pieceKey, name: untrack(() => props.name), picture: getPicture(), hold: holding });
     const call = createCall(room, identity, { mayRejoin: untrack(() => props.mayRejoin) });
     posthog.capture('room_entered');
     // The latest saved entry; the last one seen while the room is being forgotten and its link disposed.
@@ -303,7 +303,11 @@ function Workspace(props: WorkspaceProps) {
     return { shown, known, title, picture: now ? now.picture : id.picture };
   };
   /** My private conversations (ADR 0007), one per friend, whichever rooms we share. */
-  const privates = createPrivates({ identity, name: () => props.name, rooms: () => links().map((l) => ({ room: l.room, name: l.saved.name })), current: () => current()?.room ?? null });
+  // Each conversation its own room of two (ADR 0011): made as a room is, under my name and picture as they are then.
+  const privates = createPrivates({
+    identity, rooms: () => links().map((l) => ({ room: l.room, name: l.saved.name })),
+    makeRoom: (o) => createRoom({ ...o, name: untrack(() => props.name), picture: getPicture(), hold: holding, allNews: true }),
+  });
   createAttention(links, me, privates.onText);
   // The profile card, and the row or avatar it hangs from: mine, or a friend's, whose card has the way to our private
   // conversation. Opening a friend's acknowledges their key. The row it hangs from clicked again puts it away: light
@@ -444,7 +448,7 @@ function Workspace(props: WorkspaceProps) {
     const quiet = setTimeout(() => setFirstConnect(false), QUIET_CONNECT_MS);
     return () => clearTimeout(quiet);
   });
-  const bannerStatus = (l: Link): ServerStatus => (firstConnect() && l.room.status().kind === 'connecting' ? { kind: 'connected' } : l.room.status());
+  const bannerStatus = (room: Link['room']): ServerStatus => (firstConnect() && room.status().kind === 'connecting' ? { kind: 'connected' } : room.status());
   // Bumped when I send or switch rooms: the log jumps to the newest line (the composer and the log are separate grid items).
   const [jumpToken, setJumpToken] = createSignal(0);
   // The same for a private conversation: its own, so the room's log behind it keeps its place.
@@ -571,8 +575,8 @@ function Workspace(props: WorkspaceProps) {
     for (const o of untrack(links)) if (o !== l) o.call.leave();
     void l.call.join();
   };
-  const renameSelf = (n: string) => { for (const l of links()) l.room.rename(n); props.onRename(n); posthog.capture('name_changed'); };
-  const pictureSelf = (pic: string | null) => { for (const l of links()) l.room.setPicture(pic); setPicture(pic); posthog.capture('picture_changed', { cleared: pic === null }); };
+  const renameSelf = (n: string) => { for (const l of links()) l.room.rename(n); privates.rename(n); props.onRename(n); posthog.capture('name_changed'); };
+  const pictureSelf = (pic: string | null) => { for (const l of links()) l.room.setPicture(pic); privates.setPicture(pic); setPicture(pic); posthog.capture('picture_changed', { cleared: pic === null }); };
   // Sidebar footer forms: a new room, a room from a pasted link, and the invite link of the room on screen.
   const [creating, setCreating] = createSignal(false);
   const [joining, setJoining] = createSignal(false);
@@ -590,10 +594,11 @@ function Workspace(props: WorkspaceProps) {
       if (menuOpenings === opening) closeMenu(); // not a menu opened again since, for something else
     });
   };
+  /** The Clear dialog's question, while it is open (`ClearDialog`). */
+  const [clearAsk, setClearAsk] = createSignal<ClearAsk | null>(null);
   const leaveRoom = (l: Link) => {
     if (!confirm(`Leave ${l.saved.name}? This browser forgets the room and its chat history. The invite link gets you back in.`)) return;
     if (untrack(active) === l) l.call.leave(); // say goodbye while the socket is still open, so nobody waits out the grace period
-    privates.strand(l.room); // my private texts waiting in it: through another room, else not sent
     forgetRoomTheme(l.saved.id);
     l.room.forgetUnread();
     closeMenu();
@@ -742,7 +747,14 @@ function Workspace(props: WorkspaceProps) {
                             onClick={() => { roomMenu.close(); if (overlayRoom() === l.saved.id) closeOverlay(); else void openOverlay(l.saved.id, overlayModel, () => box ?? null); }}>{overlayRoom() === l.saved.id ? 'Close overlay' : 'Overlay'}</button>
                         </Show>
                         <Show when={THEMES.length > 0}><button class="link" title="This room's look, in this browser" onClick={(e) => { roomMenu.close(); openThemes(e.currentTarget.closest('section.room')?.querySelector<HTMLElement>('.room-more') ?? e.currentTarget, l.saved.id); }}>Themes</button></Show>
-                        <button class="link" title="Only this browser's copy; nothing is stored on the server" onClick={() => { roomMenu.close(); if (confirm(`Clear this browser's chat history of ${l.saved.name}? Nothing is stored on the server, so this cannot be undone.`)) void l.room.clearHistory(); }}>Clear chat history</button>
+                        <button class="link" title="This browser's copy, and if you like, what you wrote from the server" onClick={() => {
+                          roomMenu.close();
+                          setClearAsk({
+                            title: `Clear chat history of ${l.saved.name}?`, action: 'Clear',
+                            text: "This browser's copy goes, and the server does not bring it back here. Friends keep theirs.",
+                            onConfirm: (mine) => { if (mine) l.room.forgetMine(); void l.room.clearHistory(); posthog.capture('history_cleared', { mine }); },
+                          });
+                        }}>Clear chat history</button>
                         <button class="link danger" title="Forget this room in this browser" onClick={() => { roomMenu.close(); leaveRoom(l); }}>Leave {l.saved.name}</button>
                       </div>
                     </Show>
@@ -846,7 +858,7 @@ function Workspace(props: WorkspaceProps) {
           <div class="look" data-theme={lookOf(profile()?.roomId)} data-apart={lookOf(profile()?.roomId) ? '' : undefined}><ProfileCard open={profile()} people={withMe()} me={me} label={labelOf} onClose={() => setProfile(null)} onRenameSelf={renameSelf} onPictureSelf={pictureSelf} onMessage={(p) => { setProfile(null); openPrivate(p); }} /></div>
           {/* The state of the room on screen; with a private conversation on screen, of the room that carries it, as its
               composer goes by: a room down behind it is not the conversation's */}
-          <Banner status={bannerStatus((() => { const k = privates.openWith(); const via = k ? privates.via(k) : null; return (via && links().find((l) => l.room === via)) || cur(); })())} onTakeOver={() => { for (const l of links()) l.room.takeOver(); }} />
+          <Banner status={bannerStatus((() => { const k = privates.openWith(); return (k ? privates.via(k) : null) ?? cur().room; })())} onTakeOver={() => { for (const l of links()) l.room.takeOver(); privates.takeOver(); }} />
           <Show when={sharers().length > 0 && stage()}>{(s) => (
             <section class="shares" style={`grid-template-columns: repeat(${sharers().length}, 1fr)`}>
               <For each={sharerKeys()}>
@@ -880,7 +892,15 @@ function Workspace(props: WorkspaceProps) {
                      attachment={(hash) => privates.attachment(hash, pf().key)} onPull={(hash) => privates.pull(hash, pf().key)} onCancel={(hash) => privates.cancelPull(hash, pf().key)}
                      holder={(from) => (from.publicKey === me ? labelOf(pf().friend).shown : labelOf(from).shown)}
                      head={<PrivateHead friend={pf().friend} me={me} label={labelOf} where={privates.onlineIn(pf().key)} blocked={pf().blocked}
-                                        back={cur().saved.name} onBack={() => privates.close()} onForget={() => privates.forget(pf().key)} />} />
+                                        back={cur().saved.name} onBack={() => privates.close()}
+                                        onForget={() => {
+                                          const key = pf().key;
+                                          setClearAsk({
+                                            title: `Delete your conversation with ${labelOf(pf().friend).shown}?`, action: 'Delete',
+                                            text: "It goes from this browser, and the server does not bring it back here. They keep theirs.",
+                                            onConfirm: (mine) => privates.forget(key, mine),
+                                          });
+                                        }} />} />
           )}</Show>
         </div>
         {/* In a private conversation it goes by the room that would carry the text, not the one on screen */}
@@ -891,8 +911,38 @@ function Workspace(props: WorkspaceProps) {
           <Show when={consent() === null || askingConsent()}><TelemetryNotice onAnswer={(c) => { setConsent(c); setAskingConsent(false); }} /></Show>
         </Composer>
         <Show when={dragging()}><div class="drop-hint">Drop to send to {privateFriend() ? labelOf(privateFriend()!.friend).shown : cur().saved.name}</div></Show>
+        <Show when={clearAsk()}>{(ask) => <ClearDialog ask={ask()} onClose={() => setClearAsk(null)} />}</Show>
       </div>
     )}</Show>
+  );
+}
+
+/** What the Clear dialog asks about: a room's history, or a private conversation. */
+type ClearAsk = { title: string; text: string; action: string; onConfirm: (mine: boolean) => void };
+
+/**
+ * Clearing a room's history, or deleting a conversation (ADR 0009): this browser's copy, and, ticked, everything I wrote
+ * in it from the server's history too, so that nobody can fetch it from there any more. Friends' copies stay theirs.
+ */
+function ClearDialog(props: { ask: ClearAsk; onClose: () => void }) {
+  let dialog: HTMLDialogElement | undefined;
+  const [mine, setMine] = createSignal(false);
+  onSettled(() => dialog?.showModal());
+  return (
+    <dialog class="report clear" ref={dialog} onClose={props.onClose}>
+      <h3>{props.ask.title}</h3>
+      <p>{props.ask.text}</p>
+      <label class="check"><input type="checkbox" checked={mine()} onChange={(e) => setMine(e.currentTarget.checked)} /> Also delete my messages from the server</label>
+      <p class="hint">
+        {mine()
+          ? 'Everything you wrote here, files too, goes from the server: friends who were away, and new devices, can no longer get it. Friends who have it already keep it.'
+          : 'The server keeps what you wrote, sealed, for friends who were away, until it drops out of its window.'}
+      </p>
+      <div class="row">
+        <button class="on" onClick={() => { props.ask.onConfirm(mine()); dialog?.close(); }}>{props.ask.action}</button>
+        <button onClick={() => dialog?.close()}>Cancel</button>
+      </div>
+    </dialog>
   );
 }
 
@@ -1334,7 +1384,7 @@ function PrivateHead(props: { friend: Identity; me: string; label: (id: Identity
         <span class={['here', { on: props.where.length > 0 && !props.blocked }]}>
           {props.blocked ? `Can't write now: ${props.blocked}` : props.where.length ? `In ${props.where.join(', ')}` : 'Your rooms with them are reconnecting'}
         </span>
-        <button type="button" class="link" title="Only this browser's copy: nothing is stored on the server" onClick={() => { if (confirm(`Delete your private conversation with ${props.label(props.friend).shown} from this browser? Nothing is stored on the server, so this cannot be undone.`)) props.onForget(); }}>Delete conversation</button>
+        <button type="button" class="link" title="This browser's copy, and if you like, what you wrote from the server" onClick={() => props.onForget()}>Delete conversation</button>
       </p>
     </header>
   );
@@ -1936,23 +1986,33 @@ function untilReset(now: number): string {
  * One figure against its limit (stat tile and meter, as the dataviz rules have them): its name, its share, a thin bar
  * filled in the theme's accent, its warning colour past half and its danger colour past 80 %, on a track of the same
  * colour, and the figures under it. Past half the share also says so in words (⚠): never by colour alone.
+ *
+ * A limit that resets has a pace (core/relayusage.ts, elapsedOf): how far through its day or month it is. A line across
+ * the bar marks it, where the bar would stand had the limit been used at an even pace since the reset; a bar past it
+ * runs out before the reset if it goes on so, and says that in words too.
  */
-function UsageMeter(props: { id: string; name: string; title: string; value: number; limit: number; shown: string; children?: JSX.Element }) {
+function UsageMeter(props: { id: string; name: string; title: string; value: number; limit: number; shown: string; pace?: number; children?: JSX.Element }) {
   const fill = () => fillOf(props.value, props.limit);
   const pct = () => formatPercent(props.value, props.limit);
   const width = () => (props.value > 0 ? `max(3px, ${Math.min(100, (props.value / props.limit) * 100)}%)` : '0');
+  const ahead = () => props.pace !== undefined && props.value / props.limit > props.pace;
+  const paceText = () => (props.pace === undefined ? '' : ahead() ? ', ahead of an even pace' : ', within an even pace');
   return (
-    <li class="meter" data-meter={props.id} data-fill={fill()} title={props.title}>
+    <li class="meter" data-meter={props.id} data-fill={fill()} data-ahead={props.pace === undefined ? undefined : String(ahead())} title={props.title}>
       <span class="meter-name">{props.name}</span>
       <span class="meter-pct">{fill() !== 'ok' ? <span aria-hidden="true">⚠ </span> : null}{pct()}%</span>
-      <div class="meter-bar" role="meter" aria-label={props.name} aria-valuemin={0} aria-valuemax={props.limit} aria-valuenow={Math.round(props.value)} aria-valuetext={`${props.shown} (${pct()}%)`}>
+      <div class="meter-bar" role="meter" aria-label={props.name} aria-valuemin={0} aria-valuemax={props.limit} aria-valuenow={Math.round(props.value)} aria-valuetext={`${props.shown} (${pct()}%)${paceText()}`}>
         <i style={{ width: width() }} />
+        <Show when={props.pace !== undefined}><b class="meter-pace" style={{ left: `${(props.pace ?? 0) * 100}%` }} /></Show>
       </div>
-      <span class="meter-fig">{props.shown}</span>
+      <span class="meter-fig">{props.shown}<Show when={ahead()}> · <span class="meter-ahead">ahead of an even pace</span></Show></span>
       {props.children}
     </li>
   );
 }
+
+/** What the pace line means, once under the meters that have it. */
+const PACE_NOTE = 'The line on a bar is where an even pace would have it by now. Past it, the limit runs out before it resets, if use goes on like this.';
 
 /** The free plan's figures for today, the one nearest its limit first: what to keep an eye on. */
 function FreePlanToday(props: { today: FreePlanToday; now: number }) {
@@ -1961,10 +2021,30 @@ function FreePlanToday(props: { today: FreePlanToday; now: number }) {
     <section class="usage" aria-label="Cloudflare free plan today">
       <h4>Free plan today <small>resets in {untilReset(props.now)} (00:00 UTC)</small></h4>
       <ul>
-        <For each={rows()}>{(r) => <UsageMeter id={r.key} name={r.name} title={r.title} value={r.value} limit={r.limit} shown={`${r.shown(r.value)} of ${r.shown(r.limit)}`} />}</For>
+        {/* Stored is a total, not a day's: it has no pace. */}
+        <For each={rows()}>{(r) => <UsageMeter id={r.key} name={r.name} title={r.title} value={r.value} limit={r.limit} shown={`${r.shown(r.value)} of ${r.shown(r.limit)}`} pace={r.key === 'stored' ? undefined : elapsedOf('day', props.now)} />}</For>
       </ul>
     </section>
   );
+}
+
+/** The history's own daily shares (core/kept.ts), carved from the free plan's figures above so the rooms keep theirs. */
+const HISTORY_ROWS: Array<{ key: keyof Omit<HistoryToday, 'day'>; name: string; title: string }> = [
+  { key: 'syncs', name: 'Syncs today', title: "Times a browser asked the server's history for what it missed: one on every socket's welcome, a room's or a friend's. Past this share of the room requests, until midnight UTC, browsers get no history from the server; live texts still come." },
+  { key: 'written', name: 'Rows written today', title: "Rows the server's history wrote: kept texts and pieces of files, old ones dropped from the window, and its own counts. Past this share of the rows written, until midnight UTC, texts and files are sent but not kept." },
+  { key: 'read', name: 'Rows read today', title: "Rows the server's history read for syncs and for pieces of kept files. Past this share of the rows read, until midnight UTC, browsers get no history and no kept files from the server." },
+];
+
+const HISTORY_TITLE = "What the server keeps of every room's texts and files up to 16 MB, sealed so that only friends can read them, for friends who were away. Four weeks at most, in one window for every room of this site: past 4 GB the oldest go sooner, whichever room they are of. Counted with what their storage costs on top, so a little more than the texts themselves.";
+
+/** The server's history (ADR 0009) as the Worker last told it, 'unknown' when asking failed; null before the first answer. */
+async function askHistoryUsage(): Promise<HistoryUsage | 'unknown'> {
+  try {
+    const res = await fetch('/history-usage', { cache: 'no-store' });
+    return (res.ok && parseHistoryUsage(await res.json())) || 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }
 
 /** Which version of dave this is: the commit it was built from, its message, when it was deployed, and where the code lives. */
@@ -1980,6 +2060,36 @@ function VersionDialog() {
   let tick: ReturnType<typeof setInterval> | undefined;
   const stopTick = () => { clearInterval(tick); tick = undefined; };
   onCleanup(stopTick);
+  // How full the server's history is, asked on every open: the Worker keeps its answer a minute.
+  // Of several asks under way, the latest one's answer is taken; a failed one keeps what was known.
+  const [history, setHistory] = createSignal<HistoryUsage | 'unknown' | null>(null);
+  let historyAsks = 0;
+  // The figure nearest its limit of those shown below, for the fold's summary; none while a section is not known, which
+  // could hold a nearer one.
+  const nearest = () => {
+    const r = relay();
+    const h = history();
+    if (r === 'unknown' || h === 'unknown') return null;
+    const { to } = monthSoFar(now());
+    const shown: Array<{ name: string; value: number; limit: number }> = [];
+    if (typeof r === 'object' && r !== null) {
+      shown.push({ name: 'Relay', value: r.bytes, limit: r.limit });
+      if (r.today?.day === to) for (const row of FREE_PLAN_ROWS) shown.push({ name: row.name, value: r.today[row.key], limit: FREE_PLAN[row.key] });
+    }
+    if (typeof h === 'object' && h !== null) {
+      shown.push({ name: 'Kept on the server', value: h.bytes, limit: h.budget });
+      if (h.today?.day === to && h.shares) for (const row of HISTORY_ROWS) shown.push({ name: row.name, value: h.today[row.key], limit: h.shares[row.key] });
+    }
+    const top = shown.sort((a, b) => b.value / b.limit - a.value / a.limit)[0];
+    return top ? { name: top.name, pct: formatPercent(top.value, top.limit), fill: fillOf(top.value, top.limit) } : null;
+  };
+  // Whether any meter shown has a pace line, as the sections below decide: a figure of this day or month.
+  const paced = () => {
+    const r = relay();
+    const h = history();
+    const { from, to } = monthSoFar(now());
+    return (typeof r === 'object' && r !== null && (r.since === from || r.today?.day === to)) || (typeof h === 'object' && h !== null && h.today?.day === to && !!h.shares);
+  };
   const open = () => {
     setNow(Date.now());
     stopTick();
@@ -1991,6 +2101,8 @@ function VersionDialog() {
     }, 30_000);
     dialog?.showModal();
     void refreshRelayUsage();
+    const n = ++historyAsks;
+    void askHistoryUsage().then((u) => { if (n === historyAsks && (u !== 'unknown' || typeof untrack(history) !== 'object' || untrack(history) === null)) setHistory(u); });
   };
   return (
     <div class="about-link">
@@ -2018,6 +2130,10 @@ function VersionDialog() {
           <dt>Source</dt>
           <dd><a href={REPO_URL} target="_blank" rel="noopener">{REPO_URL.replace(/^https:\/\//, '')}</a></dd>
         </dl>
+        {/* The figures, folded away until asked for; the summary names the one nearest its limit, so a fold hides no warning. */}
+        <Show when={relay() !== null || history() !== null}>
+        <details class="usage-all">
+          <summary>Usage and limits<Show when={nearest()}>{(n) => <small data-fill={n().fill}>{n().fill !== 'ok' ? <span aria-hidden="true">⚠ </span> : null}nearest: {n().name}, {n().pct}%</small>}</Show></summary>
         {/* What the free plan allows and what is used of it, where the Worker can ask Cloudflare (a token: not local builds). */}
         <Show when={relay()}>{(r) => (
           <Show when={typeof r() === 'object' ? (r() as RelayUsage) : null} fallback={<p class="usage-unknown">Cloudflare's figures: not known right now.</p>}>{(u) => (
@@ -2026,7 +2142,7 @@ function VersionDialog() {
               <section class="usage" aria-label="Relay this month">
                 <h4>Relay this month <small>since {new Date(`${u().since}T00:00:00Z`).toLocaleDateString([], { day: 'numeric', month: 'short', timeZone: 'UTC' })}</small></h4>
                 <ul>
-                  <UsageMeter id="relay" name="Relay (TURN)" title={RELAY_TITLE} value={u().bytes} limit={u().limit} shown={`${formatBytes(u().bytes)} of ${formatBytes(u().limit)}`}>
+                  <UsageMeter id="relay" name="Relay (TURN)" title={RELAY_TITLE} value={u().bytes} limit={u().limit} shown={`${formatBytes(u().bytes)} of ${formatBytes(u().limit)}`} pace={u().since === monthSoFar(now()).from ? elapsedOf('month', now()) : undefined}>
                     <small class="meter-note">Calls and files between friends who cannot reach each other directly go through Cloudflare's relay, free up to 1 TB a month.
                       {relaySaving() ? ` This month is past ${RELAY_SAVE_FROM * 100}%: screen shares and files keep off it until the 1st, voice still goes through.` : ` Past ${RELAY_SAVE_FROM * 100}%, screen shares and files keep off it for the rest of the month.`}</small>
                   </UsageMeter>
@@ -2035,6 +2151,29 @@ function VersionDialog() {
             </>
           )}</Show>
         )}</Show>
+        <Show when={history()}>{(h) => (
+          <section class="usage" aria-label="Kept on the server">
+            <Show when={typeof h() === 'object' ? (h() as HistoryUsage) : null} fallback={<><h4>Kept on the server</h4><p class="usage-unknown">Not known right now.</p></>}>{(u) => (
+              <>
+                <h4>Kept on the server <small>{u().oldest === null ? 'nothing yet' : `back to ${new Date(u().oldest!).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}`}</small></h4>
+                <ul>
+                  <UsageMeter id="kept" name="Texts and files" title={HISTORY_TITLE} value={u().bytes} limit={u().budget} shown={`${formatBytes(u().bytes)} of ${formatBytes(u().budget)}`}>
+                    <small class="meter-note">Texts, and files up to 16 MB, are kept on the server, sealed so only friends can read them, so a friend who was away gets them later. They go after four weeks, here and in every browser, or sooner once all rooms' 4 GB are full: the oldest first.</small>
+                  </UsageMeter>
+                  {/* Its daily shares, today's only: the nearest its share first, as the free plan's. */}
+                  <Show when={u().today?.day === monthSoFar(now()).to && u().shares ? { today: u().today!, shares: u().shares! } : null}>{(d) => (
+                    <For each={HISTORY_ROWS.map((r) => ({ ...r, value: d().today[r.key], limit: d().shares[r.key] })).sort((a, b) => b.value / b.limit - a.value / a.limit)}>{(r) => (
+                      <UsageMeter id={`kept-${r.key}`} name={r.name} title={r.title} value={r.value} limit={r.limit} shown={`${formatCount(r.value)} of ${formatCount(r.limit)}`} pace={elapsedOf('day', now())} />
+                    )}</For>
+                  )}</Show>
+                </ul>
+              </>
+            )}</Show>
+          </section>
+        )}</Show>
+        <Show when={paced()}><p class="usage-note">{PACE_NOTE}</p></Show>
+        </details>
+        </Show>
         <div class="row"><button onClick={() => dialog?.close()}>Close</button></div>
       </dialog>
     </div>

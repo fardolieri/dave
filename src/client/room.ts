@@ -1,26 +1,30 @@
 import { createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 import posthog, { onConsentChange, telemetryOn } from './posthog';
-import { buildAuthMessage, randomHex } from '../core/identity';
-import { openFile, openPrivate, openPrivateFile, openProfile, openText, sealFile, sealProfile, type Profile, sealPrivate, sealPrivateFile, sealText, sharedPrivateTextKey, verifyPrivateTextKey } from '../core/sealed';
+import { buildAuthMessage, fromBase64Url, randomHex, toBase64Url } from '../core/identity';
+import { openFile, openPiece, openProfile, openText, sealFile, sealPiece, sealProfile, sealText, type Profile } from '../core/sealed';
 import { MAX_FILE_BYTES, MAX_FILE_NAME, PIECED_FROM, PIECE_BYTES, PULLS_AT_ONCE, formatSize, inlineKind, pullsByItself, type FileMeta } from '../core/attachment';
 import { createLinks, PullFailed, type PullError } from './links';
 import { createFileWatchdog } from './invariants';
 import { exposeHooks } from './hooks';
-import { big, hashOf, holdSent, holdSentList, keepFile, keptFile, makePreview, noRoom, piecesOf } from './files';
+import { big, hashOf, holdSent, holdSentList, keepFile, keptFile, makePreview, noRoom, piecesOf, sweepFiles } from './files';
 import {
   CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, MAX_TEXT_LENGTH, PING_FRAME, PING_INTERVAL_MS,
-  identityOf, sameIdentity, type ClientMessage, type Identity, type Person, type PrivateTextKey, type RequestId, type ServerMessage, type TextId, type WireIdentity, type WirePerson,
+  identityOf, sameIdentity, type ClientMessage, type Identity, type KeptEntry, type Person, type PrivateTextKey, type RequestId, type ServerMessage, type TextId, type WireIdentity, type WirePerson,
 } from '../core/protocol';
 import {
   afterJoin, afterWelcome, carried, declare, declared, forgetEnded, forgetWatch, inCallOnly, joinDeclares, leaveCall,
   type Carried, type Declaration,
 } from '../core/declarations';
 import { beat, heard, heartbeat } from '../core/heartbeat';
-import { tooOld, type UnsentPrivate } from '../core/unsent';
+import { tooOld } from '../core/unsent';
 import type { LocalIdentity } from './identity';
 import { keepUnread, keptUnread } from './unread';
 import { contactOf } from './contacts';
-import { appendHistory, clearHistory, keepUnsent, keepUnsentPrivate, loadHistory, loadUnsent, loadUnsentPrivate, textKey, type StoredText } from './history';
+import { mergeByAt } from '../core/chatlog';
+import { pieceTagOf } from '../core/rooms';
+import { FROM_JOIN, KEPT_PIECE_BYTES, SYNC_COOLDOWN_MS, keptKind, keptPiecesOf, pieceId, syncSince } from '../core/kept';
+import { PIECE_RATE_PER_SECOND } from '../core/room';
+import { appendHistory, clearHistory, doneForgetting, FORGET_NOW, forgettingOf, historyFromAt, keepForgetting, historySyncedTo, keepHistoryFrom, keepHistorySynced, keepUnsent, loadHistory, loadUnsent, textKey, type StoredText } from './history';
 
 export type ServerStatus =
   | { kind: 'connecting' }
@@ -43,27 +47,6 @@ export type ChatLine =
 /** A friend's text as opened: the Room relayed it sealed (ADR 0005). An attachment's `text` is its name. */
 export type Text = { from: Identity; text: string; at: number; id: TextId };
 
-/**
- * What a room has to say about private texts (ADR 0007), which are not its own: they belong to the private conversation
- * with the friend (client/privates.ts), whichever room carried them. A text, mine back from the Room or one to me; or a
- * notice about mine, that it was not sent.
- */
-export type PrivateEvent =
-  /** `file`: a file's announcement (ADR 0006), whose bytes this room pulls from the friend, or serves to them. */
-  | { kind: 'text'; friend: Identity; text: Text; file?: FileMeta }
-  | { kind: 'notice'; friend: Identity; text: string; at: number }
-  /** A file of mine said "Maybe not sent": the friend may have its announcement, so its bytes are still theirs to pull. */
-  | { kind: 'mayHave'; friend: Identity; file: FileMeta }
-  /**
-   * Mine, waiting for a friend this room no longer lists, never out: another room we share may carry them. `waited`: they
-   * waited here for the friend already, and go on only to a room that lists them.
-   */
-  | { kind: 'stranded'; friend: Identity; texts: WaitingPrivate[]; why: string; waited?: true };
-/**
- * A private text of mine waiting to go, as its conversation shows it. `out`: it went out unanswered, so may have arrived.
- * `file`: a file's announcement instead; its `text` is the file's name.
- */
-export type WaitingPrivate = { id: TextId; to: Identity; text: string; at: number; out?: true; file?: FileMeta };
 
 /**
  * Where an attachment's bytes are, in this browser. `idle`: not pulled, waits for a click. `waiting`: whoever has it is
@@ -110,67 +93,29 @@ const sockets = new Set<WebSocket>();
 /** One socket's life, for `server_socket_closed`: when the Room let it in, when its last frame came. */
 type Life = { welcomedAt: number | null; frameAt: number | null };
 
-/** A private text as kept over a reload, waiting again: `out` says it went out before, and may have reached the friend. */
-const fromKept = ({ out, ...u }: UnsentPrivate) => ({ ...u, ...(out ? { outBefore: true as const } : {}) });
-
-/** How the chat names private texts and files of mine it speaks of: "a text", "a file", "3 texts", "2 files", "3 texts and files". */
-export const privateWhat = (items: ReadonlyArray<{ file?: unknown }>): string => {
-  const files = items.filter((t) => t.file).length;
-  if (items.length === 1) return files ? 'a file' : 'a text';
-  return !files ? `${items.length} texts` : files === items.length ? `${files} files` : `${items.length} texts and files`;
-};
-
-/**
- * Private texts waiting to go at most (ADR 0007): few, since a reconnect sends them again next to up to UNSENT_MAX texts,
- * and the Room takes a burst of 40 frames. One it refuses as rate limited goes again after RATE_RETRY_MS.
- */
-const PRIVATE_WAITING_MAX = 8;
-/**
- * Private files waiting to go at most, apart from the texts: as many as a drop of pictures, say. A reconnect sends them
- * again with the texts, past the Room's burst: those refused as rate limited go again shortly.
- */
-const PRIVATE_FILES_WAITING_MAX = 30;
 const RATE_RETRY_MS = 2_000;
+/** Between two pieces of a file going up to the server: under the Room's rate for them (core/room.ts). */
+const PIECE_GAP_MS = Math.ceil(1250 / PIECE_RATE_PER_SECOND);
+/**
+ * A delete from the server (`forgetMine`) asks up to the Room's clock once the socket has sent what it held, waiting this
+ * long at most, plus this margin: the time a frame takes to arrive, and how far the clock as the last welcome told it may
+ * be behind the Room's.
+ */
+const FORGET_DRAIN_MS = 30_000;
+const FORGET_MARGIN_MS = 3000;
+/** How long a piece asked of the server may take to come. */
+const FETCH_TIMEOUT_MS = 20_000;
+/** How long the server has to say it keeps the pieces sent up, before what it did not say so of goes again. */
+const ACK_WAIT_MS = 15_000;
+/** How often a file's pieces go up in one page at most, the first time included. */
+const KEEP_TRIES = 4;
+/** The server among the friends a file is asked of (`candidates`): no friend's key looks like it. */
+const SERVER = 'server';
 /**
  * What a Room says to an auth it cannot read: one from before ADR 0010, after a rollback, says it to this app's. Tried
  * again, not taken for a wrong invite link.
  */
 const AUTH_NOT_READ = 'unrecognised message';
-/** How long a waiting private text waits for a friend the Room does not list, once it lists anyone: a reconnect's race, not more. */
-const ABSENT_WAIT_MS = 60_000;
-const ABSENT_GRACE_MS = 10_000;
-
-/**
- * The keys I share with friends for private texts, by my identity, theirs and their private text key: each derived once,
- * for every room we share, once a signature over it checked out. A signature that fails is remembered as such, by itself
- * (`null`): a friend signs anew on every load, and a forged one must not spoil the key it is next to.
- */
-const privateKeys = new Map<string, Promise<CryptoKey | null>>();
-/**
- * The key I share with a friend, or null when the key they published fails its signature. Throws when WebCrypto does:
- * that is not the key's fault, so it is tried again next time, and the caller says the text failed, not the key.
- */
-function privateKeyWith(me: LocalIdentity, friend: string, published: PrivateTextKey): Promise<CryptoKey | null> {
-  const good = `${me.publicKey}:${friend}:${published.key}`;
-  const signed = `${good}:${published.sig}`;
-  const known = privateKeys.get(good) ?? privateKeys.get(signed);
-  if (known) return known;
-  // A key checked under this signature, until it checks out: then under the key alone, for any signature.
-  // A server that cycles forged signatures, say: the oldest checks that are not a friend's key go first.
-  if (privateKeys.size >= PRIVATE_KEYS_MAX) for (const k of [...privateKeys.keys()].filter((k) => k.split(':').length > 3).slice(0, PRIVATE_KEYS_MAX / 2)) privateKeys.delete(k);
-  const key = verifyPrivateTextKey({ identity: friend, ...published }).then((ok) => {
-    if (ok) return sharedPrivateTextKey({ mine: me.privateTexts!.keys.privateKey, theirs: published.key, me: me.publicKey, them: friend });
-    // Only a server that slips in a key of its own, or a client that cheats, publishes one: urgent, like a text rejected.
-    console.warn('private text key rejected: bad signature');
-    posthog.capture('private_text_key_rejected');
-    return null;
-  });
-  privateKeys.set(signed, key);
-  key.then((k) => { if (k) { privateKeys.set(good, key); privateKeys.delete(signed); } }, () => { privateKeys.delete(signed); });
-  return key;
-}
-/** Entries in `privateKeys` at most: one per friend and key, and the signatures that failed. */
-const PRIVATE_KEYS_MAX = 256;
 
 
 /** A file made ready to send (`prepareFile`): its announcement but for the sealing, and what this browser keeps of it. */
@@ -195,10 +140,10 @@ export async function prepareFile(picked: File): Promise<PreparedFile> {
  * ephemeral text. The call (WebRTC) is layered on top by createCall.
  */
 /**
- * `servesPrivate`: whether a private file (ADR 0007) is one this browser has in its conversation with `peer`, the friend
- * asking for it (client/privates.ts). Only they may pull it, through any room we share, after a reload too.
+ * `allNews`: everything the server's history brings counts as missed (unread), even into a browser that held nothing of
+ * the room: a room of two (ADR 0011) is new to this browser only once, when its first texts are news indeed.
  */
-export function createRoom(opts: { identity: LocalIdentity; roomId: string; authKey: string; textKey: CryptoKey; name: string; picture: string | null; hold?: () => boolean; servesPrivate?: (hash: string, peer: string) => Promise<boolean> }) {
+export function createRoom(opts: { identity: LocalIdentity; roomId: string; authKey: string; textKey: CryptoKey; pieceKey: CryptoKey; name: string; picture: string | null; hold?: () => boolean; allNews?: boolean }) {
   /**
    * The latest of everything this friend declares (core/declarations.ts): the auth of every socket carries her name,
    * picture and opt-in, the welcome is followed by what changed meanwhile, her join by what she declared in the call.
@@ -219,7 +164,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const [profilesOpened, setProfilesOpened] = createSignal(0);
   /**
    * The last profile of each friend that presence listed and that opened: what they show as while a new one opens, or one
-   * does not open. Not from a text's tag, which may be older.
+   * does not open. Not from a text's tag, which may be older: a live one by moments, one the server's history brought
+   * (ADR 0009) by weeks.
    */
   const lastProfile = new Map<string, Profile>();
   const profileKey = (w: WireIdentity): string => `${w.publicKey} ${w.profile}`;
@@ -327,137 +273,10 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
    * like texts. Not kept over a reload.
    */
   const [pendingFiles, setPendingFiles] = createSignal<Array<{ id: string; file: FileMeta; at: number; sealed?: string }>>([]);
-  /**
-   * My private texts not back from the Room yet (ADR 0007), with their sealed form once sealed: sent again on the next
-   * socket, like texts.
-   * `sealed.for`: the friend's private text key it was sealed for. `outOn`: the socket (by `welcomes`) it is out on,
-   * waiting for the Room's answer, and the presence (by `presences`) the Room had sent by then. `outBefore`: it went out
-   * on an earlier socket, which may have brought it to the friend before it dropped, its answer lost with it. `absent`:
-   * since when the Room has not listed the friend, across sockets. `held`: the Room said the friend is not here, so it
-   * waits for a newer presence rather than going again to the same answer. `sealing`: queued to be sealed. Kept over a
-   * reload as written (client/history.ts), and sealed again after it, once the Room lists the friend.
-   */
-  const waitingPrivate: Array<{ id: string; to: Identity; text: string; at: number; sealed?: { sealed: string; for: string }; outOn?: { socket: number; presence: number }; outBefore?: true; absent?: number; held?: true; sealing?: true; file?: FileMeta }> =
-    loadUnsentPrivate(opts.roomId).map(fromKept);
-  /** Whether a waiting private text is out on this socket, its answer still to come. */
-  const outNow = (x: (typeof waitingPrivate)[number]): boolean => x.outOn?.socket === welcomes;
-  /** Presences this room got, so a refusal can tell whether one came since the text went out. */
-  let presences = 0;
-  /** `waitingPrivate` as shown; read and changed through the array, whose changes show at once (signal writes are batched). */
-  const [pendingPrivate, setPendingPrivate] = createSignal<typeof waitingPrivate>([...waitingPrivate]);
-  /** Whether a waiting private text went out unanswered, so may have reached the friend. */
-  const mayHaveGone = (x: (typeof waitingPrivate)[number]): boolean => !!x.outBefore || x.outOn !== undefined;
-  const toKept = (x: (typeof waitingPrivate)[number]): UnsentPrivate => ({ id: x.id, to: x.to, text: x.text, at: x.at, ...(mayHaveGone(x) ? { out: true as const } : {}) });
-  /** `waitingPrivate` changed: it shows, and is kept for a reload (client/history.ts), like `unconfirmed`. */
-  const privateChanged = (keep = true) => {
-    setPendingPrivate([...waitingPrivate]);
-    // A room left is forgotten with its storage (forgetHistory): a seal that ends after must not write it back.
-    // A file is not: like a room's (`pendingFiles`), a reload forgets it, its bytes may be held in this page only.
-    if (keep && !disposed) keepUnsentPrivate(opts.roomId, waitingPrivate.filter((x) => !x.file).map(toKept));
-  };
-  /** Takes private texts out of the waiting ones; returns those taken. */
-  const takePrivate = (which: (x: (typeof waitingPrivate)[number]) => boolean): typeof waitingPrivate => {
-    const taken = waitingPrivate.filter(which);
-    if (!taken.length) return taken;
-    waitingPrivate.splice(0, waitingPrivate.length, ...waitingPrivate.filter((x) => !taken.includes(x)));
-    privateChanged();
-    return taken;
-  };
-  /**
-   * Says in the chat that these private texts are gone without the Room's word that they went out: "Not sent", or "Maybe
-   * not sent" for those that went out without an answer, which may have reached the friend all the same.
-   */
-  const notSentPrivate = (gone: typeof waitingPrivate, why: string): void => {
-    for (const x of gone) if (x.file && mayHaveGone(x)) for (const l of privateListeners) l({ kind: 'mayHave', friend: x.to, file: x.file });
-    for (const friend of new Set(gone.map((x) => x.to.publicKey))) {
-      const theirs = gone.filter((x) => x.to.publicKey === friend);
-      for (const [maybe, which] of [[false, theirs.filter((x) => !mayHaveGone(x))], [true, theirs.filter(mayHaveGone)]] as const) {
-        if (!which.length) continue;
-        privateNotice(which[0]!.to, `${maybe ? 'Maybe not' : 'Not'} sent: ${privateWhat(which)} ${why}${maybe ? ', and the connection dropped before the Room said it went out' : ''}.`);
-      }
-    }
-  };
-  /**
-   * Texts this room can no longer carry (the friend is gone from it, or the room refuses me): those never out go back to
-   * their conversation, which may send them through another room we share; the rest may have arrived, and are only said.
-   */
-  const strandPrivate = (gone: typeof waitingPrivate, why: string, waited = false): void => {
-    notSentPrivate(gone.filter(mayHaveGone), why);
-    for (const friend of new Set(gone.filter((x) => !mayHaveGone(x)).map((x) => x.to.publicKey))) {
-      const texts = gone.filter((x) => !mayHaveGone(x) && x.to.publicKey === friend);
-      // A file too: only its announcement moves, its bytes are served through any room (`servesPrivate`).
-      for (const l of privateListeners) l({ kind: 'stranded', friend: texts[0]!.to, texts: texts.map((x) => ({ ...toKept(x), ...(x.file ? { file: x.file } : {}) })), why, ...(waited ? { waited: true as const } : {}) });
-    }
-  };
-  const privateListeners = new Set<(e: PrivateEvent) => void>();
-  const privateNotice = (friend: Identity, text: string): void => { for (const l of privateListeners) l({ kind: 'notice', friend, text, at: Date.now() }); };
-  /** The Room's latest presence, read at once (signal writes are batched): who `flushPrivate` may send to. None while no socket is let in. */
-  let listed: WirePerson[] = [];
-  /** When this socket's first presence came. */
-  let listedAt = 0;
-  /**
-   * Sends the private texts sealed and not sent on this socket yet, to friends the Room lists: one to a friend not listed
-   * waits for them, since after a reconnect of everyone's (a deploy) the writer is often let in before the friend. One
-   * that waited a day is dropped instead, like a text: it would come out of the blue. One out on this socket waits for
-   * the Room's answer, however old.
-   */
-  const flushPrivate = (): void => {
-    if (disposed) return;
-    const now = Date.now();
-    notSentPrivate(takePrivate((x) => tooOld(x, now) && !outNow(x)), 'written more than a day ago');
-    for (const x of waitingPrivate) {
-      const friend = listed.find((p) => p.publicKey === x.to.publicKey);
-      if (outNow(x) || x.held || !friend) continue;
-      // The friend's app published another key since (another tab of theirs took the room): sealed again for that one.
-      // So is one kept over a reload, sealed for nobody yet.
-      if (x.sealed && friend.privateTexts?.key !== x.sealed.for) x.sealed = undefined;
-      if (!x.sealed) {
-        if (!x.sealing) { x.sealing = true; sealing = sealing.then(() => sealWaiting(x, friend)).catch((e: unknown) => console.error('sealing a private text failed', e)); }
-        continue;
-      }
-      if (!send({ t: 'private', to: x.to.publicKey, sealed: x.sealed.sealed, id: x.id, ...(x.file ? { file: true as const } : {}) })) continue;
-      if (x.outOn) x.outBefore = true; // out on an earlier socket, never answered
-      const first = !x.outOn && !x.outBefore;
-      x.outOn = { socket: welcomes, presence: presences };
-      if (first) privateChanged(); // kept as gone out, should a reload come before the answer
-    }
-    // One whose friend the Room does not list waits a minute for them, then goes: it holds up the rest (PRIVATE_WAITING_MAX).
-    // Counted per text from the first presence that left the friend out, across sockets, and never before this socket's
-    // presence has had ABSENT_GRACE_MS to list them: after a reconnect of everyone's, the friend comes back a moment later.
-    clearTimeout(absentTimer);
-    if (!listed.length) return;
-    for (const x of waitingPrivate) {
-      if (listed.some((p) => p.publicKey === x.to.publicKey)) x.absent = undefined;
-      else x.absent ??= now;
-    }
-    const due = (x: (typeof waitingPrivate)[number]) => Math.max(x.absent! + ABSENT_WAIT_MS, listedAt + ABSENT_GRACE_MS);
-    // Never out, they are handed back to their conversation, which may send them through another room we share.
-    strandPrivate(takePrivate((x) => x.absent !== undefined && now >= due(x) && !outNow(x)), 'to a friend no longer here', true);
-    // Only those the drop could take: one out on this socket waits for the Room's answer, however long.
-    const next = Math.min(...waitingPrivate.flatMap((x) => (x.absent !== undefined && !outNow(x) ? [due(x)] : [])));
-    if (Number.isFinite(next)) absentTimer = setTimeout(() => { if (!stopped) flushPrivate(); }, Math.max(0, next - now));
-  };
-  let absentTimer: ReturnType<typeof setTimeout> | undefined;
-  onCleanup(() => clearTimeout(absentTimer));
   const [attachments, setAttachments] = createSignal<Record<string, Attachment>>({});
   /** The same, read at once: a signal's write shows to readers only after the batch (client/contacts.ts). */
   const attachmentNow = new Map<string, Attachment>();
   const setAttachment = (hash: string, a: Attachment) => { attachmentNow.set(hash, a); setAttachments((all) => ({ ...all, [hash]: a })); };
-  /**
-   * Private files (ADR 0007), by hash: asked of their holders alone, never of everyone in the room. The holders are its
-   * sender and the friend of its conversation, who has it once pulled (a file I sent and no longer keep, after a reload).
-   */
-  const privateFiles = new Set<string>();
-  const privateStatuses = createMemo(() => {
-    const all = attachments();
-    return Object.fromEntries([...privateFiles].map((h) => [h, all[h]?.status]));
-  }, { equals: (a: Record<string, string | undefined>, b: Record<string, string | undefined>) => JSON.stringify(a) === JSON.stringify(b) });
-  /** A private file, live or from its conversation's history: shown from the store, pulled from its friend, or waiting. */
-  const knowPrivateFile = (file: FileMeta, from: string, friend: string, byItself: boolean | 'asked' = true): void => {
-    privateFiles.add(file.hash);
-    if (friend !== from) hold(file, friend);
-    void arrived(file, from, byItself, true);
-  };
   /** Files announced in this room, by hash: the only ones a friend may pull from me here. */
   const announced = new Set<string>();
   /** Blob URLs handed out, revoked when the room goes. */
@@ -549,47 +368,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const sendText = (u: { id: string; text: string }): void => {
     sealing = sealing.then(async () => {
       const sealed = await sealText({ key: opts.textKey, privateKey: opts.identity.keys.privateKey, roomId: opts.roomId, id: u.id, from: opts.identity.publicKey, text: u.text });
+      if (!unconfirmed.some((x) => x.id === u.id)) return; // dropped while it was sealed (`dropUnsent`)
       send({ t: 'sealed', sealed, id: u.id });
     }).catch((e: unknown) => console.error('sealing a text failed', e));
   };
-  /**
-   * A private text to one friend here (ADR 0007), sealed with the key the two of us share: in the order written, with the
-   * texts, while the socket stays and the Room takes them as they come; sent again after a reconnect, it goes after the
-   * room's texts, and one the Room refused as rate limited goes after those it took meanwhile. One the friend's key cannot
-   * be had for (an app from before, a key whose signature fails) is not sent.
-   */
-  const sendPrivate = (to: Person, text: string): void => {
-    const waiting: (typeof waitingPrivate)[number] = { id: randomHex(12), to: identityOf(to), text, at: Date.now(), sealing: true };
-    waitingPrivate.push(waiting);
-    privateChanged();
-    sealing = sealing.then(() => sealWaiting(waiting, to)).catch((e: unknown) => console.error('sealing a private text failed', e));
-  };
-  /** Seals a waiting private text for its friend's key as `to` publishes it, then sends what can go. */
-  async function sealWaiting(waiting: (typeof waitingPrivate)[number], to: Pick<Person, 'publicKey' | 'privateTexts'>): Promise<void> {
-    try { await sealFor(waiting, to); } finally { delete waiting.sealing; }
-    flushPrivate(); // once it is no longer sealing: a flush may find it must be sealed again, for a newer key
-  }
-  async function sealFor(waiting: (typeof waitingPrivate)[number], to: Pick<Person, 'publicKey' | 'privateTexts'>): Promise<void> {
-    if (disposed || !waitingPrivate.includes(waiting)) return; // gone meanwhile, and said so
-    const { id, text } = waiting;
-    const published = to.privateTexts;
-    try {
-      const key = published ? await privateKeyWith(opts.identity, to.publicKey, published) : null;
-      if (!key) {
-        const gone = takePrivate((x) => x === waiting);
-        notSentPrivate(gone, published ? 'for a friend whose private text key does not check out' : 'for a friend whose app cannot take private texts yet');
-        return;
-      }
-      const sealIt = { key, privateKey: opts.identity.keys.privateKey, roomId: opts.roomId, id, from: opts.identity.publicKey, to: to.publicKey };
-      const sealed = waiting.file ? await sealPrivateFile({ ...sealIt, file: waiting.file }) : await sealPrivate({ ...sealIt, text });
-      waiting.sealed = { sealed, for: published!.key };
-    } catch (e) {
-      // Not left waiting for good: the chat says it was not sent.
-      console.error('sealing a private text failed', e);
-      notSentPrivate(takePrivate((x) => x === waiting), 'that could not be sealed');
-    }
-  }
-  /** A file of mine going out, to the room or to one friend: kept, held for pulls, and shown here from its own bytes. */
+  /** A file of mine going out: kept, held for pulls, and shown here from its own bytes. */
   const holdOwnFile = ({ picked, file, list }: PreparedFile): void => {
     holdSent(file.hash, picked);
     if (list) holdSentList(file.hash, list);
@@ -606,9 +389,12 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     holdOwnFile({ picked, file, list });
     announced.add(file.hash);
     setPendingFiles((p) => [...p, { id, file, at }]);
+    // Kept by the server too, sealed, for friends who cannot pull it from anyone online (ADR 0009): not a large one.
+    if (keptKind(file)) { uploads.set(file.hash, { file, blob: picked, of: keptPiecesOf(file.size), kept: new Set(), tries: 0 }); void pumpUploads(); }
     sealing = sealing.then(async () => {
       const sealed = await sealFile({ key: opts.textKey, privateKey: opts.identity.keys.privateKey, roomId: opts.roomId, id, from: opts.identity.publicKey, file });
       // Kept for the next socket, which sends it again; friends show an id they have shown already no more.
+      if (!untrack(pendingFiles).some((f) => f.id === id)) return; // dropped while it was sealed (`dropUnsent`)
       setPendingFiles((p) => p.map((f) => (f.id === id ? { ...f, sealed } : f)));
       send({ t: 'file', sealed, id });
     }).catch((e: unknown) => console.error('sealing a file failed', e));
@@ -653,6 +439,71 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   }
 
   /**
+   * What one `history` frame brought from the server's history (ADR 0009), all at once: every entry is opened first, and
+   * nothing else happens before all are; then, should the room still be this tab's and its history not cleared since the
+   * sync was asked, every line is shown, kept, counted and pulled in one go, a new device's 500 in one change of the chat
+   * and one write of the history. Otherwise none of it is, and the next welcome's sync brings it again: the room is not
+   * synced any further (`historySynced`) until an answer is shown in full.
+   */
+  async function receivedKept(frame: Extract<ServerMessage, { t: 'history' }>, asked: Asked, socket: WebSocket): Promise<void> {
+    // An entry of another shape (one an earlier build kept, before ADR 0010 sealed the tag) is not this app's to show.
+    const entries = frame.entries.filter((m) => typeof m.from?.profile === 'string' && typeof m.from.publicKey === 'string');
+    const opened = await Promise.all(entries.map(async (m) => {
+      const where = { key: opts.textKey, roomId: opts.roomId, id: m.id, from: m.from.publicKey, sealed: m.sealed };
+      const o = m.t === 'file' ? await openFile(where) : await openText(where);
+      // The writer's name as it was then, sealed in the entry's tag (ADR 0010), for an entry that opens.
+      const from = o.ok ? await fromOf(m.from) : null;
+      return { m, o, from };
+    }));
+    await historyLoaded.catch(() => {});
+    // A tag WebCrypto failed to open is not cached (openProfileOf): shown now, its fallback name would be kept for good.
+    const failed = opened.some((x) => x.from && !profiles.has(profileKey(x.m.from)));
+    if (stopped || welcomed !== socket || asked.clears !== clears || failed) { asked.dropped = true; return; }
+    showKept(opened, asked);
+    // All of it in: this room has everything up to when the Room asked, and what comes live on this socket from now on.
+    if (frame.last && frame.upTo !== undefined && !asked.dropped) {
+      syncedOn = socket;
+      keepHistorySynced(opts.roomId, frame.upTo);
+    }
+  }
+  function showKept(opened: Array<{ m: KeptEntry; o: Awaited<ReturnType<typeof openText>> | Awaited<ReturnType<typeof openFile>>; from: Identity | null }>, asked: Asked): void {
+    const lines_: ChatLine[] = [];
+    const stored: StoredText[] = [];
+    let confirmed = false;
+    let news = 0;
+    for (const { m, o, from } of opened) {
+      const own = m.from.publicKey === opts.identity.publicKey;
+      // My own text the Room took, whether or not it opens here: sending it again cannot help (as a live one, `received`).
+      const i = own && m.t === 'sealed' ? unconfirmed.findIndex((u) => u.id === m.id) : -1;
+      if (i >= 0) { unconfirmed.splice(i, 1); confirmed = true; }
+      if (own && m.t === 'file') setPendingFiles((p) => p.filter((f) => f.id !== m.id));
+      if (!o.ok) {
+        console.warn(`${m.t === 'file' ? 'file' : 'text'} rejected: ${o.reason}`);
+        posthog.capture('text_rejected', { reason: o.reason, writer: m.from.fingerprint, own, sealed_length: m.sealed.length, ...(m.t === 'file' ? { kind: 'file' } : {}), kept: true });
+        continue;
+      }
+      if (!from || seen(m.from.publicKey, m.id)) continue;
+      const id = textKey({ from, at: m.at });
+      if ('file' in o) {
+        lines_.push({ kind: 'file', id, from, file: o.file, at: m.at });
+        stored.push({ from, text: o.file.name, at: m.at, id: m.id, file: o.file });
+        // One the server's history brought pulls by itself as one in this browser's history does: a recent one.
+        void arrived(o.file, m.from.publicKey, Date.now() - m.at < PULL_HISTORY_MS);
+      } else {
+        lines_.push({ kind: 'text', id, from, text: o.text, at: m.at });
+        stored.push({ from, text: o.text, at: m.at, id: m.id });
+      }
+      if (!own) news++;
+    }
+    if (confirmed) unconfirmedChanged();
+    if (!lines_.length) return;
+    setLines((l) => mergeByAt(l, lines_));
+    void appendHistory(opts.roomId, ...stored);
+    // Missed while away: unread, without a chime, a batch arriving at once. New to this browser: not news at all.
+    if (news && asked.came === 'missed') setUnread((n) => n + news);
+  }
+
+  /**
    * A sealed text from the Room: shown and kept if it opens with the room's key and was signed by the friend the Room says
    * sent it. One that does not is dropped with a warning: only a server that tampers, or a client that cheats, sends one.
    */
@@ -685,51 +536,6 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     }
   }
 
-  /**
-   * A private text from the Room (ADR 0007): mine come back to say they went out, and show with the text I wrote; one to
-   * me is shown and kept if it opens with the key I share with its writer, as published signed by their identity.
-   */
-  async function receivedPrivate(m: Extract<ServerMessage, { t: 'private' }>): Promise<void> {
-    if (m.from.publicKey === opts.identity.publicKey) {
-      if (stopped) return;
-      const [mine] = takePrivate((x) => x.id === m.id);
-      if (!mine) return;
-      if (seen(m.from.publicKey, m.id)) return;
-      const text: Text = { from: identityOf(myIdentity()), text: mine.text, at: m.at, id: m.id };
-      for (const l of privateListeners) l({ kind: 'text', friend: mine.to, text, ...(mine.file ? { file: mine.file } : {}) });
-      return;
-    }
-    if (m.to !== opts.identity.publicKey) return; // not mine to open: a Room that misroutes
-    let key: CryptoKey | null;
-    try {
-      if (!opts.identity.privateTexts) throw new Error('no private text key in this browser');
-      key = m.key ? await privateKeyWith(opts.identity, m.from.publicKey, m.key) : null;
-    } catch (e) {
-      // WebCrypto failed here, not the writer's key: told apart from a rejected text, and the text is lost all the same.
-      console.error('opening a private text failed', e);
-      posthog.capture('text_rejected', { reason: 'failed', writer: m.from.fingerprint, own: false, sealed_length: m.sealed.length, kind: 'private' });
-      return;
-    }
-    const where = { roomId: opts.roomId, id: m.id, from: m.from.publicKey, to: m.to, sealed: m.sealed };
-    const opened: { ok: true; text: string; file?: FileMeta } | { ok: false; reason: string } = !key ? { ok: false, reason: 'bad key' }
-      : m.file ? await openPrivateFile({ key, ...where }).then((o) => (o.ok ? { ok: true as const, text: o.file.name, file: o.file } : o))
-      : await openPrivate({ key, ...where });
-    if (stopped) return;
-    if (!opened.ok) {
-      console.warn(`private text rejected: ${opened.reason}`);
-      posthog.capture('text_rejected', { reason: opened.reason, writer: m.from.fingerprint, own: false, sealed_length: m.sealed.length, kind: m.file ? 'private file' : 'private' });
-      return;
-    }
-    const from = await fromOf(m.from);
-    if (stopped || seen(m.from.publicKey, m.id)) return;
-    const text: Text = { from, text: opened.text, at: m.at, id: m.id };
-    const { file } = opened;
-    // Its bytes are the friend's to give, pulled from them alone: the conversation has this room know of it, once it is
-    // sure the file is new (client/privates.ts), so one sent again is not pulled twice.
-    // The message cue is the conversation's to play: it knows a text it has shown already, from before a reload too.
-    for (const l of privateListeners) l({ kind: 'text', friend: identityOf(from), text, ...(file ? { file } : {}) });
-  }
-
   /** An attachment's announcement from the Room: shown like a text, then its bytes are looked for (`arrived`). */
   async function receivedFile(m: Extract<ServerMessage, { t: 'file' }>): Promise<void> {
     const opened = await openFile({ key: opts.textKey, roomId: opts.roomId, id: m.id, from: m.from.publicKey, sealed: m.sealed });
@@ -754,10 +560,49 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     }
   }
 
-  // A private file to the friend it was for alone, whoever else asks by its hash: their conversation says (`servesPrivate`).
-  const links = createLinks({ identity: opts.identity, send: (m) => send(m), serves: async (hash, peer) => {
+  /**
+   * What a socket's `sync` was asked with: `missed` when this browser held some of the room, or its history has a start,
+   * so what comes is news; `old` when it is new to a room of two. `clears`: how often the history was cleared here by
+   * then; an answer to a sync asked before a clear is not shown after it.
+   */
+  type Asked = { came: 'missed' | 'old'; clears: number; dropped?: true };
+  const asks = new WeakMap<WebSocket, Asked>();
+  /** How often this room's history was cleared here. */
+  let clears = 0;
+  /** The socket whose sync was answered in full and shown: what comes live on it moves `historySynced` on. */
+  let syncedOn: WebSocket | null = null;
+  /**
+   * Asks the server's history (ADR 0009) for what this room got after the newest text this browser has of it, once the
+   * history here is read: after every welcome, so texts sent while the socket was down come too. From where its history
+   * here starts at the earliest (`historyFrom`): what came before this browser joined, or was cleared, stays out.
+   */
+  function askHistory(socket: WebSocket): void {
+    void historyLoaded.catch(() => {}).then(() => {
+      if (stopped || welcomed !== socket) return;
+      const newest = newestAt();
+      const from = historyFromAt(opts.roomId);
+      // Nothing held and no start: a room of two new to this browser, so nothing it brings is news. Otherwise it is.
+      asks.set(socket, { came: newest === null && from === null && !opts.allNews ? 'old' : 'missed', clears });
+      // A room this browser held before the mark was kept: from its newest text, as near as it can know.
+      send({ t: 'sync', since: syncSince(historySyncedTo(opts.roomId) ?? newest, from) });
+    });
+  }
+  /** Asks the server to delete what I wrote here (`forgetMine`), should that wait to be done: up to a time, always. */
+  function askForget(): void {
+    const before = forgettingOf(opts.roomId);
+    if (before !== null && before !== FORGET_NOW) send({ t: 'forget', before });
+  }
+  /** The Room's clock less this browser's, as of the last welcome; null before one. */
+  let roomClock: number | null = null;
+  /** A text or file came live: on a socket synced in full, this room has everything up to it. */
+  const liveKept = (socket: WebSocket, at: number): void => { if (syncedOn === socket && !stopped) keepHistorySynced(opts.roomId, at); };
+  /** The time of the newest text or file shown, by the Room's clock; null for none. */
+  const newestAt = (): number | null => untrack(lines).reduce<number | null>((n, l) => (l.kind !== 'system' && (n === null || l.at > n) ? l.at : n), null);
+
+  // A file announced here, to anyone in the room who asks: in a room of two (ADR 0011), the friend alone.
+  const links = createLinks({ identity: opts.identity, send: (m) => send(m), serves: async (hash) => {
     await historyLoaded;
-    return announced.has(hash) || ((await opts.servesPrivate?.(hash, peer)) ?? false);
+    return announced.has(hash);
   } });
   /** Who announced each file, by hash, oldest first: any of them has it (ticket 02: anyone who pulled it, too). */
   const holders = new Map<string, { file: FileMeta; from: string[] }>();
@@ -793,11 +638,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const candidates = (hash: string): string[] => {
     const tried = asked.get(hash);
     const announcers = reachable(hash);
-    // A private file is asked of its friend alone: the others in the room are not to learn there is one (ADR 0007).
-    // Unless it is a room file here too: then everyone who may have pulled it is asked, as for any.
-    if (privateFiles.has(hash) && !announced.has(hash)) return announcers.filter((k) => !tried?.has(k) && !saidNotThere(hash, k));
     const others = people().map((p) => p.publicKey).filter((k) => k !== opts.identity.publicKey && !announcers.includes(k));
-    return [...announcers, ...others].filter((k, i, all) => all.indexOf(k) === i && !tried?.has(k) && !saidNotThere(hash, k));
+    // The server last (ADR 0009): friends online first, which costs nobody anything; it when none of them gives it.
+    const file = holders.get(hash)?.file;
+    const server = file && keptOnServer(file) ? [SERVER] : [];
+    return [...announcers, ...others, ...server].filter((k, i, all) => all.indexOf(k) === i && !tried?.has(k) && !saidNotThere(hash, k));
   };
   const hold = (file: FileMeta, from: string): void => {
     const known = holders.get(file.hash);
@@ -812,8 +657,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const movedAt = new Map<string, number>();
   const saving = new Set<string>();
 
-  // Large files past their time go, once a page (ticket 03).
-  if (!sweptBig) { sweptBig = true; void big.sweep(); }
+  // Large files past their time go, once a page (ticket 03), and kept ones past the window's four weeks (ADR 0009).
+  if (!sweptBig) { sweptBig = true; void big.sweep(); void sweepFiles(); }
 
   /** Tries again so far, and the timer of the next, per file. */
   const retries = new Map<string, { tries: number; timer?: ReturnType<typeof setTimeout> }>();
@@ -861,17 +706,14 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
 
   /** A file announced in this room, live or from the history: shown from the store, or pulled, or left for a click. */
   /** `byItself`: pulled by itself if it shows inline (`pullsByItself`), or `'asked'`: whatever it is, it was clicked. */
-  async function arrived(file: FileMeta, from: string, byItself: boolean | 'asked' = true, priv = false): Promise<void> {
-    // A private file is served by its conversation's word (`servesPrivate`), to its friend alone: not announced here.
-    if (!priv) announced.add(file.hash);
+  async function arrived(file: FileMeta, from: string, byItself: boolean | 'asked' = true): Promise<void> {
+    announced.add(file.hash);
     hold(file, from);
     // Known already: one waiting for a friend who is away may come from this one.
     if (attachmentNow.has(file.hash)) { if (attachmentNow.get(file.hash)!.status === 'waiting') want(file.hash); return; }
     setAttachment(file.hash, { status: 'idle' });
     const kept = await keptFile(file.hash);
-    // A private file moved to another room meanwhile (`dropPrivateFile`): that one has it now. Unless it is a room file
-    // here too by now: then it is shown here all the same.
-    if (stopped || (priv && !privateFiles.has(file.hash) && !announced.has(file.hash))) return;
+    if (stopped) return;
     if (kept) show(file, kept);
     else if (byItself === 'asked' || (byItself && pullsByItself(file))) want(file.hash);
     else if (file.piece) {
@@ -905,6 +747,119 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
    * Nobody online can be asked for a file: everyone said "not there" lately. It waits while one who announced it is away;
    * otherwise nobody has it, and it says so, a click asking again.
    */
+  /**
+   * My files the server is to keep (ADR 0009), by hash, until it said it keeps every piece (`kept`). A pass sends what it
+   * has not said so of, file by file, those sent meanwhile included; one starts on a welcome, on a new file, and once
+   * after ACK_WAIT_MS while something is left. Each file has KEEP_TRIES passes in this page, counted as they start, a
+   * socket lost half way included. One the server will not keep today, or this browser cannot read any more, is let go:
+   * friends online pull it from me, as before.
+   */
+  const uploads = new Map<string, { file: FileMeta; blob: Blob; of: number; kept: Set<number>; tries: number }>();
+  /** The socket a pass runs on: one at a time; a newer socket's takes over, and the older ends at its next piece. */
+  let pumpOn: WebSocket | null = null;
+  let pumpAgain: ReturnType<typeof setTimeout> | undefined;
+  async function pumpUploads(): Promise<void> {
+    const socket = welcomed;
+    if (!socket || pumpOn === socket || stopped) return;
+    pumpOn = socket;
+    clearTimeout(pumpAgain);
+    let sent = 0;
+    try {
+      // Live: a file sent while the pass runs comes after the others.
+      for (const [hash, u] of uploads) {
+        if (u.tries >= KEEP_TRIES) { uploads.delete(hash); continue; }
+        u.tries++;
+        try {
+          for (let n = 0; n < u.of; n++) {
+            if (welcomed !== socket || pumpOn !== socket) return; // the next socket's pass goes on
+            if (!uploads.has(hash)) break; // all kept, or let go, meanwhile
+            if (u.kept.has(n)) continue;
+            const bytes = new Uint8Array(await u.blob.slice(n * KEPT_PIECE_BYTES, (n + 1) * KEPT_PIECE_BYTES).arrayBuffer());
+            const sealed = await sealPiece({ key: opts.textKey, roomId: opts.roomId, hash, n, of: u.of, bytes });
+            const tag = await tagOf(hash);
+            // Let go meanwhile (a delete from the server, say): a piece sent now would be kept after it.
+            if (uploads.get(hash) !== u) break;
+            if (welcomed !== socket || !send({ t: 'piece', tag, n, sealed: toBase64Url(sealed) })) return;
+            // The Room's burst for pieces at once, then under its rate (core/room.ts): a photo is up before the tab goes
+            // to the background, where timers slow down; texts go between them.
+            if (++sent >= PIECE_RATE_PER_SECOND) await new Promise((r) => setTimeout(r, PIECE_GAP_MS));
+          }
+        } catch (e) {
+          // This browser cannot read the file any more (a phone took back the file picked): let go, the rest go on.
+          console.warn('a file could not be kept on the server', e);
+          uploads.delete(hash);
+        }
+      }
+    } finally {
+      if (pumpOn === socket) pumpOn = null;
+      // What the server has not said it keeps by then goes once more on this socket.
+      if (uploads.size && welcomed === socket) pumpAgain = setTimeout(() => { if (welcomed === socket) void pumpUploads(); }, ACK_WAIT_MS);
+    }
+  }
+  /** The server's word on a piece sent up (`kept`): one failed for a moment goes again with the next pass. */
+  function keptPiece(m: Extract<ServerMessage, { t: 'kept' }>): void {
+    const hash = tagged.get(m.tag);
+    const u = hash === undefined ? undefined : uploads.get(hash);
+    if (!u || hash === undefined) return;
+    if (!m.ok) { if (!m.again) uploads.delete(hash); return; } // not today: friends online pull it from me, as before
+    u.kept.add(m.n);
+    if (u.kept.size >= u.of) { uploads.delete(hash); posthog.capture('file_kept', { bytes: u.file.size, pieces: u.of }); }
+  }
+  /** Files' tags (core/rooms.ts, pieceTagOf), the name their pieces go by on the server, by hash; and their hashes by tag. */
+  const tags = new Map<string, Promise<string>>();
+  const tagged = new Map<string, string>();
+  function tagOf(hash: string): Promise<string> {
+    let tag = tags.get(hash);
+    if (!tag) {
+      tag = pieceTagOf(opts.pieceKey, hash).then((t) => { tagged.set(t, hash); return t; });
+      tags.set(hash, tag);
+      tag.catch(() => tags.delete(hash));
+    }
+    return tag;
+  }
+
+  /** `fetch`es waiting for their `piece`, by piece id (the file's tag and the piece's place): the sealed piece, 'missing' when the server has none, null for no answer. */
+  const fetching = new Map<string, (sealed: string | 'missing' | null) => void>();
+  async function fetchPiece(hash: string, n: number, signal: AbortSignal): Promise<string | 'missing' | null> {
+    const tag = await tagOf(hash);
+    const id = pieceId(tag, n);
+    return new Promise((resolve) => {
+      fetching.get(id)?.(null);
+      if (signal.aborted || !send({ t: 'fetch', tag, n })) { resolve(null); return; }
+      const timer = setTimeout(() => done(null), FETCH_TIMEOUT_MS);
+      const abort = () => done(null);
+      signal.addEventListener('abort', abort, { once: true });
+      function done(sealed: string | 'missing' | null) { clearTimeout(timer); signal.removeEventListener('abort', abort); if (fetching.get(id) === done) fetching.delete(id); resolve(sealed); }
+      fetching.set(id, done);
+    });
+  }
+  /** Whether the server may keep a file (core/kept.ts), and there is a socket to ask it on. */
+  const keptOnServer = (file: FileMeta): boolean => keptKind(file) && welcomed !== null;
+  /**
+   * A file from the server's history (ADR 0009), as a pull from it: its pieces fetched one by one, opened with the room's
+   * key, and the whole checked against the hash its announcement signed. Fails as a pull from a friend does: "not there"
+   * when the server does not have it all, "damaged" when what it has does not check out, "lost" with no answer.
+   */
+  async function fromServer(hash: string, file: FileMeta, progress: (received: number) => void, signal: AbortSignal): Promise<Blob> {
+    const of = keptPiecesOf(file.size);
+    const parts: Uint8Array[] = [];
+    let received = 0;
+    for (let n = 0; n < of; n++) {
+      const sealed = await fetchPiece(hash, n, signal);
+      if (sealed === null) throw new PullFailed('lost');
+      if (sealed === 'missing') throw new PullFailed('not there');
+      const raw = fromBase64Url(sealed);
+      const bytes = raw ? await openPiece({ key: opts.textKey, roomId: opts.roomId, hash, n, of, sealed: raw }) : null;
+      if (!bytes) { console.warn('kept file rejected: unreadable'); throw new PullFailed('damaged'); }
+      parts.push(bytes);
+      received += bytes.length;
+      progress(received);
+    }
+    const blob = new Blob(parts as BlobPart[], { type: file.type });
+    if ((await hashOf(blob)) !== hash) { console.warn('kept file rejected: wrong hash'); throw new PullFailed('damaged'); }
+    return blob;
+  }
+
   function settle(hash: string): void {
     stopRetry(hash);
     const away = (holders.get(hash)?.from ?? []).some((k) => k !== opts.identity.publicKey && !online(k));
@@ -934,6 +889,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       // A large file comes in pieces, each checked and written to disk as it comes, from where an earlier pull of it
       // stopped (ticket 03); what it got is kept when it breaks off. Nothing of it is held but the piece under way.
       const run = async (): Promise<Blob> => {
+        if (from === SERVER) return fromServer(hash, file, progress, abort.signal);
         if (!file.piece) return (await links.pull(from, hash, file.size, progress, abort.signal, moved))!;
         if (!big.available()) throw new PullFailed('no room');
         const piece = file.piece;
@@ -962,10 +918,10 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       };
       void run()
         .then(async (blob) => {
-          // Let go meanwhile (`dropPrivateFile`: its conversation deleted, or it moved): not kept, not shown here.
+          // Let go meanwhile (the room left): not kept, not shown here.
           if (!current()) return;
           saving.add(hash); // a large file takes a while to write on a slow phone: not a pull gone quiet
-          posthog.capture('file_pulled', { bytes: file.size, ms: Date.now() - started, inline: inlineKind(file.type) ?? 'none', pieced: !!file.piece });
+          posthog.capture('file_pulled', { bytes: file.size, ms: Date.now() - started, inline: inlineKind(file.type) ?? 'none', pieced: !!file.piece, source: from === SERVER ? 'server' : 'friend' });
           // On disk already, outside the budget.
           if (file.piece) { if (!disposed && current()) show(file, blob); return; }
           // Shown from the store's copy, which is on disk: the pulled one is in memory, as large as the file.
@@ -983,7 +939,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             return;
           }
           let reason: PullError = e instanceof PullFailed ? e.reason : 'lost';
-          posthog.capture('file_pull_failed', { reason, bytes: file.size });
+          posthog.capture('file_pull_failed', { reason, bytes: file.size, source: from === SERVER ? 'server' : 'friend' });
           if (!(e instanceof PullFailed)) console.error('pulling a file failed', e);
           if (disposed || !current()) return;
           // No socket let in: its ask could not go out, which says nothing of the friend. Not a try: it is due again as
@@ -991,7 +947,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           if (welcomed === null) { setAttachment(hash, { status: 'failed', reason, retryAt: Date.now() }); return; }
           // Someone else may have it: asked at once, not counted as a try. When nobody is left, the round ends.
           (asked.get(hash) ?? asked.set(hash, new Set()).get(hash)!).add(from);
-          if (reason === 'not there') (notThere.get(hash) ?? notThere.set(hash, new Map()).get(hash)!).set(from, Date.now());
+          // The server's "not there" may be an upload still on its way: asked again next round. Its damaged copy stays so.
+          if (from === SERVER ? reason === 'damaged' : reason === 'not there') (notThere.get(hash) ?? notThere.set(hash, new Map()).get(hash)!).set(from, Date.now());
           const best = roundReason.get(hash);
           if (!best || HOPE.indexOf(reason) < HOPE.indexOf(best)) roundReason.set(hash, reason);
           // No room here is no friend's doing: asking another would end the same way.
@@ -1118,15 +1075,24 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           if (attempt > 0) console.info(`[recovered] room ${opts.roomId.slice(0, 8)}: let in after ${attempt} lost socket${attempt === 1 ? '' : 's'}`);
           attempt = 0;
           setYou(m.you);
+          // The Room's clock, as near as this browser can tell it: a delete from the server asks up to it (`forgetMine`).
+          if (typeof m.at === 'number') roomClock = m.at - Date.now();
+          // Joined by the link: the history starts here, by the Room's clock, which this browser's own may not be.
+          if (typeof m.at === 'number' && historyFromAt(opts.roomId) === FROM_JOIN) keepHistoryFrom(opts.roomId, m.at);
+          // A delete asked before there was a socket: up to now, by the Room's clock; what is sent below comes after it.
+          if (typeof m.at === 'number' && forgettingOf(opts.roomId) === FORGET_NOW) keepForgetting(opts.roomId, m.at);
           // A rename, a picture or an opt-in changed while the handshake ran went to no socket; the auth had the old one.
           if (authCarried) for (const d of afterWelcome(latest, authCarried)) sendDeclaration(d);
+          // What I wrote here is to go from the server's history: asked first, so the texts sent again below stay.
+          askForget();
           // Texts the last socket took and never brought back, or written while there was none, in their order; the Room
           // answers them in that order too. One that waited a day is not sent: it would come out of the blue.
           dropTooOld();
           for (const u of unconfirmed) sendText(u);
           for (const f of pendingFiles()) if (f.sealed) send({ t: 'file', sealed: f.sealed, id: f.id });
-          // Private texts go once the Room's presence lists their friends (`flushPrivate`).
           retryDue();
+          askHistory(socket);
+          void pumpUploads();
           setStatus({ kind: 'connected' });
           if (everConnected) {
             // No line in the chat about it: the status pill already shows the outage live, and dated lines that stayed
@@ -1143,22 +1109,32 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           // networks drops for a moment. A link to one who is gone for good fails or stalls by itself (client/links.ts).
           forgetEnded(latest, m.people);
           setPeople(m.people);
-          if (!listed.length) listedAt = Date.now();
-          listed = m.people;
-          presences++;
-          for (const x of waitingPrivate) delete x.held;
-          // After the texts sealed again for this socket: those go first, as the Room took them first before.
-          sealing = sealing.then(flushPrivate).catch((e: unknown) => console.error('sending private texts failed', e));
           return;
         case 'sealed':
-          opening = opening.then(() => received(m)).catch((e: unknown) => console.error('opening a text failed', e));
+          opening = opening.then(() => received(m)).catch((e: unknown) => console.error('opening a text failed', e)).then(() => liveKept(socket, m.at));
           return;
         case 'file':
-          opening = opening.then(() => receivedFile(m)).catch((e: unknown) => console.error('opening a file failed', e));
+          opening = opening.then(() => receivedFile(m)).catch((e: unknown) => console.error('opening a file failed', e)).then(() => liveKept(socket, m.at));
           return;
-        case 'private':
-          opening = opening.then(() => receivedPrivate(m)).catch((e: unknown) => console.error('opening a private text failed', e));
+        case 'history': {
+          // What the server kept while this browser was away (ADR 0009), opened in turn with what comes live.
+          const asked = asks.get(socket);
+          if (asked) opening = opening.then(() => receivedKept(m, asked, socket)).catch((e: unknown) => { asked.dropped = true; console.error('opening what the server kept failed', e); });
           return;
+        }
+        case 'piece':
+          fetching.get(pieceId(m.tag, m.n))?.(m.sealed ?? 'missing');
+          return;
+        case 'kept':
+          keptPiece(m);
+          return;
+        case 'forgot': {
+          // All gone up to what was asked: done. An answer to an earlier ask, before a later Clear, is not; nor one the
+          // server's share ran out on, which is asked again after the next welcome.
+          const asked = forgettingOf(opts.roomId);
+          if (asked !== null && m.done && m.before >= asked) doneForgetting(opts.roomId);
+          return;
+        }
         case 'link':
         case 'linkice':
           links.onMessage(m);
@@ -1170,34 +1146,16 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             // chat: an oversized signal once showed as "Not sent" (ticket 30).
             posthog.capture('frame_dropped', { ref: m.ref ?? 'unknown', reason: m.reason });
             if (m.ref === 'link' || m.ref === 'linkice') return; // the pull that sent it times out and says so
-            if (m.ref === 'private') {
-              // Named by its id: private texts go to different friends, so the Room's order says nothing about which.
-              opening = opening.then(() => {
-                if (stopped || welcomed !== socket) return;
-                // Too many frames at once (a reconnect sends all that waited): it goes again in a moment, on this socket.
-                // The friend not here (yet: the presence that says so may still be on its way, and they may be back in a
-                // moment): it waits for them as for one the Room does not list, a minute at most.
-                const again = (m.reason === 'rate limited' || m.reason === 'that friend is not here') && waitingPrivate.find((x) => x.id === m.id);
-                // Refused, so it reached nobody this time: "maybe" only for one out on an earlier socket too.
-                const refusedHere = (x: (typeof waitingPrivate)[number]) => { if (x.outOn && x.outOn.socket < welcomes) x.outBefore = true; const was = x.outOn; x.outOn = undefined; return was; };
-                if (again) {
-                  const was = refusedHere(again);
-                  privateChanged(); // kept as not gone out, unless it did on an earlier socket
-                  const flush = () => { if (!stopped && welcomed === socket) sealing = sealing.then(flushPrivate).catch((e: unknown) => console.error('sending private texts failed', e)); };
-                  if (m.reason === 'rate limited') setTimeout(flush, RATE_RETRY_MS);
-                  else {
-                    // Held only while no presence came since it went out: a newer one has said where the friend is.
-                    if (was && was.presence === presences) again.held = true;
-                    flush();
-                  }
-                  return;
-                }
-                // Without an id (a frame the Room could not read that far): the oldest of those out on this socket.
-                const oldest = waitingPrivate.find(outNow);
-                const refused = takePrivate((x) => (m.id !== undefined ? x.id === m.id : x === oldest));
-                for (const x of refused) refusedHere(x);
-                notSentPrivate(refused, `refused (${m.reason})`);
-              });
+            if (m.ref === 'piece' || m.ref === 'fetch') return; // a fetch says so by its answer not coming; a piece not kept goes again
+            if (m.ref === 'sync') {
+              // Too many frames at once (a reconnect sends all that waited first): asked again in a moment. Asked too soon
+              // after another: that one brings what there is.
+              if (m.reason === 'rate limited') setTimeout(() => askHistory(socket), RATE_RETRY_MS);
+              return;
+            }
+            if (m.ref === 'forget') {
+              // Asked again so soon after another (a second Clear), or too many frames at once: asked again once it may be.
+              setTimeout(() => { if (welcomed === socket) askForget(); }, m.reason === 'rate limited' ? RATE_RETRY_MS : SYNC_COOLDOWN_MS);
               return;
             }
             if (m.ref === 'file') {
@@ -1231,7 +1189,6 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           } else if (status().kind !== 'refused') {
             // A wrong answer during the handshake: our stored secret is wrong. Retrying cannot help.
             setStatus({ kind: 'refused', reason: m.reason });
-            strandPrivate(takePrivate(() => true), 'waiting in a room that refuses you');
             stopped = true;
             socket.close(1000, 'refused');
           }
@@ -1260,8 +1217,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     clearInterval(pingTimer);
     if (ws === socket) ws = null;
     if (welcomed === socket) welcomed = null;
-    listed = [];
-    clearTimeout(absentTimer);
+    for (const done of [...fetching.values()]) done(null);
     setYou(null);
     if (stopped) return;
     // What tells a network that cut one socket from a phone that lost its network, or a tab asleep (ticket 54).
@@ -1282,18 +1238,12 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       // opened. Kept here, they would be sent when this one takes the room back, maybe hours later.
       unconfirmed.length = 0;
       unconfirmedChanged(false);
-      // The same goes for private texts: the other tab took them from the browser's storage too. Not files, which are
-      // never stored: said here, where they were written.
-      notSentPrivate(waitingPrivate.filter((x) => x.file), 'waiting as this room opened in another tab');
-      waitingPrivate.length = 0;
-      privateChanged(false);
       setStatus({ kind: 'elsewhere' });
       return;
     }
     if (code === CLOSE_AUTH_FAILED) {
       stopped = true;
       setStatus({ kind: 'refused', reason: 'the invite link is wrong or has been rotated' });
-      strandPrivate(takePrivate(() => true), 'waiting in a room that refuses you');
       return;
     }
     if (downSince === null) {
@@ -1323,6 +1273,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     offConsent();
     stopped = true;
     disposed = true;
+    clearTimeout(pumpAgain);
     for (const r of retries.values()) clearTimeout(r.timer);
     watchdog.stop();
     delete (window as unknown as { __daveFiles?: Record<string, unknown> }).__daveFiles?.[opts.roomId];
@@ -1415,18 +1366,49 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
      */
     sendPrepared,
     /**
-     * Sends a private text to one friend in this room (ADR 0007): only they can open it, and only they get it. It waits for
-     * a socket like a text, and goes again on the next one, after a reload too. What becomes of it is told to `onPrivate`.
-     * False, and nothing said, when this room cannot take it (refused, no key on either side, too many waiting): the
-     * conversation tries another room, and says so if none can (client/privates.ts).
+     * Deletes everything I wrote in this room from the server's history (ADR 0009): texts, file announcements and the
+     * pieces of my files, up to when the Room gets the ask; what friends have already stays theirs. Asked again after
+     * every welcome until the server says all of it is gone. My files still going up stop.
      */
-    sendPrivate: (to: Person, text: string): boolean => {
-      if (text.length > MAX_TEXT_LENGTH || stopped || !opts.identity.privateTexts || !to.privateTexts || waitingPrivate.filter((x) => !x.file).length >= PRIVATE_WAITING_MAX) return false;
-      sendPrivate(to, text);
-      return true;
+    forgetMine: (): void => {
+      // Mine and not on the server yet: they never go. My files still going up stop.
+      uploads.clear();
+      if (unconfirmed.length) { unconfirmed.length = 0; unconfirmedChanged(); }
+      setPendingFiles([]);
+      // Up to the next welcome's clock, should this page close or lose its socket first; or, with a socket, up to the Room's
+      // clock once what this one still has to send is out, and a moment more for it to arrive (FORGET_MARGIN_MS): an end of
+      // its own, so an ask repeated after a lost answer deletes nothing written since.
+      keepForgetting(opts.roomId, FORGET_NOW);
+      const socket = welcomed;
+      const settle = (waited: number): void => {
+        if (stopped || welcomed !== socket || !socket || roomClock === null || forgettingOf(opts.roomId) !== FORGET_NOW) return;
+        if (socket.bufferedAmount > 0 && waited < FORGET_DRAIN_MS) { setTimeout(() => settle(waited + 100), 100); return; }
+        keepForgetting(opts.roomId, Date.now() + roomClock + FORGET_MARGIN_MS);
+        askForget();
+      };
+      settle(0);
     },
-    /** Empties the local history; the server never had it. */
-    clearHistory: async () => { await clearHistory(opts.roomId); setLines([]); setUnread(() => 0); },
+    /** Empties the local history; the server's (ADR 0009) is asked for what comes after this moment only, from now on. */
+    clearHistory: async () => {
+      // The newest text's time, by the Room's clock, which a sync asks by: this browser's own may run ahead or behind.
+      clears++;
+      await clearHistory(opts.roomId, newestAt() ?? Date.now());
+      setLines([]);
+      setUnread(() => 0);
+    },
+    /**
+     * A file this browser knows of from elsewhere, as if announced here: shown from the store if it keeps it, else pulled
+     * from whoever here has it, on a click unless `byItself`; and served to whoever here asks. For a conversation's files
+     * from before rooms of two (client/privates.ts), whose room of two is where they are now.
+     */
+    knowFile: (file: FileMeta, from: string, byItself: boolean): void => { void historyLoaded.catch(() => {}).then(() => arrived(file, from, byItself)); },
+    /** My texts and files not sent yet go unsent: their conversation was deleted (client/privates.ts). */
+    dropUnsent: (): void => {
+      if (unconfirmed.length) { unconfirmed.length = 0; unconfirmedChanged(); }
+      setPendingFiles([]);
+    },
+    /** The time of the newest text or file shown, by the Room's clock; null for none. */
+    newestAt,
     /** The room is forgotten in this browser: nothing of it is unread any more. */
     forgetUnread: () => { setUnread(() => 0); unreadLeft = true; },
     /** Dev aid for scripts/drive.mjs: drops the socket so the reconnect path runs. */
@@ -1441,87 +1423,10 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       // What the other tab still had out, as it left it.
       unconfirmed.push(...loadUnsent(opts.roomId));
       // One tab at a time runs the app (client/tablock.ts); this is the backstop for a browser without Web Locks.
-      waitingPrivate.push(...loadUnsentPrivate(opts.roomId).filter((u) => !waitingPrivate.some((x) => x.id === u.id)).map(fromKept));
-      privateChanged(false);
       unconfirmedChanged(false);
       stopped = false; attempt = 0; downSince = null; setStatus({ kind: 'connecting' }); open();
       nextPull(); // pulls queued while another tab had the room
     },
-    /** My private texts this room has waiting to go, oldest first. */
-    pendingPrivate: (): WaitingPrivate[] => pendingPrivate().map((x) => ({ ...toKept(x), ...(x.file ? { file: x.file } : {}) })),
-    /**
-     * Sends a file to one friend in this room (ADR 0006, 0007), prepared beforehand (`prepareFile`): its announcement goes
-     * sealed for them alone, and they pull the bytes from this browser through this room. Like a room's file, a reload
-     * forgets it while it waits. False, and nothing said, when this room cannot take it (see `sendPrivate`).
-     */
-    sendPrivateFile: (to: Person, { picked, file, list }: PreparedFile): boolean => {
-      // Files have a count of their own: a reload forgets them, so they never come back all at once with the texts.
-      if (picked.size > MAX_FILE_BYTES || stopped || !opts.identity.privateTexts || !to.privateTexts || waitingPrivate.filter((x) => x.file).length >= PRIVATE_FILES_WAITING_MAX) return false;
-      const { hash } = file;
-      holdOwnFile({ picked, file, list });
-      privateFiles.add(hash);
-      hold(file, to.publicKey); // they have it once they pulled it: after a reload, mine may be gone
-      const waiting: (typeof waitingPrivate)[number] = { id: randomHex(12), to: identityOf(to), text: file.name, at: Date.now(), sealing: true, file };
-      waitingPrivate.push(waiting);
-      privateChanged();
-      sealing = sealing.then(() => sealWaiting(waiting, to)).catch((e: unknown) => console.error('sealing a private file failed', e));
-      posthog.capture('file_sent', { bytes: file.size, inline: inlineKind(file.type) ?? 'none', preview: !!file.preview, private: true });
-      return true;
-    },
-    /** A private file this browser has in a conversation's history (client/privates.ts): looked for here, from `from` alone. */
-    knowPrivateFile: (file: FileMeta, from: string, friend: string, byItself: boolean | 'asked' = false): void => knowPrivateFile(file, from, friend, byItself),
-    /**
-     * Takes over a private text another room of mine could not carry (client/privates.ts), as written: it waits here,
-     * kept over a reload, and is sealed once this room lists the friend, a minute at most. False, and nothing said, when
-     * this room cannot take it (refused, or too many waiting).
-     */
-    adoptPrivate: (to: Identity, text: string, at: number, id = randomHex(12), file?: FileMeta): boolean => {
-      if (stopped || !opts.identity.privateTexts) return false;
-      if (file ? waitingPrivate.filter((x) => x.file).length >= PRIVATE_FILES_WAITING_MAX : waitingPrivate.filter((x) => !x.file).length >= PRIVATE_WAITING_MAX) return false;
-      // A file's bytes are this browser's, served through any room (`servesPrivate`): only its announcement moves.
-      // Shown here from this browser's store, if it keeps it; a large one, held in the page that sent it, waits for a click.
-      if (file) { hold(file, to.publicKey); knowPrivateFile(file, opts.identity.publicKey, to.publicKey, false); }
-      // In the order written among those waiting here, as they show in the conversation.
-      const later = waitingPrivate.findIndex((x) => x.at > at);
-      // Its id too: it never went out (one that did is not handed on), so the friend cannot have it twice.
-      waitingPrivate.splice(later < 0 ? waitingPrivate.length : later, 0, { id, to: identityOf(to), text, at, ...(file ? { file } : {}) });
-      privateChanged();
-      sealing = sealing.then(flushPrivate).catch((e: unknown) => console.error('sending private texts failed', e));
-      return true;
-    },
-    /** Takes out and returns all my private texts waiting here, for another room to carry: I am leaving this one. */
-    handOverPrivate: (): WaitingPrivate[] => takePrivate(() => true).map((x) => ({ ...toKept(x), ...(x.file ? { file: x.file } : {}) })),
-    /**
-     * A private file's status here, read through a memo of the statuses alone: a pull's progress (every chunk) changes
-     * the attachments, not this, so what goes by it reruns only when a status changes (client/privates.ts).
-     */
-    privateStatus: (hash: string): string | undefined => privateStatuses()[hash],
-    /**
-     * Forgets a private file here: its conversation looks for it in another room now (client/privates.ts), and one room
-     * at a time pulls it. A pull under way stops.
-     */
-    dropPrivateFile: (hash: string): void => {
-      if (!privateFiles.has(hash)) return;
-      privateFiles.delete(hash);
-      if (announced.has(hash)) return; // a room file here too, of the same bytes: its state is the room's
-      const queued = queue.indexOf(hash);
-      if (queued >= 0) queue.splice(queued, 1);
-      // Out of the pull's bookkeeping before the abort: its own ending would put the file back here, as idle.
-      const ac = aborts.get(hash);
-      aborts.delete(hash);
-      movedAt.delete(hash);
-      ac?.abort();
-      stopRetry(hash);
-      newRound(hash);
-      holders.delete(hash);
-      saving.delete(hash);
-      attachmentNow.delete(hash);
-      setAttachments((all) => { const { [hash]: _gone, ...rest } = all; return rest; });
-    },
-    /** Drops my private texts to this friend still waiting here, without a word: their conversation was deleted. */
-    cancelPrivate: (friend: string): void => { takePrivate((x) => x.to.publicKey === friend); },
-    /** Private texts this room carried, and notices about mine: for their conversations (client/privates.ts). */
-    onPrivate: (l: (e: PrivateEvent) => void) => { privateListeners.add(l); return () => privateListeners.delete(l); },
     /** Fires for texts from other people (for the message cue). */
     onText: (l: (m: Text) => void) => { textListeners.add(l); return () => textListeners.delete(l); },
     /** Messages the room store does not handle itself (call, left, signal, ice) go to subscribers. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_SEALED_PROFILE_LENGTH, APP_OUT_OF_DATE, OUT_OF_DATE, type WirePerson as Person } from '../src/core/protocol';
+import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_SEALED_PIECE_LENGTH, MAX_SEALED_PROFILE_LENGTH, APP_OUT_OF_DATE, OUT_OF_DATE, type WirePerson as Person } from '../src/core/protocol';
 import { onMessage, presenceSnapshot, type SocketState } from '../src/core/room';
 import { newBucket } from '../src/core/ratelimit';
 
@@ -24,15 +24,22 @@ describe('protocol', () => {
     for (const sealed of [undefined, '', 'not base64!', 7]) {
       expect(parseClientMessage(JSON.stringify({ t: 'sealed', sealed, id: 'a1b2' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'sealed' });
     }
-    // ADR 0007: a private text names its friend; one too long is refused by its id, which the writer's app goes by.
-    expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: 'c2Vh', id: 'a1b2' }))).toEqual({ t: 'private', to: 'pkB', sealed: 'c2Vh', id: 'a1b2' });
-    expect(parseClientMessage(JSON.stringify({ t: 'private', sealed: 'c2Vh', id: 'a1b2' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'private', id: 'a1b2' });
-    expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: 'c2Vh' }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'private' });
-    // A file's announcement for one friend: flagged, and taken up to a file description's length.
-    const long = 'x'.repeat(MAX_SEALED_LENGTH + 1);
-    expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: long, id: 'a1b2', file: true }))).toEqual({ t: 'private', to: 'pkB', sealed: long, id: 'a1b2', file: true });
-    expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: 'x'.repeat(MAX_SEALED_FILE_LENGTH + 1), id: 'a1b2', file: true }))).toMatchObject({ t: 'invalid', ref: 'private', id: 'a1b2' });
-    expect(parseClientMessage(JSON.stringify({ t: 'private', to: 'pkB', sealed: 'x'.repeat(MAX_SEALED_LENGTH + 1), id: 'a1b2' }))).toEqual({ t: 'invalid', reason: 'message longer than 2000 characters', ref: 'private', id: 'a1b2' });
+    // ADR 0011: a private text routed to one friend by key is from an app before rooms of two, however it is made.
+    for (const m of [{ t: 'private', to: 'pkB', sealed: 'c2Vh', id: 'a1b2' }, { t: 'private', to: 'pkB', sealed: 'c2Vh', id: 'a1b2', file: true }, { t: 'private' }]) {
+      expect(parseClientMessage(JSON.stringify(m))).toEqual({ t: 'invalid', reason: APP_OUT_OF_DATE, ref: 'private' });
+    }
+    // ADR 0009: a piece of a kept file going up, and one asked back, by the file's tag and the piece's place; a whole
+    // sealed piece is larger than any text.
+    const tag = 'h'.repeat(43);
+    expect(parseClientMessage(JSON.stringify({ t: 'piece', tag, n: 3, sealed: 'c2Vh' }))).toEqual({ t: 'piece', tag, n: 3, sealed: 'c2Vh' });
+    const whole = 'x'.repeat(MAX_SEALED_PIECE_LENGTH);
+    expect(parseClientMessage(JSON.stringify({ t: 'piece', tag, n: 15, sealed: whole }))).toEqual({ t: 'piece', tag, n: 15, sealed: whole });
+    expect(parseClientMessage(JSON.stringify({ t: 'fetch', tag, n: 0 }))).toEqual({ t: 'fetch', tag, n: 0 });
+    expect(parseClientMessage(JSON.stringify({ t: 'forget' }))).toEqual({ t: 'forget' });
+    expect(parseClientMessage(JSON.stringify({ t: 'forget', before: 42 }))).toEqual({ t: 'forget', before: 42 });
+    for (const m of [{ t: 'piece', tag: 'short', n: 0, sealed: 'c2Vh' }, { t: 'piece', tag, n: 16, sealed: 'c2Vh' }, { t: 'piece', tag, n: -1, sealed: 'c2Vh' }, { t: 'piece', tag, n: 0, sealed: 'x'.repeat(MAX_SEALED_PIECE_LENGTH + 1) }, { t: 'piece', tag, n: 0 }, { t: 'fetch', tag, n: 1.5 }, { t: 'piece', hash: tag, n: 0, sealed: 'c2Vh' }, { t: 'sealed', sealed: 'x'.repeat(MAX_SEALED_PIECE_LENGTH), id: 'a1b2' }]) {
+      expect(parseClientMessage(JSON.stringify(m)), JSON.stringify(m).slice(0, 80)).toMatchObject({ t: 'invalid', ref: m.t });
+    }
     const bad = { t: 'invalid', reason: 'unrecognised message' };
     // ADR 0005: only an app from before sealed texts sends a plain one.
     expect(parseClientMessage(JSON.stringify({ t: 'text', text: 'x', id: 'a1b2' }))).toEqual({ t: 'invalid', reason: OUT_OF_DATE, ref: 'text' });

@@ -161,10 +161,13 @@ test('a new name and picture chosen during the handshake reach everyone', async 
   await alice.selectedRoom.locator('li.prow', { hasText: '(you)' }).locator('button.avatar').click();
   await alice.page.locator('.profile button.edit').click();
   await alice.page.locator('.profile-edit input').fill('Alicia');
-  // Alice's next welcome is held back: her socket is open, the Room has her in with the auth she sent, she waits.
+  // Alice's next welcome to the room is held back: her socket is open, the Room has her in with the auth she sent, she
+  // waits. The room's, under her identity: not her room of two's with Bob (ADR 0011), under a key of its own.
+  const aliceIs = alice.wire.frames<{ you: { publicKey: string } }>('down', 'welcome')[0]!.you.publicKey;
+  const roomAuths = () => alice.wire.frames<{ publicKey: string; profile?: string }>('up', 'auth').filter((a) => a.publicKey === aliceIs);
   const held: { welcome?: () => void } = {};
   alice.wire.down = (frame, pass) => {
-    if (!frame.includes('"t":"welcome"')) return frame;
+    if (!frame.includes('"t":"welcome"') || !frame.includes(aliceIs)) return frame;
     alice.wire.down = null;
     held.welcome = () => pass(frame);
     return null;
@@ -172,7 +175,7 @@ test('a new name and picture chosen during the handshake reach everyone', async 
   await alice.wire.cut();
   alice.wire.restore();
   await expect.poll(() => held.welcome !== undefined, { message: 'Alice\'s socket is back and its welcome held' }).toBe(true);
-  const auths = alice.wire.frames<{ profile?: string }>('up', 'auth');
+  const auths = roomAuths();
   // The old name and picture, sealed (ADR 0010): the server sees neither.
   expect(typeof auths.at(-1)!.profile).toBe('string');
   expect(auths.at(-1)).not.toHaveProperty('name');
@@ -182,7 +185,7 @@ test('a new name and picture chosen during the handshake reach everyone', async 
   held.welcome!();
   await alice.connected();
   // Not the app giving up on the handshake and trying again, with an auth that carries the new name.
-  expect(alice.wire.frames('up', 'auth'), 'the welcome held is the one let in').toHaveLength(auths.length);
+  expect(roomAuths(), 'the welcome held is the one let in').toHaveLength(auths.length);
 
   // In the call list, where Bob sees her.
   const row = bob.selectedRoom.locator('li.prow', { hasText: 'Alicia' });

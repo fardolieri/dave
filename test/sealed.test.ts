@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { exportPublicKey, fromBase64Url, generateIdentityKeyPair, toBase64Url } from '../src/core/identity';
-import { MAX_NAME_LENGTH, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_SEALED_PROFILE_LENGTH, MAX_TEXT_LENGTH } from '../src/core/protocol';
+import { MAX_NAME_LENGTH, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_SEALED_PIECE_LENGTH, MAX_SEALED_PROFILE_LENGTH, MAX_TEXT_LENGTH } from '../src/core/protocol';
+import { KEPT_PIECE_BYTES } from '../src/core/kept';
 import { MAX_FILE_NAME, MAX_PREVIEW_LENGTH, type FileMeta } from '../src/core/attachment';
 import { roomIdOf, textKeyOf } from '../src/core/rooms';
-import { generatePrivateTextKeyPair, openFile, openPrivate, openPrivateFile, openProfile, openText, sealFile, sealProfile, sealPrivate, sealPrivateFile, sealText, sharedPrivateTextKey, signPrivateTextKey, verifyPrivateTextKey } from '../src/core/sealed';
+import { generatePrivateTextKeyPair, openFile, openPiece, openProfile, openText, pairSecret, sealFile, sealPiece, sealProfile, sealText, signPrivateTextKey, verifyPrivateTextKey } from '../src/core/sealed';
 
 async function writer() {
   const keys = await generateIdentityKeyPair();
@@ -115,8 +116,7 @@ describe('sealed file announcements (ADR 0006)', async () => {
   });
 });
 
-describe('private texts (ADR 0007)', async () => {
-  const roomId = await roomIdOf('a secret');
+describe('rooms of two (ADR 0011), from private text keys (ADR 0007)', async () => {
   /** A friend with an identity and a private text key, published as the app publishes it. */
   async function friend() {
     const w = await writer();
@@ -125,39 +125,29 @@ describe('private texts (ADR 0007)', async () => {
     return { ...w, keys, published: { key, sig: await signPrivateTextKey({ privateKey: w.privateKey, identity: w.from, key }) } };
   }
   type Friend = Awaited<ReturnType<typeof friend>>;
-  const shared = async (me: Friend, them: Friend) => (await sharedPrivateTextKey({ mine: me.keys.privateKey, theirs: them.published.key, me: me.from, them: them.from }))!;
+  const secretOf = (me: Friend, them: Friend) => pairSecret({ mine: me.keys.privateKey, theirs: them.published.key, me: me.from, them: them.from });
   const alice = await friend();
   const bob = await friend();
   const carol = await friend();
-  const toBob = async (text: string) => sealPrivate({ key: await shared(alice, bob), privateKey: alice.privateKey, roomId, id: 'c0ffee', from: alice.from, to: bob.from, text });
-  const asBob = async (sealed: string, over: Partial<Parameters<typeof openPrivate>[0]> = {}) =>
-    openPrivate({ key: await shared(bob, alice), roomId, id: 'c0ffee', from: alice.from, to: bob.from, sealed, ...over });
 
-  it('round-trips between the two friends, with a key each derives on their own, and the private half never leaves', async () => {
+  it('both friends derive the same secret, each on their own, and the private half never leaves', async () => {
     expect(alice.keys.privateKey.extractable).toBe(false);
-    expect(await asBob(await toBob('just between us 🤫'))).toEqual({ ok: true, text: 'just between us 🤫' });
-    // The other way round, the same pair of keys.
-    const back = await sealPrivate({ key: await shared(bob, alice), privateKey: bob.privateKey, roomId, id: 'beef', from: bob.from, to: alice.from, text: 'ok' });
-    expect(await openPrivate({ key: await shared(alice, bob), roomId, id: 'beef', from: bob.from, to: alice.from, sealed: back })).toEqual({ ok: true, text: 'ok' });
+    const secret = await secretOf(alice, bob);
+    expect(secret).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(await secretOf(bob, alice)).toBe(secret);
+    // A room of its own, like any: its id, auth key and text key come from it.
+    expect(await roomIdOf(secret!)).toBe(await roomIdOf((await secretOf(bob, alice))!));
   });
 
-  it('another friend of the room cannot open it, with the room key or with a key of her own', async () => {
-    const sealed = await toBob('just between us');
-    expect(new TextDecoder().decode(fromBase64Url(sealed)!)).not.toContain('between');
-    expect(await asBob(sealed, { key: await shared(carol, alice) })).toEqual({ ok: false, reason: 'unreadable' });
-    expect(await asBob(sealed, { key: await textKeyOf('a secret') })).toEqual({ ok: false, reason: 'unreadable' });
-  });
-
-  it('cannot be passed off as a text to the room, as one to another friend, or as one from another', async () => {
-    const sealed = await toBob('hi');
-    expect(await asBob(sealed, { to: carol.from })).toEqual({ ok: false, reason: 'unreadable' });
-    expect(await asBob(sealed, { id: 'beef' })).toEqual({ ok: false, reason: 'unreadable' });
-    expect(await asBob(sealed, { roomId: await roomIdOf('another secret') })).toEqual({ ok: false, reason: 'unreadable' });
-    expect(await asBob(sealed, { from: carol.from })).toEqual({ ok: false, reason: 'bad signature' });
-    const key = await textKeyOf('a secret');
-    const asText = await sealText({ key, privateKey: alice.privateKey, roomId, id: 'c0ffee', from: alice.from, text: 'hi' });
-    expect(await asBob(asText, { key })).toEqual({ ok: false, reason: 'unreadable' });
-    expect(await openText({ key, roomId, id: 'c0ffee', from: alice.from, sealed: await sealPrivate({ key, privateKey: alice.privateKey, roomId, id: 'c0ffee', from: alice.from, to: bob.from, text: 'hi' }) })).toEqual({ ok: false, reason: 'unreadable' });
+  it('every pair has its own, and nobody else can derive it: not a third friend, not with the published keys alone', async () => {
+    const ab = await secretOf(alice, bob);
+    expect(await secretOf(alice, carol)).not.toBe(ab);
+    expect(await secretOf(carol, bob)).not.toBe(ab);
+    // Carol with Alice's published key and Bob's identity named: her own private half gives another secret.
+    expect(await pairSecret({ mine: carol.keys.privateKey, theirs: alice.published.key, me: bob.from, them: alice.from })).not.toBe(ab);
+    // Bound to both identities: the same keys under other names give another.
+    expect(await pairSecret({ mine: alice.keys.privateKey, theirs: bob.published.key, me: alice.from, them: carol.from })).not.toBe(ab);
+    expect(await pairSecret({ mine: alice.keys.privateKey, theirs: 'AAAA', me: alice.from, them: bob.from })).toBeNull();
   });
 
   it('a private text key counts only with the signature of its own identity, so a server cannot slip in its own', async () => {
@@ -167,25 +157,6 @@ describe('private texts (ADR 0007)', async () => {
     expect(await verifyPrivateTextKey({ identity: bob.from, ...carol.published })).toBe(false);
     expect(await verifyPrivateTextKey({ identity: bob.from, key: 'not a key', sig: bob.published.sig })).toBe(false);
     expect(await verifyPrivateTextKey({ identity: 'not a key', ...bob.published })).toBe(false);
-    expect(await sharedPrivateTextKey({ mine: alice.keys.privateKey, theirs: 'AAAA', me: alice.from, them: bob.from })).toBeNull();
-  });
-
-  it('a file for one friend round-trips for them alone, and is never taken for a private text or a room\'s file', async () => {
-    const file: FileMeta = { name: 'secret.png', type: 'image/png', size: 2048, hash: 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDwCgg' };
-    const key = await shared(alice, bob);
-    const base = { key, privateKey: alice.privateKey, roomId, id: 'c0ffee', from: alice.from, to: bob.from };
-    const sealed = await sealPrivateFile({ ...base, file });
-    expect(await openPrivateFile({ ...base, key: await shared(bob, alice), sealed })).toEqual({ ok: true, file });
-    expect(await openPrivateFile({ ...base, key: await shared(carol, alice), sealed })).toEqual({ ok: false, reason: 'unreadable' });
-    expect(await openPrivate({ ...base, sealed })).toEqual({ ok: false, reason: 'unreadable' });
-    expect(await openPrivateFile({ ...base, sealed: await sealPrivate({ ...base, text: JSON.stringify(file) }) })).toEqual({ ok: false, reason: 'unreadable' });
-    expect(await openFile({ key, roomId, id: 'c0ffee', from: alice.from, sealed })).toEqual({ ok: false, reason: 'unreadable' });
-    expect((await sealPrivateFile({ ...base, file: { ...file, name: '😀'.repeat(MAX_FILE_NAME / 2), type: 'x'.repeat(100), preview: `data:image/jpeg;base64,${'A'.repeat(MAX_PREVIEW_LENGTH - 23)}` } })).length).toBeLessThanOrEqual(MAX_SEALED_FILE_LENGTH);
-  });
-
-  it('the longest private text stays within what the Room takes, and an empty one is refused', async () => {
-    expect((await toBob('€'.repeat(MAX_TEXT_LENGTH))).length).toBeLessThanOrEqual(MAX_SEALED_LENGTH);
-    expect(await asBob(await toBob('  '))).toEqual({ ok: false, reason: 'invalid text' });
   });
 });
 
@@ -231,4 +202,32 @@ describe('sealed profiles (ADR 0010)', async () => {
     }
   });
 
+});
+
+describe('sealed pieces of a kept file (ADR 0009)', async () => {
+  const key = await textKeyOf('a secret');
+  const roomId = await roomIdOf('a secret');
+  const bytes = new Uint8Array(KEPT_PIECE_BYTES).map((_, i) => i % 251);
+  const where = { key, roomId, hash: 'h'.repeat(43), n: 2, of: 5 };
+
+  it('round-trips a piece, shows nothing of it, and fits what the Room takes', async () => {
+    const sealed = await sealPiece({ ...where, bytes });
+    const opened = await openPiece({ ...where, sealed });
+    // Byte by byte, not by toEqual, which takes seconds over a whole piece.
+    expect(opened?.length).toBe(bytes.length);
+    expect(opened!.every((b, i) => b === bytes[i])).toBe(true);
+    expect(toBase64Url(sealed).length).toBeLessThanOrEqual(MAX_SEALED_PIECE_LENGTH);
+    expect(sealed.subarray(12, 12 + 64)).not.toEqual(bytes.subarray(0, 64));
+  });
+
+  it('opens only for its room, file, place and count, and never throws', async () => {
+    const sealed = await sealPiece({ ...where, bytes });
+    for (const over of [{ roomId: await roomIdOf('another') }, { key: await textKeyOf('another') }, { hash: 'g'.repeat(43) }, { n: 3 }, { of: 6 }]) {
+      expect(await openPiece({ ...where, ...over, sealed }), JSON.stringify(Object.keys(over))).toBeNull();
+    }
+    expect(await openPiece({ ...where, sealed: sealed.subarray(0, 10) })).toBeNull();
+    const flipped = sealed.slice();
+    flipped[40] = flipped[40]! ^ 1;
+    expect(await openPiece({ ...where, sealed: flipped })).toBeNull();
+  });
 });
