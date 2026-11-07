@@ -165,7 +165,8 @@ export type KeptEntry = { t: 'sealed' | 'file'; from: WireIdentity; sealed: stri
 export type ServerMessage =
   /** `fresh`: nobody has entered this room yet, so the answer must carry the auth key derived from the secret. */
   | { t: 'challenge'; nonce: string; fresh?: true }
-  | { t: 'welcome'; you: WirePerson }
+  /** Let in. `at`: the Room's clock then, by which a browser new to the room starts its history (ADR 0009). */
+  | { t: 'welcome'; you: WirePerson; at: number }
   | { t: 'presence'; people: WirePerson[] }
   /**
    * A sealed text, tagged with who sent it (their key, and their profile sealed as it was then) and when the Room got it.

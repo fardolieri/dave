@@ -229,7 +229,7 @@ export class Store extends DurableObject<Env> {
       if (fits <= 0) return false;
       const dropped = sql.exec<{ bytes: number }>('DELETE FROM entries WHERE seq IN (SELECT seq FROM entries WHERE room = ? AND writer = ? AND at <= ? LIMIT ?) RETURNING bytes', room, writer, before, fits);
       const rows = dropped.toArray();
-      if (rows.length === 0) return true;
+      t.read += dropped.rowsRead;
       for (const r of rows) t.bytes -= r.bytes;
       t.entries -= rows.length;
       t.written += dropped.rowsWritten + 1; // and the totals

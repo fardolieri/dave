@@ -49,6 +49,8 @@ export function createPrivates(opts: {
   const disposers = new Map<string, () => void>();
   onCleanup(() => { disposed = true; for (const d of disposers.values()) d(); disposers.clear(); });
 
+  /** Conversations deleted before their room of two was made, and whether what I wrote goes from the server too. */
+  const deletedEarly = new Map<string, boolean>();
   /** The rooms of two made so far, by friend. */
   const pairs = new Map<string, Pair>();
   const [pairsChanged, setPairsChanged] = createSignal(0);
@@ -92,6 +94,13 @@ export function createPrivates(opts: {
         watch(friend, room, identity.publicKey);
         return room;
       }));
+      // Deleted before its room of two was made: cleared now, and what I wrote deleted from the server if asked.
+      const deleted = deletedEarly.get(friend);
+      if (deleted !== undefined) {
+        deletedEarly.delete(friend);
+        if (deleted) room.forgetMine();
+        void room.clearHistory();
+      }
       const pair = { friend, room, mine: identity.publicKey, fingerprint: k.fingerprint, key: k.key };
       pairs.set(friend, pair);
       setPairsChanged((n) => n + 1);
@@ -319,9 +328,12 @@ export function createPrivates(opts: {
       setArchives(({ [friend]: _gone, ...rest }) => rest);
       reading.delete(friend);
       // What waits to go to them goes unsent; what the server keeps of it is not brought back (`historyFrom`).
-      pairs.get(friend)?.room.dropUnsent();
-      if (mine) pairs.get(friend)?.room.forgetMine();
-      void pairs.get(friend)?.room.clearHistory();
+      const pair = pairs.get(friend);
+      if (pair) {
+        pair.room.dropUnsent();
+        if (mine) pair.room.forgetMine();
+        void pair.room.clearHistory();
+      } else deletedEarly.set(friend, mine);
       void forgetPrivate(friend);
       posthog.capture('private_forgotten', { mine });
     },

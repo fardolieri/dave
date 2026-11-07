@@ -279,18 +279,23 @@ test('ADR 0009: a friend who joins by the link reads nothing from before, and ev
   await alice.say('before you came');
   await expect.poll(() => alice.storedTexts()).toEqual(['before you came']);
   const bob = await crowd.open('Bob', { rooms: [other] });
+  // His first answer from the server is lost on the way: where his history starts must not hang on it.
+  bob.wire.down = (frame) => (frame.includes('"t":"history"') ? null : frame);
   await bob.page.goto(`/#${crowd.room.secret}/${encodeURIComponent(crowd.room.name)}`);
   await bob.connected();
   await expect(bob.selectedRoom.locator('.room-title')).toHaveText(crowd.room.name);
-  // His first sync asks past everything: its answer says where the Room's clock was, which is where his history starts.
-  await expect.poll(() => bob.wire.frames<{ since: number }>('up', 'sync').map((f) => f.since)).toContain(Number.MAX_SAFE_INTEGER);
+  // His history starts at his welcome, by the Room's clock, and his sync asks from there.
   const from = () => bob.page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('dave.historyFrom') ?? '{}') as Record<string, number>));
-  await expect.poll(async () => (await from()).every((at) => at < Number.MAX_SAFE_INTEGER) && (await from()).length).toBe(1);
+  await expect.poll(from).toHaveLength(1);
+  const [start] = await from();
+  expect(bob.wire.frames<{ at: number }>('down', 'welcome').map((f) => f.at)).toContain(start);
+  await expect.poll(() => bob.wire.frames<{ since: number }>('up', 'sync').map((f) => f.since)).toContain(start);
   await alice.say('after');
   await expect.poll(() => bob.chatTexts()).toEqual(['after']);
   // Away, then back: the server brings what he missed since he came, still nothing from before.
   await bob.wire.cut();
   await alice.say('while you were out');
+  bob.wire.down = null;
   bob.wire.restore();
   await bob.connected();
   await expect.poll(() => bob.chatTexts()).toEqual(['after', 'while you were out']);

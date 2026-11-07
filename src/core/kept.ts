@@ -95,8 +95,8 @@ export const SYNC_OVERLAP_MS = 5 * 60_000;
 export const SYNC_COOLDOWN_MS = 10_000;
 
 /**
- * Where a room joined in this browser starts its history until its first sync is answered: past everything, so that sync
- * brings nothing, and its answer (`upTo`, the Room's clock) becomes the start (client/history.ts, `historyFrom`).
+ * Where a room joined in this browser starts its history until its first welcome: past everything, so nothing is asked
+ * before it, and the welcome's `at`, the Room's clock, becomes the start (client/history.ts, `historyFrom`).
  */
 export const FROM_JOIN = Number.MAX_SAFE_INTEGER;
 

@@ -196,7 +196,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     // noticed dying (the client already reconnected) or another tab, which is told so.
     return {
       state: { stage: 'attached', person, bucket: newBucket(ctx.now), attachedAt: ctx.now, ...(msg.telemetry ? { telemetry: true as const } : {}) },
-      replies: [{ t: 'welcome', you: person }],
+      replies: [{ t: 'welcome', you: person, at: ctx.now }],
       presenceChanged: true,
       supersede: msg.publicKey,
       ...(ctx.authKey === null ? { storeAuthKey: authKey } : {}),

@@ -83,17 +83,20 @@ unseen meanwhile.
   writer, id). Browsers drop doubles anyway.
 - A friend can delete everything they wrote in a room from the server's history: texts, file announcements and the
   pieces of their files (owner, 2026-11-07), with Clear's "Also delete my messages from the server", one room at a time.
-  The socket asks (`forget`); the Store drops the room's entries whose writer is the key that socket proved, up to the
-  Room's clock then, after the room's keeps and pieces under way. Friends' copies stay theirs. A drop counts against the
-  day's writes like a keep, and goes no further than the share has room for; the app keeps the ask (`historyForget` in
-  localStorage) and asks again, from where it was, after every welcome until the server says all is gone. Identity is
+  The socket asks (`forget`) up to a time, the Room's clock at the Clear as the last welcome's `at` lets the app tell
+  it (or that welcome's own, for a Clear before any), so an ask repeated after a lost answer deletes nothing written
+  since; the Store drops the room's entries whose writer is the key that socket proved, up to then, after the room's
+  keeps and pieces under way. Friends' copies stay theirs. A drop counts against the day's writes like a keep, and goes
+  no further than the share has room for; the app keeps the ask (`historyForget` in localStorage) and asks again after
+  every welcome until the server says all of it is gone. Identity is
   per browser: what I wrote from another device, or from a browser whose data is lost, is not this browser's to delete,
   and goes with the window's tail. Cloudflare keeps 30 days of a Durable Object's storage for point-in-time recovery, so
   whoever holds the account could bring a dropped entry back within that time: sealed, as it was.
 - A browser's history of a room has a start (`historyFrom` in localStorage), and its syncs ask from there on: when it
   joined the room by the link, or last cleared it (owner, 2026-11-07: a newcomer does not read what was said before
-  they came). A room joined starts past everything (`FROM_JOIN`) until its first sync, whose answer's `upTo`, the Room's
-  clock, becomes the start: the browser's own clock may be off. A new device and a room rejoined after Leave are joins
+  they came). A room joined starts past everything (`FROM_JOIN`) until its first welcome, whose `at`, the Room's clock,
+  becomes the start: the browser's own clock may be off, and a start taken from a sync's answer would wait on an answer
+  that may be lost, or not given that day. A new device and a room rejoined after Leave are joins
   like any. Rooms of two have no start, as both friends read from the first text and one may write before the other's
   browser first opens it; nor do rooms a browser held before starts were kept, which keep everything.
 - The start is this browser's choice, not a lock: everyone with the link holds the key that opens the whole window,

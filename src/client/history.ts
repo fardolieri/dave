@@ -131,7 +131,7 @@ export const historyFromAt = (roomId: string): number | null => local.read('hist
 export function keepHistoryFrom(roomId: string, at: number): void {
   local.set('historyFrom', JSON.stringify({ ...local.read('historyFrom'), [roomId]: at }));
 }
-/** A room new to this browser: its history starts where the Room's clock is at its first sync (core/kept.ts, FROM_JOIN). */
+/** A room new to this browser: its history starts where the Room's clock is at its first welcome (core/kept.ts, FROM_JOIN). */
 export const startHistoryAtJoin = (roomId: string): void => keepHistoryFrom(roomId, FROM_JOIN);
 
 /**

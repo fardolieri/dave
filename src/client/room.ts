@@ -22,7 +22,7 @@ import { keepUnread, keptUnread } from './unread';
 import { contactOf } from './contacts';
 import { mergeByAt } from '../core/chatlog';
 import { pieceTagOf } from '../core/rooms';
-import { FROM_JOIN, KEPT_PIECE_BYTES, keptKind, keptPiecesOf, pieceId, syncSince } from '../core/kept';
+import { FROM_JOIN, KEPT_PIECE_BYTES, SYNC_COOLDOWN_MS, keptKind, keptPiecesOf, pieceId, syncSince } from '../core/kept';
 import { PIECE_RATE_PER_SECOND } from '../core/room';
 import { appendHistory, clearHistory, doneForgetting, FORGET_NOW, forgettingOf, historyFromAt, keepForgetting, historySyncedTo, keepHistoryFrom, keepHistorySynced, keepUnsent, loadHistory, loadUnsent, textKey, type StoredText } from './history';
 
@@ -456,8 +456,6 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     // All of it in: this room has everything up to when the Room asked, and what comes live on this socket from now on.
     if (frame.last && frame.upTo !== undefined && !asked.dropped) {
       syncedOn = socket;
-      // Joined: the history starts where the Room's clock was, which this browser's own may not be.
-      if (asked.joining && historyFromAt(opts.roomId) === FROM_JOIN) keepHistoryFrom(opts.roomId, frame.upTo);
       keepHistorySynced(opts.roomId, frame.upTo);
     }
   }
@@ -558,10 +556,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   /**
    * What a socket's `sync` was asked with: `missed` when this browser held some of the room, or its history has a start,
    * so what comes is news; `old` when it is new to a room of two. `clears`: how often the history was cleared here by
-   * then; an answer to a sync asked before a clear is not shown after it. `joining`: asked before the start of a room
-   * joined here was known, which the answer's `upTo` then is.
+   * then; an answer to a sync asked before a clear is not shown after it.
    */
-  type Asked = { came: 'missed' | 'old'; clears: number; joining?: true; dropped?: true };
+  type Asked = { came: 'missed' | 'old'; clears: number; dropped?: true };
   const asks = new WeakMap<WebSocket, Asked>();
   /** How often this room's history was cleared here. */
   let clears = 0;
@@ -578,16 +575,18 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       const newest = newestAt();
       const from = historyFromAt(opts.roomId);
       // Nothing held and no start: a room of two new to this browser, so nothing it brings is news. Otherwise it is.
-      asks.set(socket, { came: newest === null && from === null && !opts.allNews ? 'old' : 'missed', clears, ...(from === FROM_JOIN ? { joining: true as const } : {}) });
+      asks.set(socket, { came: newest === null && from === null && !opts.allNews ? 'old' : 'missed', clears });
       // A room this browser held before the mark was kept: from its newest text, as near as it can know.
       send({ t: 'sync', since: syncSince(historySyncedTo(opts.roomId) ?? newest, from) });
     });
   }
-  /** Asks the server to delete what I wrote here (`forgetMine`), should that wait to be done. */
+  /** Asks the server to delete what I wrote here (`forgetMine`), should that wait to be done: up to a time, always. */
   function askForget(): void {
     const before = forgettingOf(opts.roomId);
-    if (before !== null) send(before === FORGET_NOW ? { t: 'forget' } : { t: 'forget', before });
+    if (before !== null && before !== FORGET_NOW) send({ t: 'forget', before });
   }
+  /** The Room's clock less this browser's, as of the last welcome; null before one. */
+  let roomClock: number | null = null;
   /** A text or file came live: on a socket synced in full, this room has everything up to it. */
   const liveKept = (socket: WebSocket, at: number): void => { if (syncedOn === socket && !stopped) keepHistorySynced(opts.roomId, at); };
   /** The time of the newest text or file shown, by the Room's clock; null for none. */
@@ -771,6 +770,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             const bytes = new Uint8Array(await u.blob.slice(n * KEPT_PIECE_BYTES, (n + 1) * KEPT_PIECE_BYTES).arrayBuffer());
             const sealed = await sealPiece({ key: opts.textKey, roomId: opts.roomId, hash, n, of: u.of, bytes });
             const tag = await tagOf(hash);
+            // Let go meanwhile (a delete from the server, say): a piece sent now would be kept after it.
+            if (uploads.get(hash) !== u) break;
             if (welcomed !== socket || !send({ t: 'piece', tag, n, sealed: toBase64Url(sealed) })) return;
             // The Room's burst for pieces at once, then under its rate (core/room.ts): a photo is up before the tab goes
             // to the background, where timers slow down; texts go between them.
@@ -1067,6 +1068,12 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           if (attempt > 0) console.info(`[recovered] room ${opts.roomId.slice(0, 8)}: let in after ${attempt} lost socket${attempt === 1 ? '' : 's'}`);
           attempt = 0;
           setYou(m.you);
+          // The Room's clock, as near as this browser can tell it: a delete from the server asks up to it (`forgetMine`).
+          if (typeof m.at === 'number') roomClock = m.at - Date.now();
+          // Joined by the link: the history starts here, by the Room's clock, which this browser's own may not be.
+          if (typeof m.at === 'number' && historyFromAt(opts.roomId) === FROM_JOIN) keepHistoryFrom(opts.roomId, m.at);
+          // A delete asked before there was a socket: up to now, by the Room's clock; what is sent below comes after it.
+          if (typeof m.at === 'number' && forgettingOf(opts.roomId) === FORGET_NOW) keepForgetting(opts.roomId, m.at);
           // A rename, a picture or an opt-in changed while the handshake ran went to no socket; the auth had the old one.
           if (authCarried) for (const d of afterWelcome(latest, authCarried)) sendDeclaration(d);
           // What I wrote here is to go from the server's history: asked first, so the texts sent again below stay.
@@ -1114,12 +1121,13 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
         case 'kept':
           keptPiece(m);
           return;
-        case 'forgot':
-          // All gone, or the server's share ran out first: then from where it was, after the next welcome.
-          if (forgettingOf(opts.roomId) === null) return;
-          if (m.done) doneForgetting(opts.roomId);
-          else keepForgetting(opts.roomId, m.before);
+        case 'forgot': {
+          // All gone up to what was asked: done. An answer to an earlier ask, before a later Clear, is not; nor one the
+          // server's share ran out on, which is asked again after the next welcome.
+          const asked = forgettingOf(opts.roomId);
+          if (asked !== null && m.done && m.before >= asked) doneForgetting(opts.roomId);
           return;
+        }
         case 'link':
         case 'linkice':
           links.onMessage(m);
@@ -1136,6 +1144,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
               // Too many frames at once (a reconnect sends all that waited first): asked again in a moment. Asked too soon
               // after another: that one brings what there is.
               if (m.reason === 'rate limited') setTimeout(() => askHistory(socket), RATE_RETRY_MS);
+              return;
+            }
+            if (m.ref === 'forget') {
+              // Asked again so soon after another (a second Clear), or too many frames at once: asked again once it may be.
+              setTimeout(() => { if (welcomed === socket) askForget(); }, m.reason === 'rate limited' ? RATE_RETRY_MS : SYNC_COOLDOWN_MS);
               return;
             }
             if (m.ref === 'file') {
@@ -1352,7 +1365,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
      */
     forgetMine: (): void => {
       uploads.clear();
-      keepForgetting(opts.roomId, FORGET_NOW);
+      // Up to now by the Room's clock, so an ask repeated later deletes nothing written since; before any welcome in this
+      // page, up to the next one's (`welcome`).
+      keepForgetting(opts.roomId, roomClock === null ? FORGET_NOW : Date.now() + roomClock);
       if (welcomed) askForget();
     },
     /** Empties the local history; the server's (ADR 0009) is asked for what comes after this moment only, from now on. */
