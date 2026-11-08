@@ -282,6 +282,10 @@ describe('signaling rate limit', () => {
     try {
       for (let i = 0; i < 45; i++) send(a, { t: 'sealed', sealed: 'c2VhbGVk', id: `t${i}` });
       expect(await a.next((m) => m.t === 'error')).toEqual({ t: 'error', reason: 'rate limited', ref: 'sealed' });
+      // Its answer says the room has read every text before the clock runs again: a text it reads after, with the bucket
+      // refilled, would be kept after the file ended (ticket 73).
+      send(a, { t: 'mute', muted: true });
+      await a.next((m) => m.t === 'error' && m.ref === 'mute');
     } finally {
       vi.useRealTimers();
     }
