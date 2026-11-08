@@ -286,5 +286,13 @@
  {
   "match": "^settings\\.spec\\.ts › low bandwidth voice caps the voice.* \\| expect\\(locator\\)\\.toHaveText\\(expected\\) failed",
   "ticket": "61"
+ },
+ {
+  "match": "^settings\\.spec\\.ts › About shows the relay this month and the free plan today, the figure nearest its limit first, and nothing where that is not known \\| TimeoutError: locator\\.click",
+  "ticket": "74"
+ },
+ {
+  "match": "^text\\.spec\\.ts › regression: a text sent again while my history is still being read after a reload counts once and shows once \\| expect\\(received\\)\\.toContain",
+  "ticket": "75"
  }
 ]
