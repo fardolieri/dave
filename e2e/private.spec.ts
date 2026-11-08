@@ -327,3 +327,31 @@ test('ADR 0011: a conversation from before rooms of two is still there, its new 
   await alice.composer.press('Enter');
   await expect.poll(() => conversation(bob)).toEqual([{ from: 'Alice', text: 'from before' }, { from: 'Alice', text: 'and now' }]);
 });
+
+// Nov 2026, review of #126: my private texts that waited to go from before rooms of two (`unsentPrivate`, left as it was)
+// were taken into the room of two on every start, unless it had them waiting or in its history. Deleting the conversation
+// empties its history, and the next start sent them again.
+test('regression: a private text that waited from before rooms of two does not go again after the conversation is deleted', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.settledOnline('Alice', 'Bob');
+  const bobIs = bob.wire.frames<{ you: { publicKey: string; fingerprint: string } }>('down', 'welcome')[0]!.you;
+  // As that app wrote it: waiting to go through a room both are in, a minute ago.
+  await alice.page.evaluate((b) => localStorage.setItem('dave.unsentPrivate', JSON.stringify({
+    [b.room]: [{ id: '0a1b2c3d4e5f60718293a4b5', to: { publicKey: b.publicKey, fingerprint: b.fingerprint, name: 'Bob' }, text: 'waited to go', at: Date.now() - 60_000 }],
+  })), { ...bobIs, room: 'roomA' });
+  await alice.page.reload();
+  await alice.connected();
+  await openFromOnline(alice, 'Bob');
+  await expect.poll(() => conversation(alice)).toEqual([{ from: 'Alice', text: 'waited to go' }]);
+  await alice.page.locator('.private-head').getByRole('button', { name: 'Delete conversation' }).click();
+  await alice.page.locator('dialog.clear').getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect.poll(() => conversation(alice)).toEqual([]);
+  await alice.page.reload();
+  await alice.connected();
+  await openFromOnline(alice, 'Bob');
+  // Written after the start: what was taken in at the start would have gone before it.
+  await alice.composer.fill('only this');
+  await alice.composer.press('Enter');
+  await expect.poll(() => conversation(alice)).toEqual([{ from: 'Alice', text: 'only this' }]);
+});
