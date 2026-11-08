@@ -48,8 +48,8 @@ describe('the Store', () => {
       expect(s.keepPiece('roomA', 'pkA', 'tagA:0', piece(1), T0 + 1)).toBe(true);
       s.keep('roomA', entry(1));
       expect(s.keepPiece('roomA', 'pkA', 'tagA:1', piece(2), T0 + 2)).toBe(true);
-      expect(s.keepPiece('roomA', 'pkA', 'tagA:1', piece(9), T0 + 3), 'sent again after a lost socket: kept once').toBe(true);
-      expect(s.piece('roomA', 'tagA:1')).toEqual(piece(2));
+      expect(s.keepPiece('roomA', 'pkA', 'tagA:1', piece(9), T0 + 3), 'sent again after a lost socket: kept once, the later').toBe(true);
+      expect(s.piece('roomA', 'tagA:1')).toEqual(piece(9));
       expect(s.piece('roomA', 'tagA:2'), 'not kept').toBeNull();
       expect(s.piece('roomB', 'tagA:0'), "another room's").toBeNull();
       expect(ids(s.since('roomA', 0)), 'a sync brings texts and announcements only').toEqual(['id1']);

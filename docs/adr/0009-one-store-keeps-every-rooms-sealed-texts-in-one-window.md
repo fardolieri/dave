@@ -88,7 +88,9 @@ unseen meanwhile.
   video would push weeks of every room's texts out of the window. A file whose oldest pieces the tail took is not
   given: what is left of it waits there to go too.
 - A text sent again after a lost socket is broadcast again under its id (ticket 51); the Store keeps it once (room,
-  writer, id). Browsers drop doubles anyway.
+  writer, id). Browsers drop doubles anyway. A piece sent again is kept anew instead, the earlier copy dropped: a file
+  sent again in the same room has the same piece ids, and its pieces stay four weeks from the last send, at the head of
+  the window (review of #126).
 - A friend can delete everything they wrote in a room from the server's history: texts, file announcements and the
   pieces of their files (owner, 2026-11-07), with Clear's "Also delete my messages from the server", one room at a time.
   The socket asks (`forget`) up to a time: the Room's clock as the last welcome's `at` lets the app tell it, once the

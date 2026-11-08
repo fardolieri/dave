@@ -154,7 +154,14 @@ export class Store extends DurableObject<Env> {
     const sql = this.ctx.storage.sql;
     return this.ctx.storage.transactionSync(() => {
       const t = this.totals(now);
-      if (t.written >= WRITES_PER_DAY) return sql.exec('SELECT 1 FROM entries WHERE room = ? AND writer = ? AND id = ?', room, writer, id).toArray().length > 0;
+      // A piece of mine kept from an earlier send (a file I sent again in this room has the same ids) is not this one: it
+      // goes, and this one is kept at the end of the window, so it stays four weeks from now. A text kept is kept.
+      if (t.written >= WRITES_PER_DAY) return sql.exec('SELECT 1 FROM entries WHERE room = ? AND writer = ? AND id = ? AND (piece = 0 OR at >= ?)', room, writer, id, at).toArray().length > 0;
+      if (piece) {
+        const older = sql.exec<{ bytes: number }>('DELETE FROM entries WHERE room = ? AND writer = ? AND id = ? AND at < ? RETURNING bytes', room, writer, id, at);
+        for (const o of older) { t.bytes -= o.bytes; t.entries -= 1; }
+        t.written += older.rowsWritten;
+      }
       const insert = sql.exec('INSERT INTO entries (room, writer, id, at, bytes, entry, piece) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING seq', room, writer, id, at, bytes, entry, piece);
       const added = insert.toArray();
       if (added.length === 0) return true;
