@@ -58,6 +58,20 @@ describe('the Store', () => {
     });
   });
 
+  // Nov 2026, review of #126: a file sent again in the same room has the same piece ids (its tag is the file's), and the
+  // pieces kept the first send's time: four weeks after that they went, the second send's announcement still kept.
+  it('a file I send again in the same room keeps its pieces four weeks from the second send', async () => {
+    await runInDurableObject(store('again'), (s: Store) => {
+      const day = 24 * 3600_000;
+      expect(s.keepPiece('roomA', 'pkA', 'tagA:0', new Uint8Array(10).fill(1), T0, undefined, T0)).toBe(true);
+      expect(s.keepPiece('roomA', 'pkA', 'tagA:0', new Uint8Array(10).fill(2), T0 + 27 * day, undefined, T0 + 27 * day)).toBe(true);
+      s.prune(T0 + 30 * day);
+      expect(s.piece('roomA', 'tagA:0', T0 + 30 * day), 'kept from the second send').toEqual(new Uint8Array(10).fill(2));
+      expect(s.usage().entries, 'one copy').toBe(1);
+      expect(s.usage().bytes).toBe(10 + ROW_OVERHEAD_BYTES);
+    });
+  });
+
   it('keeps the same file sent by two friends as two copies, and gives either', async () => {
     await runInDurableObject(store('copies'), (s: Store) => {
       expect(s.keepPiece('roomA', 'pkA', 'tagA:0', new Uint8Array(10).fill(1), T0 + 1)).toBe(true);
