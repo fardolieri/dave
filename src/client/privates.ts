@@ -5,7 +5,7 @@ import type { PrivateThread, StoredText } from '../core/chatlog';
 import type { PairKey } from '../core/pairs';
 import { pairSecret, verifyPrivateTextKey } from '../core/sealed';
 import { authKeyOf, pieceKeyOf, roomIdOf, textKeyOf } from '../core/rooms';
-import { forgetPrivate, keepUnsent, loadHistory, loadPrivate, loadPrivateThreads, loadUnsent, textKey, touchPrivateThread } from './history';
+import { forgetPrivate, historyFromAt, keepUnsent, loadHistory, loadPrivate, loadPrivateThreads, loadUnsent, textKey, touchPrivateThread } from './history';
 import { tooOld } from '../core/unsent';
 import { local } from './storage';
 import { pairIdentity, type LocalIdentity } from './identity';
@@ -119,11 +119,13 @@ export function createPrivates(opts: {
    * My private texts that waited to go through a room we share, from before rooms of two (`unsentPrivate`): they go
    * through the room of two now, as texts of its own, by their id. One that went out unanswered may have arrived the old
    * way, and may come twice: better than lost. The old list stays as it was (a later change deletes it): what the room of
-   * two has already, waiting or in its history, is not taken again, nor what waited a day, which would not be sent.
+   * two has already, waiting or in its history, is not taken again, nor what waited a day, which would not be sent, nor
+   * what was written before the room of two's history starts: a conversation deleted after it went (`historyFrom`).
    */
   async function adoptUnsent(friend: string, roomId: string): Promise<void> {
     const now = Date.now();
-    const mine = Object.values(local.read('unsentPrivate')).flat().filter((u) => u.to.publicKey === friend && !tooOld(u, now));
+    const from = historyFromAt(roomId) ?? -Infinity;
+    const mine = Object.values(local.read('unsentPrivate')).flat().filter((u) => u.to.publicKey === friend && !tooOld(u, now) && u.at > from);
     if (!mine.length) return;
     const waiting = loadUnsent(roomId);
     const had = new Set([...waiting.map((w) => w.id), ...(await loadHistory(roomId)).flatMap((m) => (m.id ? [m.id] : []))]);
