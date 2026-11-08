@@ -331,6 +331,29 @@ test('ADR 0009: a friend who joins by the link reads nothing from before, and ev
   await expect.poll(() => bob.storedTexts()).toEqual(['after', 'while you were out']);
 });
 
+// Nov 2026, review of #126: until a sync was answered in full, the next one asked from the newest line on screen, and a
+// text that came live moved it. A first answer lost (the day's share used up, a socket dropped) and a live text after
+// it, and what the server kept before that text was never asked for again (more than SYNC_OVERLAP_MS before it).
+test('regression: a live text before the first sync is answered does not move where the next sync asks from', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  // Bob's room as held before starts were kept (the fixture seeds it so): nothing held, no start, asked from 0.
+  const bob = await crowd.open('Bob', { connect: false });
+  bob.wire.down = (frame) => (frame.includes('"t":"history"') ? null : frame);
+  await bob.open();
+  const sinces = () => bob.wire.frames<{ since: number }>('up', 'sync').map((s) => s.since);
+  await expect.poll(() => sinces().length).toBeGreaterThan(0);
+  expect(sinces(), 'the first asks from the start of the window').toEqual(sinces().map(() => 0));
+  await alice.say('live');
+  await expect.poll(() => bob.chatTexts()).toEqual(['live']);
+  const asked = sinces().length;
+  bob.wire.down = null;
+  await bob.wire.cut();
+  bob.wire.restore();
+  await bob.connected();
+  await expect.poll(() => sinces().length).toBeGreaterThan(asked);
+  expect(sinces().slice(asked), 'asked again from where the first asked, not from the live text').toEqual(sinces().slice(asked).map(() => 0));
+});
+
 test('ADR 0009: a friend away, or a browser that held the room before starts were kept, gets the texts and files sent meanwhile from the server, in order, counted unread without a chime', async ({ crowd }) => {
   const other = { secret: newSecret(), name: 'Other' };
   const alice = await crowd.open('Alice');
