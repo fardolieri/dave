@@ -602,7 +602,12 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       // Nothing held and no start: a room of two new to this browser, so nothing it brings is news. Otherwise it is.
       asks.set(socket, { came: newest === null && from === null && !opts.allNews ? 'old' : 'missed', clears });
       // A room this browser held before the mark was kept: from its newest text, as near as it can know.
-      send({ t: 'sync', since: syncSince(historySyncedTo(opts.roomId) ?? newest, from) });
+      const synced = historySyncedTo(opts.roomId);
+      const since = syncSince(synced ?? newest, from);
+      // Marked before it is asked: should no answer come in full, a text that comes live (newestAt) must not move the next
+      // ask past what the server kept before it. 1 for 0, which the mark cannot hold, and asks from 0 all the same.
+      if (synced === null) keepHistorySynced(opts.roomId, Math.max(since, 1));
+      send({ t: 'sync', since });
     });
   }
   /** Asks the server to delete what I wrote here (`forgetMine`), should that wait to be done: up to a time, always. */
