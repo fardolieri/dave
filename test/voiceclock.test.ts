@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DRIFT_SAMPLES, DRIFT_WINDOW_MS, GUARD_WARMUP_MS, OVERLOAD_SAMPLES, createDropCounter, createResampler, createVoiceGuard, sendRatePct, type ClockSample } from '../src/core/voiceclock';
+import { DRIFT_SAMPLES, DRIFT_WINDOW_MS, GUARD_WARMUP_MS, OVERLOAD_SAMPLES, STALL_SAMPLES, createDropCounter, createResampler, createVoiceGuard, sendRatePct, type ClockSample } from '../src/core/voiceclock';
 
 describe('createResampler', () => {
   it('passes a matching rate through untouched', () => {
@@ -71,7 +71,7 @@ describe('createVoiceGuard, worklet path', () => {
 describe('createVoiceGuard, worker path', () => {
   const guard = () => createVoiceGuard('frames');
   const strained = (xs: ClockSample[], droppedMs: number) => xs.map((x) => ({ ...x, droppedMs }));
-  it('never judges the clock or the load: the microphone sets the pace, and a busy phone that keeps up is fine', () => {
+  it('never judges the clock, nor the load alone: the microphone sets the pace, and a busy phone that keeps up is fine', () => {
     // What stopped a friend's noise removal on 2 Oct though his voice arrived on time: the rate or the load past the old marks.
     expect(firstFault(guard(), strained(readings(120, 1.03, 95), 0))).toBeNull();
     expect(firstFault(guard(), strained(readings(120, 0.95, 85), 0))).toBeNull();
@@ -91,6 +91,11 @@ describe('createVoiceGuard, worker path', () => {
     const f = firstFault(guard(), strained(readings(30, 1, 99), 200));
     expect(f).toMatchObject({ reason: 'overload', droppedMs: 200, loadPct: 99 });
     expect(f!.at).toBe(GUARD_WARMUP_MS + (OVERLOAD_SAMPLES - 1) * 1000);
+  });
+  it('stops on losses that go on at a low load too: a worker the rest of the device keeps from the CPU', () => {
+    const f = firstFault(guard(), strained(readings(30, 1, 50), 200));
+    expect(f).toMatchObject({ reason: 'overload', loadPct: 50 });
+    expect(f!.at).toBe(GUARD_WARMUP_MS + (STALL_SAMPLES - 1) * 1000);
   });
 });
 
