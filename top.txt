@@ -1,3 +1,3 @@
 1x this week (3x in 30 days) resilience.spec.ts › regression: a socket gone silent without a close is given up, and the : Alice gives the silent socket up herself (ticket 61)
-1x this week (1x in 30 days) text.spec.ts › regression: a text sent again while my history is still being read aft: expect(received).toContain(expected) // indexOf (ticket 75)
-1x this week (1x in 30 days) settings.spec.ts › About shows the relay this month and the free plan today, the figure n: TimeoutError: locator.click: Timeout 15000ms exceeded. (ticket 74)
+1x this week (1x in 30 days) resilience.spec.ts › an offer stuck for a friend who then reloads leaves their new connecti: expect(locator).toHaveText(expected) failed (no ticket)
+1x this week (1x in 30 days) settings.spec.ts › About shows the relay this month and the free plan today, the figure n: TimeoutError: apiRequestContext.get: Timeout 15000ms exceeded. (no ticket)
