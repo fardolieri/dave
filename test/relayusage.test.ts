@@ -169,6 +169,40 @@ describe('the Worker’s /relay-usage', () => {
     expect(first?.since, 'two minutes into November').toBe('2026-11-01');
     expect(api).toHaveBeenCalledTimes(6);
   });
+  it('ticket 76: a request waiting for a call that never ends answers within six seconds, and the next one asks anew', async () => {
+    // On Cloudflare a request the browser gives up on is cancelled with its call to the API, and that call then neither
+    // answers nor fails for anyone waiting on it (preview of #129, 2026-11-09: a request canceled after 1.2 s, then the
+    // next one at the same edge waited until its client gave up). Here, as a call that never settles.
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    try {
+      const api = cloudflare();
+      api.mockImplementationOnce(() => new Promise<Response>(() => {})).mockImplementationOnce(() => new Promise<Response>(() => {}));
+      void relayUsage(configured, NOV_2); // the request that was cancelled: never answered
+      let answered: unknown = null;
+      void relayUsage(configured, NOV_2).then(async (res) => { answered = await res.json(); });
+      /** Lets what is due happen: the real clock, which the fake one does not move. */
+      const settle = async () => { for (let i = 0; i < 20 && answered === null; i++) await scheduler.wait(5); };
+      await vi.advanceTimersByTimeAsync(5900);
+      await settle();
+      expect(answered, 'still waiting while the call could end').toBeNull();
+      await vi.advanceTimersByTimeAsync(200);
+      await settle();
+      expect(answered, 'answered, the figures not known').toEqual({ error: 'unavailable' });
+      expect(parseRelayUsage(await (await relayUsage(configured, NOV_2)).json()), 'the next request asks anew').toMatchObject({ bytes: 14066575220 });
+      expect(api).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("hands the call it starts to the request's waitUntil, so the requests waiting for it get its answer should its browser leave", async () => {
+    cloudflare();
+    const kept: Promise<unknown>[] = [];
+    await relayUsage(configured, NOV_2, (call) => kept.push(call));
+    expect(kept, "the relay's call and the free plan's").toHaveLength(2);
+    kept.length = 0;
+    await relayUsage(configured, NOV_2, (call) => kept.push(call));
+    expect(kept, 'nothing asked: the answer is kept').toHaveLength(0);
+  });
   it('says so when Cloudflare fails, and asks again after a minute, not on every open', async () => {
     const api = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({ data: null, errors: [{ message: 'not authorized' }] }));
     const answer = async (at: number) => parseRelayUsage(await (await relayUsage(configured, at)).json());
