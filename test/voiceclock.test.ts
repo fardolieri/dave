@@ -80,6 +80,13 @@ describe('createVoiceGuard, worker path', () => {
     const xs = strained(readings(60, 1, 30), 0).map((x, i) => (i % 3 === 0 ? { ...x, droppedMs: 150 } : x));
     expect(firstFault(guard(), xs)).toBeNull();
   });
+  it('stays on through a few seconds of frames lost while the worker had time to spare: the device stalled', () => {
+    // A desktop at 4 percent load lost audio for about 3 s, at 56 and at 4 percent (9 Nov, 31 Oct), and noise removal
+    // stopped for the rest of the call, though the browser's own noise suppression would have lost the same frames.
+    const stall = (loadPct: number, droppedMs: number) => readings(60, 1, 5).map((x, i) => ({ ...x, droppedMs: 0, ...(i >= 10 && i < 15 ? { loadPct, droppedMs } : {}) }));
+    expect(firstFault(guard(), stall(56, 211))).toBeNull();
+    expect(firstFault(guard(), stall(4, 1003))).toBeNull();
+  });
   it('stops when audio keeps getting lost on the way in', () => {
     const f = firstFault(guard(), strained(readings(30, 1, 99), 200));
     expect(f).toMatchObject({ reason: 'overload', droppedMs: 200, loadPct: 99 });
