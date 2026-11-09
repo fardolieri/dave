@@ -54,6 +54,16 @@ export const DRIFT_SAMPLES = 3;
  */
 export const DROP_LIMIT_MS = 100;
 export const OVERLOAD_SAMPLES = 3;
+/**
+ * Lost audio while the worker was busy for less than this much of the audio's time is most likely the whole device
+ * stalling, which the browser's own noise suppression would not mend: a desktop at 4 percent load lost audio for about
+ * 3 s, at 56 and at 4 percent, and noise removal stopped for the rest of a three-hour call (reports of 9 Nov and 31 Oct);
+ * the phones that could not keep up read 111 to 316 percent. But the load counts only RNNoise's own time, not a worker
+ * kept waiting for the CPU by the rest of the device, so a low load does not clear noise removal: it only waits longer,
+ * STALL_SAMPLES readings in a row, before a loss that goes on is taken for a worker that cannot keep up.
+ */
+export const LOAD_LIMIT_PCT = 80;
+export const STALL_SAMPLES = 15;
 /** The first readings after a start are ignored: the pipeline fills its buffers then. */
 export const GUARD_WARMUP_MS = 3_000;
 
@@ -62,15 +72,17 @@ export const GUARD_WARMUP_MS = 3_000;
  * time the voice goes wrong in a way friends hear, null otherwise:
  * - `context` path (the AudioContext keeps its own time): `drift`, the voice runs off real time. A reading in which no
  *   audio advanced (no friend took it, a track swapped) starts the measurement over.
- * - `frames` path: `overload`, the worker cannot keep up and the browser drops the microphone's frames.
+ * - `frames` path: `overload`, the worker cannot keep up and the browser drops the microphone's frames: 3 s of losses
+ *   while the worker is busy for most of the time, or 15 s of them at any load (LOAD_LIMIT_PCT).
  */
 export function createVoiceGuard(path: 'frames' | 'context') {
   let samples: ClockSample[] = [];
   let startedAt: number | null = null;
   let heavy = 0;
+  let lossy = 0;
   let off = 0;
   return {
-    reset(): void { samples = []; startedAt = null; heavy = 0; off = 0; },
+    reset(): void { samples = []; startedAt = null; heavy = 0; lossy = 0; off = 0; },
     feed(s: ClockSample): GuardFault | null {
       startedAt ??= s.at;
       if (s.at - startedAt < GUARD_WARMUP_MS) return null;
@@ -85,8 +97,10 @@ export function createVoiceGuard(path: 'frames' | 'context') {
         reason, ratePct: Math.round(rate * 1000) / 10, loadPct: s.loadPct ?? null, droppedMs: s.droppedMs ?? null,
       });
       if (path === 'frames') {
-        heavy = (s.droppedMs ?? 0) >= DROP_LIMIT_MS ? heavy + 1 : 0;
-        return heavy >= OVERLOAD_SAMPLES ? fault('overload') : null;
+        const losing = (s.droppedMs ?? 0) >= DROP_LIMIT_MS;
+        heavy = losing && (s.loadPct ?? Infinity) >= LOAD_LIMIT_PCT ? heavy + 1 : 0;
+        lossy = losing ? lossy + 1 : 0;
+        return heavy >= OVERLOAD_SAMPLES || lossy >= STALL_SAMPLES ? fault('overload') : null;
       }
       off = s.at - first.at >= DRIFT_WINDOW_MS && Math.abs(rate * 100 - 100) > DRIFT_LIMIT_PCT ? off + 1 : 0;
       return off >= DRIFT_SAMPLES ? fault('drift') : null;

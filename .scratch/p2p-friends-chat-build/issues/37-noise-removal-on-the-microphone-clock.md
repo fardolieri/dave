@@ -116,3 +116,15 @@ Why other friends' phones stopped: very likely the same. Their reports and event
 content filter, EasyPrivacy's `||i.posthog.com/i/`, blocks the `/i/v0/e/` endpoint our project's remote config moves
 the SDK to about a second after load, and the endpoint problem reports post to); Daniel's phone got through.
 Verify: `pnpm test` (203); noise removal e2e twice in Chromium and Firefox.
+
+## Follow-up 2026-11-10: lost audio counts only while the worker is busy
+Report of 2026-11-09 21:16 ("Why?", quoting the panel's "could not keep up" note), from a desktop (Chrome 157, Linux):
+its `voice_send` read 4 to 11 percent load for the ten minutes before, with a peak of 55, then
+`noise_removal_unavailable` at 18:25:03, `overload`, `load_pct: 56`, `dropped_ms: 211`; noise removal stayed off for the
+three hours left of the call. The same browser stopped it on 31 Oct at `load_pct: 4`, `dropped_ms: 1003`. A worker
+below real time had time to spare, so it was not what lost the frames: the device stalled for a few seconds, which the
+browser's own noise suppression does not mend. Every other stop in 30 days read 111 to 316 percent load (phones).
+- `core/voiceclock.ts`: `LOAD_LIMIT_PCT = 80`. Losses at that load or more stop noise removal after 3 readings as before;
+  at a lower load only after `STALL_SAMPLES = 15` in a row. Not never: the load times RNNoise alone, so a worker the rest
+  of the device keeps from the CPU (a phone decoding a friend's share) reads low while friends hear a choppy voice (review).
+- `e2e/settings.spec.ts`: 300 ms lost a second at 10 percent load leaves it on for 6 s; at 120 percent it stops.

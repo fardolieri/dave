@@ -109,8 +109,13 @@ test('noise removal keeps time with the microphone, and stops itself only when f
   expect((await audio()).noiseRemoval, 'a skewed clock leaves the worker path alone').toBe('on');
   await dave((d) => d.skewVoiceClock(1));
 
-  // A worker that keeps losing the microphone's frames: noise removal gives up and the microphone goes out as it is.
-  await dave((d) => d.strainVoice({ droppedMs: 300 }));
+  // A few seconds of frames lost while the worker has time to spare: the device stalled, and noise removal stays on.
+  await dave((d) => d.strainVoice({ droppedMs: 300, pct: 10 }));
+  await alice.page.waitForTimeout(6000);
+  expect((await audio()).noiseRemoval, 'a stall the worker did not cause leaves noise removal on').toBe('on');
+
+  // A busy worker that keeps losing the microphone's frames: noise removal gives up and the microphone goes out as it is.
+  await dave((d) => d.strainVoice({ droppedMs: 300, pct: 120 }));
   await expect.poll(async () => (await audio()).noiseRemoval, { timeout: 15_000, message: 'noise removal stops' }).toBe('unavailable');
   expect(await audio()).toMatchObject({ sending: 'microphone', stop: 'overload' });
   await alice.selectedRoom.getByTitle('Audio settings').click();
