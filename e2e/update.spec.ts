@@ -120,6 +120,9 @@ test('ticket 33: with the server gone the app still opens, from the service work
   // service worker, and a file the worker missed fails it. (Not setOffline: Firefox's offline mode refuses the navigation
   // before a service worker is asked. Not Playwright's routes: a fetch from inside the worker passes them by.)
   await cookie(alice, 'e2e-outage', '1');
+  // The relay's usage is asked of the server as the app opens (client/relay.ts), and is not kept: Chromium says it failed,
+  // with an error that depends on when the cut lands (seen: ERR_EMPTY_RESPONSE).
+  alice.expectWarning(/^error: Failed to load resource: net::ERR_[A-Z0-9_]+ \(\S+\/relay-usage\)$/);
   await alice.wire.cut();
   await alice.page.reload();
   await expect(alice.page.locator('aside.side')).toBeVisible();

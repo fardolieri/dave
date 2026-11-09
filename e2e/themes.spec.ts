@@ -354,6 +354,9 @@ test('a theme\'s own fonts load with the server gone, from the service worker', 
   // The server cuts every connection before answering, the socket too: the page comes from the service worker, and so
   // must the fonts, or the theme falls back to the system's.
   await alice.context.addCookies([{ name: 'e2e-outage', value: '1', url: new URL(page.url()).origin }]);
+  // The relay's usage is asked of the server as the app opens (client/relay.ts), and is not kept: Chromium says it failed,
+  // with an error that depends on when the cut lands (seen: ERR_EMPTY_RESPONSE).
+  alice.expectWarning(/^error: Failed to load resource: net::ERR_[A-Z0-9_]+ \(\S+\/relay-usage\)$/);
   await alice.wire.cut();
   await page.reload();
   await expect(page.locator('aside.side')).toBeVisible();
