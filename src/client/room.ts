@@ -312,10 +312,14 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const fromStored = ({ from, text, at, file }: StoredText): ChatLine =>
     file ? { kind: 'file', id: textKey({ from, at }), from, file, at } : { kind: 'text', id: textKey({ from, at }), from, text, at };
   /** The history is loaded: until then, a friend's pull of a file announced before this page opened waits for it. */
+  /** The newest line this browser had of the room when the page opened, by the Room's clock; null for none. */
+  let heldNewest: number | null = null;
   const historyLoaded = loadHistory(opts.roomId).then((stored) => {
     for (const m of stored) if (m.id !== undefined) seen(m.from.publicKey, m.id);
     // A private text kept here by the app of PR #88 belongs to its conversation now, which never had it: left out.
-    setLines((l) => [...stored.filter((m) => !m.to).map(fromStored), ...l]);
+    const held = stored.filter((m) => !m.to);
+    for (const m of held) if (heldNewest === null || m.at > heldNewest) heldNewest = m.at;
+    setLines((l) => [...held.map(fromStored), ...l]);
     const now = Date.now();
     // An older picture this browser no longer keeps is pulled on a click: every start would pull them all again.
     for (const m of stored) if (m.file) void arrived(m.file, m.from.publicKey, now - m.at < PULL_HISTORY_MS);
@@ -597,13 +601,14 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
         send({ t: 'sync', since: Math.max(on.since, historyFromAt(opts.roomId) ?? 0) });
         return;
       }
-      const newest = newestAt();
       const from = historyFromAt(opts.roomId);
       // Nothing held and no start: a room of two new to this browser, so nothing it brings is news. Otherwise it is.
-      asks.set(socket, { came: newest === null && from === null && !opts.allNews ? 'old' : 'missed', clears });
-      // A room this browser held before the mark was kept: from its newest text, as near as it can know.
+      asks.set(socket, { came: newestAt() === null && from === null && !opts.allNews ? 'old' : 'missed', clears });
+      // A room this browser held before the mark was kept: from its newest text when the page opened, as near as it can
+      // know. Not from one that came since: a text that came live says nothing of what the server kept before it, and must
+      // not move where a first sync asks from (the mark below, once asked).
       const synced = historySyncedTo(opts.roomId);
-      const since = syncSince(synced ?? newest, from);
+      const since = syncSince(synced ?? heldNewest, from);
       // Marked before it is asked: should no answer come in full, a text that comes live (newestAt) must not move the next
       // ask past what the server kept before it. 1 for 0, which the mark cannot hold, and asks from 0 all the same.
       if (synced === null) keepHistorySynced(opts.roomId, Math.max(since, 1));

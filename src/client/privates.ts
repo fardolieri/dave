@@ -119,13 +119,15 @@ export function createPrivates(opts: {
    * My private texts that waited to go through a room we share, from before rooms of two (`unsentPrivate`): they go
    * through the room of two now, as texts of its own, by their id. One that went out unanswered may have arrived the old
    * way, and may come twice: better than lost. The old list stays as it was (a later change deletes it): what the room of
-   * two has already, waiting or in its history, is not taken again, nor what waited a day, which would not be sent, nor
-   * what was written before the room of two's history starts: a conversation deleted after it went (`historyFrom`).
+   * two has already, waiting or in its history, is not taken again, nor what waited a day, which would not be sent. Nor
+   * anything once the room of two's history has a start (`historyFrom`): only deleting the conversation gives it one,
+   * always after these were written, by the old app; compared by time, a browser's clock ahead of the Room's would let one
+   * through.
    */
   async function adoptUnsent(friend: string, roomId: string): Promise<void> {
     const now = Date.now();
-    const from = historyFromAt(roomId) ?? -Infinity;
-    const mine = Object.values(local.read('unsentPrivate')).flat().filter((u) => u.to.publicKey === friend && !tooOld(u, now) && u.at > from);
+    if (historyFromAt(roomId) !== null) return;
+    const mine = Object.values(local.read('unsentPrivate')).flat().filter((u) => u.to.publicKey === friend && !tooOld(u, now));
     if (!mine.length) return;
     const waiting = loadUnsent(roomId);
     const had = new Set([...waiting.map((w) => w.id), ...(await loadHistory(roomId)).flatMap((m) => (m.id ? [m.id] : []))]);
