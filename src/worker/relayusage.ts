@@ -15,8 +15,20 @@ export const RELAY_USAGE_PATH = '/relay-usage';
 const KEEP_MS = 10 * 60_000;
 /** How long a failure is kept, so a broken token or an API outage is not asked again on every open. */
 const KEEP_FAILURE_MS = 60_000;
-/** A call older than its 5 s timeout and some is not waited for: should its request have been cancelled, it never ends. */
+/** A call older than its 5 s timeout and some is not joined: the next request asks anew. */
 const ASKING_MS = 6000;
+/**
+ * How long a request waits for the figures before it answers that they are not known: well inside the 15 s a browser or
+ * a test gives a request. On Cloudflare a request the browser gave up on is cancelled with its call to the API, unless
+ * kept alive (`keepAlive`), and the call then never ends for the requests waiting on it (ticket 76).
+ */
+const WAIT_MS = 6000;
+
+/** Waits for `done`, but no longer than `ms`. */
+async function atMost(done: Promise<void>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  await Promise.race([done, new Promise<void>((resolve) => { timer = setTimeout(resolve, ms); })]).finally(() => clearTimeout(timer));
+}
 
 /**
  * One figure asked of Cloudflare and kept, in this isolate (the Cache API does nothing on workers.dev, where the live site
@@ -26,21 +38,26 @@ const ASKING_MS = 6000;
  * after a failure, and at once in a new `period` (a month for the relay's, a day for the free plan's).
  */
 function keptFigure<T>(period: (now: number) => string, ask: (token: string, account: string, now: number) => Promise<T | null>) {
-  let kept: { at: number; period: string; value: T | null } | null = null;
+  let kept: { at: number; period: string; value: T | null; call: number } | null = null;
   let asking: { since: number; done: Promise<void> } | null = null;
+  let calls = 0;
   return {
-    async get(token: string, account: string, now: number): Promise<T | null> {
-      const stale = !kept || now - kept.at > (kept.value === null ? KEEP_FAILURE_MS : KEEP_MS) || kept.period !== period(now);
-      if (stale) {
+    async get(token: string, account: string, now: number, keepAlive?: (call: Promise<unknown>) => void): Promise<T | null> {
+      const stale = () => !kept || now - kept.at > (kept.value === null ? KEEP_FAILURE_MS : KEEP_MS) || kept.period !== period(now);
+      if (stale()) {
         if (!asking || Date.now() - asking.since > ASKING_MS) {
+          const call = ++calls;
           const mine = {
             since: Date.now(),
-            done: ask(token, account, now).catch(() => null).then((value) => { kept = { at: now, period: period(now), value }; })
+            // A call kept alive past a newer one does not replace the newer one's answer.
+            done: ask(token, account, now).catch(() => null).then((value) => { if (!kept || call > kept.call) kept = { at: now, period: period(now), value, call }; })
               .finally(() => { if (asking === mine) asking = null; }),
           };
           asking = mine;
+          keepAlive?.(mine.done);
         }
-        await asking.done;
+        await atMost(asking.done, WAIT_MS);
+        if (stale()) return null; // not answered in time: not known, rather than an old figure as today's
       }
       return kept?.value ?? null;
     },
@@ -54,12 +71,16 @@ const freePlan = keptFigure((now) => monthSoFar(now).to, (token, account, now) =
 const json = (body: unknown): Response =>
   new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 
-export async function relayUsage(env: Env, now = Date.now()): Promise<Response> {
+/**
+ * `keepAlive` is the request's `ctx.waitUntil`: a call this request starts goes on should its browser give up on it, so
+ * the requests waiting for that call get its answer (ticket 76).
+ */
+export async function relayUsage(env: Env, now = Date.now(), keepAlive?: (call: Promise<unknown>) => void): Promise<Response> {
   const token = env.RELAY_USAGE_API_TOKEN;
   const account = env.CLOUDFLARE_ACCOUNT_ID;
   if (!token || !account) return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
   try {
-    const [bytes, today] = await Promise.all([relay.get(token, account, now), freePlan.get(token, account, now)]);
+    const [bytes, today] = await Promise.all([relay.get(token, account, now, keepAlive), freePlan.get(token, account, now, keepAlive)]);
     if (bytes === null) return json({ error: 'unavailable' });
     const usage: RelayUsage = { bytes, limit: RELAY_FREE_BYTES, since: monthSoFar(now).from, asOf: now, ...(today ? { today } : {}) };
     return json(usage);

@@ -13,7 +13,7 @@ export default {
   async fetch(request, env, ctx): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname.startsWith(`${PREFIX}/`)) return forward(request, env);
-    if (url.pathname === RELAY_USAGE_PATH && request.method === 'GET') return relayUsage(env);
+    if (url.pathname === RELAY_USAGE_PATH && request.method === 'GET') return relayUsage(env, Date.now(), (call) => ctx.waitUntil(call));
     if (url.pathname === HISTORY_USAGE_PATH && request.method === 'GET') return historyUsage(env);
     // One Durable Object per room, named by the room id derived from the invite secret (ADR 0004).
     const roomId = url.pathname.startsWith('/ws/') ? url.pathname.slice(4) : null;

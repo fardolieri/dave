@@ -194,6 +194,21 @@ describe('the Worker’s /relay-usage', () => {
       vi.useRealTimers();
     }
   });
+  it("answers not known rather than last month's figure when the new month's call is not answered in time", async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    try {
+      const api = cloudflare();
+      await relayUsage(configured, Date.parse('2026-10-31T23:58:00Z')); // October's figure, kept
+      api.mockImplementationOnce(() => new Promise<Response>(() => {})).mockImplementationOnce(() => new Promise<Response>(() => {}));
+      let answered: unknown = null;
+      void relayUsage(configured, Date.parse('2026-11-01T00:01:00Z')).then(async (res) => { answered = await res.json(); });
+      await vi.advanceTimersByTimeAsync(6100);
+      for (let i = 0; i < 20 && answered === null; i++) await scheduler.wait(5);
+      expect(answered).toEqual({ error: 'unavailable' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("hands the call it starts to the request's waitUntil, so the requests waiting for it get its answer should its browser leave", async () => {
     cloudflare();
     const kept: Promise<unknown>[] = [];
