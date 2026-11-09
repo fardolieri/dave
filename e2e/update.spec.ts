@@ -1,13 +1,11 @@
 import type { Page } from '@playwright/test';
-import { target } from './browsers';
 import { expect, test, type Friend } from './fixtures';
 
 // The service worker and the update bar (ticket 33). A new version installs beside the running one and waits; the bar
 // stays until its Reload, which moves that tab onto it and no other.
 // A deploy and an outage are staged at the preview server (vite.config.ts, `e2eServer`) through cookies on the friend's
-// own context, so these run against a local build only.
+// own context, so these run against a local build only: tagged @local (playwright.config.ts).
 
-const needPreview = () => test.skip(!!target, 'needs the preview server (vite.config.ts): a deploy is staged there, not in a deployed copy');
 const cookie = (friend: Friend, name: string, value: string) => friend.context.addCookies([{ name, value, url: new URL(friend.page.url()).origin }]);
 const controlled = (page: Page) => expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null), { message: 'a service worker serves the page' }).toBe(true);
 /** The versions this browser has cached, oldest first: `before` the deploy, and the `next` one it staged. Not the themes' `fonts` (sw.ts). */
@@ -41,8 +39,7 @@ const versionsNow = (page: Page) => versions(page).catch(() => null);
 /** Clicks the bar's Reload and waits for the page it loads. */
 const reloadFromBar = async (page: Page) => { await Promise.all([page.waitForEvent('load'), bar(page).getByRole('button', { name: 'Reload' }).click()]); };
 
-test('ticket 33: a new version waits behind a bar that stays until Reload, which moves the tab onto it and back into the call', async ({ crowd }) => {
-  needPreview();
+test('ticket 33: a new version waits behind a bar that stays until Reload, which moves the tab onto it and back into the call', { tag: '@local' }, async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   await controlled(alice.page);
@@ -66,8 +63,7 @@ test('ticket 33: a new version waits behind a bar that stays until Reload, which
   await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
 });
 
-test('ticket 33: Reload moves only its own tab; a tab waiting behind it is asked once it takes over', async ({ crowd }) => {
-  needPreview();
+test('ticket 33: Reload moves only its own tab; a tab waiting behind it is asked once it takes over', { tag: '@local' }, async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   await alice.join();
@@ -108,8 +104,7 @@ test('ticket 33: Reload moves only its own tab; a tab waiting behind it is asked
   await expect(bar(second)).toHaveCount(0);
 });
 
-test('ticket 33: with the server gone the app still opens, from the service worker', async ({ crowd }) => {
-  needPreview();
+test('ticket 33: with the server gone the app still opens, from the service worker', { tag: '@local' }, async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   await controlled(alice.page);
   await alice.say('before the outage');
@@ -134,8 +129,7 @@ test('ticket 33: with the server gone the app still opens, from the service work
   await alice.connected();
 });
 
-test('ticket 36: a new version found as the app opens downloads behind a line, the rooms not yet connected, and the page reloads onto it and back into the call', async ({ crowd }) => {
-  needPreview();
+test('ticket 36: a new version found as the app opens downloads behind a line, the rooms not yet connected, and the page reloads onto it and back into the call', { tag: '@local' }, async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   await controlled(alice.page);
@@ -165,8 +159,7 @@ test('ticket 36: a new version found as the app opens downloads behind a line, t
   await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
 });
 
-test('ticket 36: a new version the browser is still downloading as the page loads is taken the same way, though registering waits for that download', async ({ crowd }) => {
-  needPreview();
+test('ticket 36: a new version the browser is still downloading as the page loads is taken the same way, though registering waits for that download', { tag: '@local' }, async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   await controlled(alice.page);
 
@@ -191,8 +184,7 @@ test('ticket 36: a new version the browser is still downloading as the page load
   await expect(bar(alice.page)).toHaveCount(0);
 });
 
-test('report of 2026-10-16: a new version the browser takes 2.5 s to find as the app opens is still taken, not asked for', async ({ crowd }) => {
-  needPreview();
+test('report of 2026-10-16: a new version the browser takes 2.5 s to find as the app opens is still taken, not asked for', { tag: '@local' }, async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   await controlled(alice.page);
 
@@ -209,8 +201,7 @@ test('report of 2026-10-16: a new version the browser takes 2.5 s to find as the
   await expect(bar(alice.page)).toHaveCount(0);
 });
 
-test('report of 2026-10-16: a call left 26 s ago, as when Android killed the browser, is rejoined after an opening update found late', async ({ crowd }) => {
-  needPreview();
+test('report of 2026-10-16: a call left 26 s ago, as when Android killed the browser, is rejoined after an opening update found late', { tag: '@local' }, async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   await controlled(alice.page);
@@ -240,8 +231,7 @@ test('report of 2026-10-16: a call left 26 s ago, as when Android killed the bro
   await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
 });
 
-test('report of 2026-10-16: an opening check with no answer holds the app 5 s at most, and the new version it brings later asks, never reloads', async ({ crowd }) => {
-  needPreview();
+test('report of 2026-10-16: an opening check with no answer holds the app 5 s at most, and the new version it brings later asks, never reloads', { tag: '@local' }, async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   await controlled(alice.page);
 
@@ -260,8 +250,7 @@ test('report of 2026-10-16: an opening check with no answer holds the app 5 s at
   await expect(alice.page.locator('.msg-text', { hasText: 'typed while the answer is still out' })).toBeVisible();
 });
 
-test('ticket 44: a register() that fails holds nothing, and a new version is still taken through the registration the page has', async ({ crowd }) => {
-  needPreview();
+test('ticket 44: a register() that fails holds nothing, and a new version is still taken through the registration the page has', { tag: '@local' }, async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   await controlled(alice.page);
   // Storage in a bad state, an add-on, an old Firefox for Android: the page is served, but registering again fails.
@@ -286,8 +275,7 @@ test('ticket 44: a register() that fails holds nothing, and a new version is sti
   await expect(bar(alice.page)).toHaveCount(0);
 });
 
-test('ticket 44: a second tab opened while the first downloads waits behind it with no line, and only the first is asked', async ({ crowd }) => {
-  needPreview();
+test('ticket 44: a second tab opened while the first downloads waits behind it with no line, and only the first is asked', { tag: '@local' }, async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   await controlled(alice.page);
   const count = countLoads(alice.page);
@@ -313,8 +301,7 @@ test('ticket 44: a second tab opened while the first downloads waits behind it w
   expect(await second.evaluate(() => (window as unknown as { __stayed?: boolean }).__stayed), 'nor the second').toBe(true);
 });
 
-test('ticket 36: a version left waiting behind the bar is taken by the next reload', async ({ crowd }) => {
-  needPreview();
+test('ticket 36: a version left waiting behind the bar is taken by the next reload', { tag: '@local' }, async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   await controlled(alice.page);
   await deploy(alice, 'next');
@@ -331,8 +318,7 @@ test('ticket 36: a version left waiting behind the bar is taken by the next relo
   await expect(line(alice.page)).toHaveCount(0);
 });
 
-test('ticket 36: a download past 10 s unfreezes the app on the version it has, the line goes on, and the bar asks once it is in', async ({ crowd }) => {
-  needPreview();
+test('ticket 36: a download past 10 s unfreezes the app on the version it has, the line goes on, and the bar asks once it is in', { tag: '@local' }, async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   await controlled(alice.page);
 
@@ -358,8 +344,7 @@ test('ticket 36: a download past 10 s unfreezes the app on the version it has, t
   expect(await versions(alice.page)).toEqual(['next']);
 });
 
-test('ticket 36: a new version found by a later check shows its download as the line too, the app not frozen, then the bar', async ({ crowd }) => {
-  needPreview();
+test('ticket 36: a new version found by a later check shows its download as the line too, the app not frozen, then the bar', { tag: '@local' }, async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   await controlled(alice.page);
   const count = countLoads(alice.page);

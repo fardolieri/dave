@@ -24,12 +24,16 @@ export default defineConfig({
   // Every test gets rooms of its own (fixtures.ts) and stages deploys through its own cookies (update.spec.ts), so any two can
   // run at once. It also lets --shard (e2e.yml) split the suite by test instead of by file.
   fullyParallel: true,
+  // Tests tagged @local need the preview server (vite.config.ts), where a deploy or an outage is staged: not run against a
+  // deployed copy. A ready PR's preview run has them run against a local build of the PR instead (e2e.yml).
+  grepInvert: target ? /@local/ : undefined,
   // A deployed Worker limits socket upgrades per IP (see wrangler.jsonc): one test at a time there.
   workers: Number(process.env['E2E_WORKERS']) || (ci && !target ? 2 : 1),
   retries: ci ? 1 : 0,
-  // Against a deployed copy in CI (a preview's run is the gate to master, e2e.yml) a test that only passed on its retry fails
-  // the run: a flake is a bug to explain, not noise (ticket 35). On branches the retry still keeps one bad roll from blocking.
-  failOnFlakyTests: ci && !!target,
+  // Against a deployed copy in CI, and in the gate's run against a local build (E2E_GATE, e2e.yml: a preview's run is the
+  // gate to master), a test that only passed on its retry fails the run: a flake is a bug to explain, not noise (ticket 35).
+  // On branches the retry still keeps one bad roll from blocking.
+  failOnFlakyTests: ci && (!!target || !!process.env['E2E_GATE']),
   forbidOnly: ci,
   // The JSON report feeds the flake ledger (scripts/flakes/ledger.mjs, e2e.yml).
   reporter: ci ? [['list'], ['html', { open: 'never', outputFolder: 'e2e-report' }], ['json', { outputFile: 'e2e-outcomes/report.json' }]] : 'list',

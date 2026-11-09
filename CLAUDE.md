@@ -41,7 +41,7 @@ Every change climbs this ladder, and every report says which rung it reached, in
 | 0 typed | `pnpm typecheck` passes | here or CI |
 | 1 unit | `pnpm test` passes | CI (`ci.yml`) |
 | 2 browser | the e2e suite passes against a local build, both engines | by hand: `e2e.yml` from the Actions tab (Chromium alone here is not this rung: say so). Rung 3 covers it |
-| 3 preview | the e2e suite passed against the PR's preview, both engines, real Cloudflare: the gate to master | CI (`preview.yml` on the ready PR) |
+| 3 preview | the e2e suite passed against the PR's preview, both engines, real Cloudflare, and its `@local` tests against a local build of the PR: the gate to master | CI (`preview.yml` on the ready PR) |
 | 4 seen | a human or a recording looked at the real thing (real browser, real device for phone features) | owner, or a recording |
 
 Rules:
@@ -82,10 +82,11 @@ bad deploy: `rollback.yml` from the Actions tab, then a fix. Prefer small PRs, s
   branches always run them, and the browser suite against a local build too (`e2e.yml`): their drafts get no preview.
   Other branches get the browser suite from their PR's preview only (below); a run against a local build is by hand.
 - **On every open PR**, drafts too: a preview Worker of its own, `dave-pr-<n>` (`preview.yml`), the live build plus the
-  inspection hooks, with the whole e2e suite run against it once deployed (once ready, not while a draft): the gate to
-  master. One comment on the PR links it and a room of the PR's own, so the owner can try a change from the phone before it
-  goes live. It starts with empty storage. The night shift's drafts get none. A weekly sweep (`preview-sweep.yml`) deletes
-  previews whose PR closed.
+  inspection hooks, with the whole e2e suite run against it once deployed (once ready, not while a draft), and the tests a
+  deployed copy cannot run (tagged `@local`: a deploy or an outage staged at the preview server) against a local build of
+  the PR: together the gate to master. One comment on the PR links it and a room of the PR's own, so the owner can try a
+  change from the phone before it goes live. It starts with empty storage. The night shift's drafts get none. A weekly
+  sweep (`preview-sweep.yml`) deletes previews whose PR closed.
 - **Inside every e2e test:** unexpected console warnings and runtime invariants (`src/client/invariants.ts`: UI that
   contradicts the call) fail the test.
 - **Every night:** the chaos soak (`soak.yml`, 01:00 UTC, a local build of master) opens `soak` issues with a minimal

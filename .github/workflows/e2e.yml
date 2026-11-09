@@ -1,11 +1,15 @@
 name: e2e
 # The browser suite (e2e/, playwright.config.ts) in Chromium and Firefox, the only browser tests this repo has:
 #   - called by preview.yml after each pull request preview deploy: against that preview, real Cloudflare with the same
-#     hooks. This run is the gate to master.
+#     hooks. This run is the gate to master. Two more jobs, one per engine, run the tests a deployed copy cannot (tagged
+#     @local: a deploy or an outage staged at the preview server, vite.config.ts) against a local build of the same commit:
+#     before those were only run weekly, and a change that broke them reached master unseen (2026-11-09). A PR not yet
+#     rebased onto the tag has none at its head, and its @local jobs pass with no tests.
 #   - every pushed night-shift/* branch: against a local build (Worker and Room in workerd, inspection hooks on). Its red
 #     run is the evidence of a draft "Repro:" PR, which gets no preview (scripts/night-shift).
-#     Other branches get the suite from their pull request's preview only: on a ready PR, a run against a local build of the
-#     same commit told nothing the preview run did not, and its 16 jobs queued the preview's behind them.
+#     Other branches get the suite from their pull request's preview only: on a ready PR, a whole run against a local build
+#     of the same commit told nothing the preview run did not, and its 16 jobs queued the preview's behind them; only the
+#     @local tests, which the preview cannot run, run against one there (above).
 #   - by hand from the Actions tab: local, or any deployed URL
 #   - weekly, and by hand with `solid_dev`: against a local build on Solid's development build (VITE_SOLID_DEV=1), where
 #     Solid's diagnostics about correctness fail a test, so do those about how the code is put together unless e2e/fixtures.ts
@@ -14,12 +18,14 @@ name: e2e
 #     trips on it. Its failures stay out of the flake ledger: they are of another build.
 # Each engine is split into shards on runners of their own (Playwright's --shard): the whole suite on one runner took
 # about 7 minutes. Eight per engine: 16 jobs stay under the 20 a free account runs at once, and beyond that each runner's
-# ~40 s of setup outweighs its share of the tests. A runner has its own IP, so a preview's upgrade limit sees one shard.
+# ~40 s of setup outweighs its share of the tests. A preview's run adds the two @local jobs: 18, and with a ready PR's ci
+# and red-green beside them a job or two may wait a minute for a runner. A runner has its own IP, so a preview's upgrade limit sees one shard.
 # The report and the traces of failures are kept as an artifact.
 #
 # The preview run is the gate to master, and master deploys the live site: its last job writes the commit status
 # `preview e2e passed` on the pull request's head, success only when every shard of both engines passed against the preview
-# for that exact commit, with no flaky test (playwright.config.ts fails flakes there). A ruleset on master requires it, so
+# for that exact commit, and the @local tests against a local build of it, with no flaky test (playwright.config.ts fails
+# flakes there). A ruleset on master requires it, so
 # GitHub refuses to move master to a commit that has not passed (CLAUDE.md). A flake turns it red on purpose; the failed
 # jobs may be re-run once after clearing the change (CLAUDE.md, Flakes), and the re-run's verdict replaces the first. Each
 # attempt keeps its artifacts.
@@ -77,9 +83,13 @@ jobs:
       matrix:
         project: [chromium, firefox]
         shard: [1, 2, 3, 4, 5, 6, 7, 8] # the total is written out again in the test step below
+        # Called from a preview: the @local tests against a local build, a job per engine (18 jobs, still under the 20).
+        include: ${{ fromJSON(inputs.ref && '[{"project":"chromium","shard":"local"},{"project":"firefox","shard":"local"}]' || '[]') }}
     env:
       # Empty means a local build.
-      E2E_URL: ${{ inputs.target != 'local' && inputs.target || '' }}
+      E2E_URL: ${{ matrix.shard != 'local' && inputs.target != 'local' && inputs.target || '' }}
+      # Called from a preview, the gate to master: a flaky test fails the @local jobs too (playwright.config.ts).
+      E2E_GATE: ${{ inputs.ref && '1' || '' }}
       # The local build only: a deployed copy is the production build whatever this says.
       VITE_SOLID_DEV: ${{ (github.event_name == 'schedule' || inputs.solid_dev) && '1' || '' }}
     steps:
@@ -104,11 +114,11 @@ jobs:
       # After a deploy, the edge serves the new page and its files together only a minute or so later: a page opened before
       # that loads a file that is not there (ticket 64). Each shard waits on its own, since each runner may reach another edge.
       # A pull request not yet rebased onto the script has none at its head, and runs as before.
-      - if: inputs.ref
+      - if: inputs.ref && matrix.shard != 'local'
         run: test ! -f scripts/wait-for-deploy.mjs || node scripts/wait-for-deploy.mjs "${{ inputs.ref }}"
       # HOME=/root: Firefox refuses to start as root in another user's home (the runner's, /github/home). Inside the command
       # only: set as `env:` it also reaches the runner's own docker commands, which then cannot read root's docker config.
-      - run: HOME=/root pnpm exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}/8 --repeat-each=${{ inputs.repeat || 1 }} ${{ inputs.grep && '-g "$E2E_GREP" --pass-with-no-tests' || '' }}
+      - run: HOME=/root pnpm exec playwright test --project=${{ matrix.project }} ${{ matrix.shard == 'local' && '--grep @local --pass-with-no-tests' || format('--shard={0}/8', matrix.shard) }} --repeat-each=${{ inputs.repeat || 1 }} ${{ inputs.grep && '-g "$E2E_GREP" --pass-with-no-tests' || '' }}
         env:
           E2E_GREP: ${{ inputs.grep }}
       # For the flake ledger (flakes.yml): one line per test that failed a try, and one for the shard, whatever the result.
@@ -173,7 +183,8 @@ jobs:
 
   gate:
     # The gate to master. Called from preview.yml it writes the commit status `preview e2e passed` on the pull request's
-    # head, the commit tested (inputs.ref), success only when every shard of both engines passed against the preview. A
+    # head, the commit tested (inputs.ref), success only when every shard of both engines passed against the preview, and
+    # the @local tests against a local build (every job of the matrix: `needs.e2e.result`). A
     # ruleset on master requires that status. A commit status, not this job's own check: a check belongs to the run's
     # commit, and the status must name the commit that was tested and would be pushed to master.
     # Branch runs against a local build and runs by hand never write it.
@@ -199,7 +210,7 @@ jobs:
           if [ "$GATE" = true ]; then
             state=$([ "$RESULT" = success ] && echo success || echo failure)
             gh api -X POST "repos/${{ github.repository }}/statuses/$SHA" -f state="$state" -f context="preview e2e passed" \
-              -f description="Full e2e suite against the PR's preview, both engines, no flakes: $RESULT" -f target_url="$RUN_URL" > /dev/null
+              -f description="Full e2e suite against the PR's preview, and its @local tests on a local build, both engines, no flakes: $RESULT" -f target_url="$RUN_URL" > /dev/null
             echo "Wrote 'preview e2e passed' = $state on $SHA"
           fi
           test "$RESULT" = success

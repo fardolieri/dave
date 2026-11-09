@@ -1,7 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
-import { target } from './browsers';
 import { expect, newSecret, openRoomMenu, test, pickTheme, pickedTheme, themeNames } from './fixtures';
 
 // Every look of the theme picker (client/theme.ts), on one app in a lived-in state: a room with a friend in the call and
@@ -335,9 +334,8 @@ test('a look picked in a second tab stays when the first tab takes the app back,
   await expect(box(alice.page, 'Other')).toHaveAttribute('data-theme', next!);
 });
 
-test('a theme\'s own fonts load with the server gone, from the service worker', async ({ crowd }) => {
+test('a theme\'s own fonts load with the server gone, from the service worker', { tag: '@local' }, async ({ crowd }) => {
   // The outage is staged at the preview server (vite.config.ts), as in update.spec.ts.
-  test.skip(!!target, 'needs the preview server (vite.config.ts): an outage is staged there, not in a deployed copy');
   const alice = await crowd.open('Alice');
   const page = alice.page;
   // Picked once the worker serves the page, so the font files are fetched through it, which keeps a copy (sw.ts, `fonts`).

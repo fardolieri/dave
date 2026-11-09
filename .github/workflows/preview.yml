@@ -7,8 +7,9 @@ name: preview
 # The link is an invite to a room of the PR's own (the bare URL shows only the invite notice), the same on every push, so
 # a friend tapping it lands where the PR is being tried. Its secret is public (so is the repo), which is fine for a
 # throwaway Worker; any other invite link works there too with the host swapped (a room is only its secret, ADR 0004).
-# Once deployed, the browser suite runs against the preview (e2e.yml, called): real Cloudflare, flakes failing it. That run
-# is the gate to master, which deploys the live site: it writes the `preview e2e passed` status a ruleset on master requires.
+# Once deployed, the browser suite runs against the preview (e2e.yml, called): real Cloudflare, flakes failing it, and the
+# tests a deployed copy cannot run (@local) against a local build of the PR. That run is the gate to master, which deploys
+# the live site: it writes the `preview e2e passed` status a ruleset on master requires.
 # A draft PR is one still being iterated on, often opened just for its preview: it gets the preview but not the suite against
 # it, and its branch pushes skip ci and red-green (draft-gate.yml). Marking it ready for review deploys again, runs the
 # suite here and dispatches those two on its head. The night shift's draft "Repro:" PRs (night-shift/*) need no preview and
