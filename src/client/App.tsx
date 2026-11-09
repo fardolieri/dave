@@ -287,7 +287,7 @@ function Workspace(props: WorkspaceProps) {
       if (!prev || (p.role === 'participant' && prev.role !== 'participant')) byKey.set(p.publicKey, p);
     }
     return [...byKey.values()];
-  });
+  }, { equals: sameItems });
   /** A friend's current presence entry, from any room; a chat line keeps the name and picture they had when they wrote it. */
   const present = (publicKey: string): Person | undefined => everyone().find((p) => p.publicKey === publicKey);
   /** How this browser shows a friend: the name, the picture, and the hover title with the rest. The fingerprint is in the title and the profile card, never beside the name. */
@@ -378,7 +378,7 @@ function Workspace(props: WorkspaceProps) {
   // Until the server's first presence it is drawn from what this browser knows, so it is on screen from the start.
   const localSelf = (): Person => ({ publicKey: me, fingerprint: identity.fingerprint, name: props.name, ...(getPicture() ? { picture: getPicture()! } : {}), role: 'visitor', joinSeq: null, sharing: false, muted: false });
   /** Everyone, and you before the server has you: what the lists and the profile card show. */
-  const withMe = createMemo(() => (everyone().some((p) => p.publicKey === me) ? everyone() : [...everyone(), localSelf()]));
+  const withMe = createMemo(() => (everyone().some((p) => p.publicKey === me) ? everyone() : [...everyone(), localSelf()]), { equals: sameItems });
   const cameAt = new Map<string, number>();
   /** When each came online (or out of a call), to slide in only then: a row moved to another list by a room switch does not. */
   const arrivedAt = new Map<string, number>();

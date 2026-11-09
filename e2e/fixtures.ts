@@ -287,7 +287,9 @@ export class Friend {
         this.solid.push(m.text());
         if (SOLID_COLLECTED_ONLY!.test(m.text())) return;
       }
-      const i = this.problems.push(`${m.type()}: ${m.text()}`) - 1;
+      // Chromium leaves out which file did not load: its URL is the message's location, added so a test can excuse one.
+      const failed = /^Failed to load resource: /.test(m.text()) && m.location().url;
+      const i = this.problems.push(`${m.type()}: ${m.text()}${failed ? ` (${failed})` : ''}`) - 1;
       // Firefox gives an error object as "JSHandle@object", which says nothing about the failure: read it out, so a
       // flake's report names the error (ticket 35). Patterns still match: the message's own text comes first.
       if (m.text().includes('JSHandle@')) {
@@ -683,7 +685,10 @@ const SOLID_ALLOWED: RegExp[] = [
   // The call opens and closes a friend's connection as they come and go (client/call.ts) and publishes the connections'
   // state as it changes: views are what the connections say, not something to compute from the room's presence. Until
   // the call says who is lost from presence and views together, a row is a frame behind when a friend comes or goes.
-  /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "createRoom\.people": .* by writing "createCall\.views"/,
+  /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "createRoom\.wirePeople": .* by writing "createCall\.views"/,
+  // The room's people are told anew with every presence the server sends, even when nobody in it changed: the call
+  // reconciles its connections on each (client/room.ts, client/call.ts), as it did when they were a signal.
+  /^warning: \[UNSTABLE_MEMO_OUTPUT\] memo "createRoom\.people" /,
   // The room whose call I am in goes to the top of the stored list, however I got in (a Join, a rejoin after a reload):
   // the order is kept, so it is written, and what reads the list sees it a flush later.
   /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "createCall\.inCall": .* by writing "rooms"/,
