@@ -298,5 +298,9 @@
  {
   "match": "^settings\\.spec\\.ts › About shows the relay this month and the free plan today, the figure nearest its limit first, and nothing where that is not known \\| TimeoutError: apiRequestContext\\.get",
   "ticket": "76"
+ },
+ {
+  "match": "^text\\.spec\\.ts › regression: a live text before the first sync is answered does not move where the next sync asks from \\| ",
+  "ticket": "77"
  }
 ]
