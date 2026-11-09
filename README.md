@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-09T23:28 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-09T23:44 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 38, branch 172, preview 189.
+Runs recorded: nightly 38, branch 173, preview 190.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -24,6 +24,7 @@ Runs recorded: nightly 38, branch 172, preview 189.
 | 2 | 2 | branch 2 | text.spec.ts › texts from more than 18 h before the room came on screen wait behind a button, folded again each time it does | expect(received).toEqual(expected) // deep equality | [10-12](https://github.com/fardolieri/dave/actions/runs/38222942433/attempts/1) | [10-17](https://github.com/fardolieri/dave/actions/runs/39049062343/attempts/1) | f9efd75 (fixed) |
 | 2 | 2 | branch 2 | privacy.spec.ts › a yes starts PostHog and tells the server; stopping forgets it again | PostHog started after the yes | [10-11](https://github.com/fardolieri/dave/actions/runs/38176731504/attempts/1) | [10-12](https://github.com/fardolieri/dave/actions/runs/38252207798/attempts/1) | 50 |
 | 2 | 2 | preview 1, branch 1 | resilience.spec.ts › the call survives the server going away and coming back | console warnings, errors or exceptions nobody expected: Alice: error: WebSocket is already in CLOSING or CLOSED state. | [10-11](https://github.com/fardolieri/dave/actions/runs/38162513698/attempts/1) | [10-11](https://github.com/fardolieri/dave/actions/runs/38169379260/attempts/1) | 41 |
+| 1 | 1 | preview 1 | text.spec.ts › regression: a live text before the first sync is answered does not move where the next sync asks from | asked again from where the first asked, not from the live text | [11-09](https://github.com/fardolieri/dave/actions/runs/42721836657/attempts/1) | [11-09](https://github.com/fardolieri/dave/actions/runs/42721836657/attempts/1) | 77 |
 | 1 | 1 | preview 1 | resilience.spec.ts › an offer stuck for a friend who then reloads leaves their new connection alone (the polite side reloads, the last to join) | expect(locator).toHaveText(expected) failed | [11-09](https://github.com/fardolieri/dave/actions/runs/42654887559/attempts/1) | [11-09](https://github.com/fardolieri/dave/actions/runs/42654887559/attempts/1) |  |
 | 1 | 1 | preview 1 | settings.spec.ts › About shows the relay this month and the free plan today, the figure nearest its limit first, and nothing where that is not known | TimeoutError: apiRequestContext.get: Timeout 15000ms exceeded. | [11-09](https://github.com/fardolieri/dave/actions/runs/42654887559/attempts/1) | [11-09](https://github.com/fardolieri/dave/actions/runs/42654887559/attempts/1) | 76 |
 | 1 | 1 | preview 1 | text.spec.ts › regression: a text sent again while my history is still being read after a reload counts once and shows once | expect(received).toContain(expected) // indexOf | [11-05](https://github.com/fardolieri/dave/actions/runs/42079021936/attempts/1) | [11-05](https://github.com/fardolieri/dave/actions/runs/42079021936/attempts/1) | 75 |
