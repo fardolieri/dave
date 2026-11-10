@@ -844,6 +844,29 @@ test('regression: an ICE restart asks the server socket whether it still answers
   await bob.hearing('Alice');
 });
 
+// Nov 2026, ticket 78, the rest: only the call's room socket was asked. The tab's other sockets (the room of two with each
+// friend, other rooms) went silent with it in a router's reconnect, and waited for the heartbeat, 60 to 90 s.
+test('regression: a socket found silent has the tab ask its other sockets too, and the silent ones are given up within seconds', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  const welcomes = () => alice.wire.log.filter((f) => f.dir === 'down' && f.frame.includes('"t":"welcome"')).length;
+  await expect.poll(welcomes, { message: 'Alice is let into her room of two with Bob as well' }).toBeGreaterThan(1);
+  const silent = alice.wire.open;
+
+  // The router reconnects: all of Alice's sockets go silent, and her connection to Bob restarts ICE.
+  alice.wire.sever();
+  await alice.hook('restartIce', 'Bob');
+  const gaveUp = () => alice.wire.closes.filter((c) => c.side === 'page').map((c) => c.code);
+  // The call's room socket first, asked by the restart; then the rest, asked once it was found silent. The heartbeat alone
+  // would take 60 to 90 s for them.
+  await expect.poll(gaveUp, { message: 'Alice gives every silent socket up within seconds', timeout: 20_000 }).toEqual(Array(silent).fill(4010));
+  await alice.connected();
+});
+
 test('a socket the browser could not open, tried again until one gets in, fails no test on the browser\'s own error line', async ({ crowd, browserName }) => {
   // A preview, 2026-10-21 (ticket 60), Chromium: a room socket's upgrade was reset on the way to Cloudflare, the app gave
   // that socket up and the next one got in, and the test failed on the line Chromium logs for the failed upgrade alone.
