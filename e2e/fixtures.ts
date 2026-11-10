@@ -419,6 +419,48 @@ export class Friend {
   }
 
   /**
+   * Every text this browser keeps (`storedTexts`) becomes this many hours old, as if it had come in then, and with them
+   * when the oldest unread one was written (`unreadSince`): a reload reads it back so. A test cannot wait a night.
+   */
+  async ageStoredTexts(hours: number): Promise<void> {
+    await this.page.evaluate(async (ms) => {
+      const since = JSON.parse(localStorage.getItem('dave.unreadSince') ?? '{}') as Record<string, number>;
+      if (Object.keys(since).length) localStorage.setItem('dave.unreadSince', JSON.stringify(Object.fromEntries(Object.keys(since).map((k) => [k, Date.now() - ms]))));
+      const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('dave'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+      try {
+        const tx = db.transaction('kv', 'readwrite');
+        const store = tx.objectStore('kv');
+        const keys = await new Promise<IDBValidKey[]>((resolve, reject) => { const r = store.getAllKeys(); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+        for (const key of keys.filter((k) => String(k).startsWith('history:'))) {
+          const list = await new Promise<Array<{ at: number }>>((resolve, reject) => { const r = store.get(key); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+          store.put(list.map((m, i) => ({ ...m, at: Date.now() - ms + i })), key);
+        }
+        await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onerror = tx.onabort = () => reject(tx.error); });
+      } finally { db.close(); }
+    }, hours * 3600_000);
+  }
+  /**
+   * From now on, what the server's history brings this friend comes this many hours older: the Room's clock of a friend
+   * who wrote last night and is read the next afternoon. Not a text or file they heard live before this call, by id (the
+   * Room's clock and this machine's are not one clock). Returns the ids of those made older, as they come. It takes the
+   * wire's `down` for itself, for the rest of the test.
+   */
+  ageKeptTexts(hours: number): Set<string> {
+    const heard = new Set(this.wire.log.flatMap((l) => {
+      if (l.dir !== 'down' || !/"t":"(?:sealed|file)"/.test(l.frame)) return [];
+      const m = JSON.parse(l.frame) as { t: string; id?: string };
+      return (m.t === 'sealed' || m.t === 'file') && m.id ? [m.id] : [];
+    }));
+    const aged = new Set<string>();
+    this.wire.down = (frame) => {
+      if (!frame.includes('"t":"history"')) return frame;
+      const h = JSON.parse(frame) as { entries: Array<{ at: number; id: string }> };
+      return JSON.stringify({ ...h, entries: h.entries.map((e) => (heard.has(e.id) ? e : (aged.add(e.id), { ...e, at: e.at - hours * 3600_000 }))) });
+    };
+    return aged;
+  }
+
+  /**
    * Sends a text and waits for it to come back from the server, which shows every line, your own too, in the order the Room
    * took them: whatever anyone sends afterwards comes after it. An empty composer alone does not say that (ticket 35, flake 4).
    */

@@ -273,6 +273,49 @@ test('ADR 0011: a private text to a friend online nowhere reaches them when they
   await expect.poll(() => conversation(bob)).toEqual([{ from: 'Alice', text: 'hi' }, { from: 'Alice', text: 'for when you are back' }]);
 });
 
+// Report of 2026-11-09: "I got a new message notification but the chat didnt show the new messages, beucase they have
+// been old." The log folded every line from more than 18 h before it came on screen, the ones just counted unread too.
+test('regression: private texts the server brought after a night away, counted unread, are on screen when the conversation opens', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await openFromOnline(alice, 'Bob');
+  // Bob is away overnight while Alice writes. The server's copies are seconds old, not 19 h.
+  await bob.wire.cut();
+  await expect.poll(() => alice.online()).not.toContain('Bob');
+  for (const text of ['are you up?', 'tomorrow then']) {
+    await alice.composer.fill(text);
+    await alice.composer.press('Enter');
+  }
+  const written = [{ from: 'Alice', text: 'are you up?' }, { from: 'Alice', text: 'tomorrow then' }];
+  await expect.poll(() => conversation(alice)).toEqual(written);
+  const aged = bob.ageKeptTexts(19);
+  bob.wire.restore();
+  await bob.connected();
+  await expect.poll(() => threads(bob)).toEqual(['Alice (2)']);
+  expect(aged.size, 'both texts came 19 h old').toBe(2);
+  // He opens the conversation the badge points at: both texts are there to read, without unfolding anything.
+  await openFromList(bob, 'Alice');
+  await expect.poll(() => conversation(bob), { message: 'the private texts counted unread show when the conversation opens' }).toEqual(written);
+});
+
+test('regression: texts counted in the room behind a conversation are on screen when the page opens on that room a day later', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await openFromOnline(bob, 'Alice');
+  await alice.say('last evening');
+  await alice.say('good night');
+  const unread = bob.page.locator('button.room-name', { hasText: crowd.room.name }).locator('.unread');
+  await expect(unread).toHaveText('2');
+  await expect.poll(() => bob.storedTexts()).toEqual(['last evening', 'good night']);
+  // The next afternoon, in a browser closed meanwhile: the page opens on the room, read at once, before its history is.
+  await bob.ageStoredTexts(19);
+  await bob.page.reload();
+  await bob.connected();
+  await expect(bob.page.locator('.private-head')).toHaveCount(0);
+  await expect.poll(() => bob.chatTexts(), { message: 'the texts the kept badge counted show when the page opens on their room' }).toEqual(['last evening', 'good night']);
+  await expect(unread).toHaveCount(0);
+});
+
 test('ADR 0011: the server sees a room of two keys found in no other room, not who is in it', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
