@@ -1289,7 +1289,12 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       }
       if (data.candidates) {
         if (!pc.remoteDescription) return; // left over from their torn-down connection, as above
+        const current = /a=ice-ufrag:(\S+)/.exec(pc.remoteDescription.sdp)?.[1];
         for (const c of data.candidates) {
+          // Gathered for credentials I no longer hold: their answer to an offer of mine taken back before it came (an ICE
+          // restart, restartIce). Firefox would refuse it with "Unknown ufrag".
+          const ufrag = (c as RTCIceCandidateInit | null)?.usernameFragment;
+          if (ufrag && current && ufrag !== current) continue;
           try {
             await unlessClosed(peer.closed, pc.addIceCandidate((c as RTCIceCandidateInit | null) ?? undefined));
           } catch (e) {
@@ -1521,8 +1526,24 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         peer.iceIssuedAt = iceIssuedAt;
       } catch (e) { console.warn('setConfiguration', e); } // the restart still goes, on the credentials it holds
     }
-    peer.iceRestarts++;
-    peer.pc.restartIce();
+    // An offer of mine still waits for its answer (ticket 78, PR #118): lost on the way, or in a socket the network took.
+    // A restart asked for now is held by the browser until that answer, which may never come, and the connection stays
+    // as it is. The waiting offer is taken back, and the restart offers afresh; a late answer to the old one carries its
+    // number and is dropped (onSignalNow). On the signal chain, so the answer is never half applied around the rollback.
+    await signalChain(peer.key, async () => {
+      if (peer.pc.signalingState === 'closed') return;
+      if (peer.pc.signalingState === 'have-local-offer' && !peer.makingOffer) {
+        try {
+          // Settles even if the connection is closed meanwhile: one that never would holds every later signal of theirs.
+          await unlessClosed(peer.closed, peer.pc.setLocalDescription({ type: 'rollback' }));
+        } catch (e) {
+          if (e === CLOSED) return;
+          console.warn('rollback before an ICE restart', e); // the restart still asked for, held as before
+        }
+      }
+      peer.iceRestarts++;
+      peer.pc.restartIce();
+    });
   }
 
   /**

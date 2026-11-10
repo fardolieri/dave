@@ -1,6 +1,6 @@
 # 78 · After a router reconnect, dave could not reconnect
 
-Status: fix in review (PR #135); the second half is #118
+Status: first half shipped 2026-11-10 (a37873d, PR #135); second half in review (PR #118)
 Type: bug (reported by the owner, 2026-10-30: "I reconnected my internet connection in my router settings but I cannot
 reconnect here. I have to restart the tab")
 
@@ -36,5 +36,8 @@ Not covered: the tab's other sockets (other rooms, rooms of two) and a tab not i
 socket dead while files wait too. The e2e test goes through the restart's path with the media path up (the offer sent
 again), not the field's (the connection rebuilt), and nothing tests the probe at an ICE state change.
 
-Left for #118: a restart while an earlier offer still waits for its answer makes no offer (`pc.restartIce()` holds it
-until stable), so a second restart does nothing.
+## The second half (PR #118)
+A restart while an earlier offer still waited for its answer made no offer (`pc.restartIce()` holds it until stable),
+so a second restart did nothing. Now `restartIce` takes the waiting offer back (a rollback) and the restart offers afresh;
+a late answer to the old one carries its number and is dropped. Regression test (the night shift's): "an ICE restart
+whose offer went unanswered does not hold back the next one …".
