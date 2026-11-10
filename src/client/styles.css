@@ -539,9 +539,13 @@ button.link { background: none; border: 0; color: var(--dim); font-size: 11px; p
 .avatar.big.pic { font-size: 34px; }
 /* your own big avatar opens the emoji picker; a pencil in the corner says so */
 button.avatar.own { position: relative; }
-button.avatar.own::after { content: '✎'; position: absolute; right: -2px; bottom: -2px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: var(--panel2); border: 1px solid var(--line); font: 11px system-ui, sans-serif; color: var(--dim); }
+button.avatar.own::after, .own-avatar .remove-picture { position: absolute; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: var(--panel2); border: 1px solid var(--line); font: 11px system-ui, sans-serif; color: var(--dim); }
+button.avatar.own::after { content: '✎'; right: -2px; bottom: -2px; }
 button.avatar.own:hover::after { color: var(--fg); }
-.profile-names .link { padding: 0; font-size: 12px; }
+/* with a picture, a cross in the opposite corner takes it off again; a button, so the themes' button skin is undone */
+.own-avatar { position: relative; display: inline-flex; flex: none; }
+.own-avatar .remove-picture { left: -2px; top: -2px; padding: 0; box-shadow: none; text-transform: none; letter-spacing: normal; transition: none; font-size: 10px; line-height: 1; }
+.own-avatar .remove-picture:is(:hover, :focus-visible) { color: var(--fg); }
 .profile-names { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
 .profile-name { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .profile-name strong { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

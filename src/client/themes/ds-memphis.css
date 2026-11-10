@@ -144,7 +144,7 @@ select.picker::picker(select) { border: 2px solid var(--line); border-radius: va
 .plist li:nth-child(4n+3) .avatar { background: var(--color-pop-teal); }
 .avatar.pic { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", system-ui, sans-serif; font-weight: 400; }
 .avatar.speaking { box-shadow: 0 0 0 3px var(--color-ring); }
-button.avatar.own::after { border: 2px solid var(--color-ink); background: var(--color-pop-yellow); color: var(--color-ink); }
+button.avatar.own::after, .own-avatar button.remove-picture { border: 2px solid var(--color-ink); background: var(--color-pop-yellow); color: var(--color-ink); }
 .plist em { border: 2px solid var(--line); border-radius: var(--border-radius-full); color: var(--fg); padding: 0 6px; }
 /* the sidebar is a pink sheet with a thick ink edge */
 .side { border-right: 3px solid var(--line); }

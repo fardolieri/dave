@@ -129,7 +129,7 @@ button.room-leave { background: var(--orange); color: #2b1300; border-radius: 2p
 .emoji-tabs button:hover,
 .emoji-grid button:hover,
 .emoji-grid button:focus-visible { background: #d7ecf9; }
-button.avatar.own::after { background: #fff; border-color: var(--field); }
+button.avatar.own::after, .own-avatar button.remove-picture { background: #fff; border-color: var(--field); }
 dialog.report,
 dialog.about { background: #fff; border: 1px solid var(--field); border-radius: 2px; }
 dialog.report::backdrop,

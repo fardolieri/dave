@@ -1324,7 +1324,10 @@ function Profile(props: { person: Identity; me: string; label: (id: Identity) =>
       <Show when={editing()} fallback={
         <div class="profile-head">
           <Show when={isMe()} fallback={<BigAvatar />}>
-            <button class={['avatar big own', { pic: !!picture() }]} ref={ownAvatar} popovertarget="profile-emoji" title="Choose a profile picture" aria-label="Choose a profile picture">{picture() ?? props.label(props.person).shown[0]}</button>
+            <span class="own-avatar">
+              <button class={['avatar big own', { pic: !!picture() }]} ref={ownAvatar} popovertarget="profile-emoji" title="Choose a profile picture" aria-label="Choose a profile picture">{picture() ?? props.label(props.person).shown[0]}</button>
+              <Show when={picture()}><button class="remove-picture" type="button" title="Remove the picture" aria-label="Remove the picture" onClick={() => { props.onPictureSelf(null); ownAvatar?.focus(); }}>✕</button></Show>
+            </span>
             <EmojiPicker id="profile-emoji" anchor={() => ownAvatar} onPick={(c) => props.onPictureSelf(c)} closeOnPick />
           </Show>
           <div class="profile-names">
@@ -1333,14 +1336,6 @@ function Profile(props: { person: Identity; me: string; label: (id: Identity) =>
               <button class="edit" title={editTitle()} aria-label={editTitle()} onClick={startEdit}>✎</button>
             </span>
             <Show when={!isMe() && contact()?.nick}><span class="dim">calls themselves {props.person.name}</span></Show>
-            <Show when={isMe()}><span class="dim">what friends see, unless they gave you a nickname</span></Show>
-            <Show when={isMe()}>
-              <span class="dim">
-                <Show when={picture()} fallback="click the circle to pick an emoji picture">
-                  <button class="link" type="button" onClick={() => props.onPictureSelf(null)}>remove the picture</button>
-                </Show>
-              </span>
-            </Show>
           </div>
         </div>
       }>
@@ -1359,7 +1354,7 @@ function Profile(props: { person: Identity; me: string; label: (id: Identity) =>
       </Show>
       <dl class="profile-facts">
         <dt>Fingerprint</dt><dd><code>{props.person.fingerprint}</code></dd>
-        <Show when={!isMe()} fallback={<><dt>Identity</dt><dd>this browser's key</dd></>}>
+        <Show when={!isMe()}>
           <dt>Known since</dt><dd title={contact() ? new Date(contact()!.since).toLocaleString() : undefined}>{knownAgo(contact()) ?? 'now'}</dd>
         </Show>
       </dl>

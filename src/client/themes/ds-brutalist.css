@@ -126,7 +126,7 @@ select.picker::picker(select) { border: var(--border-width) solid var(--line); b
 select.picker option { border-radius: 0; }
 .avatar { border-radius: 0; background: var(--panel2); box-shadow: inset 0 0 0 var(--border-width) var(--line); }
 .avatar.speaking { box-shadow: inset 0 0 0 var(--border-width) var(--line), 0 0 0 3px var(--color-ring); }
-button.avatar.own::after { border-radius: 0; border: var(--border-width) solid var(--line); }
+button.avatar.own::after, .own-avatar button.remove-picture { border-radius: 0; border: var(--border-width) solid var(--line); }
 .conn i { border-radius: 0; }
 .plist em { border-radius: 0; border-color: var(--fg); color: var(--fg); }
 .unread { border-radius: 0; }

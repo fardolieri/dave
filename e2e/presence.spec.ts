@@ -148,6 +148,17 @@ test('a new name reaches everyone', async ({ crowd }) => {
   await expect.poll(() => bob.online()).toContain('Alicia');
 });
 
+test('the cross on your own picture takes it off, and focus stays in the card', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { picture: '😀' });
+  await alice.page.locator('aside.side .side-me button.avatar').click();
+  const card = alice.page.locator('.profile');
+  await card.getByRole('button', { name: 'Remove the picture' }).focus();
+  await alice.page.keyboard.press('Enter');
+  await expect(card.getByRole('button', { name: 'Remove the picture' })).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Choose a profile picture' })).toHaveText('A');
+  await expect(card.getByRole('button', { name: 'Choose a profile picture' }), 'focus moves to the picture, not out of the card').toBeFocused();
+});
+
 test('a new name and picture chosen during the handshake reach everyone', async ({ crowd }) => {
   // Review on 10-10 (quality ticket 10): a rename made after the auth went out, before the welcome, was lost. The auth
   // carried the old name, and the rename itself was written to no socket.

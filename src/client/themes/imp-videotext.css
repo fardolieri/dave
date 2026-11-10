@@ -82,7 +82,7 @@ select.picker option:checked { background: var(--acc); color: #000; }
 .avatar { border-radius: 0; background: var(--field); color: #fff; }
 .avatar.pic { background: #141414; }
 .avatar.speaking { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--ok); }
-button.avatar.own::after { border-radius: 0; background: #000; border-color: var(--edge); }
+button.avatar.own::after, .own-avatar button.remove-picture { border-radius: 0; background: #000; border-color: var(--edge); }
 .plist em { border-color: var(--dim); border-radius: 0; }
 .panel { background: #000; border: 2px solid var(--bar); border-radius: 0; }
 .panel .vgate .vmeter { border-radius: 0; background: #262626; }
