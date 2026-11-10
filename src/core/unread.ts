@@ -1,7 +1,8 @@
 /**
  * Unread counts kept over a reload: by room id (`dave.unreadRooms`) and by friend (`dave.unreadPrivate`), texts that came
  * while the room or the conversation was not on screen. Kept as the counts themselves: what they count is in the
- * histories already, which a reload reads back without telling new from old.
+ * histories already, which a reload reads back without telling new from old. With a room's count, when the oldest text
+ * it counts was written (`dave.unreadSince`, by room id): read, they are not folded away as older (core/chatlog.ts).
  */
 export type Counts = Record<string, number>;
 

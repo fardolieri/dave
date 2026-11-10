@@ -83,6 +83,12 @@ export const LOCAL = {
     map: true,
     fixtures: { '2026-10-24, unread kept': '{"pkA":2}' },
   },
+  unreadSince: {
+    about: "When the oldest text counted in `unreadRooms` was written, by room id, the Room's clock: the log folds nothing from there on when the room is read (core/chatlog.ts, client/room.ts). A room of two is a room here.",
+    parse: parseCounts,
+    map: true,
+    fixtures: { '2026-11-10, unread since': '{"roomA":1762700000000}' },
+  },
   historyFrom: {
     about: "Where my history of a room starts, by room id, the Room's clock: when I joined it by its link (9007199254740991 until its first sync says when) or last cleared it. The server's history (ADR 0009) is asked for what came after it only (client/history.ts).",
     parse: parseCounts,

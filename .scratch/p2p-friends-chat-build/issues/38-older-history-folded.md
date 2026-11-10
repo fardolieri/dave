@@ -38,3 +38,20 @@ Asked for 2026-10-02: Daniel: "When opening a chat I want chat history that is o
 Daniel, after the screenshots: "I want the button to be even less noticeable. And dont tell the user how many messages
 are going to be revealed after click." The outlined pill is now plain dim text at 60 % opacity; the label is "Show older
 messages" whatever the number, and the test checks that text. Screenshots again at DPR 3 (phone) and 2 (desktop).
+
+## Changed 2026-11-10: what was unread does not fold (PR #133)
+Report of 2026-11-09: "I got a new message notification but the chat didnt show the new messages, beucase they have been
+old." Since the server keeps texts for whoever was away (ADR 0009), a text can reach a browser many hours after it was
+written, with the Room's clock of then: read the next afternoon, last evening's texts counted on the badge and the log
+opened with nothing but "Show older messages". The same for a text that came live into a room left unread for 18 h.
+
+Now a room keeps, with its unread count, when the oldest of the texts it counts was written (`unreadSince`, a new
+localStorage key by room id, kept over a reload like the count), hands it on as it is read (`readFrom`, client/room.ts),
+and the log folds nothing from there on while the room stays on screen (`foldedCount`, core/chatlog.ts). Texts the
+server brings into the room on screen count the same way. The next time the room comes on screen they fold like any
+others. Private conversations too: they are rooms of two.
+
+- Being unread keeps at most 200 lines on screen (`OLDER_STEP`), the newest of those older than 18 h, so weeks of
+  unread texts do not all come on screen at once; the rest wait behind "Show older messages".
+- Saved state: a count kept by the app from before has no such time, so a badge from before the update still opens
+  folded if its texts are older than 18 h, once. The count's key is unchanged; a rollback ignores the new key.

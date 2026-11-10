@@ -268,6 +268,20 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   // Once the room is left, nothing is kept for it any more: a text let in on its way out must not bring a count back.
   let unreadLeft = false;
   const setUnread = (next: (n: number) => number) => setUnreadSignal((n) => { const v = next(n); if (v !== n && !unreadLeft) keepUnread('unreadRooms', opts.roomId, v); return v; });
+  /**
+   * When the oldest text was written that was unread as the room was read, this time on screen: the log folds nothing
+   * from there on, however old (`ChatLog`, client/App.tsx). What the server kept for a friend who was away comes with the
+   * Room's clock of when it was written, which may be the evening before. Null when nothing was unread.
+   */
+  const [readFrom, setReadFrom] = createSignal<number | null>(null);
+  /**
+   * When the oldest text counted unread was written, by the Room's clock; 0 with none. Kept over a reload with the count
+   * (`unreadSince`); a count kept by the app before this has none.
+   */
+  let unreadSince = untrack(unread) > 0 ? keptUnread('unreadSince', opts.roomId) : 0;
+  const keepSince = (at: number) => { if (at !== unreadSince) { unreadSince = at; if (!unreadLeft) keepUnread('unreadSince', opts.roomId, at); } };
+  const countUnread = (n: number, from: number) => { keepSince(unreadSince ? Math.min(unreadSince, from) : from); setUnread((v) => v + n); };
+  const noneUnread = () => { keepSince(0); setUnread(() => 0); };
   const listeners = new Set<(m: ServerMessage) => void>();
   const textListeners = new Set<(m: Text) => void>();
   let nextId = 1;
@@ -500,6 +514,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     const stored: StoredText[] = [];
     let confirmed = false;
     let news = 0;
+    let newsFrom = Infinity;
     for (const { m, o, from } of opened) {
       const own = m.from.publicKey === opts.identity.publicKey;
       // My own text the Room took, whether or not it opens here: sending it again cannot help (as a live one, `received`).
@@ -522,14 +537,14 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
         lines_.push({ kind: 'text', id, from, text: o.text, at: m.at });
         stored.push({ from, text: o.text, at: m.at, id: m.id });
       }
-      if (!own) news++;
+      if (!own) { news++; newsFrom = Math.min(newsFrom, m.at); }
     }
     if (confirmed) unconfirmedChanged();
     if (!lines_.length) return;
     setLines((l) => mergeByAt(l, lines_));
     void appendHistory(opts.roomId, ...stored);
     // Missed while away: unread, without a chime, a batch arriving at once. New to this browser: not news at all.
-    if (news && asked.came === 'missed') setUnread((n) => n + news);
+    if (news && asked.came === 'missed') countUnread(news, newsFrom);
   }
 
   /**
@@ -560,7 +575,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     push({ kind: 'text', id: textKey(text), from: text.from, text: text.text, at: text.at });
     void appendHistory(opts.roomId, text);
     if (!own) {
-      setUnread((n) => n + 1);
+      countUnread(1, m.at);
       for (const l of textListeners) l(text);
     }
   }
@@ -584,7 +599,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     void appendHistory(opts.roomId, { from, text: file.name, at: m.at, id: m.id, file });
     arrived(file, m.from.publicKey);
     if (!own) {
-      setUnread((n) => n + 1);
+      countUnread(1, m.at);
       for (const l of textListeners) l({ from, text: file.name, at: m.at, id: m.id });
     }
   }
@@ -1397,8 +1412,16 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     /** Pulls a file that waits for a click, or one that failed. */
     pull: (hash: string): void => { const a = attachmentNow.get(hash); if (a?.status === 'idle' || a?.status === 'failed') { stopRetry(hash); newRound(hash); notThere.delete(hash); setAttachment(hash, { status: 'idle' }); want(hash); } },
     unread,
-    /** The room is on screen: nothing in it is unread. */
-    markRead: () => setUnread(() => 0),
+    /**
+     * The room is on screen: nothing in it is unread. `opening`: it came on screen just now, so what was read the time
+     * before no longer holds the log open (`readFrom`).
+     */
+    markRead: (opening = false) => {
+      const from = unreadSince || null;
+      setReadFrom((was) => (opening || was === null ? from : from === null ? was : Math.min(was, from)));
+      noneUnread();
+    },
+    readFrom,
     /** Sends an event (a text, a signal, a request for ICE servers) on the socket let in, if there is one. */
     send,
     declare: declareLatest,
@@ -1470,7 +1493,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       clears++;
       await clearHistory(opts.roomId, newestAt() ?? Date.now());
       setLines([]);
-      setUnread(() => 0);
+      noneUnread();
     },
     /**
      * A file this browser knows of from elsewhere, as if announced here: shown from the store if it keeps it, else pulled
@@ -1486,7 +1509,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     /** The time of the newest text or file shown, by the Room's clock; null for none. */
     newestAt,
     /** The room is forgotten in this browser: nothing of it is unread any more. */
-    forgetUnread: () => { setUnread(() => 0); unreadLeft = true; },
+    forgetUnread: () => { noneUnread(); unreadLeft = true; },
     /**
      * Something says the network may have changed under the socket (an ICE restart, ticket 78): ping it now, and give it
      * up if no frame comes within PROBE_TIMEOUT_MS, rather than at the heartbeat's pace. What waited on it goes again on

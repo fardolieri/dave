@@ -23,6 +23,19 @@ export function olderCount(lines: ReadonlyArray<{ at: number }>, cutoff: number)
 }
 
 /**
+ * How many lines at the start of the log start out folded: those older than `cutoff`, but none from `readFrom` on, when
+ * the oldest text unread until the room came on screen was written (null: none was). Of the lines only that keeps on
+ * screen, the newest OLDER_STEP at most, as much as one "Show older messages" brings: weeks of unread texts do not all
+ * come on screen at once. Counted back from the cutoff, so a newer line arriving moves nothing; older ones the server
+ * brings later can.
+ */
+export function foldedCount(lines: ReadonlyArray<{ at: number }>, cutoff: number, readFrom: number | null): number {
+  const older = olderCount(lines, cutoff);
+  if (readFrom === null || readFrom >= cutoff) return older;
+  return Math.max(olderCount(lines, readFrom), older - OLDER_STEP);
+}
+
+/**
  * One text as this browser keeps it in its history (ticket 09, IndexedDB `history:<roomId>`). `id`: the writer's, since
  * 2026-10-14 (quality ticket 10), so a text sent again after a reload is still shown once; none in texts from before.
  * `file`: an attachment's announcement as opened (ADR 0006), since 2026-10-15; its `text` is the file's name.

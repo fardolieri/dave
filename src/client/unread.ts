@@ -3,7 +3,7 @@ import type { Counts } from '../core/unread';
 
 // Unread counts kept over a reload (core/unread.ts), read from storage each time, not once: a tab that waited behind
 // another (client/tablock.ts) and takes the rooms over later must not write back what it read before it waited.
-type Scope = 'unreadRooms' | 'unreadPrivate';
+type Scope = 'unreadRooms' | 'unreadPrivate' | 'unreadSince';
 
 /** All the counts of a scope. */
 export const keptAll = (scope: Scope): Counts => local.read(scope) as Counts;

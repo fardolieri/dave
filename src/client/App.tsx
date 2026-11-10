@@ -25,7 +25,7 @@ import { refreshRelayUsage, relaySaving, relayUsage } from './relay';
 import { parseHistoryUsage, type HistoryToday, type HistoryUsage } from '../core/kept';
 import { Markdown, MarkdownMirror } from './Markdown';
 import { quotePrefix } from '../core/markdown';
-import { FOLD_OLDER_MS, OLDER_STEP, olderCount } from '../core/chatlog';
+import { FOLD_OLDER_MS, OLDER_STEP, foldedCount } from '../core/chatlog';
 import { formatDelay, lagLevel } from '../core/lowvoice';
 import { shareTileState } from '../core/invariants';
 import { VOICE_REPAIRS, type VoiceRepair } from '../core/voicerepair';
@@ -555,9 +555,14 @@ function Workspace(props: WorkspaceProps) {
   // a private conversation.
   const openedAt = createMemo(() => (current(), Date.now()));
   const privateOpenedAt = createMemo(() => (privates.openWith(), Date.now()));
-  // The room on screen has nothing unread, however many lines arrive while it is up.
-  createEffect(() => ({ link: current(), lines: current()?.room.lines().length, away: privates.openWith() !== null }), ({ link, away }, prev) => {
-    if (!away) link?.room.markRead();
+  // The room on screen has nothing unread, however many lines arrive while it is up. What was unread stays in its log
+  // until it comes on screen the next time (`readFrom`): `readIn` is the opening it was last read in.
+  let readIn: { link: unknown; at: number } | null = null;
+  createEffect(() => ({ link: current(), at: openedAt(), lines: current()?.room.lines().length, away: privates.openWith() !== null }), ({ link, at, away }, prev) => {
+    if (!away && link) {
+      link.room.markRead(readIn?.link !== link || readIn.at !== at);
+      readIn = { link, at };
+    }
     if (prev && prev.link !== link) setJumpToken((n) => n + 1);
   });
   /**
@@ -883,11 +888,11 @@ function Workspace(props: WorkspaceProps) {
             </section>
           )}</Show>
           {/* Kept while a conversation is on screen, hidden: back from it, the reader is where they were in the room */}
-          <ChatLog lines={cur().room.lines()} openedAt={openedAt()} jumpToken={jumpToken()} label={labelOf} hidden={!!privateFriend()} look={chatLook()}
+          <ChatLog lines={cur().room.lines()} openedAt={openedAt()} readFrom={cur().room.readFrom()} jumpToken={jumpToken()} label={labelOf} hidden={!!privateFriend()} look={chatLook()}
                    holder={(from) => (from.publicKey === me ? null : labelOf(from).shown)}
                    attachment={(hash) => cur().room.attachment(hash)} onPull={(hash) => cur().room.pull(hash)} onCancel={(hash) => cur().room.cancelPull(hash)} />
           <Show when={privateFriend()}>{(pf) => (
-            <ChatLog lines={privates.lines(pf().key)} openedAt={privateOpenedAt()} jumpToken={privateJump()} label={labelOf} private
+            <ChatLog lines={privates.lines(pf().key)} openedAt={privateOpenedAt()} readFrom={privates.readFrom(pf().key)} jumpToken={privateJump()} label={labelOf} private
                      empty={privates.isRead(pf().key) ? `Only ${labelOf(pf().friend).shown} gets what you write here.` : undefined}
                      attachment={(hash) => privates.attachment(hash, pf().key)} onPull={(hash) => privates.pull(hash, pf().key)} onCancel={(hash) => privates.cancelPull(hash, pf().key)}
                      holder={(from) => (from.publicKey === me ? labelOf(pf().friend).shown : labelOf(from).shown)}
@@ -2461,10 +2466,11 @@ function Composer(props: {
 /**
  * The log with the new-messages pill. `jumpToken` changes when I send, which brings me back to the newest line.
  * Texts from more than 18 h before the room came on screen (`openedAt`) wait behind a button above the log, until
- * clicked or until the room comes on screen again (ticket 38).
+ * clicked or until the room comes on screen again (ticket 38). Not those unread until then, however old (`readFrom`,
+ * when the oldest of them was written): the badge that counted them leads to them, the newest 200 at most.
  */
 function ChatLog(props: {
-  lines: ChatLine[]; openedAt: number; jumpToken: number; label: (id: Identity) => Label;
+  lines: ChatLine[]; openedAt: number; readFrom: number | null; jumpToken: number; label: (id: Identity) => Label;
   /** Above the log: a private conversation's head (ADR 0007), which is all `private` then. */
   head?: any; private?: boolean; hidden?: boolean;
   /** What an empty log says. */
@@ -2489,7 +2495,7 @@ function ChatLog(props: {
   // of a busy room do not all come on screen at once.
   const [unfolded, setUnfolded] = createSignal<{ openedAt: number; lines: number } | null>(null);
   const shownOlder = () => (unfolded()?.openedAt === props.openedAt ? unfolded()!.lines : 0);
-  const folded = createMemo(() => Math.max(0, olderCount(props.lines, props.openedAt - FOLD_OLDER_MS) - shownOlder()));
+  const folded = createMemo(() => Math.max(0, foldedCount(props.lines, props.openedAt - FOLD_OLDER_MS, props.readFrom) - shownOlder()));
   const lines = createMemo(() => props.lines.slice(folded()), { equals: sameItems });
   // Lines in reading order, so selecting text works as it reads. The browser measures scroll positions from the
   // top edge, which is the edge that moves when the share strip comes or goes, so the log keeps its own distance

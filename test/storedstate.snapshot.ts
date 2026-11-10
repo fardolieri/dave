@@ -15,6 +15,7 @@ export const STORED_STATE: Record<string, unknown> = {
   "localStorage dave.pairKeys": {"default":{},"shape":{"<key>":{"fingerprint":"string","key":"string","sig":"string"}},"fixtures":{"2026-11-05, rooms of two":{"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA":{"key":"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk","sig":"ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss","fingerprint":"abc234"}}}},
   "localStorage dave.historySynced": {"default":{},"shape":{"<key>":"number"},"fixtures":{"2026-11-04, server history":{"roomA":1762250000000}}},
   "localStorage dave.unreadPrivate": {"default":{},"shape":{"<key>":"number"},"fixtures":{"2026-10-24, unread kept":{"pkA":2}}},
+  "localStorage dave.unreadSince": {"default":{},"shape":{"<key>":"number"},"fixtures":{"2026-11-10, unread since":{"roomA":1762700000000}}},
   "localStorage dave.test": {"default":false,"shape":"boolean","fixtures":{"2026-09-10, e2e seed":true}},
   "localStorage dave.telemetry": {"default":null,"shape":"string","fixtures":{"2026-09-27, yes":"on","2026-09-27, no":"off"}},
   "localStorage dave.muted": {"default":false,"shape":"boolean","fixtures":{"2026-09-06, muted":true,"2026-09-06, unmuted":false}},

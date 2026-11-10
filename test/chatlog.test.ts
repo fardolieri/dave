@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { olderCount, parseHistory, textsMayHold } from '../src/core/chatlog';
+import { foldedCount, OLDER_STEP, olderCount, parseHistory, textsMayHold } from '../src/core/chatlog';
 
 describe('olderCount', () => {
   const at = (...ts: number[]) => ts.map((t) => ({ at: t }));
@@ -11,6 +11,28 @@ describe('olderCount', () => {
   });
   it('stops at the first newer line, so nothing in between is skipped', () => {
     expect(olderCount(at(1, 7, 2, 8), 5)).toBe(1);
+  });
+});
+
+describe('foldedCount', () => {
+  const at = (...ts: number[]) => ts.map((t) => ({ at: t }));
+  it('folds the lines older than the cutoff when nothing was unread, or only newer lines were', () => {
+    expect(foldedCount(at(1, 2, 5, 6), 5, null)).toBe(2);
+    expect(foldedCount(at(1, 2, 5, 6), 5, 6)).toBe(2);
+  });
+  it('folds nothing from the oldest unread line on, however old', () => {
+    expect(foldedCount(at(1, 2, 3, 4), 5, 3)).toBe(2);
+    expect(foldedCount(at(1, 2, 3, 6), 5, 2)).toBe(1);
+  });
+  it('keeps at most the newest OLDER_STEP lines on screen for being unread, and every line newer than the cutoff', () => {
+    const weeks = at(...Array.from({ length: OLDER_STEP + 300 }, (_, i) => i + 1));
+    expect(foldedCount(weeks, 10_000, 1)).toBe(300);
+    expect(foldedCount(weeks, 401, 1)).toBe(200);
+    expect(foldedCount(weeks, 51, 1)).toBe(0);
+  });
+  it('folds no line that was on screen as newer ones arrive', () => {
+    const weeks = at(...Array.from({ length: OLDER_STEP + 300 }, (_, i) => i + 1));
+    expect(foldedCount([...weeks, { at: 20_000 }, { at: 20_001 }], 10_000, 1)).toBe(300);
   });
 });
 

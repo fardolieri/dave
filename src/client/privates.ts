@@ -295,17 +295,20 @@ export function createPrivates(opts: {
     /** The conversations, most recent first. */
     threads: listed,
     unread: (friend: string): number => (openWith() === friend ? 0 : pairOf(friend)?.room.unread() ?? 0),
+    /** From where the conversation was unread as it was read, this time on screen: its log folds nothing from there on. */
+    readFrom: (friend: string): number | null => pairOf(friend)?.room.readFrom() ?? null,
     openWith,
     /** Puts the conversation with this friend on screen: it is read, and listed from now on. */
     open: (friend: Identity): void => {
       const key = friend.publicKey;
       if (key === me) return;
-      if (openWith() !== key) dropIfEmpty(untrack(openWith));
+      const opening = openWith() !== key;
+      if (opening) dropIfEmpty(untrack(openWith));
       if (!threadList.some((t) => t.friend.publicKey === key)) addThread(identityOf(friend), 0);
       void loadArchive(key);
       setOpenWith(key);
       queued.get(key)?.(); // its room of two, waiting to connect: now
-      pairs.get(key)?.room.markRead();
+      pairs.get(key)?.room.markRead(opening);
       posthog.capture('private_opened');
     },
     /** Back to the room on screen. */
