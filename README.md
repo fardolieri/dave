@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-10T18:05 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-10T18:09 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 38, branch 176, preview 192.
+Runs recorded: nightly 38, branch 177, preview 192.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -23,7 +23,6 @@ Runs recorded: nightly 38, branch 176, preview 192.
 | 2 | 2 | nightly 1, branch 1 | presence.spec.ts › the room whose call I join goes to the top of the list, and stays there after a reload | console warnings, errors or exceptions nobody expected: Alice: error: [JavaScript Error: "Failed to load ‘https://dave-nightly.danielmittereder.workers.dev/asse | [10-24](https://github.com/fardolieri/dave/actions/runs/40046533309/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40191892619/attempts/1) | 62 |
 | 2 | 2 | branch 2 | text.spec.ts › texts from more than 18 h before the room came on screen wait behind a button, folded again each time it does | expect(received).toEqual(expected) // deep equality | [10-12](https://github.com/fardolieri/dave/actions/runs/38222942433/attempts/1) | [10-17](https://github.com/fardolieri/dave/actions/runs/39049062343/attempts/1) | f9efd75 (fixed) |
 | 2 | 2 | branch 2 | privacy.spec.ts › a yes starts PostHog and tells the server; stopping forgets it again | PostHog started after the yes | [10-11](https://github.com/fardolieri/dave/actions/runs/38176731504/attempts/1) | [10-12](https://github.com/fardolieri/dave/actions/runs/38252207798/attempts/1) | 50 |
-| 2 | 2 | preview 1, branch 1 | resilience.spec.ts › the call survives the server going away and coming back | console warnings, errors or exceptions nobody expected: Alice: error: WebSocket is already in CLOSING or CLOSED state. | [10-11](https://github.com/fardolieri/dave/actions/runs/38162513698/attempts/1) | [10-11](https://github.com/fardolieri/dave/actions/runs/38169379260/attempts/1) | 41 |
 | 1 | 1 | preview 1 | attachment.spec.ts › a picture that could not be pulled while its sender was briefly away comes by itself once she answers | console warnings, errors or exceptions nobody expected: Alice: error: [JavaScript Error: \"WebRTC: ICE failed, see about:webrtc for more details\"] | [11-10](https://github.com/fardolieri/dave/actions/runs/42857212958/attempts/1) | [11-10](https://github.com/fardolieri/dave/actions/runs/42857212958/attempts/1) | 78 |
 | 1 | 1 | preview 1 | text.spec.ts › regression: a live text before the first sync is answered does not move where the next sync asks from | asked again from where the first asked, not from the live text | [11-09](https://github.com/fardolieri/dave/actions/runs/42721836657/attempts/1) | [11-09](https://github.com/fardolieri/dave/actions/runs/42721836657/attempts/1) | 77 |
 | 1 | 1 | preview 1 | resilience.spec.ts › an offer stuck for a friend who then reloads leaves their new connection alone (the polite side reloads, the last to join) | expect(locator).toHaveText(expected) failed | [11-09](https://github.com/fardolieri/dave/actions/runs/42654887559/attempts/1) | [11-09](https://github.com/fardolieri/dave/actions/runs/42654887559/attempts/1) |  |
@@ -94,4 +93,5 @@ Runs recorded: nightly 38, branch 176, preview 192.
 | 1 | 1 | nightly 1 | share.spec.ts › regression: a share stopped and started again goes live for its viewer, not stuck on Opening | expect(locator).toBeEnabled() failed | [10-12](https://github.com/fardolieri/dave/actions/runs/38219476267/attempts/1) | [10-12](https://github.com/fardolieri/dave/actions/runs/38219476267/attempts/1) | 48 |
 | 1 | 1 | preview 1 | call.spec.ts › Chromium and Firefox in one call connect and hear each other | expect(locator).toBeVisible() failed | [10-11](https://github.com/fardolieri/dave/actions/runs/38180213444/attempts/1) | [10-11](https://github.com/fardolieri/dave/actions/runs/38180213444/attempts/1) | 47 |
 | 1 | 1 | branch 1 | text.spec.ts › received history survives a reload, and "Clear chat history" empties it | expect(received).toEqual(expected) // deep equality | [10-11](https://github.com/fardolieri/dave/actions/runs/38169890832/attempts/1) | [10-11](https://github.com/fardolieri/dave/actions/runs/38169890832/attempts/1) | 43 |
+| 1 | 1 | preview 1 | resilience.spec.ts › the call survives the server going away and coming back | console warnings, errors or exceptions nobody expected: Alice: error: WebSocket is already in CLOSING or CLOSED state. | [10-11](https://github.com/fardolieri/dave/actions/runs/38169379260/attempts/1) | [10-11](https://github.com/fardolieri/dave/actions/runs/38169379260/attempts/1) | 41 |
 | 1 | 1 | branch 1 | resilience.spec.ts › a frame on its way to the server as it goes away is lost with the socket, and nothing is written to it closing | console warnings, errors or exceptions nobody expected: Alice: error: WebSocket is already in CLOSING or CLOSED state. | [10-11](https://github.com/fardolieri/dave/actions/runs/38168912102/attempts/1) | [10-11](https://github.com/fardolieri/dave/actions/runs/38168912102/attempts/1) | 41 |
