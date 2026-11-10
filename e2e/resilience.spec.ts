@@ -794,10 +794,12 @@ test('regression: a socket gone silent without a close is given up, and the text
   await alice.composer.fill('into the silence');
   await alice.composer.press('Enter');
   // The room's socket, given up once. Her room of two's with Bob goes silent too (ADR 0011), and is given up its own way,
-  // as a silent socket or, still connecting, as a handshake that never ended: not this test's.
+  // as a silent socket or, still connecting, as a handshake that never ended: not this test's. Whichever is found silent
+  // first has the tab probe the other (ticket 78), so the room's may go to its heartbeat (4009) or to that probe (4010).
   const roomSocket = `/ws/${await roomIdOf(crowd.room.secret)}`;
   const gaveUp = () => alice.wire.closes.filter((c) => c.side === 'page' && c.url.endsWith(roomSocket)).map((c) => c.code);
-  await expect.poll(gaveUp, { message: 'Alice gives the silent socket up herself', timeout: 150_000 }).toEqual([4009]);
+  await expect.poll(() => gaveUp().length, { message: 'Alice gives the silent socket up herself', timeout: 150_000 }).toBe(1);
+  expect([4009, 4010], 'for its silence').toContain(gaveUp()[0]);
   await alice.connected();
   // The Room took it on the new socket, once: it came back to her, and no longer waits.
   await expect.poll(() => alice.pendingTexts(), { message: 'the text arrives on the socket that replaced the silent one' }).toEqual([]);

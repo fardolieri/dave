@@ -1,6 +1,7 @@
 # 78 · After a router reconnect, dave could not reconnect
 
-Status: first half shipped 2026-11-10 (a37873d, PR #135); second half in review (PR #118)
+Status: shipped 2026-11-10 in three parts: the call's socket (a37873d, PR #135), the second restart (c048925, PR #118),
+the tab's other sockets (in review)
 Type: bug (reported by the owner, 2026-10-30: "I reconnected my internet connection in my router settings but I cannot
 reconnect here. I have to restart the tab")
 
@@ -32,8 +33,8 @@ While a file's pieces are going out or wait for the Room's word, the probe waits
 ping sits behind them (review, two models independently). Regression test: `e2e/resilience.spec.ts`, "an ICE restart asks
 the server socket whether it still answers …".
 
-Not covered: the tab's other sockets (other rooms, rooms of two) and a tab not in a call still wait for the heartbeat; a
-socket dead while files wait too. The e2e test goes through the restart's path with the media path up (the offer sent
+Not covered then: the tab's other sockets (other rooms, rooms of two) and a tab not in a call still waited for the
+heartbeat (the third part, below); a socket dead while files wait still does. The e2e test goes through the restart's path with the media path up (the offer sent
 again), not the field's (the connection rebuilt), and nothing tests the probe at an ICE state change.
 
 ## The second half (PR #118)
@@ -41,3 +42,9 @@ A restart while an earlier offer still waited for its answer made no offer (`pc.
 so a second restart did nothing. Now `restartIce` takes the waiting offer back (a rollback) and the restart offers afresh;
 a late answer to the old one carries its number and is dropped. Regression test (the night shift's): "an ICE restart
 whose offer went unanswered does not hold back the next one …".
+
+## The third part: the tab's other sockets
+A socket given up for its silence (heartbeat 4009, probe 4010) has the tab probe all its other sockets at once, and so
+does the browser's `online` event: the room of two with each friend and other rooms follow within 5 s, where they waited
+60 to 90 s for their own heartbeat (seen on the router, 2026-11-10: 73 s). A tab not in a call gains too, once any of
+its sockets' heartbeat tells. Regression test: "a socket found silent has the tab ask its other sockets too …".

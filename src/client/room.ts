@@ -92,6 +92,14 @@ const PROBE_UNANSWERED = 4010;
 const GIVEN_UP: Record<number, string> = { [HANDSHAKE_GIVEN_UP]: 'handshake_timeout', [PINGS_UNANSWERED]: 'pong_overdue', [PROBE_UNANSWERED]: 'probe_unanswered' };
 /** The sockets this tab holds, one per room it shows. */
 const sockets = new Set<WebSocket>();
+/**
+ * Each room's probe (`probe` below). A socket found silent says the network may have taken the tab's other sockets with
+ * it (a router's reconnect, ticket 78), and the browser coming back online says the same: all are asked at once, rather
+ * than each waiting for its heartbeat.
+ */
+const probes = new Set<() => void>();
+const probeAll = (but?: () => void): void => { for (const p of probes) if (p !== but) p(); };
+if (typeof window !== 'undefined') window.addEventListener('online', () => probeAll());
 /** One socket's life, for `server_socket_closed`: when the Room let it in, when its last frame came. */
 type Life = { welcomedAt: number | null; frameAt: number | null };
 
@@ -367,6 +375,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   let probeTimer: ReturnType<typeof setTimeout> | undefined;
   /** Pings the open socket out of turn and gives it up if it stays silent (`probe` below); null while none is open. */
   let probeSocket: (() => void) | null = null;
+  const probeHere = (): void => probeSocket?.();
+  probes.add(probeHere);
   let unavailableTimer: ReturnType<typeof setTimeout> | undefined;
 
   /**
@@ -1283,6 +1293,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     for (const done of [...fetching.values()]) done(null);
     setYou(null);
     if (stopped) return;
+    if (code === PINGS_UNANSWERED || code === PROBE_UNANSWERED) probeAll(probeHere);
     // What tells a network that cut one socket from a phone that lost its network, or a tab asleep (ticket 54).
     const now = Date.now();
     posthog.capture('server_socket_closed', {
@@ -1346,6 +1357,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     clearTimeout(unavailableTimer);
     clearInterval(pingTimer);
     clearTimeout(probeTimer);
+    probes.delete(probeHere);
     if (ws) sockets.delete(ws);
     ws?.close(1000, 'bye');
   });
@@ -1480,7 +1492,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
      * up if no frame comes within PROBE_TIMEOUT_MS, rather than at the heartbeat's pace. What waited on it goes again on
      * the next socket.
      */
-    probe: () => probeSocket?.(),
+    probe: probeHere,
     /** Dev aid for scripts/drive.mjs: drops the socket so the reconnect path runs. */
     dropSocket: () => ws?.close(),
     /** Change the name everyone sees; presence brings it back. A later reconnect authenticates with it too. */
