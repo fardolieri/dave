@@ -787,6 +787,32 @@ test('regression: a socket gone silent without a close is given up, and the text
   expect(bob.wire.log.filter((f) => f.dir === 'down' && f.frame.startsWith('{"t":"sealed"')), 'the Room passed it on to Bob once').toHaveLength(1);
 });
 
+// Nov 2026, ticket 78: a router's reconnect cuts every socket of the tab without a close and takes the call's path with
+// it. The call restarted ICE within seconds, but its offer went into the dead socket, which the heartbeat gives up only a
+// minute or more later: the friend saw the call "unreachable" and reloaded first (bug report, 2026-10-30).
+test('regression: an ICE restart asks the server socket whether it still answers, and one gone silent is given up within seconds', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  const ufrag = (await peerOf(bob))?.remoteUfrag;
+  const roomSocket = `/ws/${await roomIdOf(crowd.room.secret)}`;
+  const gaveUp = () => alice.wire.closes.filter((c) => c.side === 'page' && c.url.endsWith(roomSocket)).map((c) => c.code);
+
+  // The router reconnects: Alice's sockets go silent, and her connection to Bob restarts ICE, as it does when its path goes.
+  alice.wire.sever();
+  await alice.hook('restartIce', 'Bob');
+  // The heartbeat alone would take 60 to 90 s.
+  await expect.poll(gaveUp, { message: 'Alice gives the silent socket up soon after her restart', timeout: 15_000 }).toEqual([4010]);
+  await alice.connected();
+  await expect.poll(async () => (await peerOf(bob))?.remoteUfrag, { message: "Bob holds Alice's credentials from the restart" }).not.toBe(ufrag);
+  await expect.poll(async () => (await peerOf(alice))?.signaling, { message: 'Alice got the answer' }).toBe('stable');
+  await alice.hearing('Bob');
+  await bob.hearing('Alice');
+});
+
 test('a socket the browser could not open, tried again until one gets in, fails no test on the browser\'s own error line', async ({ crowd, browserName }) => {
   // A preview, 2026-10-21 (ticket 60), Chromium: a room socket's upgrade was reset on the way to Cloudflare, the app gave
   // that socket up and the next one got in, and the test failed on the line Chromium logs for the failed upgrade alone.
