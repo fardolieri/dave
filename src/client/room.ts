@@ -15,7 +15,7 @@ import {
   afterJoin, afterWelcome, carried, declare, declared, forgetEnded, forgetWatch, inCallOnly, joinDeclares, leaveCall,
   type Carried, type Declaration,
 } from '../core/declarations';
-import { beat, heard, heartbeat } from '../core/heartbeat';
+import { beat, heard, heartbeat, probe, probed, PROBE_TIMEOUT_MS } from '../core/heartbeat';
 import { tooOld } from '../core/unsent';
 import type { LocalIdentity } from './identity';
 import { keepUnread, keptUnread } from './unread';
@@ -86,8 +86,10 @@ const HANDSHAKE_TIMEOUT_MS = 10_000;
 const HANDSHAKE_GIVEN_UP = 4008;
 /** What a socket given up for its unanswered pings (core/heartbeat.ts) is closed with, and reported as. */
 const PINGS_UNANSWERED = 4009;
+/** What a socket given up for an unanswered probe (core/heartbeat.ts, ticket 78) is closed with, and reported as. */
+const PROBE_UNANSWERED = 4010;
 /** Why this client gave a socket up itself, for `server_socket_closed`. */
-const GIVEN_UP: Record<number, string> = { [HANDSHAKE_GIVEN_UP]: 'handshake_timeout', [PINGS_UNANSWERED]: 'pong_overdue' };
+const GIVEN_UP: Record<number, string> = { [HANDSHAKE_GIVEN_UP]: 'handshake_timeout', [PINGS_UNANSWERED]: 'pong_overdue', [PROBE_UNANSWERED]: 'probe_unanswered' };
 /** The sockets this tab holds, one per room it shows. */
 const sockets = new Set<WebSocket>();
 /** One socket's life, for `server_socket_closed`: when the Room let it in, when its last frame came. */
@@ -362,6 +364,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   let disposed = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let pingTimer: ReturnType<typeof setInterval> | undefined;
+  let probeTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Pings the open socket out of turn and gives it up if it stays silent (`probe` below); null while none is open. */
+  let probeSocket: (() => void) | null = null;
   let unavailableTimer: ReturnType<typeof setTimeout> | undefined;
 
   /**
@@ -785,6 +790,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const uploads = new Map<string, { file: FileMeta; blob: Blob; of: number; kept: Set<number>; tries: number }>();
   /** The socket a pass runs on: one at a time; a newer socket's takes over, and the older ends at its next piece. */
   let pumpOn: WebSocket | null = null;
+  /**
+   * Pieces sent on the socket let in and not answered yet: the Room answers each, `kept` or an error. A probe waits while
+   * any are out (ticket 78): on a slow uplink its ping sits behind them, in buffers `bufferedAmount` does not count.
+   */
+  let piecesOut = 0;
   let pumpAgain: ReturnType<typeof setTimeout> | undefined;
   async function pumpUploads(): Promise<void> {
     const socket = welcomed;
@@ -808,6 +818,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             // Let go meanwhile (a delete from the server, say): a piece sent now would be kept after it.
             if (uploads.get(hash) !== u) break;
             if (welcomed !== socket || !send({ t: 'piece', tag, n, sealed: toBase64Url(sealed) })) return;
+            piecesOut++;
             // The Room's burst for pieces at once, then under its rate (core/room.ts): a photo is up before the tab goes
             // to the background, where timers slow down; texts go between them.
             if (++sent >= PIECE_RATE_PER_SECOND) await new Promise((r) => setTimeout(r, PIECE_GAP_MS));
@@ -1047,7 +1058,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     const giveUp = (code: number) => {
       socket.onopen = socket.onmessage = socket.onclose = null;
       if (code === HANDSHAKE_GIVEN_UP) socket.close();
-      else socket.close(code, 'pings unanswered');
+      else socket.close(code, code === PROBE_UNANSWERED ? 'probe unanswered' : 'pings unanswered');
       lost(socket, code, life);
     };
     const handshake = setTimeout(() => {
@@ -1055,6 +1066,24 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       giveUp(HANDSHAKE_GIVEN_UP);
     }, HANDSHAKE_TIMEOUT_MS);
     const beats = heartbeat(Date.now());
+
+    const check = () => {
+      if (ws !== socket || socket.readyState !== WebSocket.OPEN) return;
+      // A file's pieces still going out, or not answered yet: on a slow uplink the ping sits behind them, and no answer is
+      // due. A socket dead with pieces out is left to the heartbeat, as before the probe.
+      const verdict = probed(beats, Date.now(), socket.bufferedAmount > 0 || piecesOut > 0);
+      if (verdict === 'dead') return giveUp(PROBE_UNANSWERED);
+      if (verdict === 'again') socket.send(PING_FRAME);
+      if (verdict !== 'alive') probeTimer = setTimeout(check, PROBE_TIMEOUT_MS);
+    };
+    probeSocket = () => {
+      // Only once let in: before the welcome any frame but the auth counts as a failed attempt, and the handshake has a
+      // deadline of its own.
+      if (welcomed !== socket || socket.readyState !== WebSocket.OPEN || !probe(beats, Date.now())) return;
+      socket.send(PING_FRAME);
+      clearTimeout(probeTimer);
+      probeTimer = setTimeout(check, PROBE_TIMEOUT_MS);
+    };
 
     socket.onopen = () => {
       pingTimer = setInterval(() => {
@@ -1095,6 +1124,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           clearTimeout(handshake);
           life.welcomedAt = Date.now();
           welcomed = socket;
+          piecesOut = 0;
           welcomes++;
           // The browser logs a socket it could not open as an error of its own (a reset or a 500 on the upgrade, tickets 55
           // and 60), and the app cannot quiet it. This line says the room got over it; the e2e suite excuses those errors
@@ -1154,6 +1184,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           fetching.get(pieceId(m.tag, m.n))?.(m.sealed ?? 'missing');
           return;
         case 'kept':
+          if (socket === welcomed) piecesOut = Math.max(0, piecesOut - 1);
           keptPiece(m);
           return;
         case 'forgot': {
@@ -1174,6 +1205,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             // chat: an oversized signal once showed as "Not sent" (ticket 30).
             posthog.capture('frame_dropped', { ref: m.ref ?? 'unknown', reason: m.reason });
             if (m.ref === 'link' || m.ref === 'linkice') return; // the pull that sent it times out and says so
+            if (m.ref === 'piece' && socket === welcomed) piecesOut = Math.max(0, piecesOut - 1);
             if (m.ref === 'piece' || m.ref === 'fetch') return; // a fetch says so by its answer not coming; a piece not kept goes again
             if (m.ref === 'sync') {
               // Too many frames at once (a reconnect sends all that waited first): asked again in a moment. Asked too soon
@@ -1245,7 +1277,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     const rooms = sockets.size;
     sockets.delete(socket);
     clearInterval(pingTimer);
-    if (ws === socket) ws = null;
+    clearTimeout(probeTimer);
+    if (ws === socket) { ws = null; probeSocket = null; }
     if (welcomed === socket) welcomed = null;
     for (const done of [...fetching.values()]) done(null);
     setYou(null);
@@ -1312,6 +1345,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     clearTimeout(reconnectTimer);
     clearTimeout(unavailableTimer);
     clearInterval(pingTimer);
+    clearTimeout(probeTimer);
     if (ws) sockets.delete(ws);
     ws?.close(1000, 'bye');
   });
@@ -1441,6 +1475,12 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     newestAt,
     /** The room is forgotten in this browser: nothing of it is unread any more. */
     forgetUnread: () => { setUnread(() => 0); unreadLeft = true; },
+    /**
+     * Something says the network may have changed under the socket (an ICE restart, ticket 78): ping it now, and give it
+     * up if no frame comes within PROBE_TIMEOUT_MS, rather than at the heartbeat's pace. What waited on it goes again on
+     * the next socket.
+     */
+    probe: () => probeSocket?.(),
     /** Dev aid for scripts/drive.mjs: drops the socket so the reconnect path runs. */
     dropSocket: () => ws?.close(),
     /** Change the name everyone sees; presence brings it back. A later reconnect authenticates with it too. */

@@ -1,14 +1,40 @@
 # 78 · After a router reconnect, dave could not reconnect
 
-Status: reproducing
-Type: bug (reported by the owner: "Couldn't reconnect after a router reconnect")
+Status: fix in review (PR #135); the second half is #118
+Type: bug (reported by the owner, 2026-10-30: "I reconnected my internet connection in my router settings but I cannot
+reconnect here. I have to restart the tab")
 
 ## The report
 The owner's FRITZ!Box 7490 reconnects to the internet ("Neu verbinden" under Internet > Online-Monitor). The line drops
-for a short time and comes back with a new public IPv4 address and, on Telekom, a new IPv6 prefix. dave did not
-reconnect afterwards.
+for about 6 s and comes back with a new public IPv4 address and a new IPv6 prefix (Telekom). The report, 50 s after the
+router's reconnect, shows the server `connected` and the one friend in the call `unreachable`: connection `failed`,
+signaling `have-local-offer`, one ICE restart. The night shift's reading of it is in PR #118.
 
-## How it is reproduced
-On the dev box, which sits behind that router: this PR's preview open in browser tabs, in its room, then "Neu verbinden"
-clicked on the router. A timeline of the page (room status, call states, console) and of the box's network (addresses,
-reachability) is kept through the outage and read afterwards.
+## Reproduced, 2026-11-10
+On the dev box behind that router: PR #135's preview open in two tabs, both in its call, the owner's phone on mobile data
+in the call too, then "Neu verbinden" clicked twice. A timeline of each page and of the box's addresses was kept.
+
+- Every server socket of both tabs went silent without a close: no close event, no `offline` event (the box's link to
+  the router stayed up), and the old temporary IPv6 address was removed. The heartbeat gave the sockets up 60, 87, 84
+  and 87 s after the line went, and each came back within a second after that. Nothing showed meanwhile.
+- The call between the two tabs never broke (their path stays inside the home network). The phone's went
+  `disconnected` for 4 s and came back by itself, without a restart: not the report's failure.
+
+So a restart's offer sent in that minute goes into a dead socket. The report's call restarted ICE about 15 s after the
+line went and was still waiting for the answer when the owner reloaded, before the heartbeat would have told.
+
+## The fix (PR #135)
+The call's room socket is probed when something says the network changed under it: a ping at once, and the socket given
+up if no frame comes within 5 s (`core/heartbeat.ts`, `probe`). Asked when a connection of the call turns `disconnected`
+or `failed`, and again at each ICE restart, before the restart's offer goes out. The reconnect then rebuilds the
+connections that died, or sends a waiting offer again (`redeclareAfterReconnect`, `resendOffer('own_reconnect')`).
+While a file's pieces are going out or wait for the Room's word, the probe waits instead of judging: on a slow uplink its
+ping sits behind them (review, two models independently). Regression test: `e2e/resilience.spec.ts`, "an ICE restart asks
+the server socket whether it still answers …".
+
+Not covered: the tab's other sockets (other rooms, rooms of two) and a tab not in a call still wait for the heartbeat; a
+socket dead while files wait too. The e2e test goes through the restart's path with the media path up (the offer sent
+again), not the field's (the connection rebuilt), and nothing tests the probe at an ICE state change.
+
+Left for #118: a restart while an earlier offer still waits for its answer makes no offer (`pc.restartIce()` holds it
+until stable), so a second restart does nothing.

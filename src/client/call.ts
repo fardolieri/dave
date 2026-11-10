@@ -934,7 +934,12 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       peer.outgoingCandidates.push(candidate ? candidate.toJSON() : null);
       peer.candidateTimer ??= setTimeout(() => flushCandidates(peer), CANDIDATE_BATCH_MS);
     };
-    pc.oniceconnectionstatechange = () => recover(peer, { on: 'ice', ice: pc.iceConnectionState, connection: pc.connectionState });
+    pc.oniceconnectionstatechange = () => {
+      // A path that falters may be the network changing under the server socket too (a router's reconnect, ticket 78):
+      // asked now rather than at the restart, a dead socket is given up seconds sooner, the texts written into it with it.
+      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') room.probe();
+      recover(peer, { on: 'ice', ice: pc.iceConnectionState, connection: pc.connectionState });
+    };
     pc.onconnectionstatechange = () => recover(peer, { on: 'connection', ice: pc.iceConnectionState, connection: pc.connectionState });
     pc.ontrack = ({ track, transceiver }) => {
       // Fires inside setRemoteDescription, before the answerer has recorded its transceivers,
@@ -1502,6 +1507,10 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   async function restartIce(peer: Peer): Promise<void> {
     if (peer.pc.connectionState === 'closed') return;
     posthog.capture('ice_restart', { attempt: peer.link.restarts, ice_state: peer.pc.iceConnectionState });
+    // A path that went may have taken the server socket with it, silently (a router's reconnect, ticket 78): the restart's
+    // offer would go into it and be lost until the heartbeat tells, a minute or more. Asked now, a dead one is given up
+    // within seconds, and the offer goes again on the next (resendOffer).
+    room.probe();
     await freshenIce();
     if (peer.pc.signalingState === 'closed') return; // closed while the credentials were asked for
     // Only credentials about to expire are replaced, as before; the tab's may be fresher than these, fetched by another
