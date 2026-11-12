@@ -53,3 +53,11 @@ Texts others send while a friend's socket is down still miss her: the Room keeps
 know her socket was gone. The "everyone sees the same order" test fails when a drop falls on its burst, about one run of
 it in several hundred; the wire log of a failed test now has its `closes`, so such a failure tells itself apart.
 The 8eccf87 retry also showed Bob's call to Alice not coming back after her socket was superseded: ticket 52, open.
+
+## Seen again
+2026-11-12: the preview run of #137 at 0a59414 (run 43127137009), Firefox, shard 1, passed on its retry; the gate's one
+rerun of the shard passed. `attachment.spec.ts:534` "a picture that could not be pulled while its sender was frozen is
+pulled once she is back": after `alice.wire.cut()`, Bob still listed Alice online when the 20 s poll gave up
+(`expect(received).not.toContain`, received `["Alice", "Bob"]`), which looks like the Room not noticing her socket was
+gone (above); the run's artifacts were not read. #137 changes only the agent hooks, `ci.yml` and `CLAUDE.md`: the
+preview ran master's app. The ledger's one earlier sighting of this test and error: 2026-10-19, Chromium (a0c2a9a).
