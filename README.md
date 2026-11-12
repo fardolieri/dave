@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-12T00:48 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-12T23:56 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 32, branch 134, preview 154.
+Runs recorded: nightly 32, branch 135, preview 155.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -19,6 +19,7 @@ Runs recorded: nightly 32, branch 134, preview 154.
 | 2 | 2 | nightly 1, preview 1 | themes.spec.ts › every theme applies, loads its fonts and keeps the console quiet, at desktop and phone width; the pick survives a reload | expect(locator).toHaveCount(expected) failed | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40194632521/attempts/1) | 61 |
 | 2 | 2 | nightly 1, branch 1 | presence.spec.ts › the room whose call I join goes to the top of the list, and stays there after a reload | console warnings, errors or exceptions nobody expected: Alice: error: [JavaScript Error: "Failed to load ‘https://dave-nightly.danielmittereder.workers.dev/asse | [10-24](https://github.com/fardolieri/dave/actions/runs/40046533309/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40191892619/attempts/1) | 62 |
 | 2 | 2 | branch 2 | privacy.spec.ts › a yes during the handshake neither refuses the room nor gets lost | the auth carried the yes | [10-15](https://github.com/fardolieri/dave/actions/runs/38721164482/attempts/1) | [10-15](https://github.com/fardolieri/dave/actions/runs/38764424455/attempts/1) | 50 |
+| 1 | 1 | preview 1 | youtube.spec.ts › a YouTube link pasted in waits above the composer as its card, goes above the text, and plays only once pressed | console warnings, errors or exceptions nobody expected: Bob: warning: [JavaScript Warning: \"Layout was forced before the page was fully loaded. If stylesheets  | [11-12](https://github.com/fardolieri/dave/actions/runs/43331954046/attempts/1) | [11-12](https://github.com/fardolieri/dave/actions/runs/43331954046/attempts/1) |  |
 | 1 | 1 | branch 1 | update.spec.ts › ticket 33: Reload moves only its own tab; a tab waiting behind it is asked once it takes over | page.waitForEvent: Target page, context or browser has been closed | [11-10](https://github.com/fardolieri/dave/actions/runs/42872632962/attempts/1) | [11-10](https://github.com/fardolieri/dave/actions/runs/42872632962/attempts/1) |  |
 | 1 | 1 | preview 1 | attachment.spec.ts › a picture that could not be pulled while its sender was briefly away comes by itself once she answers | console warnings, errors or exceptions nobody expected: Alice: error: [JavaScript Error: \"WebRTC: ICE failed, see about:webrtc for more details\"] | [11-10](https://github.com/fardolieri/dave/actions/runs/42857212958/attempts/1) | [11-10](https://github.com/fardolieri/dave/actions/runs/42857212958/attempts/1) | 79 |
 | 1 | 1 | preview 1 | text.spec.ts › regression: a live text before the first sync is answered does not move where the next sync asks from | asked again from where the first asked, not from the live text | [11-09](https://github.com/fardolieri/dave/actions/runs/42721836657/attempts/1) | [11-09](https://github.com/fardolieri/dave/actions/runs/42721836657/attempts/1) | 77 |
