@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # SessionStart hook (.claude/settings.json): a short briefing that lands in the agent's context, so every session starts
 # knowing where master is, how much memory is left, and who else is working here. Never fails the session.
-cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/../..}" 2>/dev/null || exit 0
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "${CLAUDE_PROJECT_DIR:-$here/../..}" 2>/dev/null || exit 0
 
 timeout 10 git fetch -q origin master 2>/dev/null
 branch=$(git branch --show-current 2>/dev/null)
@@ -10,14 +11,20 @@ dirty=$(git status --porcelain 2>/dev/null | wc -l)
 avail=$(free -m 2>/dev/null | awk '/^Mem:/ {print $7}')
 # Not the shell that launched a session: T3's wrapper (sh -c ... systemd-run ... claude) carries the same words.
 others=$(( $(pgrep -af '[c]laude --output-format' 2>/dev/null | grep -cvE '^[0-9]+ (/usr)?(/bin/)?(ba)?sh ') - 1 ))
-heavy=$(pgrep -fa '[w]orkerd|[v]ite (dev|preview)|[c]hrome-linux|[h]eadless_shell|[m]s-playwright/firefox|[p]laywright test' 2>/dev/null | grep -Ev '^[0-9]+ (/bin/)?(ba)?sh |claude' | cut -c1-100)
+heavy=$("$here/heavy.sh")
+left=$(awk -F'\t' '$1 == "orphan" { print $2 }' <<< "$heavy" | cut -c1-100)
+mine=$(awk -F'\t' '$1 == "mine" { print $2 }' <<< "$heavy" | cut -c1-100)
+# Another session's, counted by the directory it works in: "21 in /home/.../t3-b05a174b".
+theirs=$(awk -F'\t' '$1 ~ /^session / { sub(/^session [0-9]+ /, "", $1); n[$1]++ } END { for (d in n) printf "%s%d in %s", (c++ ? ", " : ""), n[d], d }' <<< "$heavy")
 
 echo "Session briefing (scripts/claude/session-start.sh):"
 echo "- On branch '${branch:-detached}', ${behind:-?} commit(s) behind origin/master, ${dirty} changed file(s)."
 [ "${behind:-0}" != 0 ] && [ "$branch" = master ] && echo "  -> run 'git pull --ff-only' before starting work."
 echo "- ${avail:-?} MB memory available. What this machine can run: ~/.claude/CLAUDE.md. CI is the receipt."
 [ "$others" -gt 0 ] 2>/dev/null && echo "- WARNING: $others other agent session(s) running on this machine. Work on your own branch, fetch before pushing, and do not run heavy commands at the same time."
-[ -n "$heavy" ] && { echo "- Leftover heavy processes from earlier sessions (kill them unless another session owns them):"; echo "$heavy" | sed 's/^/    /'; }
+[ -n "$theirs" ] && echo "- Heavy processes of other agent sessions, still running ($theirs): theirs, leave them be."
+[ -n "$left" ] && { echo "- Leftover heavy processes no running agent session owns (kill them, unless they are the owner's or T3's own):"; echo "$left" | sed 's/^/    /'; }
+[ -n "$mine" ] && { echo "- Heavy processes this session started, still running:"; echo "$mine" | sed 's/^/    /'; }
 # Health of the machinery that runs without anyone watching. Each of these once failed for days unnoticed: the night shift
 # (dead 2026-10-13 and 14), soak issues (four for one error, none read), the gate on master, now the deploy of master.
 state=${XDG_STATE_HOME:-$HOME/.local/state}/night-shift

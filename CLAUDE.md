@@ -29,7 +29,8 @@ preview. Push a branch, open the PR and read its results.
   preview runs the suite in both engines (for Firefox alone, `gh workflow run e2e.yml --ref <branch>` also does); say why
   in the report. Same-ref pushes cancel each other, so wait for the red run to finish first.
 - Watch CI with one waiting loop, not several background watchers.
-- Leave nothing running at the end of a turn (vite, workerd, chrome, playwright). The stop hook checks this.
+- Leave nothing running at the end of a turn (vite, workerd, chrome, firefox, playwright). The stop hook checks this
+  session's, and leftovers no session runs any more; another session's are its own (`scripts/claude/heavy.sh`).
 - Prefer one branch worked on in sequence over many in parallel: CI's 20 runners are the shared bottleneck.
 
 ## Definition of done: the verification ladder

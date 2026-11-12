@@ -31,4 +31,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
+      # The agent hooks (scripts/claude/), with real processes: whose a dev server is.
+      - run: node --test scripts/claude/heavy.test.mjs
       - run: pnpm build
