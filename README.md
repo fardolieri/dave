@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-13T12:10 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-13T17:38 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 32, branch 138, preview 157.
+Runs recorded: nightly 30, branch 126, preview 154.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -82,6 +82,3 @@ Runs recorded: nightly 32, branch 138, preview 157.
 | 1 | 1 | preview 1 | share.spec.ts › regression: a Watch click while the socket is down is asked for again after the reconnect | expect(locator).toBeVisible() failed | [10-14](https://github.com/fardolieri/dave/actions/runs/38629586459/attempts/1) | [10-14](https://github.com/fardolieri/dave/actions/runs/38629586459/attempts/1) | 57 |
 | 1 | 1 | preview 1 | call.spec.ts › a mesh of three: every pair connects, a visitor sees the call without being in it | expect(locator).toBeVisible() failed | [10-14](https://github.com/fardolieri/dave/actions/runs/38628375639/attempts/1) | [10-14](https://github.com/fardolieri/dave/actions/runs/38628375639/attempts/1) | 57 |
 | 1 | 1 | nightly 1 | settings.spec.ts › a friend's volume and the master volume multiply, and survive a reload | console warnings, errors or exceptions nobody expected: Alice: error: WebSocket connection to 'wss://dave-nightly.danielmittereder.workers.dev/ws/MhAlFyiTPUzWta | [10-14](https://github.com/fardolieri/dave/actions/runs/38627817647/attempts/1) | [10-14](https://github.com/fardolieri/dave/actions/runs/38627817647/attempts/1) | 35 |
-| 1 | 1 | nightly 1 | text.spec.ts › regression: a text that reached the Room before its socket was lost shows once, for the others too | expect(received).toEqual(expected) // deep equality | [10-14](https://github.com/fardolieri/dave/actions/runs/38602594547/attempts/1) | [10-14](https://github.com/fardolieri/dave/actions/runs/38602594547/attempts/1) | 51 |
-| 1 | 1 | preview 1 | text.spec.ts › regression: the chat keeps its place when the share strip comes and goes | expect(received).toBe(expected) // Object.is equality | [10-14](https://github.com/fardolieri/dave/actions/runs/38593882197/attempts/1) | [10-14](https://github.com/fardolieri/dave/actions/runs/38593882197/attempts/1) | 53 |
-| 1 | 1 | preview 1 | text.spec.ts › texts in a row from one writer go under one name | expect(locator).toHaveValue(expected) failed | [10-14](https://github.com/fardolieri/dave/actions/runs/38593882197/attempts/1) | [10-14](https://github.com/fardolieri/dave/actions/runs/38593882197/attempts/1) | 53 |
