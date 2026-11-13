@@ -16,6 +16,20 @@ Raised by: the owner, 2026-11-13
 - The thumbnail is the 1280 px one, else the 480 px one every video has (cropped to 16:9). A deleted video shows
   YouTube's grey placeholder; no other rules.
 - An app from before shows the thumbnail as a plain picture under the link.
+- A Short's card is upright (owner, 2026-11-13): its thumbnail is YouTube's upright one, 1080 by 1920, which only a
+  Short has, and a card is upright when its picture is (the announcement's `width` and `height`). oEmbed's size will not
+  do: it is wide or upright by the form of the link asked about. An app from before shows a Short's card wide, its
+  upright picture cropped.
+- An upright card is up to 300 px wide (owner, 2026-11-13): at 240 px YouTube's player dropped its fullscreen button
+  from its control bar, on a phone and on a computer; somewhere between 250 and 300 px it keeps it, depending on the video.
+- An upright card has a fullscreen button of its own under it, once playing (owner, 2026-11-13): for a Short, YouTube
+  picks between two players at the same size, its Shorts player, which has no fullscreen button (as on youtube.com), and
+  its usual one, which has. Not on an iPhone, which lets a page show nothing but a bare video over the whole screen. A
+  wide card has none: YouTube's usual player is the one there.
+- One exit gets out (owner: a double fullscreen is unacceptable): YouTube's own button, pressed inside the card's
+  fullscreen, goes one deeper, and its exit left the card's on. Leaving YouTube's now leaves the card's too. Shown with
+  YouTube's real player (the one video that plays on the dev box) in Chromium and Firefox, and in the e2e test with a
+  stand-in player.
 
 **Not verified here:** the player playing. YouTube asks this dev box (a datacenter address, headless) to sign in; a
 real browser at home should play it.
