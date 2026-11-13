@@ -23,6 +23,15 @@ const jpeg = (f: Friend, width: number, height: number): Promise<Buffer> => f.pa
 
 const serve = (type: string, body: Buffer | string, status = 200) => (r: Route) => r.fulfill({ status, contentType: type, headers: CORS, body });
 
+/**
+ * YouTube's thumbnails for a sender, none until a test serves one (routes served later go first): an upright one is asked
+ * for every video, and only a Short has it, so Chromium says each time that one did not load.
+ */
+async function noThumbnails(f: Friend) {
+  await f.context.route('https://i.ytimg.com/**', serve('image/jpeg', 'Not Found', 404));
+  f.expectWarning(/Failed to load resource: the server responded with a status of 404.*i\.ytimg\.com\/vi\/[^/]+\/oardefault\.jpg/);
+}
+
 /** What a friend's log shows, top to bottom: "card" for a YouTube card, the words of each text. */
 const order = (f: Friend) => f.page.locator('.chat-log .att-video, .chat-log .msg-text')
   .evaluateAll((els) => els.map((el) => (el.classList.contains('att-video') ? 'card' : el.textContent)));
@@ -30,6 +39,7 @@ const order = (f: Friend) => f.page.locator('.chat-log .att-video, .chat-log .ms
 test('a YouTube link put in waits above the composer as its card, goes above the text, and plays only once pressed', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
+  await noThumbnails(alice);
   await alice.context.route(`https://i.ytimg.com/vi/${ID}/maxresdefault.jpg`, serve('image/jpeg', await jpeg(alice, 1280, 720)));
   await alice.context.route('https://www.youtube.com/oembed?**', serve('application/json', JSON.stringify({ title: TITLE, author_name: 'Lofi Girl', html: '<iframe></iframe>' })));
   await bob.context.route('https://www.youtube-nocookie.com/**', serve('text/html', '<!doctype html><title>player</title><p>the player</p>'));
@@ -70,10 +80,91 @@ test('a YouTube link put in waits above the composer as its card, goes above the
   const player = bob.page.locator('.chat-log .att-video iframe');
   await expect(player).toHaveAttribute('src', `https://www.youtube-nocookie.com/embed/${ID}?autoplay=1`);
   await expect(player.contentFrame().getByText('the player')).toBeVisible();
+  // A wide card is not a Short's: wide, as its player is.
+  await expect(bob.page.locator('.chat-log .att-video')).not.toHaveClass(/tall/);
+});
+
+test('a Short goes as an upright card, which its player fills, and goes big over the page and back, playing on', async ({ crowd }) => {
+  const SHORT = 'QR3dKmnzHok';
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await noThumbnails(alice);
+  // A Short has an upright thumbnail, and a wide one too, which is not taken.
+  await alice.context.route(`https://i.ytimg.com/vi/${SHORT}/oardefault.jpg`, serve('image/jpeg', await jpeg(alice, 540, 960)));
+  await alice.context.route(`https://i.ytimg.com/vi/${SHORT}/maxresdefault.jpg`, serve('image/jpeg', await jpeg(alice, 1280, 720)));
+  await alice.context.route('https://www.youtube.com/oembed?**', serve('application/json', JSON.stringify({ title: 'GIVING SIDE QUESTS TO STRANGERS', author_name: 'sidequestz' })));
+  // YouTube's player, a stand-in, with a fullscreen button of its own: YouTube picks a player with one for a Short sometimes.
+  await bob.context.route('https://www.youtube-nocookie.com/**', serve('text/html', '<!doctype html><title>player</title><p>the player</p>'
+    + '<button onclick="document.fullscreenElement ? document.exitFullscreen() : document.body.requestFullscreen()">its fullscreen</button>'));
+  // As in the first test: Firefox on the player's permissions, and on its page laid out before it loaded.
+  bob.expectWarning(/Feature Policy: Skipping unsupported feature name .(autoplay|encrypted-media)/);
+  bob.expectWarning(/Layout was forced before the page was fully loaded.*youtube-nocookie\.com\/embed\//);
+
+  await alice.composer.fill(`https://youtube.com/shorts/${SHORT}?si=sCsN1A6RlhNc4srC`);
+  await expect(alice.staged.locator('.size')).toHaveText('sidequestz');
+  await alice.composer.press('Enter');
+
+  const card = bob.page.locator('.chat-log .att-video');
+  await expect(card).toHaveClass(/tall/);
+  await expect.poll(() => card.locator('img:not(.att-preview)').evaluate((img: HTMLImageElement) => img.naturalWidth), { timeout: 30_000 }).toBe(540);
+  const media = card.locator('figure.att-media');
+  const small = (await media.boundingBox())!;
+  expect(small.height).toBeGreaterThan(1.7 * small.width);
+
+  await card.getByRole('button', { name: 'Play GIVING SIDE QUESTS TO STRANGERS' }).click();
+  await expect(card.locator('iframe')).toHaveAttribute('src', `https://www.youtube-nocookie.com/embed/${SHORT}?autoplay=1`);
+  const player = card.locator('iframe').contentFrame();
+  await expect(player.getByText('the player')).toBeVisible();
+  const playerBox = (await card.locator('iframe').boundingBox())!;
+  expect(playerBox.height).toBeGreaterThan(1.7 * playerBox.width);
+  // A mark in the player's page: a player loaded again, as one moved in the page would be, starts over without it.
+  await player.locator('body').evaluate(() => { (window as unknown as { mark: number }).mark = 1; });
+  const marked = () => player.locator('body').evaluate(() => (window as unknown as { mark?: number }).mark ?? 0);
+
+  // Big picture: the player over the page, as tall as the window lets it be, still upright, the page dimmed around it.
+  const open = () => bob.page.evaluate(() => document.querySelector('.chat-log .att-video .att-media')!.matches(':popover-open'));
+  const fullscreen = () => bob.page.evaluate(() => (document.fullscreenElement?.matches('.att-video iframe') ? 'player' : String(document.fullscreenElement?.tagName ?? 'none')));
+  await card.getByRole('button', { name: 'Big picture', exact: true }).click();
+  await expect.poll(open).toBe(true);
+  const viewport = bob.page.viewportSize()!;
+  const bigBox = (await card.locator('iframe').boundingBox())!;
+  expect(bigBox.height).toBeGreaterThan(viewport.height * 0.8);
+  expect(bigBox.y).toBeGreaterThanOrEqual(40);
+  expect(bigBox.y + bigBox.height + 40).toBeLessThanOrEqual(viewport.height);
+  expect(bigBox.width / bigBox.height).toBeCloseTo(9 / 16, 1);
+  expect(await fullscreen()).toBe('none');
+  // YouTube's own fullscreen in there is the only fullscreen, and leaving it is back to big picture, not out of two.
+  const its = player.getByRole('button', { name: 'its fullscreen' });
+  await its.click();
+  await expect.poll(fullscreen).toBe('player');
+  await its.click();
+  await expect.poll(fullscreen).toBe('none');
+  expect(await open()).toBe(true);
+  // Back takes it back to the chat, the card as it was, the video still playing where it was, the room still there.
+  const url = bob.page.url();
+  await bob.page.goBack();
+  await expect.poll(open).toBe(false);
+  expect(bob.page.url()).toBe(url);
+  const back = (await media.boundingBox())!;
+  expect([back.x, back.y, back.width, back.height].map(Math.round)).toEqual([small.x, small.y, small.width, small.height].map(Math.round));
+  expect(await marked()).toBe(1);
+  // Esc does too, and a click on the page above it; each takes its entry in the history off again, so Back after it goes
+  // where it would have gone.
+  const entry = () => bob.page.evaluate(() => (history.state as { bigPicture?: number } | null)?.bigPicture ?? 0);
+  for (const close of [() => bob.page.keyboard.press('Escape'), () => bob.page.mouse.click(viewport.width / 2, 20)]) {
+    await card.getByRole('button', { name: 'Big picture', exact: true }).click();
+    await expect.poll(open).toBe(true);
+    expect(await entry()).toBeGreaterThan(0);
+    await close();
+    await expect.poll(open).toBe(false);
+    await expect.poll(entry).toBe(0);
+  }
+  expect(await marked()).toBe(1);
 });
 
 test('a link put in without a paste, as from a phone keyboard\'s clipboard, or typed out, waits as its card too', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
+  await noThumbnails(alice);
   await alice.context.route('https://i.ytimg.com/vi/*/maxresdefault.jpg', serve('image/jpeg', await jpeg(alice, 1280, 720)));
   await alice.context.route('https://www.youtube.com/oembed?**', serve('application/json', JSON.stringify({ title: TITLE, author_name: 'Lofi Girl' })));
 
@@ -105,6 +196,7 @@ test('a link put in without a paste, as from a phone keyboard\'s clipboard, or t
 test('a video with no HD thumbnail goes with the one every video has, and a link YouTube does not answer for goes alone', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
+  await noThumbnails(alice);
   // No HD thumbnail, and no title: YouTube answers 404 to both.
   await alice.context.route(`https://i.ytimg.com/vi/${ID}/maxresdefault.jpg`, serve('image/jpeg', await jpeg(alice, 120, 90), 404));
   await alice.context.route(`https://i.ytimg.com/vi/${ID}/hqdefault.jpg`, serve('image/jpeg', await jpeg(alice, 480, 360)));
@@ -120,7 +212,9 @@ test('a video with no HD thumbnail goes with the one every video has, and a link
   await alice.composer.press('Enter');
   const card = bob.page.locator('.chat-log .att-video');
   await expect.poll(() => card.locator('img:not(.att-preview)').evaluate((img: HTMLImageElement) => img.naturalWidth), { timeout: 30_000 }).toBe(480);
-  await expect(card.locator('.att-video-about')).toHaveCount(0);
+  // No title or channel under it: only its big picture button.
+  await expect(card.locator('.att-video-about .about')).toHaveText('');
+  await expect(card.getByRole('button', { name: 'Big picture', exact: true })).toBeVisible();
 
   await alice.composer.fill('https://youtu.be/dQw4w9WgXcQ');
   await expect(alice.staged).toHaveCount(0); // gone by itself, once YouTube could not be reached

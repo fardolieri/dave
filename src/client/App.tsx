@@ -530,7 +530,7 @@ function Workspace(props: WorkspaceProps) {
   onCleanup(() => clearTimeout(lapse));
   // Not over an open dialog or popover (Report a problem, a profile card) or a share in fullscreen: those sit above the
   // frame, so a file staged from there would be staged unseen, to go with the next Enter. The cursor says no instead.
-  const onTop = (t: EventTarget | null) => t instanceof Element && !!(t.closest('dialog[open], [popover]') || document.fullscreenElement?.contains(t));
+  const onTop = (t: EventTarget | null) => t instanceof Element && !!(t.closest('dialog[open], :popover-open') || document.fullscreenElement?.contains(t));
   // Another room put on screen (a click, an invite link) ends the conversation on screen; the room behind it going away
   // (left, forgotten) does not: another simply takes its place behind.
   createEffect(() => current(), (now, prev) => { if (prev && now !== prev && untrack(links).includes(prev)) privates.close(); });
@@ -2654,6 +2654,10 @@ function ChatLog(props: {
 
 /** The longest side of a picture or a video in the chat, in CSS pixels; a portrait one is as tall, and narrower. */
 const MEDIA_SIDE = 320;
+/** Big pictures opened so far, each one's history entry numbered by it (FileView). */
+let bigEntries = 0;
+/** The number of the big picture whose history entry this is, 0 for another entry. */
+const bigEntry = (state: unknown): number => (state && typeof state === 'object' && 'bigPicture' in state && typeof state.bigPicture === 'number' ? state.bigPicture : 0);
 /** Why a pull failed, by whom it came from: `null` for a file of mine (report of 2026-10-17: "Alice doesn't have it any
  * more", said to Alice of her own file, read as if it had not gone out). */
 const PULL_FAILED: Record<PullError, (holder: string | null, file: FileMeta) => string> = {
@@ -2669,13 +2673,61 @@ const PULL_FAILED: Record<PullError, (holder: string | null, file: FileMeta) => 
 
 /**
  * An attachment in the chat (ADR 0006): a picture or a video inline once its bytes are here, its preview until then,
- * with what is happening over it; anything else a card with its name, size and a button. A picture opens full size.
+ * with what is happening over it; anything else a card with its name, size and a button. A picture opens full size; a
+ * video and a YouTube card go big over the page on a button.
  */
 function FileView(props: { file: FileMeta; title: string | undefined; attachment: Attachment | undefined; holder: string | null; onPull: () => void; onCancel: () => void; onView: (url: string, name: string, type: string) => void }) {
   const kind = () => inlineKind(props.file.type);
   const a = () => props.attachment ?? { status: 'idle' as const };
   // A YouTube card's player, once its play button was pressed.
   const [playing, setPlaying] = createSignal(false);
+  /** A picture taller than wide: a Short's thumbnail, whose card is upright as its player is. */
+  const upright = () => (props.file.height ?? 0) > (props.file.width ?? 0);
+  /**
+   * Big picture: a video or a YouTube player over the page, as big as the window lets it be at its own shape, the page
+   * dimmed around it. Back takes it back to the chat, as do Esc (an auto popover's light dismiss; not once a click put
+   * the keys in YouTube's player) and a click on the page around it; no button, to keep it lean. Not the browser's
+   * fullscreen, which YouTube's player has its own of: one over the other left two to get out of. The figure goes over
+   * the page where it is, not moved, so a video in it plays on; a box of its size keeps its place in the chat meanwhile.
+   * Over the page, the figure is the dimmed page too: a popover's backdrop lets a click through to what is under it.
+   */
+  const [big, setBig] = createSignal(false);
+  let figure: HTMLElement | undefined;
+  /** Its entry in the browser's history while big (bigEntry), so Back closes it and does not leave the app: 0 for none. */
+  let entry = 0;
+  const onBack = () => { entry = 0; shrink(); };
+  const enlarge = () => {
+    if (!figure?.isConnected || figure.matches(':popover-open')) return;
+    figure.showPopover();
+    setBig(true);
+    entry = ++bigEntries;
+    // Over another's entry when that one is still on top: it closed as this opened, and leaves one Back, not two.
+    if (bigEntry(history.state)) history.replaceState({ bigPicture: entry }, '');
+    else history.pushState({ bigPicture: entry }, '');
+    window.addEventListener('popstate', onBack);
+  };
+  const shrink = () => { if (figure?.matches(':popover-open')) figure.hidePopover(); };
+  /** Closed by anything but Back: its entry is taken off again, so the next Back does what it would have done. */
+  const forgetEntry = () => {
+    window.removeEventListener('popstate', onBack);
+    if (entry && bigEntry(history.state) === entry) history.back();
+    entry = 0;
+  };
+  /** A click on the dimmed page around it, which is the figure's own (not on what it shows). */
+  const onBeside = (e: MouseEvent) => { if (e.target === e.currentTarget) shrink(); };
+  const onToggle = (e: Event) => {
+    const open = (e as ToggleEvent).newState === 'open';
+    setBig(open);
+    if (!open) forgetEntry();
+  };
+  onCleanup(forgetEntry);
+  /** Its shape, width over height, which big picture keeps. */
+  const ratio = () => {
+    const { width: w, height: h } = props.file;
+    return props.file.youtube ? (upright() ? 9 / 16 : 16 / 9) : w && h ? w / h : 4 / 3;
+  };
+  // Its box in the chat, or over the page its shape, for the style sheet to fit to the window.
+  const place = () => (big() ? { '--ratio': String(ratio()) } : box());
   const url = () => { const now = a(); return now.status === 'ready' ? now.url : null; };
   // One tooltip over all of a picture or a video, whatever shows in its box (the preview, the picture, its still).
   const tip = () => (props.title ? `${props.file.name}, ${props.title}` : props.file.name);
@@ -2684,6 +2736,12 @@ function FileView(props: { file: FileMeta; title: string | undefined; attachment
     const { width: w, height: h } = props.file;
     return w && h ? { 'aspect-ratio': `${w} / ${h}`, width: `${Math.round(Math.min(MEDIA_SIDE, (MEDIA_SIDE * w) / h))}px` } : {};
   };
+  /** The button that makes it big, in the chat. */
+  const enlarger = (cls: string) => (
+    <button type="button" class={cls} onClick={(e) => { e.stopPropagation(); enlarge(); }} title="Big picture" aria-label="Big picture">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M14 4h6v6M20 4l-6.5 6.5M10 20H4v-6M4 20l6.5-6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+    </button>
+  );
   const state = () => {
     const now = a();
     switch (now.status) {
@@ -2718,9 +2776,9 @@ function FileView(props: { file: FileMeta; title: string | undefined; attachment
     }>
       <Match when={kind() === 'image' && props.file.youtube}>{(video) => (
         // A YouTube link's card (core/youtube.ts): the thumbnail, all of it a play button, which puts the video's player in
-        // its place. Only then does this browser ask YouTube for anything.
-        <div class="att att-video" title={props.title}>
-          <figure class="att-media" data-status={a().status}>
+        // its place. Only then does this browser ask YouTube for anything. A Short's card is upright, as its player is.
+        <div class={['att att-video', { tall: upright() }]} title={big() ? undefined : props.title}>
+          <figure class="att-media" data-status={a().status} popover="auto" ref={figure} onToggle={onToggle} onClick={onBeside} style={big() ? place() : undefined}>
             <Show when={playing()} fallback={
               <>
                 <Show when={url()} fallback={<Show when={props.file.preview}>{(p) => <img class="att-preview" src={p()} alt="" />}</Show>}>
@@ -2734,8 +2792,12 @@ function FileView(props: { file: FileMeta; title: string | undefined; attachment
                       allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" />
             </Show>
           </figure>
-          <Show when={video().title || video().channel}>
-            <div class="att-video-about"><span class="title">{video().title}</span><span class="channel">{video().channel}</span></div>
+          <Show when={big()}><div class="att-media att-hold" aria-hidden="true" /></Show>
+          <Show when={video().title || video().channel || url() || playing()}>
+            <div class="att-video-about">
+              <span class="about"><span class="title">{video().title}</span><span class="channel">{video().channel}</span></span>
+              <Show when={url() || playing()}>{enlarger('att-big')}</Show>
+            </div>
           </Show>
         </div>
       )}</Match>
@@ -2748,12 +2810,13 @@ function FileView(props: { file: FileMeta; title: string | undefined; attachment
         </figure>
       </Match>
       <Match when={kind() === 'video'}>
-        <figure class="att att-media" data-status={a().status} style={box()} title={tip()}>
+        <figure class="att att-media" data-status={a().status} style={place()} title={big() ? undefined : tip()} popover="auto" ref={figure} onToggle={onToggle} onClick={onBeside}>
           <Show when={url()} fallback={<Show when={props.file.preview}>{(p) => <img class="att-preview" src={p()} alt="" />}</Show>}>
             {(u) => <video src={u()} controls playsinline preload="metadata" />}
           </Show>
-          <Show when={!url()}><figcaption>{state()}</figcaption></Show>
+          <Show when={!url()} fallback={<Show when={!big()}>{enlarger('att-big over')}</Show>}><figcaption>{state()}</figcaption></Show>
         </figure>
+        <Show when={big()}><div class="att att-media att-hold" style={box()} aria-hidden="true" /></Show>
       </Match>
     </Switch>
   );

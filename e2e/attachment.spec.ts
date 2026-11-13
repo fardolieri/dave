@@ -61,6 +61,66 @@ test('a picture reaches a friend who is not in the call, inline, with the same b
   await expect(bob.page.locator('dialog.viewer')).not.toBeVisible();
 });
 
+test('a video goes big over the page on its button and back, playing on, the same video, the chat where it was', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  // A log taller than the window, read at its newest line, as a video just sent is.
+  await bob.page.setViewportSize({ width: 800, height: 500 });
+  for (let i = 1; i <= 24; i++) await alice.say(`line ${i}`);
+  await expect(bob.page.locator('.chat-log .msg-text').last()).toHaveText('line 24');
+  // A real one, 2 s at 320 by 180, recorded from a canvas in Alice's browser: a recorder is all both engines have to make one.
+  const webm = Buffer.from(await alice.page.evaluate(async () => {
+    const canvas = Object.assign(document.createElement('canvas'), { width: 320, height: 180 });
+    const g = canvas.getContext('2d')!;
+    const recorder = new MediaRecorder(canvas.captureStream(25), { mimeType: 'video/webm' });
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (e) => chunks.push(e.data);
+    const done = new Promise((resolve) => { recorder.onstop = resolve; });
+    recorder.start();
+    for (let i = 0; i < 50; i++) {
+      g.fillStyle = i % 2 ? '#6c8cff' : '#f5b642';
+      g.fillRect(0, 0, 320, 180);
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    recorder.stop();
+    await done;
+    return Array.from(new Uint8Array(await new Blob(chunks).arrayBuffer()));
+  }));
+  await alice.attach({ name: 'flicker.webm', mimeType: 'video/webm', buffer: webm });
+
+  const media = bob.page.locator('.chat-log figure.att-media');
+  const video = media.locator('video');
+  await expect(video).toHaveCount(1, { timeout: 30_000 });
+  const log = bob.page.locator('.chat-log');
+  expect(await log.evaluate((l) => l.scrollHeight > l.clientHeight + 200)).toBe(true);
+  await expect.poll(async () => (await media.boundingBox())!.y + (await media.boundingBox())!.height).toBeLessThanOrEqual(500);
+  const small = (await media.boundingBox())!;
+  // Playing, muted so no browser holds it back, and marked: a video put somewhere else in the page would stop.
+  await video.evaluate((v: HTMLVideoElement) => { v.muted = true; v.loop = true; (v as unknown as { mark: number }).mark = 1; return v.play(); });
+  const open = () => media.evaluate((el) => el.matches(':popover-open'));
+  const playing = () => video.evaluate((v: HTMLVideoElement) => !v.paused && (v as unknown as { mark?: number }).mark === 1);
+
+  // Its button, in its corner, puts it over the page, as wide as the window lets it be at its own shape.
+  await media.getByRole('button', { name: 'Big picture', exact: true }).click();
+  await expect.poll(open).toBe(true);
+  await expect(media.getByRole('button', { name: 'Big picture', exact: true })).toHaveCount(0);
+  const viewport = bob.page.viewportSize()!;
+  const big = (await video.boundingBox())!;
+  expect(big.width).toBeGreaterThan(2 * small.width);
+  expect(big.width / big.height).toBeCloseTo(16 / 9, 1);
+  expect(big.y + big.height).toBeLessThanOrEqual(viewport.height - 40);
+  expect(await playing()).toBe(true);
+  // A click on the dimmed page beside it takes it back, as Esc and Back do (the YouTube test has those), and goes no
+  // further: under it is the page, unseen.
+  expect(await bob.page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.matches('.att-media:popover-open') ?? false, { x: 4, y: viewport.height / 2 })).toBe(true);
+  await bob.page.mouse.click(4, viewport.height / 2);
+  await expect.poll(open).toBe(false);
+  // Back in the chat where it was, the log not moved under it.
+  const back = (await media.boundingBox())!;
+  expect([back.x, back.y, back.width, back.height].map(Math.round)).toEqual([small.x, small.y, small.width, small.height].map(Math.round));
+  expect(await playing()).toBe(true);
+});
+
 test('past 80 % of the relay this month a file link offers no relay, and a picture still comes directly', async ({ crowd }) => {
   // The Worker's answer is made up (as in settings.spec.ts), and every ICE server a peer connection is made with is kept:
   // Alice and Bob are not in the call, so each of theirs is a file link's. A preview mints TURN for them; a local build not.

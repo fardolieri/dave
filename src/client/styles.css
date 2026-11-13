@@ -269,11 +269,14 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .msg-pending { animation: msg-pending 0s 1s forwards; }
 @keyframes msg-pending { to { opacity: 0.5; } }
 /* Attachments (ADR 0006). A picture or a video keeps its own shape within 320 px, its preview blurred under what is
-   happening until the bytes are here; a picture opens full size on a click. Anything else is a one-line card. */
+   happening until the bytes are here; a picture opens full size on a click, a video goes big on its button. Anything
+   else is a one-line card. A video's box is a popover, shown in the chat as any box (big picture, below, opens it). */
 .att { margin: 4px 0 0; }
 .att-media { position: relative; display: block; width: 320px; max-width: 100%; aspect-ratio: 4 / 3; border-radius: 10px; overflow: hidden; background: var(--panel2); border: 1px solid var(--line); }
 .att-media > img, .att-media > video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
 .att-media > img:not(.att-preview) { cursor: zoom-in; }
+/* Undoing what a browser gives a popover, closed or not, which only its being open should change */
+.att-media[popover] { inset: auto; height: auto; padding: 0; color: inherit; }
 .att-media > .att-preview { object-fit: cover; filter: blur(8px) saturate(1.1); transform: scale(1.08); }
 /* A moving picture held still while the window is not focused (Picture in App.tsx): over it, the same box, the clicks its own */
 .still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
@@ -301,7 +304,27 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .att-video .play > span { display: grid; place-items: center; width: 56px; height: 40px; border-radius: 12px; background: rgba(17,19,24,.75); color: #fff; font-size: 20px; line-height: 1; }
 .att-video .play:hover > span, .att-video .play:focus-visible > span { background: #e62117; }
 .att-video figcaption { z-index: 1; }
-.att-video-about { display: flex; flex-direction: column; gap: 2px; padding: 6px 2px 0; min-width: 0; }
+/* A Short's card: upright, as its thumbnail and its player are. Not narrower than 300 px where the screen allows, or
+   YouTube's player drops its fullscreen button from its control bar (sometimes, as YouTube picks the player). */
+.att-video.tall { width: 300px; width: clamp(160px, 70dvh * 9 / 16, 300px); }
+.att-video.tall .att-media { aspect-ratio: 9 / 16; }
+.att-video-about { display: flex; align-items: flex-start; gap: 8px; padding: 6px 2px 0; min-width: 0; }
+.att-video-about .about { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.att-big { flex: none; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border-radius: 8px; }
+/* On a video, in its top right corner, clear of a video's controls */
+.att-big.over { position: absolute; top: 6px; right: 6px; z-index: 1; width: 30px; height: 30px; border: 0; border-radius: 999px; background: rgba(17,19,24,.6); color: #fff; }
+.att-big.over:hover, .att-big.over:focus-visible { background: rgba(17,19,24,.85); }
+/* Big picture (FileView): the figure over the whole window, dimming the page (a click on it is one way back), what it
+   shows in the middle, as big as the window lets it be at its own shape (--ratio, width over height), no frame. At least
+   40 px of the dimmed page stays above and below it, in a window of its very shape too. */
+.att-media:popover-open { --w: min(100vw - 16px, (100dvh - 80px) * var(--ratio, 1));
+  position: fixed; inset: 0; margin: 0; width: 100%; height: 100%; max-width: none; max-height: none;
+  padding: 0; border: 0; border-radius: 0; background: rgba(0,0,0,.85); color: #fff; }
+.att-media:popover-open > video, .att-media:popover-open > iframe, .att-media:popover-open > img, .att-media:popover-open > .play {
+  position: absolute; inset: 0; margin: auto; width: var(--w); height: calc(var(--w) / var(--ratio, 1)); border-radius: 10px; background: #000; }
+.att-media:popover-open > .play { background: none; }
+/* Its place in the chat while it is big, so the log does not move under it */
+.att-hold { visibility: hidden; }
 .att-video-about .title { font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .att-video-about .channel { color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-video-about .channel:empty { display: none; }
