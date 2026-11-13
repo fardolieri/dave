@@ -2654,6 +2654,8 @@ function ChatLog(props: {
 
 /** The longest side of a picture or a video in the chat, in CSS pixels; a portrait one is as tall, and narrower. */
 const MEDIA_SIDE = 320;
+/** Whether this browser lets a page put an element over the whole screen: not an iPhone's, which does that for a bare video only. */
+const CAN_FULLSCREEN = typeof document !== 'undefined' && !!document.fullscreenEnabled;
 /** Why a pull failed, by whom it came from: `null` for a file of mine (report of 2026-10-17: "Alice doesn't have it any
  * more", said to Alice of her own file, read as if it had not gone out). */
 const PULL_FAILED: Record<PullError, (holder: string | null, file: FileMeta) => string> = {
@@ -2676,6 +2678,25 @@ function FileView(props: { file: FileMeta; title: string | undefined; attachment
   const a = () => props.attachment ?? { status: 'idle' as const };
   // A YouTube card's player, once its play button was pressed.
   const [playing, setPlaying] = createSignal(false);
+  /** A picture taller than wide: a Short's thumbnail, whose card is upright as its player is. */
+  const upright = () => (props.file.height ?? 0) > (props.file.width ?? 0);
+  let player: HTMLElement | undefined;
+  /** A Short's player over the whole screen: YouTube's Shorts player has no button for that, and its other one, picked by
+   * YouTube, sometimes not either. When it does, pressed in here it goes one fullscreen deeper; leaving that one leaves
+   * ours as well, so one exit always gets out. */
+  const fullscreen = () => {
+    const figure = player;
+    if (!figure) return;
+    let deeper = false;
+    const onChange = () => {
+      const now = document.fullscreenElement;
+      if (now && now !== figure && figure.contains(now)) deeper = true; // YouTube's own fullscreen, its frame over ours
+      else if (now === figure && deeper) exitFullscreenSafely();
+      else if (!now) document.removeEventListener('fullscreenchange', onChange);
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    requestFullscreenSafely(figure);
+  };
   const url = () => { const now = a(); return now.status === 'ready' ? now.url : null; };
   // One tooltip over all of a picture or a video, whatever shows in its box (the preview, the picture, its still).
   const tip = () => (props.title ? `${props.file.name}, ${props.title}` : props.file.name);
@@ -2718,9 +2739,9 @@ function FileView(props: { file: FileMeta; title: string | undefined; attachment
     }>
       <Match when={kind() === 'image' && props.file.youtube}>{(video) => (
         // A YouTube link's card (core/youtube.ts): the thumbnail, all of it a play button, which puts the video's player in
-        // its place. Only then does this browser ask YouTube for anything.
-        <div class="att att-video" title={props.title}>
-          <figure class="att-media" data-status={a().status}>
+        // its place. Only then does this browser ask YouTube for anything. A Short's card is upright, as its player is.
+        <div class={['att att-video', { tall: upright() }]} title={props.title}>
+          <figure class="att-media" data-status={a().status} ref={player}>
             <Show when={playing()} fallback={
               <>
                 <Show when={url()} fallback={<Show when={props.file.preview}>{(p) => <img class="att-preview" src={p()} alt="" />}</Show>}>
@@ -2734,8 +2755,15 @@ function FileView(props: { file: FileMeta; title: string | undefined; attachment
                       allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" />
             </Show>
           </figure>
-          <Show when={video().title || video().channel}>
-            <div class="att-video-about"><span class="title">{video().title}</span><span class="channel">{video().channel}</span></div>
+          <Show when={video().title || video().channel || (upright() && playing() && CAN_FULLSCREEN)}>
+            <div class="att-video-about">
+              <span class="about"><span class="title">{video().title}</span><span class="channel">{video().channel}</span></span>
+              <Show when={upright() && playing() && CAN_FULLSCREEN}>
+                <button type="button" class="fullscreen" onClick={fullscreen} title="Fullscreen" aria-label="Fullscreen">
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                </button>
+              </Show>
+            </div>
           </Show>
         </div>
       )}</Match>

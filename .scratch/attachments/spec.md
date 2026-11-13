@@ -23,7 +23,8 @@ go from friend to friend.
    It goes as a picture before the text, its announcement naming the video (`youtube`); a friend's app shows a play
    button over it that puts YouTube's player (youtube-nocookie.com) in its place. Only the sender's browser asks YouTube
    for anything until a friend presses play. Taken off with ✕, the link goes alone; YouTube out of reach, likewise.
-   An app from before shows the thumbnail as a picture.
+   An app from before shows the thumbnail as a picture. A Short's card is upright, and has a fullscreen
+   button under it while it plays (not on an iPhone).
 
 ## 3. Wire
 

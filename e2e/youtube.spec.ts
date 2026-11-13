@@ -23,6 +23,15 @@ const jpeg = (f: Friend, width: number, height: number): Promise<Buffer> => f.pa
 
 const serve = (type: string, body: Buffer | string, status = 200) => (r: Route) => r.fulfill({ status, contentType: type, headers: CORS, body });
 
+/**
+ * YouTube's thumbnails for a sender, none until a test serves one (routes served later go first): an upright one is asked
+ * for every video, and only a Short has it, so Chromium says each time that one did not load.
+ */
+async function noThumbnails(f: Friend) {
+  await f.context.route('https://i.ytimg.com/**', serve('image/jpeg', 'Not Found', 404));
+  f.expectWarning(/Failed to load resource: the server responded with a status of 404.*i\.ytimg\.com\/vi\/[^/]+\/oardefault\.jpg/);
+}
+
 /** What a friend's log shows, top to bottom: "card" for a YouTube card, the words of each text. */
 const order = (f: Friend) => f.page.locator('.chat-log .att-video, .chat-log .msg-text')
   .evaluateAll((els) => els.map((el) => (el.classList.contains('att-video') ? 'card' : el.textContent)));
@@ -30,6 +39,7 @@ const order = (f: Friend) => f.page.locator('.chat-log .att-video, .chat-log .ms
 test('a YouTube link put in waits above the composer as its card, goes above the text, and plays only once pressed', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
+  await noThumbnails(alice);
   await alice.context.route(`https://i.ytimg.com/vi/${ID}/maxresdefault.jpg`, serve('image/jpeg', await jpeg(alice, 1280, 720)));
   await alice.context.route('https://www.youtube.com/oembed?**', serve('application/json', JSON.stringify({ title: TITLE, author_name: 'Lofi Girl', html: '<iframe></iframe>' })));
   await bob.context.route('https://www.youtube-nocookie.com/**', serve('text/html', '<!doctype html><title>player</title><p>the player</p>'));
@@ -70,10 +80,58 @@ test('a YouTube link put in waits above the composer as its card, goes above the
   const player = bob.page.locator('.chat-log .att-video iframe');
   await expect(player).toHaveAttribute('src', `https://www.youtube-nocookie.com/embed/${ID}?autoplay=1`);
   await expect(player.contentFrame().getByText('the player')).toBeVisible();
+  // A wide card is not a Short: YouTube's player has a fullscreen button for it, and the card none of its own.
+  await expect(bob.page.locator('.chat-log .att-video')).not.toHaveClass(/tall/);
+  await expect(bob.page.locator('.chat-log .att-video').getByRole('button', { name: 'Fullscreen' })).toHaveCount(0);
+});
+
+test('a Short goes as an upright card, which its player fills, and whose fullscreen is left with one exit', async ({ crowd }) => {
+  const SHORT = 'QR3dKmnzHok';
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await noThumbnails(alice);
+  // A Short has an upright thumbnail, and a wide one too, which is not taken.
+  await alice.context.route(`https://i.ytimg.com/vi/${SHORT}/oardefault.jpg`, serve('image/jpeg', await jpeg(alice, 540, 960)));
+  await alice.context.route(`https://i.ytimg.com/vi/${SHORT}/maxresdefault.jpg`, serve('image/jpeg', await jpeg(alice, 1280, 720)));
+  await alice.context.route('https://www.youtube.com/oembed?**', serve('application/json', JSON.stringify({ title: 'GIVING SIDE QUESTS TO STRANGERS', author_name: 'sidequestz' })));
+  // YouTube's player, a stand-in, with a fullscreen button of its own: YouTube picks a player with one for a Short sometimes.
+  await bob.context.route('https://www.youtube-nocookie.com/**', serve('text/html', '<!doctype html><title>player</title><p>the player</p>'
+    + '<button onclick="document.fullscreenElement ? document.exitFullscreen() : document.body.requestFullscreen()">its fullscreen</button>'));
+  // As in the first test: Firefox on the player's permissions, and on its page laid out before it loaded.
+  bob.expectWarning(/Feature Policy: Skipping unsupported feature name .(autoplay|encrypted-media)/);
+  bob.expectWarning(/Layout was forced before the page was fully loaded.*youtube-nocookie\.com\/embed\//);
+
+  await alice.composer.fill(`https://youtube.com/shorts/${SHORT}?si=sCsN1A6RlhNc4srC`);
+  await expect(alice.staged.locator('.size')).toHaveText('sidequestz');
+  await alice.composer.press('Enter');
+
+  const card = bob.page.locator('.chat-log .att-video');
+  await expect(card).toHaveClass(/tall/);
+  await expect.poll(() => card.locator('img:not(.att-preview)').evaluate((img: HTMLImageElement) => img.naturalWidth), { timeout: 30_000 }).toBe(540);
+  const box = (await card.locator('.att-media').boundingBox())!;
+  expect(box.height).toBeGreaterThan(1.7 * box.width);
+
+  await card.getByRole('button', { name: 'Play GIVING SIDE QUESTS TO STRANGERS' }).click();
+  await expect(card.locator('iframe')).toHaveAttribute('src', `https://www.youtube-nocookie.com/embed/${SHORT}?autoplay=1`);
+  const playerBox = (await card.locator('iframe').boundingBox())!;
+  expect(playerBox.height).toBeGreaterThan(1.7 * playerBox.width);
+
+  // The card's button puts its player over the whole screen.
+  const fullscreen = () => bob.page.evaluate(() => document.fullscreenElement?.matches('.att-video .att-media') ? 'card'
+    : document.fullscreenElement?.matches('.att-video iframe') ? 'player' : String(document.fullscreenElement?.tagName ?? 'none'));
+  await card.getByRole('button', { name: 'Fullscreen' }).click();
+  await expect.poll(fullscreen).toBe('card');
+  // YouTube's own button in there goes one fullscreen deeper, and leaving that one leaves the card's too: no second exit.
+  const its = card.locator('iframe').contentFrame().getByRole('button', { name: 'its fullscreen' });
+  await its.click();
+  await expect.poll(fullscreen).toBe('player');
+  await its.click();
+  await expect.poll(fullscreen).toBe('none');
 });
 
 test('a link put in without a paste, as from a phone keyboard\'s clipboard, or typed out, waits as its card too', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
+  await noThumbnails(alice);
   await alice.context.route('https://i.ytimg.com/vi/*/maxresdefault.jpg', serve('image/jpeg', await jpeg(alice, 1280, 720)));
   await alice.context.route('https://www.youtube.com/oembed?**', serve('application/json', JSON.stringify({ title: TITLE, author_name: 'Lofi Girl' })));
 
@@ -105,6 +163,7 @@ test('a link put in without a paste, as from a phone keyboard\'s clipboard, or t
 test('a video with no HD thumbnail goes with the one every video has, and a link YouTube does not answer for goes alone', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
+  await noThumbnails(alice);
   // No HD thumbnail, and no title: YouTube answers 404 to both.
   await alice.context.route(`https://i.ytimg.com/vi/${ID}/maxresdefault.jpg`, serve('image/jpeg', await jpeg(alice, 120, 90), 404));
   await alice.context.route(`https://i.ytimg.com/vi/${ID}/hqdefault.jpg`, serve('image/jpeg', await jpeg(alice, 480, 360)));
