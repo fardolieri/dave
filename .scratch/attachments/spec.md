@@ -18,6 +18,12 @@ go from friend to friend.
    cancelled, and then waits for a click.
 4. **Kept in the browser**, by hash, in IndexedDB, within 300 MB; the oldest go first. No cloud store yet.
 5. **Any size** (ticket 03): over 16 MB in 1 MB pieces, checked one by one, written to disk as they come, resumed from the last good one.
+6. **YouTube cards** (owner, 2026-11-13, ticket 06): a YouTube link put into the composer waits above it as its video's
+   card, like a picture: YouTube's thumbnail (1280 px, else the 480 px one every video has), its title and channel.
+   It goes as a picture before the text, its announcement naming the video (`youtube`); a friend's app shows a play
+   button over it that puts YouTube's player (youtube-nocookie.com) in its place. Only the sender's browser asks YouTube
+   for anything until a friend presses play. Taken off with ✕, the link goes alone; YouTube out of reach, likewise.
+   An app from before shows the thumbnail as a picture.
 
 ## 3. Wire
 
@@ -33,3 +39,4 @@ go from friend to friend.
 - [01 · Pictures, GIFs and videos pulled from the sender](issues/01-pictures-pulled-from-the-sender.md)
 - [02 · Any file, from anyone who has it](issues/02-any-file-from-anyone.md)
 - [03 · Files of any size, streamed to disk](issues/03-any-size-streamed-to-disk.md)
+- [06 · A YouTube link's card](issues/06-youtube-cards.md)

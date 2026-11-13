@@ -1,6 +1,7 @@
 // Attachments (ADR 0006): what a file's announcement says, which files show inline, what this browser keeps, and the
 // frames of a pull on a file link. Runtime-neutral: plain data and WebCrypto.
 import { toBase64Url } from './identity';
+import { parseVideoCard, type VideoCard } from './youtube';
 
 /** A file as its sealed announcement describes it. The bytes travel apart, checked against `hash`. */
 export type FileMeta = {
@@ -22,6 +23,11 @@ export type FileMeta = {
    * goes on from the last good one. Without it, `hash` is the whole file's.
    */
   piece?: number;
+  /**
+   * The YouTube video this picture is the thumbnail of, with its title and channel (core/youtube.ts): shown as the video's
+   * card, which plays it. An app from before shows the picture.
+   */
+  youtube?: VideoCard;
 };
 
 /** The most a file may weigh: far past anything friends send, a sanity bound for what an announcement may claim. */
@@ -53,7 +59,10 @@ export const MAX_FILE_NAME = 255;
 export const PREVIEW_SIDE = 160;
 /** The longest preview a client writes or takes, as a data URL. A 160 px WebP is 2 to 6 KB. */
 export const MAX_PREVIEW_LENGTH = 12_000;
-/** The longest announcement a client seals, in UTF-8 bytes: the preview, the name and the rest. */
+/**
+ * The longest announcement a client seals, in UTF-8 bytes: the preview, the name and the rest. A YouTube card's title and
+ * channel (`youtube`) fit in what its short name, `youtube-<id>.jpg`, leaves of the name's share.
+ */
 export const MAX_FILE_BODY_BYTES = MAX_PREVIEW_LENGTH + 4 * MAX_FILE_NAME + 512;
 
 /**
@@ -113,6 +122,9 @@ export function parseFileMeta(raw: unknown): FileMeta | null {
     meta.width = m.width;
     meta.height = m.height;
   }
+  // A card this app cannot read (a later app's, say) leaves the picture, as an app from before the cards shows it.
+  const card = m.youtube === undefined ? null : parseVideoCard(m.youtube);
+  if (card) meta.youtube = card;
   return meta;
 }
 

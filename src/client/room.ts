@@ -3,6 +3,7 @@ import posthog, { onConsentChange, telemetryOn } from './posthog';
 import { buildAuthMessage, fromBase64Url, randomHex, toBase64Url } from '../core/identity';
 import { openFile, openPiece, openProfile, openText, sealFile, sealPiece, sealProfile, sealText, type Profile } from '../core/sealed';
 import { MAX_FILE_BYTES, MAX_FILE_NAME, PIECED_FROM, PIECE_BYTES, PULLS_AT_ONCE, formatSize, inlineKind, pullsByItself, type FileMeta } from '../core/attachment';
+import type { VideoCard } from '../core/youtube';
 import { createLinks, PullFailed, type PullError } from './links';
 import { createFileWatchdog } from './invariants';
 import { exposeHooks } from './hooks';
@@ -137,10 +138,10 @@ export type PreparedFile = { picked: File; file: FileMeta; list: Uint8Array | nu
  * served from the file picked: never copied, so it can be pulled while this tab stays open, and from friends who pulled
  * it after that (ticket 03).
  */
-export async function prepareFile(picked: File): Promise<PreparedFile> {
+export async function prepareFile(picked: File, youtube?: VideoCard): Promise<PreparedFile> {
   const pieced = picked.size > PIECED_FROM;
   const [{ hash, list }, look] = await Promise.all([pieced ? piecesOf(picked) : hashOf(picked).then((h) => ({ hash: h, list: null })), makePreview(picked)]);
-  const file: FileMeta = { name: picked.name.slice(0, MAX_FILE_NAME).trim() || 'file', type: picked.type.slice(0, 100), size: picked.size, hash, ...look, ...(pieced ? { piece: PIECE_BYTES } : {}) };
+  const file: FileMeta = { name: picked.name.slice(0, MAX_FILE_NAME).trim() || 'file', type: picked.type.slice(0, 100), size: picked.size, hash, ...look, ...(pieced ? { piece: PIECE_BYTES } : {}), ...(youtube ? { youtube } : {}) };
   return { picked, file, list };
 }
 
@@ -431,7 +432,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       setPendingFiles((p) => p.map((f) => (f.id === id ? { ...f, sealed } : f)));
       send({ t: 'file', sealed, id });
     }).catch((e: unknown) => console.error('sealing a file failed', e));
-    posthog.capture('file_sent', { bytes: file.size, inline: inlineKind(file.type) ?? 'none', preview: !!file.preview });
+    posthog.capture('file_sent', { bytes: file.size, inline: inlineKind(file.type) ?? 'none', preview: !!file.preview, youtube: !!file.youtube });
   };
   /** Friends' texts are opened in the order the Room sent them, so they show in that order too. */
   let opening: Promise<void> = Promise.resolve();

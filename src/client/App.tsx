@@ -11,6 +11,8 @@ import { encodeQr, qrPath } from '../core/qr';
 import { createRoom, prepareFile, type Attachment, type ChatLine, type PreparedFile, type ServerStatus } from './room';
 import { createPrivates } from './privates';
 import { formatSize, inlineKind, pastedImageUrl, type FileMeta } from '../core/attachment';
+import { videosIn, type VideoCard } from '../core/youtube';
+import { videoCard } from './youtube';
 import type { PullError } from './links';
 import { MIC_TEST_RECORD_MS, createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
 import { createAttention, type RoomLink } from './attention';
@@ -469,25 +471,49 @@ function Workspace(props: WorkspaceProps) {
     for (const url of prev ?? []) if (!now.includes(url)) URL.revokeObjectURL(url);
   });
   let stagedIds = 0;
+  /** Changes a staged file wherever it is by then: on screen, or set aside with the room's while a conversation is. */
+  const updateStaged = (id: number, change: (x: Staged) => Staged) => {
+    for (const set of [setRoomStaged, setPrivateStaged]) set((all) => (all.some((x) => x.id === id) ? all.map((x) => (x.id === id ? change(x) : x)) : all));
+  };
+  const dropStaged = (id: number) => { for (const set of [setRoomStaged, setPrivateStaged]) set((all) => all.filter((x) => x.id !== id)); };
+  /** Makes a staged file ready to send, as `picked`: hashed, and its preview made. */
+  const prepareStaged = async (id: number, picked: File, youtube?: VideoCard) => {
+    try {
+      const prepared = await prepareFile(picked, youtube);
+      updateStaged(id, (x) => ({ ...x, state: 'ready', prepared }));
+    } catch {
+      updateStaged(id, (x) => ({ ...x, state: 'unreadable' })); // gone from the disk since it was picked, say
+    }
+  };
   const stageFile = (file: File, original?: Promise<File | null>) => {
     const id = ++stagedIds;
     setStaged((all) => [...all, { id, file, url: thumbnailUrl(file), state: original ? 'original' : 'preparing', prepared: null }]);
-    // Wherever it is by then: on screen, or set aside with the room's while a conversation is.
-    const update = (change: (x: Staged) => Staged) => {
-      for (const set of [setRoomStaged, setPrivateStaged]) set((all) => (all.some((x) => x.id === id) ? all.map((x) => (x.id === id ? change(x) : x)) : all));
-    };
     void (async () => {
       const picked = (await original) ?? file;
-      update((x) => (picked === file ? { ...x, state: 'preparing' } : { ...x, file: picked, url: thumbnailUrl(picked), state: 'preparing' }));
-      try {
-        const prepared = await prepareFile(picked);
-        update((x) => ({ ...x, state: 'ready', prepared }));
-      } catch {
-        update((x) => ({ ...x, state: 'unreadable' })); // gone from the disk since it was picked, say
-      }
+      updateStaged(id, (x) => (picked === file ? { ...x, state: 'preparing' } : { ...x, file: picked, url: thumbnailUrl(picked), state: 'preparing' }));
+      await prepareStaged(id, picked);
     })();
   };
-  const unstageFile = (id: number) => setStaged((all) => all.filter((x) => x.id !== id));
+  // A YouTube link put in waits above the composer as its video's card (client/youtube.ts), a picture that goes before
+  // the text as any other; taken off, the link goes alone. YouTube out of reach, the card takes itself off. A video staged
+  // already is not staged again.
+  const stageVideo = (video: string) => {
+    if (staged().some((x) => x.youtube?.id === video)) return;
+    const id = ++stagedIds;
+    setStaged((all) => [...all, { id, file: new File([], `youtube-${video}.jpg`, { type: 'image/jpeg' }), url: null, state: 'original', prepared: null, youtube: { id: video } }]);
+    void (async () => {
+      const made = await videoCard(video);
+      if (!made) { dropStaged(id); return; }
+      updateStaged(id, (x) => ({ ...x, file: made.picture, url: thumbnailUrl(made.picture), youtube: made.card, state: 'preparing' }));
+      await prepareStaged(id, made.picture, made.card);
+    })();
+  };
+  const unstageFile = dropStaged;
+  /** The cards of the videos the composer's text links to (Composer, `onVideos`): those of other videos go. */
+  const stageVideos = (videos: string[]) => {
+    for (const x of untrack(staged)) if (x.youtube && !videos.includes(x.youtube.id)) dropStaged(x.id);
+    for (const video of videos) stageVideo(video);
+  };
   // A file dropped anywhere on the page waits above the composer, as a picked one does: friends drop it on the text
   // field or the sidebar as often as on the log. It is never left to the browser, which would open it in place of the
   // app; it is staged only while something can be sent.
@@ -911,7 +937,7 @@ function Workspace(props: WorkspaceProps) {
         {/* In a private conversation it goes by the room that would carry the text, not the one on screen */}
         <Composer connected={privateFriend() ? privates.connected(privateFriend()!.key) : connected()} writable={privateFriend() ? true : writable()} roomName={cur().saved.name} onSend={send} look={privateFriend() ? undefined : chatLook()}
                   privateTo={privateFriend() ? { key: privateFriend()!.key, name: labelOf(privateFriend()!.friend).shown, blocked: privateFriend()!.blocked } : null}
-                  staged={staged()} onStage={stageFile} onUnstage={unstageFile}>
+                  staged={staged()} onStage={stageFile} onVideos={stageVideos} onUnstage={unstageFile}>
           {/* Anchored to the composer's top edge, whatever its height on this device (ticket 32) */}
           <Show when={consent() === null || askingConsent()}><TelemetryNotice onAnswer={(c) => { setConsent(c); setAskingConsent(false); }} /></Show>
         </Composer>
@@ -2187,10 +2213,12 @@ const OVERLAY_HIDE_MS = 2500;
 const when = (at: number): string => new Date(at).toLocaleString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(Date.now() - at > 20 * 3600 * 1000 ? { day: '2-digit', month: 'short' } : {}) });
 
 /**
- * A file waiting above the composer: `original` while a pasted picture's original may still come, `preparing` while it
- * is hashed, then `ready` with what the room needs to send it at once, or `unreadable`.
+ * A file waiting above the composer: `original` while a pasted picture's original may still come (or a YouTube link's
+ * card, `youtube`), `preparing` while it is hashed, then `ready` with what the room needs to send it at once, or `unreadable`.
  */
-type Staged = { id: number; file: File; url: string | null; state: 'original' | 'preparing' | 'ready' | 'unreadable'; prepared: PreparedFile | null };
+type Staged = { id: number; file: File; url: string | null; state: 'original' | 'preparing' | 'ready' | 'unreadable'; prepared: PreparedFile | null; youtube?: VideoCard };
+/** What a staged file is called where it is named: a YouTube card by its video's title. */
+const stagedName = (x: Staged): string => (x.youtube ? x.youtube.title ?? 'YouTube video' : x.file.name);
 /** Whether Send can take this file: ready, or never going to be. */
 const settled = (x: Staged): boolean => x.state === 'ready' || x.state === 'unreadable';
 const STAGED_STATE: Record<Staged['state'], string> = { original: 'Getting the original…', preparing: 'Preparing…', ready: '', unreadable: "Can't be read, won't be sent" };
@@ -2240,6 +2268,8 @@ function Composer(props: {
   /** Sends the text (maybe empty) with the staged files; false when it was not taken, and stays in the field. */
   onSend: (text: string) => boolean;
   staged: Staged[]; onStage: (file: File, original?: Promise<File | null>) => void; onUnstage: (id: number) => void;
+  /** The YouTube videos the text links to now, less those taken off: their cards are staged, any other card is taken off. */
+  onVideos: (videos: string[]) => void;
   /** The look it wears when not the page's: the room it writes to has another (client/theme.ts). */
   look?: string;
 }) {
@@ -2274,6 +2304,22 @@ function Composer(props: {
   createEffect(privateKey, (key, prev) => { if (key && key !== prev && matchMedia('(pointer: fine)').matches) input?.focus(); });
   /** Why Send cannot send right now while writing privately, or null. */
   const privateHeld = () => (props.privateTo?.blocked ? `Can't write to ${props.privateTo.name} now: ${props.privateTo.blocked}` : null);
+  // The YouTube cards above the text follow its links, however they came: a paste, a phone keyboard's clipboard (which
+  // pastes with no paste event), or typed out, once whole. A link that leaves the text takes its card along; a card taken
+  // off stays off while its link stays in the text. Each draft (the room's, a conversation's) has its own taken off.
+  const draftVideos = createMemo(() => videosIn(draft()), { equals: sameItems });
+  const takenOff = new Map<string, Set<string>>();
+  const takenOffHere = () => { const k = privateKey() ?? ''; if (!takenOff.has(k)) takenOff.set(k, new Set()); return takenOff.get(k)!; };
+  // After `privateHeld`: an effect reads what it watches as it is made.
+  // Only when either changes: a friend's presence changing (`privateTo`) must not ask YouTube again for a card that took
+  // itself off.
+  const videosOpen = createMemo(() => ({ videos: draftVideos(), open: props.writable && !privateHeld() }), { equals: (a, b) => a.open === b.open && a.videos === b.videos });
+  createEffect(videosOpen, ({ videos, open }) => {
+    const off = takenOffHere();
+    for (const v of off) if (!videos.includes(v)) off.delete(v);
+    if (open) props.onVideos(videos.filter((v) => !off.has(v)));
+  });
+  const unstage = (x: Staged) => { if (x.youtube) takenOffHere().add(x.youtube.id); props.onUnstage(x.id); };
   // The field's and the mirror's (MarkdownMirror shows it, cut to one line).
   const placeholder = createMemo(() => privateHeld() ?? (props.privateTo && props.writable ? `Message ${props.privateTo.name}${props.connected ? '' : ', sent once reconnected'}` : props.connected ? `Message ${props.roomName}` : props.writable ? `Message ${props.roomName}, sent once reconnected` : holding() ? 'A new version of dave is loading…' : "Can't send while disconnected"));
   const submit = (e: Event) => {
@@ -2437,8 +2483,12 @@ function Composer(props: {
           <For each={props.staged} keyed={(x) => x.id}>{(x) => (
             <li class={[x().state, { pending: !settled(x()) }]}>
               <span class="thumb"><Show when={x().url} keyed fallback={fileEnding(x().file.name)}>{(u) => <Picture src={u} type={x().file.type} alt="" />}</Show></span>
-              <span class="meta"><span class="name" title={x().file.name}>{x().file.name}</span><span class="size">{STAGED_STATE[x().state] || formatSize(x().file.size)}</span></span>
-              <button type="button" class="unstage" onClick={() => props.onUnstage(x().id)} title={`Don't send ${x().file.name}`} aria-label={`Remove ${x().file.name}`}>✕</button>
+              <Show when={x().youtube} keyed fallback={
+                <span class="meta"><span class="name" title={x().file.name}>{x().file.name}</span><span class="size">{STAGED_STATE[x().state] || formatSize(x().file.size)}</span></span>
+              }>{(video) => (
+                <span class="meta"><span class="name" title={stagedName(x())}>{stagedName(x())}</span><span class="size">{x().state === 'original' ? 'Getting the video…' : STAGED_STATE[x().state] || (video.channel ?? 'YouTube')}</span></span>
+              )}</Show>
+              <button type="button" class="unstage" onClick={() => unstage(x())} title={`Don't send ${stagedName(x())}`} aria-label={`Remove ${stagedName(x())}`}>✕</button>
             </li>
           )}</For>
         </ul>
@@ -2624,6 +2674,8 @@ const PULL_FAILED: Record<PullError, (holder: string | null, file: FileMeta) => 
 function FileView(props: { file: FileMeta; title: string | undefined; attachment: Attachment | undefined; holder: string | null; onPull: () => void; onCancel: () => void; onView: (url: string, name: string, type: string) => void }) {
   const kind = () => inlineKind(props.file.type);
   const a = () => props.attachment ?? { status: 'idle' as const };
+  // A YouTube card's player, once its play button was pressed.
+  const [playing, setPlaying] = createSignal(false);
   const url = () => { const now = a(); return now.status === 'ready' ? now.url : null; };
   // One tooltip over all of a picture or a video, whatever shows in its box (the preview, the picture, its still).
   const tip = () => (props.title ? `${props.file.name}, ${props.title}` : props.file.name);
@@ -2664,6 +2716,29 @@ function FileView(props: { file: FileMeta; title: string | undefined; attachment
         <Show when={url()} fallback={state()}>{(u) => <a class="att-save" href={u()} download={props.file.name}>Save</a>}</Show>
       </div>
     }>
+      <Match when={kind() === 'image' && props.file.youtube}>{(video) => (
+        // A YouTube link's card (core/youtube.ts): the thumbnail, all of it a play button, which puts the video's player in
+        // its place. Only then does this browser ask YouTube for anything.
+        <div class="att att-video" title={props.title}>
+          <figure class="att-media" data-status={a().status}>
+            <Show when={playing()} fallback={
+              <>
+                <Show when={url()} fallback={<Show when={props.file.preview}>{(p) => <img class="att-preview" src={p()} alt="" />}</Show>}>
+                  {(u) => <img src={u()} alt={video().title ?? props.file.name} />}
+                </Show>
+                <button type="button" class="play" onClick={() => setPlaying(true)} aria-label={`Play ${video().title ?? 'the video'}`}><span aria-hidden="true">▶</span></button>
+                <Show when={!url()}><figcaption>{state()}</figcaption></Show>
+              </>
+            }>
+              <iframe src={`https://www.youtube-nocookie.com/embed/${video().id}?autoplay=1`} title={video().title ?? 'YouTube video'}
+                      allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" />
+            </Show>
+          </figure>
+          <Show when={video().title || video().channel}>
+            <div class="att-video-about"><span class="title">{video().title}</span><span class="channel">{video().channel}</span></div>
+          </Show>
+        </div>
+      )}</Match>
       <Match when={kind() === 'image'}>
         <figure class="att att-media" data-status={a().status} style={box()} title={tip()}>
           <Show when={url()} fallback={<Show when={props.file.preview}>{(p) => <img class="att-preview" src={p()} alt="" />}</Show>}>
