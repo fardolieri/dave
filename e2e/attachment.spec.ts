@@ -1070,3 +1070,39 @@ test('ADR 0009: a picture whose sender is online but cannot be reached comes fro
   expect(await bob.online()).toContain('Alice');
   expect(bob.wire.frames('up', 'fetch').length, 'from the server, after Alice could not be reached').toBeGreaterThan(0);
 });
+
+/**
+ * Alice's uplink is a slow line: frames reach the server one after another, in the order her page wrote them, each taking
+ * its length at this rate. Returns the frames as they arrive there, by type.
+ */
+function slowSocketUplink(f: Friend, bytesPerSecond: number): string[] {
+  const arrived: string[] = [];
+  let free = Date.now();
+  f.wire.up = (frame, pass) => {
+    free = Math.max(free, Date.now()) + (frame.length / bytesPerSecond) * 1000;
+    const type = /^\{"t":"([a-z]+)"/.exec(frame)?.[1] ?? '?';
+    setTimeout(() => { pass(frame); arrived.push(type); }, free - Date.now());
+    return null;
+  };
+  return arrived;
+}
+
+// Report of 2026-11-12: a friend on a phone sent a picture and then a text, and the text came long after. The picture's
+// copy for the server (ADR 0009) goes up on the same socket as texts: a text written while it goes up should not wait for
+// all of it.
+test('a text written while a picture goes up to the server reaches a friend before the whole picture has', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  const arrived = slowSocketUplink(alice, 500 * 1024); // some 20 s for the picture below
+  const picture = heavy(png(640, 480), 6.5 * 1024 * 1024);
+  const pieces = Math.ceil(picture.length / KEPT_PIECE_BYTES);
+  expect(pieces).toBe(7);
+  await alice.attach({ name: 'stripes.png', mimeType: 'image/png', buffer: picture });
+  // The picture has started going up when she writes.
+  await expect.poll(() => alice.wire.frames('up', 'piece').length).toBeGreaterThan(0);
+  await alice.composer.fill('and one more thing');
+  await alice.composer.press('Enter');
+  await expect.poll(() => bob.chatTexts(), { timeout: 60_000 }).toContain('and one more thing');
+  const before = arrived.filter((t) => t === 'piece').length;
+  expect(before, `pieces of the picture the server got before Bob read the text (of ${pieces})`).toBeLessThan(pieces);
+});
