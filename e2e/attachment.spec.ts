@@ -1070,3 +1070,59 @@ test('ADR 0009: a picture whose sender is online but cannot be reached comes fro
   expect(await bob.online()).toContain('Alice');
   expect(bob.wire.frames('up', 'fetch').length, 'from the server, after Alice could not be reached').toBeGreaterThan(0);
 });
+
+/**
+ * The Room's clock as Cloudflare runs it: time stands still between a Worker's I/O, so frames that come in together get the
+ * same millisecond. A text sent with a file comes back with the file's time then (seen on PR #142's preview, report of
+ * 2026-11-14). A local build's clock moves on, so this gives a text the time of the file just before it from its writer.
+ */
+function oneMillisecond(): ((frame: string) => string) & { given: number } {
+  const fileAt = new Map<string, number>();
+  const same = (e: { t?: string; at?: number; from?: { publicKey?: string } }): void => {
+    const writer = e.from?.publicKey;
+    if (typeof e.at !== 'number' || !writer) return;
+    if (e.t === 'file') fileAt.set(writer, e.at);
+    else if (e.t === 'sealed') {
+      const at = fileAt.get(writer);
+      if (at !== undefined && e.at - at < 2000) { e.at = at; tamper.given++; }
+    }
+  };
+  const tamper = Object.assign((frame: string) => {
+    const m = JSON.parse(frame) as { t: string; at?: number; entries?: Array<{ t?: string; at?: number }> };
+    if (m.t === 'history') m.entries?.forEach(same);
+    else same(m);
+    return JSON.stringify(m);
+  }, { given: 0 });
+  return tamper;
+}
+
+test('regression: a text sent with a picture, given the same time by the Room, shows and is kept with it', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const aliceClock = oneMillisecond();
+  alice.wire.down = aliceClock;
+  await alice.page.getByTestId('attach').setInputFiles({ name: 'stripes.png', mimeType: 'image/png', buffer: png(64, 48) });
+  await alice.composer.fill('with the picture');
+  await expect(alice.sendButton).toBeEnabled(); // the picture prepared: Enter before then sends nothing
+  await alice.composer.press('Enter');
+  await expect(alice.staged).toHaveCount(0);
+  const both = ['stripes.png', 'with the picture'];
+  await expect.poll(() => alice.storedTexts(), { message: 'both kept in her history' }).toEqual(both);
+  await expect(alice.page.locator('.chat-log .att-media img')).toHaveCount(1);
+  await expect.poll(() => alice.chatTexts()).toContain('with the picture');
+  // After a reload, from her history and the server's.
+  await alice.page.reload();
+  await alice.connected();
+  await expect(alice.page.locator('.chat-log .att-media img')).toHaveCount(1);
+  await expect.poll(() => alice.chatTexts()).toContain('with the picture');
+  expect(aliceClock.given, 'her text came back with the time of her picture').toBeGreaterThan(0);
+  // A friend who was away gets both from the server's history, the same time on them from his first socket on.
+  const bob = await crowd.open('Bob', { connect: false });
+  const bobClock = oneMillisecond();
+  bob.wire.down = bobClock;
+  await bob.open();
+  await bob.connected();
+  await expect(bob.page.locator('.chat-log .att-media img')).toHaveCount(1);
+  await expect.poll(() => bob.chatTexts()).toContain('with the picture');
+  await expect.poll(() => bob.storedTexts()).toEqual(both);
+  expect(bobClock.given, 'the history brought the text with the time of the picture').toBeGreaterThan(0);
+});
