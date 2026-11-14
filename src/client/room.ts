@@ -25,7 +25,7 @@ import { mergeByAt } from '../core/chatlog';
 import { pieceTagOf } from '../core/rooms';
 import { FROM_JOIN, KEPT_PIECE_BYTES, SYNC_COOLDOWN_MS, keptKind, keptPiecesOf, pieceId, syncSince } from '../core/kept';
 import { PIECE_RATE_PER_SECOND } from '../core/room';
-import { appendHistory, clearHistory, doneForgetting, FORGET_NOW, forgettingOf, historyFromAt, keepForgetting, historySyncedTo, keepHistoryFrom, keepHistorySynced, keepUnsent, loadHistory, loadUnsent, textKey, type StoredText } from './history';
+import { appendHistory, clearHistory, doneForgetting, FORGET_NOW, forgettingOf, historyFromAt, keepForgetting, historySyncedTo, keepHistoryFrom, keepHistorySynced, keepUnsent, lineKey, loadHistory, loadUnsent, type StoredText } from './history';
 
 export type ServerStatus =
   | { kind: 'connecting' }
@@ -334,8 +334,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     return false;
   };
   // Recent history from this browser, loaded once; live lines append after it.
-  const fromStored = ({ from, text, at, file }: StoredText): ChatLine =>
-    file ? { kind: 'file', id: textKey({ from, at }), from, file, at } : { kind: 'text', id: textKey({ from, at }), from, text, at };
+  const fromStored = (m: StoredText): ChatLine =>
+    m.file ? { kind: 'file', id: lineKey(m), from: m.from, file: m.file, at: m.at } : { kind: 'text', id: lineKey(m), from: m.from, text: m.text, at: m.at };
   /** The history is loaded: until then, a friend's pull of a file announced before this page opened waits for it. */
   /** The newest line this browser had of the room when the page opened, by the Room's clock; null for none. */
   let heldNewest: number | null = null;
@@ -528,7 +528,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
         continue;
       }
       if (!from || seen(m.from.publicKey, m.id)) continue;
-      const id = textKey({ from, at: m.at });
+      const id = lineKey({ from, at: m.at, id: m.id });
       if ('file' in o) {
         lines_.push({ kind: 'file', id, from, file: o.file, at: m.at });
         stored.push({ from, text: o.file.name, at: m.at, id: m.id, file: o.file });
@@ -573,7 +573,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     const from = await fromOf(m.from);
     if (stopped || seen(m.from.publicKey, m.id)) return;
     const text: Text = { from, text: opened.text, at: m.at, id: m.id };
-    push({ kind: 'text', id: textKey(text), from: text.from, text: text.text, at: text.at });
+    push({ kind: 'text', id: lineKey(text), from: text.from, text: text.text, at: text.at });
     void appendHistory(opts.roomId, text);
     if (!own) {
       countUnread(1, m.at);
@@ -596,7 +596,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     const from = await fromOf(m.from);
     if (stopped || seen(m.from.publicKey, m.id)) return;
     const { file } = opened;
-    push({ kind: 'file', id: textKey({ from, at: m.at }), from, file, at: m.at });
+    push({ kind: 'file', id: lineKey({ from, at: m.at, id: m.id }), from, file, at: m.at });
     void appendHistory(opts.roomId, { from, text: file.name, at: m.at, id: m.id, file });
     arrived(file, m.from.publicKey);
     if (!own) {

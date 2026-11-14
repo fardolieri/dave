@@ -1,11 +1,11 @@
 import { createEffect, createMemo, createRoot, createSignal, getOwner, onCleanup, runWithOwner, untrack } from 'solid-js';
 import posthog from './posthog';
 import { identityOf, sameIdentity, type Identity, type Person } from '../core/protocol';
-import type { PrivateThread, StoredText } from '../core/chatlog';
+import type { PrivateThread } from '../core/chatlog';
 import type { PairKey } from '../core/pairs';
 import { pairSecret, verifyPrivateTextKey } from '../core/sealed';
 import { authKeyOf, pieceKeyOf, roomIdOf, textKeyOf } from '../core/rooms';
-import { forgetPrivate, historyFromAt, keepUnsent, loadHistory, loadPrivate, loadPrivateThreads, loadUnsent, textKey, touchPrivateThread } from './history';
+import { forgetPrivate, historyFromAt, keepUnsent, lineKey, loadHistory, loadPrivate, loadPrivateThreads, loadUnsent, touchPrivateThread } from './history';
 import { tooOld } from '../core/unsent';
 import { local } from './storage';
 import { pairIdentity, type LocalIdentity } from './identity';
@@ -21,8 +21,6 @@ export type PairRoomOptions = { identity: LocalIdentity; roomId: string; authKey
 /** My room of two with a friend (ADR 0011): the room, the key I go by in it, and the friend's fingerprint to show them by. */
 type Pair = { friend: string; room: Room; mine: string; fingerprint: string; key: string };
 
-/** A line's id in a conversation from before rooms of two (ADR 0007), as its history keeps it: by writer and id. */
-const archivedId = (m: Pick<StoredText, 'from' | 'at' | 'id'>): string => (m.id !== undefined ? `${m.from.publicKey}:${m.id}` : textKey(m));
 
 /**
  * My private conversations (ADR 0011): one per friend, each its own room of two, derived by both of us from our private
@@ -242,7 +240,7 @@ export function createPrivates(opts: {
     if (!p) {
       const gen = forgets.get(friend) ?? 0;
       p = loadPrivate(friend).then((stored) => {
-        const lines = stored.map((m): ChatLine => (m.file ? { kind: 'file', id: archivedId(m), from: m.from, file: m.file, at: m.at } : { kind: 'text', id: archivedId(m), from: m.from, text: m.text, at: m.at }));
+        const lines = stored.map((m): ChatLine => (m.file ? { kind: 'file', id: lineKey(m), from: m.from, file: m.file, at: m.at } : { kind: 'text', id: lineKey(m), from: m.from, text: m.text, at: m.at }));
         if ((forgets.get(friend) ?? 0) !== gen) return; // deleted while it was read: it stays deleted
         setArchives((all) => ({ ...all, [friend]: lines }));
       }, (e: unknown) => { console.warn('private conversation read failed', e); reading.delete(friend); })

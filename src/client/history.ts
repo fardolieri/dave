@@ -16,8 +16,14 @@ export const FORGET_NOW = Number.MAX_SAFE_INTEGER;
  * allows (client/budget.ts), the oldest of any room going first.
  */
 export type { StoredText };
-/** De-duplication key: sender plus server timestamp. The wire format stays untouched. */
+/** De-duplication key: sender plus server timestamp, for texts kept before they had an id. The wire format stays untouched. */
 export const textKey = (m: { from: Identity; at: number }): string => `${m.from.publicKey}:${m.at}`;
+/**
+ * A line's key: its writer and id, else (a text from before ids, 2026-10-14) its writer and time. Never the time alone: a
+ * text sent with a file comes back with the file's time to the millisecond, as Cloudflare's clock stands still between
+ * I/O, and two lines of one key were one (report of 2026-11-14: a YouTube link gone from under its card).
+ */
+export const lineKey = (m: { from: Identity; at: number; id?: string }): string => (m.id !== undefined ? `${m.from.publicKey}:${m.id}` : textKey(m));
 const keyFor = (roomId: string): `history:${string}` => `history:${roomId}`;
 /** Before rooms, this browser kept one history under a single key. */
 const LEGACY_KEY = 'history';
@@ -81,8 +87,9 @@ export function appendHistory(roomId: string, ...m: StoredText[]): Promise<void>
 function appendTo(key: `history:${string}` | `private:${string}`, items: StoredText[]): Promise<void> {
   chain = chain.then(async () => {
     const list = await read(key);
-    // A private conversation's texts come through several rooms, each with its own clock: by writer and id alone there.
-    const keys = (m: StoredText) => [...(m.id !== undefined ? [`id ${m.from.publicKey}:${m.id}`] : []), ...(key.startsWith('private:') ? [] : [`at ${textKey(m)}`])];
+    // By writer and id; by writer and time only a room's texts from before ids (`lineKey`), which no server sends again:
+    // a private conversation's come through several rooms, each with its own clock.
+    const keys = (m: StoredText) => (m.id !== undefined ? [`id ${m.from.publicKey}:${m.id}`] : key.startsWith('private:') ? [] : [`at ${textKey(m)}`]);
     const held = new Set(list.flatMap(keys));
     // Each against the history and the batch's earlier ones it keeps, as one by one did.
     const fresh = items.filter((m) => {
