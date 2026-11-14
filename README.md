@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-14T18:03 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-14T21:00 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 28, branch 123, preview 151.
+Runs recorded: nightly 27, branch 124, preview 152.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -76,4 +76,3 @@ Runs recorded: nightly 28, branch 123, preview 151.
 | 1 | 1 | preview 1 | resilience.spec.ts › a late answer to a join declared again is not taken for the answer to the next join | expect(locator).toBeVisible() failed | [10-16](https://github.com/fardolieri/dave/actions/runs/38904928449/attempts/1) | [10-16](https://github.com/fardolieri/dave/actions/runs/38904928449/attempts/1) | 57 |
 | 1 | 1 | nightly 1 | resilience.spec.ts › regression: a socket gone silent without a close is given up, and the text written into it arrives once | the text arrives on the socket that replaced the silent one | [10-16](https://github.com/fardolieri/dave/actions/runs/38862111516/attempts/1) | [10-16](https://github.com/fardolieri/dave/actions/runs/38862111516/attempts/1) | 57 |
 | 1 | 1 | nightly 1 | resilience.spec.ts › a friend whose socket drops without a goodbye is shown as lost, then recovers | expect(locator).toBeVisible() failed | [10-16](https://github.com/fardolieri/dave/actions/runs/38862111516/attempts/1) | [10-16](https://github.com/fardolieri/dave/actions/runs/38862111516/attempts/1) | 57 |
-| 1 | 1 | nightly 1 | adversary.spec.ts › ADR 0005: a text the server passes off as from another friend, or tampers with, is not shown | expect(received).toEqual(expected) // deep equality | [10-15](https://github.com/fardolieri/dave/actions/runs/38786280094/attempts/1) | [10-15](https://github.com/fardolieri/dave/actions/runs/38786280094/attempts/1) |  |
