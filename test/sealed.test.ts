@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { exportPublicKey, fromBase64Url, generateIdentityKeyPair, toBase64Url } from '../src/core/identity';
-import { MAX_NAME_LENGTH, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_SEALED_PIECE_LENGTH, MAX_SEALED_PROFILE_LENGTH, MAX_TEXT_LENGTH } from '../src/core/protocol';
+import { MAX_NAME_LENGTH, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_SEALED_PARTY_LENGTH, MAX_SEALED_PIECE_LENGTH, MAX_SEALED_PROFILE_LENGTH, MAX_TEXT_LENGTH } from '../src/core/protocol';
 import { KEPT_PIECE_BYTES } from '../src/core/kept';
 import { MAX_FILE_NAME, MAX_PREVIEW_LENGTH, type FileMeta } from '../src/core/attachment';
 import { roomIdOf, textKeyOf } from '../src/core/rooms';
-import { generatePrivateTextKeyPair, openFile, openPiece, openProfile, openText, pairSecret, sealFile, sealPiece, sealProfile, sealText, signPrivateTextKey, verifyPrivateTextKey } from '../src/core/sealed';
+import { generatePrivateTextKeyPair, openFile, openParty, openPiece, openProfile, openText, pairSecret, sealFile, sealParty, sealPiece, sealProfile, sealText, signPrivateTextKey, verifyPrivateTextKey } from '../src/core/sealed';
+import type { Party } from '../src/core/party';
 
 async function writer() {
   const keys = await generateIdentityKeyPair();
@@ -229,5 +230,30 @@ describe('sealed pieces of a kept file (ADR 0009)', async () => {
     const flipped = sealed.slice();
     flipped[40] = flipped[40]! ^ 1;
     expect(await openPiece({ ...where, sealed: flipped })).toBeNull();
+  });
+});
+
+describe('sealed watch parties', async () => {
+  const key = await textKeyOf('a secret');
+  const roomId = await roomIdOf('a secret');
+  const alice = await writer();
+  const bob = await writer();
+  const party: Party = { n: 3, by: bob.from, hash: 'h'.repeat(43), video: 'dQw4w9WgXcQ', playing: true, pos: 61.5, rate: 1, at: Number.MAX_SAFE_INTEGER };
+  const seal = (p: Party = party, over: Partial<Parameters<typeof sealParty>[0]> = {}) => sealParty({ key, roomId, ...alice, party: p, ...over });
+
+  it('round-trips the party a friend took from another, within what the Room takes, and does not show which video', async () => {
+    const sealed = await seal();
+    expect(await openParty({ key, roomId, from: alice.from, sealed })).toEqual(party);
+    expect(sealed.length).toBeLessThanOrEqual(MAX_SEALED_PARTY_LENGTH);
+    expect(new TextDecoder().decode(fromBase64Url(sealed)!)).not.toContain('dQw4w9WgXcQ');
+  });
+
+  it('opens only in its room, under its writer, and not as a profile or a text', async () => {
+    const sealed = await seal();
+    expect(await openParty({ key, roomId: await roomIdOf('another'), from: alice.from, sealed })).toBeNull();
+    expect(await openParty({ key, roomId, from: bob.from, sealed })).toBeNull();
+    expect(await openProfile({ key, roomId, from: alice.from, sealed })).toBeNull();
+    expect(await openText({ key, roomId, id: 'party', from: alice.from, sealed })).toMatchObject({ ok: false });
+    expect(await openParty({ key, roomId, from: alice.from, sealed: await sealProfile({ key, roomId, ...alice, profile: { name: 'Alice' } }) })).toBeNull();
   });
 });

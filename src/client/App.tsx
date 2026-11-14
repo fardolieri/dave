@@ -16,6 +16,7 @@ import { videoCard } from './youtube';
 import type { PullError } from './links';
 import { MIC_TEST_RECORD_MS, createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
 import { createAttention, type RoomLink } from './attention';
+import { createParty, syncPlayer, type PartyHandle } from './party';
 import { windowFocused } from './focus';
 import { contactOf, isKnown, markKnown, setNickname } from './contacts';
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, identityOf, normaliseName, type Identity, type Person } from '../core/protocol';
@@ -236,7 +237,7 @@ function JoinLinkForm(props: { onJoin: (link: InviteLink) => void; onCancel?: ()
 }
 
 /** One room this browser is in: what was saved about it, its socket, and its call. */
-type Link = RoomLink & { saved: SavedRoom };
+type Link = RoomLink & { saved: SavedRoom; party: PartyHandle };
 
 type WorkspaceProps = {
   rooms: SavedRoom[]; selected: string | null; created: string | null; name: string; identity: LocalIdentity;
@@ -270,9 +271,10 @@ function Workspace(props: WorkspaceProps) {
     // A deliberate one-time snapshot of name and picture: the socket is created once; changes go through `rename` and `setPicture`.
     const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, textKey: last.textKey, pieceKey: last.pieceKey, name: untrack(() => props.name), picture: getPicture(), hold: holding });
     const call = createCall(room, identity, { mayRejoin: untrack(() => props.mayRejoin) });
+    const party = createParty(room, identity, last.textKey, call.inCall);
     posthog.capture('room_entered');
     // The latest saved entry; the last one seen while the room is being forgotten and its link disposed.
-    return { get saved() { return (last = props.rooms.find((r) => r.secret === secret) ?? last); }, room, call };
+    return { get saved() { return (last = props.rooms.find((r) => r.secret === secret) ?? last); }, room, call, party };
   });
   onSettled(() => props.onStepBack(() => { for (const l of untrack(links)) l.call.leave(); })); // a join under way too
   /** The room on screen. Null only for the moment between leaving the last room and the workspace going away. */
@@ -638,7 +640,7 @@ function Workspace(props: WorkspaceProps) {
 
   return (
     <Show when={current()}>{(cur) => (
-      <div class={['app', { split: sharers().length > 0, dropping: dragging() }]}
+      <div class={['app', { split: sharers().length > 0 || !!stage()?.party.now(), dropping: dragging() }]}
            onDragEnter={(e) => { if (hasFiles(e)) { depth++; if (!onTop(e.target)) overPage(); } }}
            onDragOver={(e) => {
              if (!hasFiles(e)) return;
@@ -890,8 +892,12 @@ function Workspace(props: WorkspaceProps) {
           {/* The state of the room on screen; with a private conversation on screen, of the room that carries it, as its
               composer goes by: a room down behind it is not the conversation's */}
           <Banner status={bannerStatus((() => { const k = privates.openWith(); return (k ? privates.via(k) : null) ?? cur().room; })())} onTakeOver={() => { for (const l of links()) l.room.takeOver(); privates.takeOver(); }} />
-          <Show when={sharers().length > 0 && stage()}>{(s) => (
-            <section class="shares" style={`grid-template-columns: repeat(${sharers().length}, 1fr)`}>
+          <Show when={(sharers().length > 0 || stage()?.party.now()) && stage()}>{(s) => (
+            <section class="shares" style={`grid-template-columns: repeat(${sharers().length + (s().party.now() ? 1 : 0)}, 1fr)`}>
+              <Show when={s().party.now()}>{(p) => (
+                <PartyTile party={s().party} card={p().card} inCall={s().call.inCall()} thumb={(() => { const a = s().room.attachment(p().card.hash); return a?.status === 'ready' ? a.url : p().card.preview; })()}
+                           faceOf={(k) => { const f = present(k); return f && labelOf(f); }} />
+              )}</Show>
               <For each={sharerKeys()}>
                 {(key) => (
                   <ShareTile
@@ -915,6 +921,7 @@ function Workspace(props: WorkspaceProps) {
           )}</Show>
           {/* Kept while a conversation is on screen, hidden: back from it, the reader is where they were in the room */}
           <ChatLog lines={cur().room.lines()} openedAt={openedAt()} readFrom={cur().room.readFrom()} jumpToken={jumpToken()} label={labelOf} hidden={!!privateFriend()} look={chatLook()}
+                   watchTogether={active() === cur() ? (file) => cur().party.start(file) : undefined}
                    holder={(from) => (from.publicKey === me ? null : labelOf(from).shown)}
                    attachment={(hash) => cur().room.attachment(hash)} onPull={(hash) => cur().room.pull(hash)} onCancel={(hash) => cur().room.cancelPull(hash)} />
           <Show when={privateFriend()}>{(pf) => (
@@ -1862,6 +1869,55 @@ function ShareTile(props: ShareTileProps) {
   );
 }
 
+/**
+ * The room's watch party (client/party.ts), beside the shares: the card's thumbnail until I am in it, which a click puts
+ * me in (only in the call, as a share), then YouTube's player, in step with everyone in it. Whoever is in it is shown as
+ * faces, as a share's viewers are.
+ */
+function PartyTile(props: { party: PartyHandle; card: FileMeta; inCall: boolean; thumb: string | undefined; faceOf: (publicKey: string) => Label | undefined }) {
+  const title = () => props.card.youtube?.title ?? 'A YouTube video';
+  const joined = () => props.party.joined();
+  return (
+    <div class={['share', 'party', joined() ? 'share-live' : props.inCall ? 'share-closed' : 'share-locked']} onClick={() => { if (!joined() && props.inCall) props.party.join(); }}>
+      <div class="share-head">
+        <span class="party-title" title={title()}>▶ {title()}</span>
+        <Show when={joined()}><button class="stop" title="Leave the watch party; it goes on for the others" onClick={(e) => { e.stopPropagation(); props.party.leave(); }}>Stop watching</button></Show>
+      </div>
+      <Show when={joined()} fallback={
+        <>
+          <Show when={props.thumb}>{(src) => <img class="party-thumb" src={src()} alt="" />}</Show>
+          <div class="share-note">{props.inCall ? 'Click to watch together' : 'Join to watch'}</div>
+        </>
+      }>
+        <PartyPlayer party={props.party} video={props.card.youtube?.id ?? ''} />
+      </Show>
+      <Show when={props.party.members().length > 0}>
+        <div class="share-bar party-bar" onClick={(e) => e.stopPropagation()}><ShareFaces keys={props.party.members()} label={props.faceOf} /><span class="share-stats">watching together</span></div>
+      </Show>
+    </div>
+  );
+}
+
+/** YouTube's player in a watch party, made once for the video the party played then: other videos it loads in place. */
+function PartyPlayer(props: { party: PartyHandle; video: string }) {
+  let frame: HTMLIFrameElement | undefined;
+  const video = untrack(() => props.video);
+  const [refused, setRefused] = createSignal(false);
+  let sync: ReturnType<typeof syncPlayer> | undefined;
+  onSettled(() => {
+    if (!frame) return;
+    sync = syncPlayer(frame, video, props.party, (code) => { if (code === 101 || code === 150) setRefused(true); });
+    return () => { sync?.dispose(); sync = undefined; };
+  });
+  createEffect(() => props.party.now(), (p) => { sync?.follow(p); });
+  return (
+    <>
+      <iframe ref={frame} class="party-player" title="YouTube video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" />
+      <Show when={refused()}><div class="share-note">YouTube does not let this video play here</div></Show>
+    </>
+  );
+}
+
 /** Who watches a share, as overlapping pictures like a folded room's faces; with `tip`, each shows it on hover (and on keyboard focus). */
 function ShareFaces(props: { keys: string[]; label: (publicKey: string) => Label | undefined; tip?: (publicKey: string) => JSX.Element }) {
   return (
@@ -2531,6 +2587,8 @@ function ChatLog(props: {
   attachment: (hash: string) => Attachment | undefined; onPull: (hash: string) => void; onCancel: (hash: string) => void;
   /** The look it wears when not the page's: its room has another (client/theme.ts). */
   look?: string;
+  /** Starts a watch party with a YouTube card of the log (client/party.ts): while I am in this room's call. */
+  watchTogether?: (file: FileMeta) => void;
 }) {
   let log: HTMLDivElement | undefined;
   let viewer: HTMLDialogElement | undefined;
@@ -2539,7 +2597,8 @@ function ChatLog(props: {
   // The tooltip (the time, or that it is not sent yet) is on the text or the attachment, not on the whole row.
   const file = (m: Extract<ChatLine, { kind: 'file' }>, title: string | undefined) => (
     <FileView file={m.file} title={title} attachment={props.attachment(m.file.hash)} holder={props.holder ? props.holder(m.from) : props.label(m.from).shown}
-              onPull={() => props.onPull(m.file.hash)} onCancel={() => props.onCancel(m.file.hash)} onView={view} />
+              onPull={() => props.onPull(m.file.hash)} onCancel={() => props.onCancel(m.file.hash)} onView={view}
+              onWatchTogether={props.watchTogether && m.file.youtube ? () => props.watchTogether?.(m.file) : undefined} />
   );
   // How many older lines the reader unfolded, and in which opening of the room: OLDER_STEP more each time, so four weeks
   // of a busy room do not all come on screen at once.
@@ -2676,7 +2735,7 @@ const PULL_FAILED: Record<PullError, (holder: string | null, file: FileMeta) => 
  * with what is happening over it; anything else a card with its name, size and a button. A picture opens full size; a
  * video and a YouTube card go big over the page on a button.
  */
-function FileView(props: { file: FileMeta; title: string | undefined; attachment: Attachment | undefined; holder: string | null; onPull: () => void; onCancel: () => void; onView: (url: string, name: string, type: string) => void }) {
+function FileView(props: { file: FileMeta; title: string | undefined; attachment: Attachment | undefined; holder: string | null; onPull: () => void; onCancel: () => void; onView: (url: string, name: string, type: string) => void; onWatchTogether?: () => void }) {
   const kind = () => inlineKind(props.file.type);
   const a = () => props.attachment ?? { status: 'idle' as const };
   // A YouTube card's player, once its play button was pressed.
@@ -2793,9 +2852,12 @@ function FileView(props: { file: FileMeta; title: string | undefined; attachment
             </Show>
           </figure>
           <Show when={big()}><div class="att-media att-hold" aria-hidden="true" /></Show>
-          <Show when={video().title || video().channel || url() || playing()}>
+          <Show when={video().title || video().channel || url() || playing() || props.onWatchTogether}>
             <div class="att-video-about">
               <span class="about"><span class="title">{video().title}</span><span class="channel">{video().channel}</span></span>
+              <Show when={props.onWatchTogether}>{(go) => (
+                <button type="button" class="att-together" onClick={() => go()()} title="Watch it together with everyone in the call">Watch together</button>
+              )}</Show>
               <Show when={url() || playing()}>{enlarger('att-big')}</Show>
             </div>
           </Show>

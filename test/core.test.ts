@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_SEALED_PIECE_LENGTH, MAX_SEALED_PROFILE_LENGTH, APP_OUT_OF_DATE, OUT_OF_DATE, type WirePerson as Person } from '../src/core/protocol';
+import { normaliseName, normalisePicture, parseClientMessage, MAX_MESSAGE_BYTES, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_SEALED_PIECE_LENGTH, MAX_SEALED_PROFILE_LENGTH, MAX_SEALED_PARTY_LENGTH, APP_OUT_OF_DATE, OUT_OF_DATE, type WirePerson as Person } from '../src/core/protocol';
 import { onMessage, presenceSnapshot, type SocketState } from '../src/core/room';
 import { newBucket } from '../src/core/ratelimit';
 
@@ -176,5 +176,38 @@ describe('who watches a share, in presence', () => {
     expect(viewersOf((await send(more.state, { t: 'leave' })).state)).toBeUndefined();
     expect(viewersOf((await send(more.state, { t: 'join', muted: false, sharing: true })).state)).toEqual([bob, carol]);
     expect(viewersOf((await send(more.state, { t: 'join', muted: false })).state)).toBeUndefined();
+  });
+});
+
+describe('the watch party a participant is in, in presence', () => {
+  const person: Person = { publicKey: 'k-alice', fingerprint: 'f', profile: 'cHJvZmlsZQ', role: 'participant', joinSeq: 1, sharing: false, muted: false };
+  const ctx = { authKey: 'a', now: 0, others: [], mintIce: async () => ({ iceServers: [], turnUser: null }) };
+  const attached: SocketState = { stage: 'attached', person, bucket: newBucket(0), attachedAt: 0 };
+  const send = (state: SocketState, m: object) => onMessage(state, JSON.stringify(m), ctx);
+  const partyOf = (state: SocketState) => presenceSnapshot([state]).people[0]!.party;
+
+  it('takes a sealed party, or none, and refuses anything else', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'party', sealed: 'c2VhbGVk' }))).toEqual({ t: 'party', sealed: 'c2VhbGVk' });
+    expect(parseClientMessage(JSON.stringify({ t: 'party' }))).toEqual({ t: 'party' });
+    for (const sealed of ['', 7, 'not base64!', 'x'.repeat(MAX_SEALED_PARTY_LENGTH + 1)]) {
+      expect(parseClientMessage(JSON.stringify({ t: 'party', sealed }))).toEqual({ t: 'invalid', reason: 'unrecognised message', ref: 'party' });
+    }
+  });
+
+  it('shows it while in the call, drops it with none or a leave, and keeps it through a join again on the socket', async () => {
+    const on = await send(attached, { t: 'party', sealed: 'c2VhbGVk' });
+    expect(on.presenceChanged).toBe(true);
+    expect(partyOf(on.state)).toBe('c2VhbGVk');
+    expect((await send(on.state, { t: 'party', sealed: 'c2VhbGVk' })).presenceChanged).toBeUndefined();
+    expect(partyOf((await send(on.state, { t: 'party' })).state)).toBeUndefined();
+    expect(partyOf((await send(on.state, { t: 'leave' })).state)).toBeUndefined();
+    expect(partyOf((await send(on.state, { t: 'join', muted: false })).state)).toBe('c2VhbGVk');
+  });
+
+  it('is not taken from a visitor', async () => {
+    const visitor: SocketState = { ...attached, person: { ...person, role: 'visitor', joinSeq: null } };
+    const out = await send(visitor, { t: 'party', sealed: 'c2VhbGVk' });
+    expect(out.replies).toEqual([{ t: 'error', reason: 'not in the call', ref: 'party' }]);
+    expect(partyOf(out.state)).toBeUndefined();
   });
 });

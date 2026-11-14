@@ -88,6 +88,10 @@ _Avoid_: Screencast, stream (transport term)
 A participant who has chosen to watch a particular share. A share has zero or more viewers; a participant may view several shares.
 _Avoid_: Subscriber, watcher, spectator
 
+**Watch party**:
+A YouTube video of the room's chat that participants watch together, in step, each in YouTube's player of their own. Anyone in it plays, pauses, seeks or puts another card of the chat on, for everyone in it. It shows beside the shares while anyone is in it; one at a time per call.
+_Avoid_: Watch together (the button's words, fine in UI copy), stream, share (a share is a screen)
+
 **Signaling**:
 The exchange, through the server, of the offers, answers, and candidates two participants need to connect directly. Never carries media.
 _Avoid_: Handshake, negotiation (reserve for the WebRTC offer/answer state machine)

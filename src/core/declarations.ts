@@ -1,5 +1,5 @@
 // What a client declares to its Room (quality ticket 10): its name and picture, its PostHog opt-in, and in the call whether
-// it is muted, whether it shares, and whose share it watches. Unlike an event (a text, a signal, a join), only the latest
+// it is muted, whether it shares, whose share it watches, and the watch party it is in. Unlike an event (a text, a signal, a join), only the latest
 // value of each counts, and the Room forgets them all with the socket. client/room.ts keeps the latest here and declares
 // them again on every socket the Room lets in, so no caller has to. Runtime-neutral: plain data only.
 import type { ClientMessage, PresenceState } from './protocol';
@@ -9,14 +9,14 @@ import type { ClientMessage, PresenceState } from './protocol';
  * `{ t: 'profile', profile }`. Every other kind goes out as it is.
  */
 export type ProfileDeclaration = { t: 'profile'; name: string; picture: string | null };
-export type Declaration = ProfileDeclaration | Extract<ClientMessage, { t: 'telemetry' | 'mute' | 'share' | 'subscribe' }>;
+export type Declaration = ProfileDeclaration | Extract<ClientMessage, { t: 'telemetry' | 'mute' | 'share' | 'subscribe' | 'party' }>;
 
 /** The latest declaration of each kind, one subscribe per sharer, by `keyOf`. */
 export type Declared = Map<string, Declaration>;
 const keyOf = (d: Declaration): string => (d.t === 'subscribe' ? `subscribe:${d.to}` : d.t);
 
 /** The Room takes these only from a friend in its call: before her join on a socket it drops or refuses them. */
-export const inCallOnly = (d: Declaration): boolean => d.t === 'mute' || d.t === 'share' || d.t === 'subscribe';
+export const inCallOnly = (d: Declaration): boolean => d.t === 'mute' || d.t === 'share' || d.t === 'subscribe' || d.t === 'party';
 
 /** What an auth says of the friend: her name, picture and opt-in as declared last. */
 export type Carried = { name: string; picture: string | null; telemetry: boolean };
@@ -55,12 +55,18 @@ export function joinDeclares(d: Declared): { muted: boolean; sharing: boolean } 
  * After the join on a socket is answered: every ask to watch or stop watching, to friends presence lists as sharing in
  * the call. A sharer keeps who watches her in her browser, across this friend's reconnects, so a repeated ask changes
  * nothing there; one lost with the last socket is made up for. Mute and share ride in the join itself, but not who
- * watches the share: a new socket starts without them, so a share with viewers is declared again.
+ * watches the share: a new socket starts without them, so a share with viewers is declared again; and the watch party
+ * I am in.
  */
 export function afterJoin(d: Declared, people: readonly (PresenceState & { publicKey: string })[]): Declaration[] {
   const sharing = new Set(people.filter((p) => p.role === 'participant' && p.sharing).map((p) => p.publicKey));
   const share = get(d, 'share');
-  return [...(share?.on && share.viewers?.length ? [share] : []), ...[...d.values()].filter((m) => m.t === 'subscribe' && sharing.has(m.to))];
+  const party = get(d, 'party');
+  return [
+    ...(share?.on && share.viewers?.length ? [share] : []),
+    ...[...d.values()].filter((m) => m.t === 'subscribe' && sharing.has(m.to)),
+    ...(party?.sealed ? [party] : []),
+  ];
 }
 
 /**

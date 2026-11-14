@@ -1445,6 +1445,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     inCall,
     /** Counts the sockets the server has let in; read without waiting for any effect, so a frame can name its socket. */
     welcomes: () => welcomes,
+    /** The Room's clock now, as the last welcome told it (off by the time that frame took); null before one. */
+    roomNow: (): number | null => (roomClock === null ? null : Date.now() + roomClock),
     /**
      * Sends a text, or keeps it for the next socket while there is none. It shows as waiting until the Room brings it back;
      * a socket lost meanwhile sends it again on the next one.
