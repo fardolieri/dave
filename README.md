@@ -1,6 +1,6 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-15T16:37 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-15T17:31 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
@@ -71,4 +71,3 @@ Runs recorded: nightly 26, branch 127, preview 155.
 | 1 | 1 | preview 1 | privacy.spec.ts › a fresh browser is asked once, again only from the sidebar, and sends nothing to PostHog before a yes or after a no | console warnings, errors or exceptions nobody expected: Alice: error: WebSocket connection to 'wss://dave-pr-78.danielmittereder.workers.dev/ws/PqwaNHGDqaszUjC9 | [10-18](https://github.com/fardolieri/dave/actions/runs/39080940242/attempts/1) | [10-18](https://github.com/fardolieri/dave/actions/runs/39080940242/attempts/1) | 55 |
 | 1 | 1 | branch 1 | text.spec.ts › texts from more than 18 h before the room came on screen wait behind a button, folded again each time it does | expect(received).toEqual(expected) // deep equality | [10-17](https://github.com/fardolieri/dave/actions/runs/39049062343/attempts/1) | [10-17](https://github.com/fardolieri/dave/actions/runs/39049062343/attempts/1) | f9efd75 (fixed) |
 | 1 | 1 | preview 1 | presence.spec.ts › rooms are separate: presence and text do not cross | expect(locator).toBeEnabled() failed | [10-16](https://github.com/fardolieri/dave/actions/runs/38939823521/attempts/1) | [10-16](https://github.com/fardolieri/dave/actions/runs/38939823521/attempts/1) | 58 |
-| 1 | 1 | branch 1 | update.spec.ts › ticket 36: a download past 10 s unfreezes the app on the version it has, the line goes on, and the bar asks once it is in | the download goes on, and shows | [10-16](https://github.com/fardolieri/dave/actions/runs/38938382315/attempts/1) | [10-16](https://github.com/fardolieri/dave/actions/runs/38938382315/attempts/1) |  |
