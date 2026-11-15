@@ -166,6 +166,7 @@ test('a watch party: started from a card, joined from its tile, played, paused, 
   await youtubePlays(alice);
   await tile(bob).click();
   await expect(tile(bob).locator('.share-faces .face')).toHaveCount(2);
+  await youtubePlays(bob);
   await expect.poll(() => inStep([alice, bob], true, 1.5), { timeout: 30_000 }).toBe(true);
 
   // Bob pauses in YouTube's player: Alice's pauses too, at the same frame.
@@ -197,6 +198,7 @@ test('a watch party: started from a card, joined from its tile, played, paused, 
   // Carol joins the call, and the party, where it is and as fast.
   await carol.join();
   await tile(carol).click();
+  await youtubePlays(carol);
   await expect.poll(() => inStep([alice, bob, carol], true, 1.5), { timeout: 30_000 }).toBe(true);
   await expect.poll(() => rates(carol), { timeout: 15_000 }).toEqual([1.5]);
   await expect(tile(alice).locator('.share-faces .face')).toHaveCount(3);
@@ -248,11 +250,9 @@ test('a friend who joins a paused party finds it paused, where it is, and it pla
   await bob.page.waitForTimeout(5000);
   expect((await where(alice)).playing).toBe(false);
   expect((await where(bob)).playing).toBe(false);
-  // Bob's player shows the frame Alice paused at, not YouTube's thumbnail of a video it has not started.
-  await expect.poll(async () => Math.abs((await where(bob)).t - pausedAt), { timeout: 30_000 }).toBeLessThan(0.5);
-  await expect(player(bob).locator('.ytmCuedOverlayPlayButton')).toBeHidden();
-  // Played muted to get there, and unmuted again.
-  await expect.poll(() => player(bob).locator('video').evaluate((v: HTMLVideoElement) => v.muted), { timeout: 5000 }).toBe(false);
+  // Bob's player shows the frame Alice paused at, not YouTube's thumbnail of a video it has not started: played muted to
+  // get there, and unmuted again.
+  await heldAt(bob, pausedAt);
   expect((await where(bob)).playing).toBe(false);
   expect((await where(alice)).playing).toBe(false);
 
@@ -274,5 +274,6 @@ test('a friend who joins a paused party finds it paused, where it is, and it pla
   await expect(tile(carol)).toContainText(TITLE, { timeout: 30_000 });
   await expect(tile(carol)).toContainText('Click to watch together');
   await tile(carol).click();
+  await youtubePlays(carol);
   await expect.poll(() => inStep([alice, bob, carol], true, 1.5), { timeout: 30_000 }).toBe(true);
 });
