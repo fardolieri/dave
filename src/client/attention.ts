@@ -9,6 +9,13 @@ import type { createRoom } from './room';
 import type { createCall } from './call';
 import { exposeHooks } from './hooks';
 
+/**
+ * How long a caller who drops out of a call without a Leave may take to come back before a friend out of that call hears
+ * them leave. Such a friend holds no connection to judge by, and a server socket that drops and comes back looks like
+ * leaving and joining in presence (report of 2026-10-28). A reconnect's first tries come within seconds (client/room.ts).
+ */
+const UNANNOUNCED_GRACE_MS = 15_000;
+
 /** One room this browser is connected to, with its call. The list changes as rooms are added and left. */
 export type RoomLink = { room: ReturnType<typeof createRoom>; call: ReturnType<typeof createCall> };
 
@@ -69,13 +76,34 @@ export function createAttention(links: () => RoomLink[], myKey: string, privateT
   const cue = (c: Cue) => { if (!untrack(() => links().some((l) => l.call.micTest() !== null))) playCue(c); };
   /** The last picture presence showed for each friend: one kept on a connection leaves after presence has let them go. */
   const lastPicture = new Map<string, string | undefined>();
+  /** Callers the Room said left with a Leave (`left`, which comes before the presence without them), by participant tag. */
+  const announced = new Set<string>();
+  createEffect(() => links().map((l) => l.room), (rooms) => {
+    const stops = rooms.map((room) => room.subscribe((m) => { if (m.t === 'left') announced.add(tag(room.roomId, m.publicKey)); }));
+    return () => { for (const stop of stops) stop(); };
+  });
+  /** Leave cues held back for callers gone from a call I am out of without a Leave, by participant tag. */
+  const unannounced = new Map<string, ReturnType<typeof setTimeout>>();
+  const roomOf = (t: string) => t.slice(0, t.indexOf(' '));
+  /** Plays a held-back leave once `ms` are over, unless they are back in the call by then or I have left the room. */
+  const leaveUnlessBack = (t: string, picture: string | undefined, ms: number) => {
+    clearTimeout(unannounced.get(t));
+    unannounced.set(t, setTimeout(() => {
+      const link = untrack(() => links().find((l) => l.room.roomId === roomOf(t)));
+      const status = link && untrack(link.room.status).kind;
+      // My own socket away: presence is as it was when it went, and the first one once it is back says.
+      if (status === 'connecting' || status === 'reconnecting' || status === 'unavailable') { leaveUnlessBack(t, picture, 1000); return; }
+      unannounced.delete(t);
+      if (status === 'connected' && !untrack(others).has(t)) cue(leaveCue(picture));
+    }, ms));
+  };
+  onCleanup(() => { for (const timer of unannounced.values()) clearTimeout(timer); unannounced.clear(); });
   createEffect(
     // Everything reactive is read here, in the compute phase; the apply phase only acts on the snapshot.
     () => ({ now: others(), sharing: sharers(), seeded: seeded(), kept: kept(), calling: calling(), pictures: pictures() }),
     ({ now, sharing, seeded, kept, calling, pictures }, prev) => {
       if (!prev) return;
       // Only rooms that were seeded before and still are can report a join or a leave.
-      const roomOf = (t: string) => t.slice(0, t.indexOf(' '));
       const settled = (t: string) => seeded.has(roomOf(t)) && prev.seeded.has(roomOf(t));
       // Connections count only in rooms whose call I was in before and still am.
       const held = (t: string) => settled(t) && calling.has(roomOf(t)) && prev.calling.has(roomOf(t));
@@ -84,8 +112,19 @@ export function createAttention(links: () => RoomLink[], myKey: string, privateT
       const snapshot = (present: Set<string>, connected: Set<string>) => ({ present, kept: new Set([...connected].filter(held)) });
       const { joined, left } = callDiff(snapshot(before, prev.kept), snapshot(after, kept), ''); // I am already left out of every set
       for (const [t, picture] of prev.pictures) lastPicture.set(t, picture);
-      for (const t of joined) cue(joinCue(pictures.get(t)));
-      for (const t of left) cue(leaveCue(lastPicture.get(t)));
+      // Into a call while a leave there is held back: one who comes back is heard joining it, one who does not was never in it.
+      for (const [t, timer] of unannounced) if (calling.has(roomOf(t)) && !prev.calling.has(roomOf(t))) { clearTimeout(timer); unannounced.delete(t); }
+      for (const t of joined) {
+        announced.delete(t);
+        // Back before their leave was heard: for me they never left.
+        if (unannounced.has(t)) { clearTimeout(unannounced.get(t)); unannounced.delete(t); } else cue(joinCue(pictures.get(t)));
+      }
+      for (const t of left) {
+        const picture = lastPicture.get(t);
+        const said = announced.delete(t);
+        if (calling.has(roomOf(t)) || said) cue(leaveCue(picture));
+        else leaveUnlessBack(t, picture, UNANNOUNCED_GRACE_MS);
+      }
       for (const t of sharesStarted({ present: before, sharing: prev.sharing }, { sharing })) cue(shareCue(pictures.get(t)));
     },
   );

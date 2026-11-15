@@ -763,6 +763,10 @@ test('a friend whose server socket drops and comes back plays no join cue for a 
 
   // Bob never left the call: Carol, listening from outside it, hears nobody come back.
   expect(await carol.cuesPlayed(), 'Carol hears no cue for Bob').toEqual([]);
+
+  // A Leave she hears at once, well before a dropped socket's grace is over: the Room says so.
+  await bob.leave();
+  await expect.poll(async () => (await carol.cuesPlayed()).length, { message: 'Carol hears Bob leave', timeout: 5000 }).toBeGreaterThan(0);
 });
 
 test('a call whose audio device fails under it plays again: the friends\' voices and the cues', async ({ crowd }) => {
