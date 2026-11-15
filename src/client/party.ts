@@ -87,10 +87,13 @@ export function createParty(room: Room, identity: LocalIdentity, textKey: Crypto
     joined: () => mine() !== null,
     /**
      * Starts a party with this YouTube card of the chat, paused at its start, for whoever is in it to play when everyone
-     * is there; one going on puts it on instead, paused at its start, for everyone in it.
+     * is there; one going on puts it on instead, paused at its start, for everyone in it. One playing this card already
+     * goes on where it is: I join it, if I am not in it.
      */
     start: (card: FileMeta): void => {
       if (!card.youtube || !inCall()) return;
+      const going = untrack(now);
+      if (going && going.hash === card.hash && going.video === card.youtube.id) { if (!untrack(mine)) declare(going); return; }
       declare(change(untrack(now), me, roomNow(), { hash: card.hash, video: card.youtube.id, title: card.youtube.title, playing: false, pos: 0, rate: 1 }));
     },
     /** Into the party going on, where it is. */
@@ -133,8 +136,8 @@ export function syncPlayer(frame: HTMLIFrameElement, video: string, party: Party
   };
   const player: Player = connectPlayer(frame, video, {
     ready: () => run(sync.ready(untrack(party.now), clock())),
-    report: (_before, now, timed) => run(sync.report(now, timed, clock())),
-    error: onError,
+    report: (_before, now, timed, stated) => run(sync.report(now, timed, clock(), stated)),
+    error: (code) => { run(sync.error(code)); onError(code); },
   });
   const tick = setInterval(() => run(sync.tick(clock())), TICK_MS);
   return {

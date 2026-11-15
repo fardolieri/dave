@@ -31,9 +31,16 @@ took to arrive.
 
 The player is driven by the messages YouTube's iframe takes and sends with `enablejsapi=1`, the protocol of YouTube's
 iframe API script (`src/client/ytplayer.ts`). The script itself is not loaded: it would run YouTube's code in the page
-that holds the rooms' keys. What the friend does in the player is told from what the app asked of it: each request
-(a state, a time, a speed) waits for its answer, and anything else the player does is the friend's, a change for
-everyone (`syncPlayer`). A player off by more than 1.5 s while playing, or 0.3 s while paused, is put back.
+that holds the rooms' keys. What the friend does in the player is told from what the app asked of it
+(`src/core/partysync.ts`, a step function over the player's reports, tested on reports YouTube's real player sent):
+until the player has done what the app asked (played, paused, taken a speed), what it does about it is not the
+friend's, and a player doing otherwise is asked again; once it has, a play, a pause or a speed of its own is the
+friend's, a change for everyone. A request let go after a while instead, or at its first answer, took a player still
+catching up for the friend (review of #146, 2026-11-15: a friend's pause undone by a player buffering their seek). A
+seek is told by where it went: one to where the app sent the player is the app's, one anywhere else the friend's, even
+while the app's is under way. A player off by more than 1.5 s while playing, or 0.3 s while paused, is put back. A
+party past its video's end, or where the player ended, is in step with an ended player: a seek or a play would start it
+from the start (YouTube's way).
 
 ## Consequences
 
@@ -50,6 +57,9 @@ everyone (`syncPlayer`). A player off by more than 1.5 s while playing, or 0.3 s
   the ad is over. One friend's seek during an ad is not told apart from the ad's own jumps (not seen yet; YouTube showed
   no ads to the test browsers).
 - Esc and keys pressed in YouTube's player stay there, as for the card's own player.
+- What a friend does in the player while it is still catching up with a change (a second or so, longer on a slow
+  link) is undone: a pause pressed while it starts a friend's play, for one. Pressed again, it counts.
+- Watch together on the card a party already plays joins it, where it is.
 - A party starts paused at its start, and so does another card put on (the owner, 2026-11-15): whoever is in it plays
   it when everyone is there.
 - A player that never played, joining a paused party, is played muted to where it is and paused there, then unmuted

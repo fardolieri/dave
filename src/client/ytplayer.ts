@@ -28,10 +28,10 @@ export const playerSrc = (video: string): string =>
 /**
  * Opens `video` in `frame` (an iframe with no address yet) and talks to its player. `on.ready` once it answers,
  * `on.report` with each thing it says of its state, time or speed (the report before it, and whether this one told the
- * time), `on.error` with YouTube's code (101 and 150: the video may not be embedded, or YouTube refuses this browser).
+ * time, and the state: one that does not keeps the state told before), `on.error` with YouTube's code (101 and 150: the video may not be embedded, or YouTube refuses this browser).
  */
 export function connectPlayer(frame: HTMLIFrameElement, video: string, on: {
-  ready: () => void; report: (before: PlayerReport | null, now: PlayerReport, timed: boolean) => void; error: (code: number) => void;
+  ready: () => void; report: (before: PlayerReport | null, now: PlayerReport, timed: boolean, stated: boolean) => void; error: (code: number) => void;
 }): Player {
   let last: PlayerReport | null = null;
   let ready = false;
@@ -49,7 +49,7 @@ export function connectPlayer(frame: HTMLIFrameElement, video: string, on: {
       at: performance.now(),
     };
     last = now;
-    on.report(before, now, typeof info['currentTime'] === 'number');
+    on.report(before, now, typeof info['currentTime'] === 'number', typeof info['playerState'] === 'number');
   };
   const extrapolate = (r: PlayerReport): number => (r.state === PLAYING ? r.time + ((performance.now() - r.at) / 1000) * r.rate : r.time);
   const onMessage = (e: MessageEvent) => {
@@ -58,7 +58,8 @@ export function connectPlayer(frame: HTMLIFrameElement, video: string, on: {
     try { m = JSON.parse(e.data) as typeof m; } catch { return; }
     if (m.event === 'onReady' || m.event === 'initialDelivery') {
       if (m.info && typeof m.info === 'object') update(m.info as Record<string, unknown>);
-      if (!ready) { ready = true; on.ready(); }
+      // Its errors are told unasked only for the video it opened on: asked for, for every video it is given after.
+      if (!ready) { ready = true; command('addEventListener', ['onError']); on.ready(); }
     } else if (m.event === 'infoDelivery' && m.info && typeof m.info === 'object') update(m.info as Record<string, unknown>);
     else if (m.event === 'onStateChange' && typeof m.info === 'number') update({ playerState: m.info });
     else if (m.event === 'onPlaybackRateChange' && typeof m.info === 'number') update({ playbackRate: m.info });

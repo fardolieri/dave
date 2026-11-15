@@ -19,7 +19,8 @@ function player(video = RICK) {
   const p: {
     sent: typeof sent; clock: Clock; party: Party;
     wait(ms: number): typeof p; friend(to: Partial<Pick<Party, 'video' | 'playing' | 'pos' | 'rate'>>): typeof p; ready(): typeof p;
-    report(state: number, time: number, more?: Partial<PlayerReport>, timed?: boolean): typeof p; tick(): typeof p;
+    report(state: number, time: number, more?: Partial<PlayerReport>, timed?: boolean, stated?: boolean): typeof p; tick(): typeof p;
+    error(code: number): typeof p;
     changes(): Changed[]; mark(): () => typeof sent;
   } = {
     sent,
@@ -32,7 +33,8 @@ function player(video = RICK) {
       return take(sync.follow(party, clock));
     },
     ready: () => take(sync.ready(party, clock)),
-    report: (state: number, time: number, more: Partial<PlayerReport> = {}, timed = true) => take(sync.report({ state, time, rate: 1, duration: 214, muted: false, at: clock.now, ...more }, timed, clock)),
+    report: (state: number, time: number, more: Partial<PlayerReport> = {}, timed = true, stated = true) => take(sync.report({ state, time, rate: 1, duration: 214, muted: false, at: clock.now, ...more }, timed, clock, stated)),
+    error: (code: number) => take(sync.error(code)),
     tick: () => take(sync.tick(clock)),
     /** Every change the player declared for the party. */
     changes: () => sent.filter((c): c is { changed: Changed } => 'changed' in c).map((c) => c.changed),
@@ -53,6 +55,21 @@ function playingInStep() {
   p.wait(540).report(PLAYING, 20.95);
   for (let i = 0; i < 12; i++) p.wait(250).report(PLAYING, 20.95 + (i + 1) * 0.25);
   p.wait(250).tick();
+  expect(p.changes()).toEqual([]);
+  return p;
+}
+
+/** A player that joined the party paused at `pos`, and is held there: played muted, paused, unmuted. */
+function heldPaused(pos = 30) {
+  const p = player();
+  p.friend({ playing: false, pos });
+  p.report(CUED, 0);
+  p.wait(900).ready();
+  p.wait(100).report(UNSTARTED, 0, { muted: true }).report(BUFFERING, 0, { muted: true }).report(UNSTARTED, 0, { muted: true });
+  p.wait(500).report(PLAYING, pos + 0.02, { muted: true });
+  p.wait(60).report(PAUSED, pos + 0.08, { muted: true });
+  p.wait(20).report(PAUSED, pos + 0.08);
+  for (let i = 0; i < 3; i++) p.wait(1000).tick();
   expect(p.changes()).toEqual([]);
   return p;
 }
@@ -154,5 +171,163 @@ describe('a watch party\'s player (core/partysync.ts)', () => {
     p.wait(60).report(PAUSED, 0.08, { muted: true });
     expect(did(after())).toEqual(['mute', 'load', 'pause', 'unMute']);
     expect(p.changes()).toEqual([]);
+  });
+  // Second review of #146 (Fable), on the rework: the sequences it confirmed on YouTube's real player, and the halves of
+  // the rule no test held (asked again until done, and not let go meanwhile).
+
+  it('asks a pause again while the player plays on, and never lets it go by time alone', () => {
+    const p = playingInStep();
+    p.friend({ playing: false, pos: 24.2 });
+    // It buffers for long (a slow link), then plays: not the friend's, and asked again at once.
+    p.wait(20).report(BUFFERING, 24.2);
+    for (let i = 0; i < 6; i++) p.wait(1000).tick();
+    const after = p.mark();
+    p.wait(100).report(PLAYING, 24.3);
+    expect(did(after())).toEqual(['pause']);
+    expect(p.changes()).toEqual([]);
+    p.wait(40).report(PAUSED, 24.35);
+    expect(p.party.playing).toBe(false);
+  });
+
+  it('asks a play again, after a while, of a player that stays paused, from its reports and from the tick', () => {
+    const p = heldPaused(30);
+    p.friend({ playing: true });
+    const after = p.mark();
+    p.wait(20).report(PAUSED, 30.08); // from before the play
+    expect(did(after())).toEqual([]);
+    p.wait(1100).report(PAUSED, 30.08);
+    expect(did(after())).toEqual(['play']);
+    p.wait(1100).tick();
+    expect(did(after())).toEqual(['play', 'play']);
+    p.wait(50).report(PLAYING, 30.1);
+    for (let i = 0; i < 3; i++) p.wait(1000).tick();
+    // Done: not asked again (put forward to where the party is by now, though).
+    expect(did(after()).filter((c) => c === 'play')).toEqual(['play', 'play']);
+    expect(p.changes()).toEqual([]);
+  });
+
+  it('does not take a pause and play together for done on the tick, nor on a report of the time alone', () => {
+    // Probe toggleAtTick: the tick read the player's last report, playing still, as the play done.
+    for (const between of ['tick', 'time alone'] as const) {
+      const p = playingInStep();
+      p.friend({ playing: false, pos: 24.643 });
+      p.wait(20).friend({ playing: true, pos: 24.643 });
+      if (between === 'tick') p.wait(5).tick();
+      else p.wait(5).report(PLAYING, 24.66, {}, true, false);
+      p.wait(9).report(PAUSED, 24.643);
+      p.wait(9).report(BUFFERING, 24.643);
+      p.wait(300).report(PLAYING, 24.7);
+      for (let i = 0; i < 3; i++) p.wait(1000).tick();
+      expect(p.changes(), between).toEqual([]);
+    }
+  });
+
+  it('keeps holding a player whose hold a friend\'s paused seek comes into: no pause of its own meanwhile', () => {
+    // Probe changeDuringHold: the pause sent into the hold's loading kept the player from ever starting.
+    const p = player();
+    p.friend({ playing: false, pos: 10 });
+    p.report(CUED, 0);
+    p.wait(900).ready();
+    p.wait(100).report(UNSTARTED, 0, { muted: true }).report(BUFFERING, 0, { muted: true });
+    const after = p.mark();
+    p.wait(200).friend({ pos: 150 });
+    expect(did(after())).not.toContain('pause');
+    p.wait(300).report(PLAYING, 150.02, { muted: true });
+    p.wait(60).report(PAUSED, 150.08, { muted: true });
+    expect(did(after()).slice(-2)).toEqual(['pause', 'unMute']);
+    expect(p.changes()).toEqual([]);
+  });
+
+  it('holds again a player that never played, paused again before it could, and takes my own play after', () => {
+    // Probe stuckShot: a pause sent to a player still loading never came true, and swallowed my own play for good.
+    const p = player();
+    p.friend({ playing: false, pos: 0 });
+    p.report(CUED, 0);
+    p.wait(900).ready();
+    p.wait(100).report(UNSTARTED, 0, { muted: true });
+    p.wait(200).friend({ playing: true });
+    const after = p.mark();
+    p.wait(100).friend({ playing: false });
+    expect(did(after())).toEqual(['mute', 'load']);
+    p.wait(100).report(UNSTARTED, 0, { muted: true }).report(BUFFERING, 0, { muted: true }).report(UNSTARTED, 0, { muted: true });
+    p.wait(400).report(PLAYING, 0.36, { muted: true });
+    p.wait(60).report(PAUSED, 0.4, { muted: true });
+    p.wait(20).report(PAUSED, 0.4);
+    for (let i = 0; i < 3; i++) p.wait(1000).tick();
+    expect(p.changes()).toEqual([]);
+    // I press play in YouTube's player: everyone plays.
+    p.wait(500).report(PLAYING, 0.4);
+    expect(p.changes()).toEqual([{ playing: true, pos: 0.4, rate: 1 }]);
+  });
+
+  it('plays a player paused near the end once the party, played again, is past it', () => {
+    // Probe lateEnd: no command at all, the player left paused while the party played out.
+    const p = heldPaused(211);
+    const after = p.mark();
+    p.friend({ playing: true, pos: 213.5 });
+    expect(did(after())).toContain('play');
+  });
+
+  it('asks nothing more of a player YouTube refuses the video to, until another one', () => {
+    // Probe badVideo: error 150, then a play every second or two, or a cue every second, for good.
+    const p = player();
+    p.friend({ playing: true, pos: 20 });
+    p.report(CUED, 0);
+    p.wait(900).ready();
+    p.wait(200).report(UNSTARTED, 0).error(150);
+    const after = p.mark();
+    for (let i = 0; i < 20; i++) p.wait(1000).tick();
+    p.friend({ playing: false, pos: 40 });
+    for (let i = 0; i < 20; i++) p.wait(1000).tick();
+    expect(did(after())).toEqual([]);
+    p.friend({ video: OTHER, playing: true, pos: 0 });
+    expect(did(after())).toContain('load');
+  });
+  // Third review of #146 (Fable): what the second one's fixes still got wrong.
+
+  it('unmutes a player held when YouTube refuses its video, and holds the next card as a new player would', () => {
+    // Probe errThenAnother: the hold dropped without its unmute, and the next card muted for good.
+    const p = player();
+    p.friend({ playing: false, pos: 0 });
+    p.report(CUED, 0);
+    p.wait(900).ready();
+    p.wait(100).report(UNSTARTED, 0, { muted: true });
+    const after = p.mark();
+    p.wait(50).error(150);
+    expect(did(after())).toEqual(['unMute']);
+    p.wait(2000).friend({ video: OTHER, playing: false, pos: 0 });
+    // After a refused video the player tells of the new one at once, buffering, then playing.
+    p.wait(100).report(BUFFERING, 0, { muted: true });
+    p.wait(400).report(PLAYING, 0.02, { muted: true });
+    p.wait(60).report(PAUSED, 0.08, { muted: true });
+    expect(did(after())).toEqual(['unMute', 'mute', 'load', 'pause', 'unMute']);
+    expect(p.changes()).toEqual([]);
+  });
+
+  it('unmutes a player held again before it told back the unmute of the hold before', () => {
+    // Probe holdPlayPauseMuted: a play and a pause close together; the second hold took the app's own mute for the friend's.
+    const p = player();
+    p.friend({ playing: false, pos: 0 });
+    p.report(CUED, 0);
+    p.wait(900).ready();
+    p.wait(100).report(UNSTARTED, 0, { muted: true });
+    const after = p.mark();
+    p.wait(200).friend({ playing: true });
+    p.wait(30).friend({ playing: false });
+    p.wait(100).report(UNSTARTED, 0, { muted: true }).report(BUFFERING, 0, { muted: true });
+    p.wait(400).report(PLAYING, 0.3, { muted: true });
+    p.wait(60).report(PAUSED, 0.35, { muted: true });
+    expect(did(after()).at(-1)).toBe('unMute');
+    expect(p.changes()).toEqual([]);
+  });
+
+  it('lets a pause go, a while after, that a player paused already never answers, and takes my own play after', () => {
+    // Modelled: a browser that refuses a play nobody pressed for; a friend plays, then pauses; then I press play.
+    const p = heldPaused(30);
+    p.friend({ playing: true });
+    p.wait(100).friend({ playing: false });
+    for (let i = 0; i < 3; i++) p.wait(1000).tick();
+    p.wait(500).report(PLAYING, 30.1);
+    expect(p.changes()).toEqual([{ playing: true, pos: 30.1, rate: 1 }]);
   });
 });
