@@ -821,6 +821,12 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
    * any are out (ticket 78): on a slow uplink its ping sits behind them, in buffers `bufferedAmount` does not count.
    */
   let piecesOut = 0;
+  /** A pass waiting for the piece it sent last to be answered: called when none are out any more, or the socket is new. */
+  let answered: (() => void) | undefined;
+  function pieceAnswered(): void {
+    piecesOut = Math.max(0, piecesOut - 1);
+    if (piecesOut === 0) { answered?.(); answered = undefined; }
+  }
   let pumpAgain: ReturnType<typeof setTimeout> | undefined;
   async function pumpUploads(): Promise<void> {
     const socket = welcomed;
@@ -835,7 +841,13 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
         u.tries++;
         try {
           for (let n = 0; n < u.of; n++) {
-            if (welcomed !== socket || pumpOn !== socket) return; // the next socket's pass goes on
+            // One piece on the socket at a time: a text written meanwhile waits for that one only, not for the whole file
+            // (report of 2026-11-12: on a phone's uplink, a text sent after a picture came long after it). Every piece is
+            // answered, `kept` or an error, however slow the line; one lost with its socket is let go of by the next
+            // welcome. No timer: one would send the next piece while the last still sits in the browser's buffers.
+            if (welcomed !== socket || pumpOn !== socket) return; // the next socket's pass goes on, and waits in its stead
+            if (piecesOut > 0) await new Promise<void>((r) => { answered = r; });
+            if (welcomed !== socket || pumpOn !== socket) return;
             if (!uploads.has(hash)) break; // all kept, or let go, meanwhile
             if (u.kept.has(n)) continue;
             const bytes = new Uint8Array(await u.blob.slice(n * KEPT_PIECE_BYTES, (n + 1) * KEPT_PIECE_BYTES).arrayBuffer());
@@ -845,8 +857,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             if (uploads.get(hash) !== u) break;
             if (welcomed !== socket || !send({ t: 'piece', tag, n, sealed: toBase64Url(sealed) })) return;
             piecesOut++;
-            // The Room's burst for pieces at once, then under its rate (core/room.ts): a photo is up before the tab goes
-            // to the background, where timers slow down; texts go between them.
+            // Under the Room's rate for pieces (core/room.ts) once past its burst: on a fast line answers come quicker.
             if (++sent >= PIECE_RATE_PER_SECOND) await new Promise((r) => setTimeout(r, PIECE_GAP_MS));
           }
         } catch (e) {
@@ -1151,6 +1162,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           life.welcomedAt = Date.now();
           welcomed = socket;
           piecesOut = 0;
+          answered?.();
+          answered = undefined;
           welcomes++;
           // The browser logs a socket it could not open as an error of its own (a reset or a 500 on the upgrade, tickets 55
           // and 60), and the app cannot quiet it. This line says the room got over it; the e2e suite excuses those errors
@@ -1210,7 +1223,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           fetching.get(pieceId(m.tag, m.n))?.(m.sealed ?? 'missing');
           return;
         case 'kept':
-          if (socket === welcomed) piecesOut = Math.max(0, piecesOut - 1);
+          if (socket === welcomed) pieceAnswered();
           keptPiece(m);
           return;
         case 'forgot': {
@@ -1231,7 +1244,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             // chat: an oversized signal once showed as "Not sent" (ticket 30).
             posthog.capture('frame_dropped', { ref: m.ref ?? 'unknown', reason: m.reason });
             if (m.ref === 'link' || m.ref === 'linkice') return; // the pull that sent it times out and says so
-            if (m.ref === 'piece' && socket === welcomed) piecesOut = Math.max(0, piecesOut - 1);
+            if (m.ref === 'piece' && socket === welcomed) pieceAnswered();
             if (m.ref === 'piece' || m.ref === 'fetch') return; // a fetch says so by its answer not coming; a piece not kept goes again
             if (m.ref === 'sync') {
               // Too many frames at once (a reconnect sends all that waited first): asked again in a moment. Asked too soon
