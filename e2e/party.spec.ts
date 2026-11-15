@@ -200,6 +200,11 @@ test('a watch party: started from a card, joined from its tile, played, paused, 
   await expect.poll(() => inStep([alice, bob, carol], true, 1.5), { timeout: 30_000 }).toBe(true);
   await expect.poll(() => rates(carol), { timeout: 15_000 }).toEqual([1.5]);
   await expect(tile(alice).locator('.share-faces .face')).toHaveCount(3);
+  // Watch together on the card the party plays: it goes on where it is, not from its start (review of #146).
+  await carol.page.locator('.chat-log .att-video').getByRole('button', { name: 'Watch together' }).click();
+  await carol.page.waitForTimeout(2000);
+  await expect.poll(() => inStep([alice, bob, carol], true, 1.5), { timeout: 15_000 }).toBe(true);
+  expect((await all(alice, bob, carol)).every((w) => w.t > 140)).toBe(true);
 
   // Alice leaves it: it goes on for the others, and she can come back to it from its tile.
   await tile(alice).getByRole('button', { name: 'Stop watching' }).click();
