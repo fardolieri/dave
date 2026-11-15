@@ -18,7 +18,7 @@ function player(video = RICK) {
   const take = (s: Step) => { sent.push(...s.commands); if (s.changed) { sent.push({ changed: s.changed }); party = change(party, 'm'.repeat(87), clock.room, { ...party!, ...s.changed }); sync.took(party); } return p; };
   const p: {
     sent: typeof sent; clock: Clock; party: Party;
-    wait(ms: number): typeof p; friend(to: Partial<Pick<Party, 'video' | 'playing' | 'pos' | 'rate'>>): typeof p; ready(): typeof p;
+    wait(ms: number): typeof p; hide(hidden: boolean): typeof p; friend(to: Partial<Pick<Party, 'video' | 'playing' | 'pos' | 'rate'>>): typeof p; ready(): typeof p;
     report(state: number, time: number, more?: Partial<PlayerReport>, timed?: boolean, stated?: boolean): typeof p; tick(): typeof p;
     error(code: number): typeof p;
     changes(): Changed[]; mark(): () => typeof sent;
@@ -26,7 +26,9 @@ function player(video = RICK) {
     sent,
     get clock() { return clock; },
     /** Time passes, on both clocks. */
-    wait(ms: number) { clock = { now: clock.now + ms, room: clock.room + ms }; return p; },
+    wait(ms: number) { clock = { ...clock, now: clock.now + ms, room: clock.room + ms }; return p; },
+    /** The page hidden (another app, a locked screen, a new tab), or shown again. */
+    hide(hidden: boolean) { clock = { ...clock, hidden }; return p; },
     /** A friend changes the party (or it is as it is when I join): from where it is now. */
     friend(to: Partial<Pick<Party, 'video' | 'playing' | 'pos' | 'rate'>>) {
       party = change(party, FRIEND, clock.room, { hash: 'h'.repeat(43), video: party?.video ?? video, playing: party?.playing ?? true, pos: party ? positionAt(party, clock.room) : 0, rate: party?.rate ?? 1, ...to });
@@ -329,5 +331,89 @@ describe('a watch party\'s player (core/partysync.ts)', () => {
     for (let i = 0; i < 3; i++) p.wait(1000).tick();
     p.wait(500).report(PLAYING, 30.1);
     expect(p.changes()).toEqual([{ playing: true, pos: 30.1, rate: 1 }]);
+  });
+  // Fourth review of #146 (Opus): a phone pauses the player of a page it hides, by itself.
+
+  it('does not take the pause of a page hidden for the friend\'s, and plays on with the party once shown again', () => {
+    // Probe hidden (phone profiles): YouTube paused the player as the page went hidden, and everyone's paused.
+    const p = playingInStep();
+    p.hide(true);
+    p.wait(30).report(PAUSED, 24.3);
+    for (let i = 0; i < 5; i++) p.wait(1000).tick();
+    expect(p.changes()).toEqual([]);
+    expect(p.party.playing).toBe(true);
+    const shown = p.mark();
+    p.hide(false).wait(200).tick();
+    expect(did(shown())).toEqual(['seek', 'play']);
+    p.wait(30).report(BUFFERING, 29.5).wait(300).report(PLAYING, 29.6);
+    for (let i = 0; i < 3; i++) p.wait(1000).tick();
+    expect(p.changes()).toEqual([]);
+  });
+  // Fifth review of #146 (Opus), on the hidden page.
+
+  it('asks its speed again of a player shown again, which a phone reloads at 1x while it says it plays faster', () => {
+    // Probe hiddenRateLoop (phone profiles): the video played at 1x, put forward every 3 s, for good.
+    const p = playingInStep();
+    p.friend({ rate: 1.5 });
+    p.wait(40).report(PLAYING, 24.5, { rate: 1.5 });
+    for (let i = 0; i < 3; i++) p.wait(1000).report(PLAYING, 24.5 + 1.5 * (i + 1), { rate: 1.5 });
+    p.hide(true).wait(30).report(PAUSED, 29, { rate: 1.5 });
+    p.wait(5000).tick();
+    const shown = p.mark();
+    p.hide(false).wait(200).tick();
+    p.wait(300).report(BUFFERING, 37, { rate: 1.5 }).wait(400).report(PLAYING, 37.1, { rate: 1.5 });
+    expect(did(shown())).toEqual(['seek', 'play', 'rate', 'rate']);
+    expect(shown().filter((c): c is { do: 'rate'; to: number } => 'do' in c && c.do === 'rate').map((c) => c.to)).toEqual([1, 1.5]);
+    // A report of the time, saying the speed asked, before the player's answer to 1x: that answer is not the friend's.
+    p.wait(4).report(PLAYING, 37.12, { rate: 1.5 }, true, false);
+    p.wait(4).report(PLAYING, 37.15, { rate: 1 }).wait(300).report(PLAYING, 37.6, { rate: 1.5 });
+    expect(p.changes()).toEqual([]);
+  });
+
+  it('does not take the answer to a seek asked while the page was hidden, come once shown, for the friend\'s', () => {
+    // Probe hiddenSeekPause: the seek was given up after 4 s; its answer after showing was declared as a seek.
+    const p = playingInStep();
+    p.hide(true).wait(30).report(PAUSED, 24.3);
+    p.wait(1000).friend({ playing: false, pos: 37.75 });
+    for (let i = 0; i < 6; i++) p.wait(1000).tick();
+    // Its answer comes 0.19 s after the page shows, before the tick, after a word of YouTube's that tells no time.
+    p.hide(false).wait(10).report(PAUSED, 24.3, {}, false, false);
+    p.wait(180).report(PAUSED, 37.75, {}, true, false).wait(100).report(PAUSED, 37.75);
+    for (let i = 0; i < 3; i++) p.wait(1000).tick();
+    expect(p.changes()).toEqual([]);
+  });
+
+  it('keeps a player that plays in a hidden tab in step: a desktop browser plays on', () => {
+    // Probe A's reports in a background tab: the pause was not asked again, and the player played on, heard.
+    const p = playingInStep();
+    p.hide(true);
+    p.friend({ pos: 150 });
+    p.wait(15).report(BUFFERING, 150.001);
+    p.wait(155).friend({ playing: false, pos: 150.15 });
+    const after = p.mark();
+    p.wait(366).report(PLAYING, 150.194);
+    expect(did(after())).toEqual(['pause']);
+    p.wait(30).report(PAUSED, 150.22);
+    expect(p.changes()).toEqual([]);
+    // Played again, and falls behind in the background: put forward.
+    p.friend({ playing: true });
+    p.wait(30).report(PLAYING, 150.2);
+    p.wait(6000).report(PLAYING, 151);
+    const behind = p.mark();
+    p.wait(1000).tick();
+    expect(did(behind())).toContain('seek');
+  });
+  // Seventh review of #146 (Opus): the speed asked again after showing must not quiet the press that sets it off.
+
+  it('takes my own play, minutes after the page was shown again, at another speed', () => {
+    // Probe play1 (desktop): the play that set off the speed's asking again fell in its quiet second, and was undone.
+    const p = heldPaused(30);
+    p.friend({ rate: 1.5 });
+    p.wait(40).report(PAUSED, 30.08, { rate: 1.5 });
+    p.hide(true).wait(5000).tick();
+    p.hide(false);
+    for (let i = 0; i < 10; i++) p.wait(1000).tick();
+    p.wait(500).report(BUFFERING, 30.08, { rate: 1.5 }).wait(200).report(PLAYING, 30.1, { rate: 1.5 });
+    expect(p.changes()).toEqual([{ playing: true, pos: 30.1, rate: 1.5 }]);
   });
 });

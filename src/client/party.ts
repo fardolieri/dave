@@ -121,7 +121,7 @@ export type PartyHandle = ReturnType<typeof createParty>;
  */
 export function syncPlayer(frame: HTMLIFrameElement, video: string, party: PartyHandle, onError: (code: number) => void): { follow: (p: Party | null) => void; dispose: () => void } {
   const sync = createPartySync(video);
-  const clock = () => ({ now: performance.now(), room: party.roomNow() });
+  const clock = () => ({ now: performance.now(), room: party.roomNow(), hidden: document.visibilityState === 'hidden' });
   const run = (s: Step) => {
     for (const c of s.commands) {
       if (c.do === 'play') player.play();
@@ -140,8 +140,11 @@ export function syncPlayer(frame: HTMLIFrameElement, video: string, party: Party
     error: (code) => { run(sync.error(code)); onError(code); },
   });
   const tick = setInterval(() => run(sync.tick(clock())), TICK_MS);
+  // A step as the page hides or shows: hidden before the browser pauses the player (and may stop the page's timers).
+  const seen = () => run(sync.tick(clock()));
+  document.addEventListener('visibilitychange', seen);
   return {
     follow: (p) => run(sync.follow(p, clock())),
-    dispose: () => { clearInterval(tick); player.dispose(); },
+    dispose: () => { clearInterval(tick); document.removeEventListener('visibilitychange', seen); player.dispose(); },
   };
 }

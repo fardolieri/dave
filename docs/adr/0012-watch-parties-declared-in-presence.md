@@ -60,6 +60,14 @@ from the start (YouTube's way).
 - What a friend does in the player while it is still catching up with a change (a second or so, longer on a slow
   link) is undone: a pause pressed while it starts a friend's play, for one. Pressed again, it counts.
 - Watch together on the card a party already plays joins it, where it is.
+- A phone pauses the player of a page it hides (another app, a locked screen, a link of YouTube's that opens a tab): not
+  the friend's pause (review of #146, 2026-11-15). While the page is hidden, and for 2 s after it is shown again, nothing
+  the player does is the friend's: the drift check puts it where the party is (a phone unloads the video of a hidden
+  page and loads it again at 1x though it says otherwise, so its speed is asked again too). Nothing is asked of a hidden
+  player that does not play; one that plays on (a desktop's background tab) is kept in step. The owner asked for the
+  simple rule that heals itself over one for every case (2026-11-15): a pause from a phone's lock screen, a minimized or
+  covered desktop window, or picture in picture, and a play, pause or seek of the friend's own in the 2 s after coming
+  back, are undone.
 - A party starts paused at its start, and so does another card put on (the owner, 2026-11-15): whoever is in it plays
   it when everyone is there.
 - A player that never played, joining a paused party, is played muted to where it is and paused there, then unmuted

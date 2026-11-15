@@ -19,8 +19,12 @@ export type Command =
 /** What the friend did in the player, for everyone in the party. */
 export type Changed = { playing: boolean; pos: number; rate: number };
 
-/** The clocks a step reads: the app's own (`performance.now()`) and the Room's, as the app knows it (ms). */
-export type Clock = { now: number; room: number };
+/**
+ * The clocks a step reads, the app's own (`performance.now()`) and the Room's as the app knows it (ms), and whether the
+ * page is hidden: a phone pauses the player of a page it hides (another app, a locked screen, a link of YouTube's that
+ * opens a tab), which is not the friend's pause.
+ */
+export type Clock = { now: number; room: number; hidden?: boolean };
 
 /** What a step answers: commands for the player, in order, and maybe the friend's change, for the party. */
 export type Step = { commands: Command[]; changed?: Changed };
@@ -31,6 +35,8 @@ export const ASKED_MS = 4000;
 export const RESEND_MS = 1000;
 /** How many times a speed is asked again of a player that does not take it. */
 export const RATE_TRIES = 3;
+/** How long after a page is shown again what its player does is not the friend's: it settles, and is put right. */
+export const SHOWN_QUIET_MS = 2000;
 /** How long a seek the app asked for is held after it was asked, answered or not (`settle`). */
 export const SEEK_HOLD_MS = 1500;
 /** How long a player held paused has to start (`hold`) before it is cued instead. */
@@ -84,6 +90,20 @@ export function createPartySync(video: string) {
   let afterRefused = false;
   /** An unmute sent, not yet told back by the player: what it says of its sound until then is the app's own mute. */
   let unmuteOwed = false;
+  /**
+   * Whether the page was hidden at the last step, until when what the player does is not the friend's, and a speed owed
+   * since the page was shown again. A hidden page's player is the browser's (a phone pauses it, and unloads its video),
+   * and once shown it settles for a moment: the answer to a seek asked while hidden comes only then (seen with phone
+   * profiles, 2026-11-15). Meanwhile the tick puts it where the party is. A phone loads the video again at 1x while the
+   * player still says the speed it had, and takes that speed asked again only after another: asked once it plays.
+   */
+  let hidden = false;
+  let quietUntil = 0;
+  let rateOwed = false;
+  const see = (t: Clock) => {
+    if (hidden && !t.hidden) { quietUntil = t.now + SHOWN_QUIET_MS; rateOwed = true; }
+    hidden = !!t.hidden;
+  };
   /** Where the player was cued, held paused: until it plays it says it is at the start, and is not cued there again. */
   let cuedAt: number | null = null;
   /**
@@ -229,6 +249,7 @@ export function createPartySync(video: string) {
     },
     /** A change of the party, anyone's. */
     follow(p: Party | null, t: Clock): Step {
+      see(t);
       if (ready && p && !sameChange(p, applied)) apply(p, t);
       return step();
     },
@@ -242,6 +263,7 @@ export function createPartySync(video: string) {
     took(p: Party): void { applied = p; },
     /** Something the player said of its state, time or speed (`timed`: this report told the time). */
     report(r: PlayerReport, timed: boolean, t: Clock, stated = true): Step {
+      see(t);
       const before = last;
       last = r;
       if (!r.muted) unmuteOwed = false;
@@ -258,17 +280,27 @@ export function createPartySync(video: string) {
         return step();
       }
       if (!ready || !applied || !before) return step();
+      // Judged before the speed is asked again below: the report that sets it off may be the friend's own play.
+      const quiet = t.hidden || t.now < quietUntil;
+      if (rateOwed && stated && r.state === PLAYING && !t.hidden) {
+        rateOwed = false;
+        // 1x first, then the party's speed; what the player says of them a moment after is the app's.
+        if (applied.rate !== 1) { send({ do: 'rate', to: 1 }); rate(applied.rate, t); quietUntil = Math.max(quietUntil, t.now + RESEND_MS); }
+      }
       if (want) {
         // Not done yet: what it does meanwhile is not the friend's. Playing when it was asked to pause (a seek, or the
         // buffering of one, can start it): asked again, at once. Paused when it was asked to play: asked again after a
         // while, as a report from before the play may still say it is paused.
+        // Hidden, a player is asked to pause still (a desktop browser plays a hidden tab on), not to play (a phone's
+        // browser holds it paused; it is asked once shown).
         if (stated && !want.on && r.state === PLAYING) ask(false, t);
-        else if (stated && want.on && r.state === PAUSED && t.now - want.sent > RESEND_MS) ask(true, t);
-      } else if (r.state !== before.state && (r.state === PLAYING || r.state === PAUSED) && (r.state === PLAYING) !== applied.playing) {
+        else if (stated && want.on && r.state === PAUSED && t.now - want.sent > RESEND_MS && !t.hidden) ask(true, t);
+      } else if (!quiet && r.state !== before.state && (r.state === PLAYING || r.state === PAUSED) && (r.state === PLAYING) !== applied.playing) {
         // Played or paused by the friend: YouTube's own buttons, a click on the video, a key.
         // A cued player tells the start until it has played: where it was cued is where it was.
         return step({ playing: r.state === PLAYING, pos: fresh && cuedAt !== null ? cuedAt : r.time, rate: applied.rate });
       }
+      if (quiet) return step();
       if (r.rate !== before.rate && !asked.rate && r.rate !== applied.rate) return step({ playing: applied.playing, pos: r.time, rate: r.rate });
       // A seek: a jump in the time it tells, not YouTube's own while it loads a video. Reports while it buffers count: a
       // seek's jump comes in one, and buffering alone only falls behind. While the app's own seek is under way, a jump
@@ -284,9 +316,12 @@ export function createPartySync(video: string) {
      * YouTube, is put back where the party is, playing or paused as it is.
      */
     tick(t: Clock): Step {
+      see(t);
       const r = last;
       if (!ready || !applied || !r || refused === loaded) return step();
       settle(r, t, false);
+      // Nothing asked of a player a hidden page's browser holds paused; one that plays on (a desktop's) is kept in step.
+      if (t.hidden && !holding && r.state !== PLAYING) return step();
       // Asked a while ago, and the player says it is so: done, though it said nothing since (a pause asked of a player
       // paused already, whose play the browser refused, tells nothing new).
       if (want && t.now - want.sent > RESEND_MS && done(want.on, r.state)) want = null;
