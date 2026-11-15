@@ -5,7 +5,7 @@
 export type Recovery = { room: string; after: number };
 
 /** Chromium's own line for a room socket it could not open: an upgrade reset, refused or answered 500 (tickets 55, 60). */
-const SOCKET_FAILED = /^error: WebSocket connection to '[^']*\/ws\/([^'/?#]+)[^']*' failed/;
+export const SOCKET_FAILED = /^error: WebSocket connection to '[^']*\/ws\/([^'/?#]+)[^']*' failed/;
 
 /**
  * The console problems that fail a test: those no pattern expects, less the browser's errors for a room socket it could not

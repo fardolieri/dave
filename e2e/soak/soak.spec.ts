@@ -22,6 +22,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Browser } from '@playwright/test';
 import { launchOptions, target } from '../browsers';
+import { SOCKET_FAILED } from '../console';
 import { Friend, expect, newSecret, test, type RoomSeed } from '../fixtures';
 import { FRIENDS, NAMES, applicable, apply, effective, format, formatList, generate, initialModel, parseList, participants, sharers, shrink, SHRINK_FIRST, signature, volumeOf, type Action, type Model, type Name } from './model';
 
@@ -52,6 +53,19 @@ type Outcome = { steps: number; failure: Failure | null; aborted: boolean };
 const log = (s: string) => console.log(`[soak] ${s}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const firstLine = (e: unknown) => (e instanceof Error ? e.message : String(e)).split('\n').find((l) => l.trim())?.trim().slice(0, 300) ?? 'unknown error';
+/**
+ * Back after a cut or an offline spell: the selected room connected, and every room whose socket failed meanwhile let in
+ * again, which logs its `[recovered]` line. The composer alone stays enabled while the app reconnects (ticket 10), and the
+ * app has sockets to more rooms than the selected one (Carol had two in soak issue #139): checked before they were back,
+ * their errors counted. The next attempt comes after the back-off (client/room.ts), a few seconds after a short outage.
+ * One still not back then is left for `differences` to report.
+ */
+async function back(f: Friend): Promise<void> {
+  await f.connected(35_000);
+  const unrecovered = async () => (await f.unexpectedProblems()).filter((p) => SOCKET_FAILED.test(p));
+  await expect.poll(unrecovered, { timeout: 35_000 }).toEqual([]).catch(() => {});
+}
+
 /** What kind of difference a line reports, without names: "tile of Bob: …" → "tile"; "invariant share_opening". */
 function kindOf(problem: string): string {
   const invariant = /\[invariant\] (\w+)/.exec(problem)?.[1];
@@ -142,14 +156,13 @@ class Group {
         await f.wire.cut();
         await f.page.waitForTimeout(a.seconds * 1000);
         f.wire.restore();
-        // The next attempt comes after the back-off (client/room.ts), a few seconds after a short outage.
-        await expect(f.composer).toBeEnabled({ timeout: 35_000 });
+        await back(f);
         return;
       case 'offline':
         await f.context.setOffline(true);
         await f.page.waitForTimeout(a.seconds * 1000);
         await f.context.setOffline(false);
-        await expect(f.composer).toBeEnabled({ timeout: 35_000 });
+        await back(f);
         return;
     }
   }
