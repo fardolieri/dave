@@ -325,7 +325,8 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .att-media:popover-open > .play { background: none; }
 /* Its place in the chat while it is big, so the log does not move under it */
 .att-hold { visibility: hidden; }
-.att-together { flex: none; padding: 4px 10px; font-size: 12px; border-radius: 999px; white-space: nowrap; }
+/* Beside the big picture button, as tall and as round */
+.att-together { flex: none; display: inline-flex; align-items: center; height: 32px; padding: 0 12px; font-size: 13px; border-radius: 8px; white-space: nowrap; }
 .att-video-about .title { font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .att-video-about .channel { color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-video-about .channel:empty { display: none; }
