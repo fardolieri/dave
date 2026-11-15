@@ -110,6 +110,8 @@ export type PartyHandle = ReturnType<typeof createParty>;
 const ASKED_MS = 4000;
 /** How long a seek the app asked for is held after it was asked, answered or not (`settle`). */
 const SEEK_HOLD_MS = 1500;
+/** How long a player held paused has to start (`hold`) before it is cued instead. */
+const HOLD_MS = 10_000;
 
 /**
  * Keeps the YouTube player in `frame`, whose address plays `video`, in step with the party, both ways: what the party
@@ -130,15 +132,36 @@ export function syncPlayer(frame: HTMLIFrameElement, video: string, party: Party
   let wantRate: { to: number; at: number } | null = null;
   const play = (on: boolean) => { wantPlaying = { on, at: performance.now() }; if (on) player.play(); else player.pause(); };
   /**
-   * To `to` seconds. A player that never played starts playing on a seek (YouTube's way): one held paused is cued there
-   * instead, which loads the video there without playing it.
+   * To `to` seconds. A player that never played starts playing on a seek (YouTube's way): one held paused is held there
+   * instead (`hold`), or, should it not start so, cued there, which shows YouTube's thumbnail of the video, not its frame.
    */
   const seek = (to: number, playing: boolean) => {
     const state = player.report()?.state ?? UNSTARTED;
-    if (!playing && (state === UNSTARTED || state === CUED)) { cuedAt = to; starting = true; player.load(loaded, to, false); return; }
+    if (!playing && (state === UNSTARTED || state === CUED)) {
+      starting = true;
+      if (holding || held !== loaded) hold(to);
+      else { cuedAt = to; player.load(loaded, to, false); }
+      return;
+    }
     wantTime = seekMore(wantTime, to, player.now(), performance.now());
     player.seek(to);
   };
+  /**
+   * A player held paused that never played is played from `to`, muted, and paused as soon as it plays (`report`), then
+   * unmuted unless it was muted before: it shows the frame the party is paused at, which a cued one does not. Once per
+   * video: one that does not start within `HOLD_MS` (a browser that plays nothing by itself) is cued there instead.
+   */
+  const hold = (to: number) => {
+    held = loaded;
+    holding = { at: performance.now(), muted: holding?.muted ?? player.report()?.muted ?? false, played: false };
+    player.mute();
+    player.load(loaded, to, true);
+  };
+  /** Held, until it has paused after playing: since when, whether it was muted before, and whether it has played. */
+  let holding: { at: number; muted: boolean; played: boolean } | null = null;
+  /** The video last held. */
+  let held: string | null = null;
+  const unhold = () => { if (holding && !holding.muted) player.unMute(); holding = null; };
   /** Where the player was cued, held paused: until it plays it says it is at the start, and is not cued there again. */
   let cuedAt: number | null = null;
   /**
@@ -166,9 +189,12 @@ export function syncPlayer(frame: HTMLIFrameElement, video: string, party: Party
   const apply = (p: Party) => {
     applied = p;
     const at = positionAt(p, party.roomNow());
+    // It plays on, unmuted, as the party does: asked to, since the hold's own pause may be on its way still.
+    if (p.playing && holding) { unhold(); play(true); }
     if (p.video !== loaded) {
       loaded = p.video;
       starting = true;
+      if (!p.playing) { hold(at); if (p.rate !== 1) rate(p.rate); return; }
       wantPlaying = { on: p.playing, at: performance.now() };
       wantTime = seekMore(null, at, player.now(), performance.now());
       player.load(p.video, at, p.playing);
@@ -177,6 +203,8 @@ export function syncPlayer(frame: HTMLIFrameElement, video: string, party: Party
     }
     const r = player.report();
     if (r && r.rate !== p.rate) rate(p.rate);
+    // Paused at the start, a player that never played is held there too, rather than left on its thumbnail.
+    if (!p.playing && held !== loaded && (!r || r.state === UNSTARTED || r.state === CUED)) { starting = true; hold(at); return; }
     if (Math.abs(position() - at) > driftAllowed(p)) seek(at, p.playing);
     if (p.playing ? r?.state !== PLAYING : r?.state === PLAYING) play(p.playing);
   };
@@ -193,6 +221,13 @@ export function syncPlayer(frame: HTMLIFrameElement, video: string, party: Party
       const asked = { playing: wantPlaying, time: wantTime, rate: wantRate };
       const fresh = starting;
       settle(now);
+      // Held: paused as soon as it plays, unmuted once it has (not on a pause before: the video it had before may be told
+      // paused still). Nothing it does meanwhile is the friend's.
+      if (holding) {
+        if (now.state === PLAYING) { holding.played = true; player.pause(); }
+        else if (now.state === PAUSED && holding.played) unhold();
+        return;
+      }
       if (!ready || !applied || !before) return;
       // Playing when it was asked to pause (a seek can start it): asked again.
       if (asked.playing && !asked.playing.on && now.state === PLAYING) player.pause();
@@ -219,6 +254,17 @@ export function syncPlayer(frame: HTMLIFrameElement, video: string, party: Party
     const r = player.report();
     if (!ready || !applied || !r) return;
     settle(r);
+    if (holding) {
+      if (performance.now() - holding.at < HOLD_MS) return;
+      const played = holding.played;
+      unhold();
+      if (!applied.playing) {
+        // It did not start: cued where the party is instead, its thumbnail shown. Or it did and did not pause.
+        // Should it start meanwhile, it is paused again (`report`), not taken for the friend's play.
+        if (!played) { wantPlaying = { on: false, at: performance.now() }; cuedAt = positionAt(applied, party.roomNow()); player.load(loaded, cuedAt, false); return; }
+        if (r.state === PLAYING) { play(false); return; }
+      }
+    }
     if (wantPlaying || wantTime || r.state === ENDED || r.state === BUFFERING) return;
     const at = positionAt(applied, party.roomNow());
     if (r.duration && at > r.duration - 1) return; // the party ran past the end: the player stays there

@@ -8,13 +8,15 @@ export const YOUTUBE_ORIGIN = 'https://www.youtube-nocookie.com';
 export const UNSTARTED = -1, ENDED = 0, PLAYING = 1, PAUSED = 2, BUFFERING = 3, CUED = 5;
 
 /** What the player said last, and when (performance.now()). */
-export type PlayerReport = { state: number; time: number; rate: number; duration: number; at: number };
+export type PlayerReport = { state: number; time: number; rate: number; duration: number; muted: boolean; at: number };
 
 export type Player = {
   play(): void;
   pause(): void;
   seek(seconds: number): void;
   rate(rate: number): void;
+  mute(): void;
+  unMute(): void;
   /** Another video, from `seconds`: played, or held there. */
   load(video: string, seconds: number, playing: boolean): void;
   /** Where the video is now, as of the last report: further on by the time since, while it plays. */
@@ -47,6 +49,7 @@ export function connectPlayer(frame: HTMLIFrameElement, video: string, on: {
       time: typeof info['currentTime'] === 'number' ? info['currentTime'] : before ? extrapolate(before) : 0,
       rate: typeof info['playbackRate'] === 'number' ? info['playbackRate'] : before?.rate ?? 1,
       duration: typeof info['duration'] === 'number' ? info['duration'] : before?.duration ?? 0,
+      muted: typeof info['muted'] === 'boolean' ? info['muted'] : before?.muted ?? false,
       at: performance.now(),
     };
     last = now;
@@ -80,6 +83,8 @@ export function connectPlayer(frame: HTMLIFrameElement, video: string, on: {
     pause: () => command('pauseVideo'),
     seek: (seconds) => command('seekTo', [seconds, true]),
     rate: (rate) => command('setPlaybackRate', [rate]),
+    mute: () => command('mute'),
+    unMute: () => command('unMute'),
     load: (video, seconds, playing) => command(playing ? 'loadVideoById' : 'cueVideoById', [{ videoId: video, startSeconds: seconds }]),
     now: () => (last ? extrapolate(last) : 0),
     report: () => last,

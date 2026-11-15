@@ -228,6 +228,8 @@ test('a friend who joins a paused party finds it paused, where it is, and it pla
   // Bob's player shows the frame Alice paused at, not YouTube's thumbnail of a video it has not started.
   await expect.poll(async () => Math.abs((await where(bob)).t - pausedAt), { timeout: 30_000 }).toBeLessThan(0.5);
   await expect(player(bob).locator('.ytmCuedOverlayPlayButton')).toBeHidden();
+  // Played muted to get there, and unmuted again.
+  await expect.poll(() => player(bob).locator('video').evaluate((v: HTMLVideoElement) => v.muted), { timeout: 5000 }).toBe(false);
   expect((await where(bob)).playing).toBe(false);
   expect((await where(alice)).playing).toBe(false);
 

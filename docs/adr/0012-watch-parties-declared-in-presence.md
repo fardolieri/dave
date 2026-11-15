@@ -48,6 +48,9 @@ everyone (`syncPlayer`). A player off by more than 1.5 s while playing, or 0.3 s
   the ad is over. One friend's seek during an ad is not told apart from the ad's own jumps (not seen yet; YouTube showed
   no ads to the test browsers).
 - Esc and keys pressed in YouTube's player stay there, as for the card's own player.
+- A player that never played, joining a paused party, is played muted to where it is and paused there, then unmuted
+  (2026-11-15): YouTube's way to load a video without playing it (cueing) shows its thumbnail, not the frame the
+  others see. A browser that plays nothing by itself, muted or not, gets the thumbnail after all (10 s on).
 - An app from before this change does not know the field: it shows no party and lists the friends in it as in the call.
   A Room from before (a rollback) refuses `party` as an unrecognised message, which the app ignores: no party starts.
 - The browser tests play YouTube's real player: Rick Astley's video is the one YouTube plays to a headless Chromium on
