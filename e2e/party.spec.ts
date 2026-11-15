@@ -58,6 +58,19 @@ async function youtubePlays(f: Friend) {
   expect(plays, `YouTube's player plays to ${f.name}`).toBe(true);
 }
 const player = (f: Friend) => tile(f).locator('iframe').contentFrame();
+/**
+ * Waits for a friend's player to show the frame at `t` seconds, paused and unmuted: not YouTube's thumbnail of a video
+ * it has not started (cued), which shows no frame. A runner YouTube refuses skips the test, as in `youtubePlays`.
+ */
+async function heldAt(f: Friend, t: number) {
+  const held = async () =>
+    (await player(f).locator('video').evaluate((v: HTMLVideoElement, t) => v.paused && !v.muted && v.readyState >= 2 && Math.abs(v.currentTime - t) < 0.5, t).catch(() => false))
+    && !(await player(f).locator('.ytmCuedOverlayPlayButton').isVisible());
+  await expect.poll(async () => (await held()) || refused.has(f.name), { timeout: 30_000 }).toBe(true).catch(() => {});
+  const shown = await held();
+  test.skip(!shown && refused.has(f.name), 'YouTube refused this runner: 403 to its player\'s requests');
+  expect(shown, `${f.name}'s player shows the frame at ${t} s, paused`).toBe(true);
+}
 /** Where a friend's video is, and whether it plays, as YouTube's own video element says. */
 const where = (f: Friend) => player(f).locator('video').evaluate((v: HTMLVideoElement) => ({ t: v.currentTime, playing: !v.paused }));
 /** Every friend's at once, so one read does not wait for another. */
@@ -137,9 +150,10 @@ test('a watch party: started from a card, joined from its tile, played, paused, 
   await expect(carol.page.locator('.chat-log .att-video').getByRole('button', { name: 'Watch together' })).toHaveCount(0);
   await alice.page.locator('.chat-log .att-video').getByRole('button', { name: 'Watch together' }).click();
 
-  // It shows up for everyone, as a share does: a tile with the card, its title and who is in it.
+  // It shows up for everyone, as a share does: a tile with the card, its title and who is in it. It goes on paused at
+  // its start, its first frame showing, for Alice to play when everyone is there.
   await expect(player(alice).locator('video')).toBeAttached({ timeout: 30_000 });
-  await youtubePlays(alice);
+  await heldAt(alice, 0);
   await expect(tile(bob)).toContainText(TITLE);
   await expect(tile(bob)).toContainText('Click to watch together');
   await expect(tile(bob).locator('.share-faces .face')).toHaveCount(1);
@@ -147,7 +161,9 @@ test('a watch party: started from a card, joined from its tile, played, paused, 
   await tile(carol).click(); // not in the call: nothing
   await expect(tile(carol).locator('iframe')).toHaveCount(0);
 
-  // Bob comes in where it is.
+  // Alice plays it, and Bob comes in where it is.
+  await playPause(alice);
+  await youtubePlays(alice);
   await tile(bob).click();
   await expect(tile(bob).locator('.share-faces .face')).toHaveCount(2);
   await expect.poll(() => inStep([alice, bob], true, 1.5), { timeout: 30_000 }).toBe(true);
@@ -213,6 +229,8 @@ test('a friend who joins a paused party finds it paused, where it is, and it pla
   await expect(alice.staged.locator('.size')).toHaveText('Rick Astley');
   await alice.composer.press('Enter');
   await alice.page.locator('.chat-log .att-video').getByRole('button', { name: 'Watch together' }).click();
+  await heldAt(alice, 0);
+  await playPause(alice);
   await youtubePlays(alice);
   await expect.poll(async () => (await where(alice)).t > 3, { timeout: 30_000 }).toBe(true);
   await playPause(alice);

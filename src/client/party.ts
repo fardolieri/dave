@@ -84,10 +84,13 @@ export function createParty(room: Room, identity: LocalIdentity, textKey: Crypto
     members,
     /** Whether I am in it. */
     joined: () => mine() !== null,
-    /** Starts a party with this YouTube card of the chat, from the start; one going on plays it instead, for everyone in it. */
+    /**
+     * Starts a party with this YouTube card of the chat, paused at its start, for whoever is in it to play when everyone
+     * is there; one going on puts it on instead, paused at its start, for everyone in it.
+     */
     start: (card: FileMeta): void => {
       if (!card.youtube || !inCall()) return;
-      declare(change(untrack(now), me, roomNow(), { hash: card.hash, video: card.youtube.id, playing: true, pos: 0, rate: 1 }));
+      declare(change(untrack(now), me, roomNow(), { hash: card.hash, video: card.youtube.id, playing: false, pos: 0, rate: 1 }));
     },
     /** Into the party going on, where it is. */
     join: (): void => { const p = untrack(now); if (p && inCall()) declare(p); },
@@ -140,7 +143,7 @@ export function syncPlayer(frame: HTMLIFrameElement, video: string, party: Party
     if (!playing && (state === UNSTARTED || state === CUED)) {
       starting = true;
       if (holding || held !== loaded) hold(to);
-      else { cuedAt = to; player.load(loaded, to, false); }
+      else { cuedAt = to; load(loaded, to, false); }
       return;
     }
     wantTime = seekMore(wantTime, to, player.now(), performance.now());
@@ -153,14 +156,23 @@ export function syncPlayer(frame: HTMLIFrameElement, video: string, party: Party
    */
   const hold = (to: number) => {
     held = loaded;
-    holding = { at: performance.now(), muted: holding?.muted ?? player.report()?.muted ?? false, played: false };
+    holding = { at: performance.now(), muted: holding?.muted ?? player.report()?.muted ?? false, played: false, told: !reloaded };
     player.mute();
-    player.load(loaded, to, true);
+    load(loaded, to, true);
   };
-  /** Held, until it has paused after playing: since when, whether it was muted before, and whether it has played. */
-  let holding: { at: number; muted: boolean; played: boolean } | null = null;
+  /**
+   * Held, until it has paused after playing: since when, whether it was muted before, whether it has played, and whether
+   * it has told of the video it was given yet. A player given a video before tells of that one for a moment (seen
+   * 2026-11-15, over one playing: buffering, paused at 0 s, then unstarted, as it loads the new one; and what it was on
+   * its way to), and a report of its time alone keeps the state it told before: only from its first `UNSTARTED` on is
+   * what it tells of the held video. A new player's first hold has nothing before it.
+   */
+  let holding: { at: number; muted: boolean; played: boolean; told: boolean } | null = null;
   /** The video last held. */
   let held: string | null = null;
+  /** Whether the player was given a video since it opened. */
+  let reloaded = false;
+  const load = (video: string, seconds: number, playing: boolean) => { reloaded = true; player.load(video, seconds, playing); };
   const unhold = () => { if (holding && !holding.muted) player.unMute(); holding = null; };
   /** Where the player was cued, held paused: until it plays it says it is at the start, and is not cued there again. */
   let cuedAt: number | null = null;
@@ -197,7 +209,7 @@ export function syncPlayer(frame: HTMLIFrameElement, video: string, party: Party
       if (!p.playing) { hold(at); if (p.rate !== 1) rate(p.rate); return; }
       wantPlaying = { on: p.playing, at: performance.now() };
       wantTime = seekMore(null, at, player.now(), performance.now());
-      player.load(p.video, at, p.playing);
+      load(p.video, at, p.playing);
       if (p.rate !== 1) rate(p.rate);
       return;
     }
@@ -224,7 +236,8 @@ export function syncPlayer(frame: HTMLIFrameElement, video: string, party: Party
       // Held: paused as soon as it plays, unmuted once it has (not on a pause before: the video it had before may be told
       // paused still). Nothing it does meanwhile is the friend's.
       if (holding) {
-        if (now.state === PLAYING) { holding.played = true; player.pause(); }
+        if (!holding.told) { if (now.state === UNSTARTED) holding.told = true; }
+        else if (now.state === PLAYING) { holding.played = true; player.pause(); }
         else if (now.state === PAUSED && holding.played) unhold();
         return;
       }
@@ -261,7 +274,7 @@ export function syncPlayer(frame: HTMLIFrameElement, video: string, party: Party
       if (!applied.playing) {
         // It did not start: cued where the party is instead, its thumbnail shown. Or it did and did not pause.
         // Should it start meanwhile, it is paused again (`report`), not taken for the friend's play.
-        if (!played) { wantPlaying = { on: false, at: performance.now() }; cuedAt = positionAt(applied, party.roomNow()); player.load(loaded, cuedAt, false); return; }
+        if (!played) { wantPlaying = { on: false, at: performance.now() }; cuedAt = positionAt(applied, party.roomNow()); load(loaded, cuedAt, false); return; }
         if (r.state === PLAYING) { play(false); return; }
       }
     }
