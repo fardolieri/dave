@@ -22,7 +22,7 @@ export default defineConfig({
   timeout: 120_000 * slow,
   expect: { timeout: 20_000 * slow },
   // Every test gets rooms of its own (fixtures.ts) and stages deploys through its own cookies (update.spec.ts), so any two can
-  // run at once. It also lets --shard (e2e.yml) split the suite by test instead of by file.
+  // run at once. It also lets e2e.yml give a shard any of the tests (scripts/e2e-shards.mjs), not whole files.
   fullyParallel: true,
   // Tests tagged @local need the preview server (vite.config.ts), where a deploy or an outage is staged: not run against a
   // deployed copy. A ready PR's preview run has them run against a local build of the PR instead (e2e.yml).
