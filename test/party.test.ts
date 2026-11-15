@@ -15,6 +15,16 @@ describe('a watch party (core/party.ts)', () => {
     }
     // YouTube's custom speed goes in hundredths, between its menu's steps.
     expect(parseParty(partyText(party({ rate: 1.1 })))?.rate).toBe(1.1);
+    // The card's title, for a friend who does not have the card: as long as a card's, written out the longest JSON can.
+    const titled = party({ title: 'Rick Astley - Never Gonna Give You Up' });
+    expect(parseParty(partyText(titled))).toEqual(titled);
+    const longest = party({ n: Number.MAX_SAFE_INTEGER, pos: 99999.999, at: Number.MAX_SAFE_INTEGER, rate: 0.25, title: '\u0001'.repeat(100) });
+    expect(parseParty(partyText(longest))).toEqual(longest);
+    expect(new TextEncoder().encode(partyText(longest)).length).toBeLessThanOrEqual(MAX_PARTY_BODY_BYTES);
+    for (const title of ['', 'x'.repeat(101), 7]) expect(parseParty(JSON.stringify({ ...party(), title }))).toBeNull();
+    // One from an app before titles: none, and sealed as it was.
+    expect(parseParty(partyText(party()))).not.toHaveProperty('title');
+    expect(partyText(party())).not.toContain('title');
     expect(parseParty('not json')).toBeNull();
     expect(parseParty('null')).toBeNull();
   });
@@ -57,6 +67,7 @@ describe('a watch party (core/party.ts)', () => {
   it('takes a change of mine as one more than the newest I have seen, made by me now', () => {
     expect(change(null, BOB, 7, { hash: 'h'.repeat(43), video: 'dQw4w9WgXcQ', playing: true, pos: 0, rate: 1 })).toEqual({ n: 1, by: BOB, at: 7, hash: 'h'.repeat(43), video: 'dQw4w9WgXcQ', playing: true, pos: 0, rate: 1 });
     expect(change(party({ n: 41, at: 5 }), BOB, 8, { ...party(), playing: false, pos: -0.2 })).toMatchObject({ n: 42, by: BOB, at: 8, playing: false, pos: 0 });
+    expect(change(party({ n: 1 }), BOB, 9, { ...party(), title: 'A title' }).title).toBe('A title');
     // My idea of the Room's clock a little behind the friend's who made the last change: mine still comes after it.
     const theirs = party({ n: 3, at: 2_000 });
     const mine = change(theirs, BOB, 1_900, { ...party(), playing: false });

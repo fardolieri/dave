@@ -20,8 +20,10 @@ higher counter, then the greater key; a change is never stamped before the one i
 friend whose socket was gone a while declares the party as it was then, which must not take over one started meanwhile;
 a friend who takes a newer change declares it again (client/party.ts), so the party goes on as it was when the friend
 who made the last change leaves. Leaving the call, or the socket, ends a friend's declaration with their place in the
-call; the party ends when nobody declares one. A state names a card by its file's hash, and a friend's app follows only a
-party whose card is in its chat.
+call; the party ends when nobody declares one. A state names a card by its file's hash, and a party starts only from a
+card of the chat. It carries the card's title too: a friend new to the room since the card was sent does not have it
+(they do not see what was said before they came, ADR 0009), and follows the party all the same, its tile showing the
+title with no picture, since their browser does not ask YouTube for one before they choose to watch (owner, 2026-11-15).
 
 Where the video is, is said for a moment by the Room's clock, which each app knows as of its last welcome (`roomNow`): a
 friend who comes in later, or takes the change later, starts from where it is by then, off by the time the welcome

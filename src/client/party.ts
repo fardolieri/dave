@@ -11,8 +11,8 @@ import type { ChatLine, createRoom } from './room';
 import { BUFFERING, CUED, ENDED, PAUSED, PLAYING, UNSTARTED, connectPlayer, type Player, type PlayerReport } from './ytplayer';
 
 type Room = ReturnType<typeof createRoom>;
-/** A party with the card it plays, as the chat has it. */
-export type PartyNow = Party & { card: FileMeta };
+/** A party with the card it plays, as the chat has it: none for a friend new to the room since it was sent (ADR 0009). */
+export type PartyNow = Party & { card: FileMeta | null };
 
 /** The YouTube card of the chat whose file is `hash`, with the video `video`; null for none. */
 function cardOf(lines: readonly ChatLine[], hash: string, video: string): FileMeta | null {
@@ -45,16 +45,16 @@ export function createParty(room: Room, identity: LocalIdentity, textKey: Crypto
   /** What I declared last: what I am in, as I took it; null for none. */
   const [mine, setMine] = createSignal<Party | null>(null);
   /**
-   * The party: the newest change declared by anyone in it, mine included before the Room brings it back, that plays a
-   * YouTube card of this room's chat. Null when nobody in the call is in one.
+   * The party: the newest change declared by anyone in it, mine included before the Room brings it back, with its card
+   * when this chat has it. Null when nobody in the call is in one. A friend's app follows one whose card it does not
+   * have: it came to the room after the card, and does not see what was said before (ADR 0009).
    */
   const now = createMemo((): PartyNow | null => {
     const lines = room.lines();
     const all = [...parties().entries()].filter(([key]) => key !== me).map(([, p]) => p);
     const own = mine();
     const newest = current(own ? [...all, own] : all);
-    const card = newest && cardOf(lines, newest.hash, newest.video);
-    return newest && card ? { ...newest, card } : null;
+    return newest && { ...newest, card: cardOf(lines, newest.hash, newest.video) };
   }, { equals: (a, b) => sameChange(a, b) && a?.card === b?.card });
   /** Who is in it: friends in the call who declare one, and me while I am in it. */
   const members = createMemo((): string[] => {
@@ -90,7 +90,7 @@ export function createParty(room: Room, identity: LocalIdentity, textKey: Crypto
      */
     start: (card: FileMeta): void => {
       if (!card.youtube || !inCall()) return;
-      declare(change(untrack(now), me, roomNow(), { hash: card.hash, video: card.youtube.id, playing: false, pos: 0, rate: 1 }));
+      declare(change(untrack(now), me, roomNow(), { hash: card.hash, video: card.youtube.id, title: card.youtube.title, playing: false, pos: 0, rate: 1 }));
     },
     /** Into the party going on, where it is. */
     join: (): void => { const p = untrack(now); if (p && inCall()) declare(p); },
@@ -100,7 +100,8 @@ export function createParty(room: Room, identity: LocalIdentity, textKey: Crypto
     set: (to: { playing: boolean; pos: number; rate: number }): Party | null => {
       const p = untrack(now);
       if (!p || !untrack(mine)) return null;
-      const next = change(p, me, roomNow(), { hash: p.hash, video: p.video, ...to });
+      // The title from my card where I have it: a change from an app before titles carries none.
+      const next = change(p, me, roomNow(), { hash: p.hash, video: p.video, title: p.card?.youtube?.title ?? p.title, ...to });
       declare(next);
       return next;
     },

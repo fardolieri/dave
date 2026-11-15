@@ -2,7 +2,7 @@
 // of their own. Anyone in it plays, pauses, seeks, changes the speed or puts another card of the chat on. Only its state
 // travels: each friend in it declares the party as they last took it, sealed for the room, in presence (`party`,
 // core/protocol.ts), and the latest change anyone declares is the party's (`current`). Runtime-neutral: plain data only.
-import { isVideoId } from './youtube';
+import { MAX_VIDEO_TITLE, isVideoId } from './youtube';
 
 /**
  * A party's state, as set by the last friend who changed it. Where the video is (`pos`, in seconds) is said for a moment,
@@ -14,10 +14,15 @@ export type Party = {
   n: number;
   /** Who made this change (their public key): of two at the same time and count, the greater key's counts. */
   by: string;
-  /** The YouTube card it plays: its file's hash (core/attachment.ts), so a party plays only a video of the chat. */
+  /** The YouTube card it plays: its file's hash (core/attachment.ts), so a party starts only from a video of the chat. */
   hash: string;
   /** The card's video, as its announcement says. */
   video: string;
+  /**
+   * The card's title, when it has one: for a friend whose chat does not have the card (new to the room since it was
+   * sent, ADR 0009), whose tile shows the party by it. An app from before neither writes nor keeps it.
+   */
+  title?: string;
   playing: boolean;
   /** Where the video was at `at`, in seconds. */
   pos: number;
@@ -30,8 +35,11 @@ export type Party = {
   at: number;
 };
 
-/** The longest party a client seals, as JSON: a key of 87 characters and a hash of 43, the rest small numbers. */
-export const MAX_PARTY_BODY_BYTES = 512;
+/**
+ * The longest party a client seals, as JSON: a key of 87 characters and a hash of 43, a title of up to 100 UTF-16 units
+ * (each up to 6 bytes as JSON writes it, `\u0001`), the rest small numbers.
+ */
+export const MAX_PARTY_BODY_BYTES = 1280;
 const KEY = /^[A-Za-z0-9_-]{87}$/;
 const HASH = /^[A-Za-z0-9_-]{43}$/;
 
@@ -45,12 +53,13 @@ export function parseParty(text: string): Party | null {
   if (typeof p.by !== 'string' || !KEY.test(p.by) || typeof p.hash !== 'string' || !HASH.test(p.hash) || !isVideoId(p.video)) return null;
   if (typeof p.playing !== 'boolean' || typeof p.pos !== 'number' || !Number.isFinite(p.pos) || p.pos < 0) return null;
   if (typeof p.rate !== 'number' || !(p.rate >= 0.25 && p.rate <= 2) || !Number.isSafeInteger(p.at) || p.at! < 0) return null;
-  return { n: p.n!, by: p.by, hash: p.hash, video: p.video, playing: p.playing, pos: p.pos, rate: p.rate, at: p.at! };
+  if (p.title !== undefined && (typeof p.title !== 'string' || p.title.length === 0 || p.title.length > MAX_VIDEO_TITLE)) return null;
+  return { n: p.n!, by: p.by, hash: p.hash, video: p.video, ...(p.title === undefined ? {} : { title: p.title }), playing: p.playing, pos: p.pos, rate: p.rate, at: p.at! };
 }
 
 /** The party as it is sealed: always the same fields in the same order, so the same state seals to the same text. */
 export const partyText = (p: Party): string =>
-  JSON.stringify({ n: p.n, by: p.by, hash: p.hash, video: p.video, playing: p.playing, pos: Math.round(p.pos * 1000) / 1000, rate: p.rate, at: p.at });
+  JSON.stringify({ n: p.n, by: p.by, hash: p.hash, video: p.video, title: p.title, playing: p.playing, pos: Math.round(p.pos * 1000) / 1000, rate: p.rate, at: p.at });
 
 /** Whether `a` is a later change than `b`: made later, else counted higher, else made by the greater key. */
 export const later = (a: Party, b: Party): boolean => a.at > b.at || (a.at === b.at && (a.n > b.n || (a.n === b.n && a.by > b.by)));
@@ -75,9 +84,9 @@ export const positionAt = (p: Party, now: number): number => (p.playing ? p.pos 
  * A change I make: one more than the latest I have seen, made by me now; never before it, though my idea of the Room's
  * clock may be behind the friend's who made it.
  */
-export function change(from: Party | null, me: string, now: number, to: Pick<Party, 'hash' | 'video' | 'playing' | 'pos' | 'rate'>): Party {
+export function change(from: Party | null, me: string, now: number, to: Pick<Party, 'hash' | 'video' | 'title' | 'playing' | 'pos' | 'rate'>): Party {
   const at = from ? Math.max(Math.round(now), from.at + 1) : Math.round(now);
-  return { n: (from?.n ?? 0) + 1, by: me, hash: to.hash, video: to.video, playing: to.playing, pos: Math.max(0, to.pos), rate: to.rate, at };
+  return { n: (from?.n ?? 0) + 1, by: me, hash: to.hash, video: to.video, ...(to.title === undefined ? {} : { title: to.title }), playing: to.playing, pos: Math.max(0, to.pos), rate: to.rate, at };
 }
 
 /**

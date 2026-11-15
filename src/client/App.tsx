@@ -895,7 +895,8 @@ function Workspace(props: WorkspaceProps) {
           <Show when={(sharers().length > 0 || stage()?.party.now()) && stage()}>{(s) => (
             <section class="shares" style={`grid-template-columns: repeat(${sharers().length + (s().party.now() ? 1 : 0)}, 1fr)`}>
               <Show when={s().party.now()}>{(p) => (
-                <PartyTile party={s().party} card={p().card} inCall={s().call.inCall()} thumb={(() => { const a = s().room.attachment(p().card.hash); return a?.status === 'ready' ? a.url : p().card.preview; })()}
+                <PartyTile party={s().party} title={p().card?.youtube?.title ?? p().title} video={p().video} inCall={s().call.inCall()}
+                           thumb={(() => { const card = p().card; if (!card) return undefined; const a = s().room.attachment(card.hash); return a?.status === 'ready' ? a.url : card.preview; })()}
                            faceOf={(k) => { const f = present(k); return f && labelOf(f); }} />
               )}</Show>
               <For each={sharerKeys()}>
@@ -1874,8 +1875,12 @@ function ShareTile(props: ShareTileProps) {
  * me in (only in the call, as a share), then YouTube's player, in step with everyone in it. Whoever is in it is shown as
  * faces, as a share's viewers are.
  */
-function PartyTile(props: { party: PartyHandle; card: FileMeta; inCall: boolean; thumb: string | undefined; faceOf: (publicKey: string) => Label | undefined }) {
-  const title = () => props.card.youtube?.title ?? 'A YouTube video';
+/**
+ * A watch party, beside the shares: its card's thumbnail and title, or only the title for a friend whose chat does not
+ * have the card (new to the room since), whose browser does not ask YouTube for a picture before they choose to watch.
+ */
+function PartyTile(props: { party: PartyHandle; title: string | undefined; video: string; inCall: boolean; thumb: string | undefined; faceOf: (publicKey: string) => Label | undefined }) {
+  const title = () => props.title ?? 'A YouTube video';
   const joined = () => props.party.joined();
   return (
     <div class={['share', 'party', joined() ? 'share-live' : props.inCall ? 'share-closed' : 'share-locked']} onClick={() => { if (!joined() && props.inCall) props.party.join(); }}>
@@ -1889,7 +1894,7 @@ function PartyTile(props: { party: PartyHandle; card: FileMeta; inCall: boolean;
           <div class="share-note">{props.inCall ? 'Click to watch together' : 'Join to watch'}</div>
         </>
       }>
-        <PartyPlayer party={props.party} video={props.card.youtube?.id ?? ''} />
+        <PartyPlayer party={props.party} video={props.video} />
       </Show>
       <Show when={props.party.members().length > 0}>
         <div class="share-bar party-bar" onClick={(e) => e.stopPropagation()}><ShareFaces keys={props.party.members()} label={props.faceOf} /><span class="share-stats">watching together</span></div>
