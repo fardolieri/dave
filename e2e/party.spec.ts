@@ -1,5 +1,5 @@
 import type { Route } from '@playwright/test';
-import { expect, test, type Friend } from './fixtures';
+import { expect, newSecret, test, type Friend } from './fixtures';
 
 // Watch parties (client/party.ts): a YouTube card of the chat, watched together by friends in the call, in step. With
 // YouTube's real player: Rick Astley's video is the one YouTube plays to a headless browser on a datacenter's address
@@ -33,8 +33,8 @@ const refused = new Set<string>();
  * player asks for the CPU's pressure readings, which its frame is not given (allow=, PartyPlayer), and YouTube refuses
  * some of GitHub's runners outright (403 to its player's requests, 2026-11-15), which `youtubePlays` turns into a skip.
  */
-async function open(crowd: { open: (name: string) => Promise<Friend> }, name: string): Promise<Friend> {
-  const f = await crowd.open(name);
+async function open(crowd: { open: (name: string, options?: { rooms?: Array<{ secret: string; name: string }> }) => Promise<Friend> }, name: string, options?: { rooms?: Array<{ secret: string; name: string }> }): Promise<Friend> {
+  const f = await crowd.open(name, options);
   // As the refusal showed on a runner: the console of YouTube's frame says its own requests were answered 403.
   const refusal = /^Failed to load resource: the server responded with a status of 403 \([^)]*\)$/;
   f.page.on('console', (m) => { if (refusal.test(m.text()) && /^https:\/\/www\.youtube-nocookie\.com\/youtubei\//.test(m.location().url)) refused.add(name); });
@@ -218,7 +218,7 @@ test('a watch party: started from a card, joined from its tile, played, paused, 
   for (const f of [alice, carol]) await expect(tile(f)).toHaveCount(0);
 });
 
-test('a friend who joins a paused party finds it paused, where it is, and it plays on from there for everyone', async ({ crowd }) => {
+test('a friend who joins a paused party finds it paused, where it is, and it plays on from there for everyone, a newcomer to the room too', async ({ crowd }) => {
   test.setTimeout(180_000);
   const alice = await open(crowd, 'Alice');
   const bob = await open(crowd, 'Bob');
@@ -257,4 +257,17 @@ test('a friend who joins a paused party finds it paused, where it is, and it pla
   const [a] = await all(alice);
   expect(a!.t).toBeGreaterThan(pausedAt);
   expect(a!.t).toBeLessThan(pausedAt + 15);
+
+  // Carol comes to the room only now: what was said before, the card too, she does not see (ADR 0009). The party she
+  // joins all the same, from its tile, which has its title and no picture: her browser does not ask YouTube for one.
+  const carol = await open(crowd, 'Carol', { rooms: [{ secret: newSecret(), name: 'Other' }] });
+  await carol.page.goto(`/#${crowd.room.secret}/${encodeURIComponent(crowd.room.name)}`);
+  await carol.connected();
+  await expect(carol.selectedRoom.locator('.room-title')).toHaveText(crowd.room.name);
+  await carol.join();
+  await expect(carol.page.locator('.chat-log .att-video')).toHaveCount(0);
+  await expect(tile(carol)).toContainText(TITLE, { timeout: 30_000 });
+  await expect(tile(carol)).toContainText('Click to watch together');
+  await tile(carol).click();
+  await expect.poll(() => inStep([alice, bob, carol], true, 1.5), { timeout: 30_000 }).toBe(true);
 });
