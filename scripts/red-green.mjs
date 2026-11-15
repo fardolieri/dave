@@ -126,11 +126,11 @@ export function verdict({ problems, results, regressions, incomplete = false }) 
   const owing = problems.filter((p) => !p.excuse);
   const hatch = `if no test can reach the bug, say why on a line starting with "${EXCUSE}" in the commit's body.`;
   if (owing.length) {
-    if (!regressions) return { fail: true, text: `This branch fixes a problem report, but its "${REGRESSION}" and "${PROBLEM}" commits add or change no test. A regression test should fail on the old code first (CLAUDE.md: bug fixes start red); ${hatch}` };
+    if (!regressions) return { fail: true, text: `This branch fixes a problem report, but its "${REGRESSION}" and "${PROBLEM}" commits add or change no test. A regression test should fail on the old code first (AGENTS.md: bug fixes start red); ${hatch}` };
     const counted = results.filter((r) => r.regression);
     if (counted.some((r) => r.status === 'failed')) return { fail: false, text: `A regression test fails without the change: the branch carries its red-then-green receipt.` };
     if (incomplete || !counted.length || counted.some((r) => UNSURE.has(r.status))) return { fail: false, text: `No regression test failed without the change, but not every one could show it (inconclusive above), so this stays informative.` };
-    return { fail: true, text: `This branch fixes a problem report, but none of its regression tests fails without the change, so nothing shows they cover the bug. A regression test should fail on the old code first (CLAUDE.md: bug fixes start red); ${hatch}` };
+    return { fail: true, text: `This branch fixes a problem report, but none of its regression tests fails without the change, so nothing shows they cover the bug. A regression test should fail on the old code first (AGENTS.md: bug fixes start red); ${hatch}` };
   }
   if (problems.length) return { fail: false, text: `Its problem report fixes say why they have no regression test, so no test has to fail without the change.` };
   if (results.some((r) => r.status === 'failed')) return { fail: false, text: `At least one test fails without the change. No problem report fix on this branch, so this is informative.` };

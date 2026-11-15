@@ -26,8 +26,8 @@ name: e2e
 # `preview e2e passed` on the pull request's head, success only when every shard of both engines passed against the preview
 # for that exact commit, and the @local tests against a local build of it, with no flaky test (playwright.config.ts fails
 # flakes there). A ruleset on master requires it, so
-# GitHub refuses to move master to a commit that has not passed (CLAUDE.md). A flake turns it red on purpose; the failed
-# jobs may be re-run once after clearing the change (CLAUDE.md, Flakes), and the re-run's verdict replaces the first. Each
+# GitHub refuses to move master to a commit that has not passed (AGENTS.md). A flake turns it red on purpose; the failed
+# jobs may be re-run once after clearing the change (AGENTS.md, Flakes), and the re-run's verdict replaces the first. Each
 # attempt keeps its artifacts.
 on:
   push:

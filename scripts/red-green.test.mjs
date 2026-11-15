@@ -38,7 +38,7 @@ test('every app file goes back, the test side stays; only kept test files run', 
   assert.deepEqual(c.app.map((f) => f.path), ['src/client/call.ts', 'index.html', 'public/x.png', 'wrangler.jsonc', 'vite.config.ts']);
   assert.deepEqual(c.e2e.map((f) => f.path), ['e2e/share.spec.ts']);
   assert.deepEqual(c.unit.map((f) => f.path), ['test/new.test.ts']);
-  assert.deepEqual(classify('M\te2e/share.spec.ts\nM\tCLAUDE.md').app, []);
+  assert.deepEqual(classify('M\te2e/share.spec.ts\nM\tAGENTS.md').app, []);
 });
 
 test('a failure on code the branch adds is inconclusive, not a receipt', () => {
