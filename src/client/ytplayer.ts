@@ -2,13 +2,9 @@
 // protocol YouTube's own iframe API script speaks. That script is not loaded: it would run YouTube's code in this page,
 // which holds the rooms' keys. The player tells its state and time by itself after a `listening`.
 
+import { PLAYING, UNSTARTED, type PlayerReport } from '../core/partysync';
+
 export const YOUTUBE_ORIGIN = 'https://www.youtube-nocookie.com';
-
-/** YouTube's player states. */
-export const UNSTARTED = -1, ENDED = 0, PLAYING = 1, PAUSED = 2, BUFFERING = 3, CUED = 5;
-
-/** What the player said last, and when (performance.now()). */
-export type PlayerReport = { state: number; time: number; rate: number; duration: number; muted: boolean; at: number };
 
 export type Player = {
   play(): void;
