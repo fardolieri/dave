@@ -56,8 +56,8 @@ Rules:
   (for bugs no test can reach). Put any hook or helper the test needs (`src/client/hooks.ts`, `e2e/fixtures.ts`) in the
   "Regression test:" commit, so the test fails on the bug and not on a missing hook: the job calls that inconclusive.
 - **Review before the first push to master**, not after: an independent review subagent (or `/code-review`) on the diff.
-  Past reviews found real bugs every time they ran. Then review the fixes again (the fix diff only), until a round finds
-  nothing real, at most three rounds. Real means a concrete sequence that breaks something; nits do not start a round.
+  Past reviews found real bugs every time they ran. A real finding is a concrete sequence that breaks something; a nit
+  is not one.
 - **Saved state needs a migration story.** Anything in `localStorage`, IndexedDB or a Room's storage outlives a deploy:
   changing a default or a stored shape does not reach existing data by itself, and no preview meets old data (they start
   empty), so the live site is the first place a migration runs. Either migrate, or say plainly in the report who will not
