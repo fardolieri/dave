@@ -1,6 +1,8 @@
 # 84 · No room let anyone in: the day's Durable Object time was used up by Rooms kept awake
 
-Status: fix in review (PR "The Room closes a socket once"); the watch on the free plan's use is not built yet
+Status: fix shipped 2026-11-16 21:08 UTC (cdc03ea, PR #152; its gate status set by hand on the owner's word, the suite
+having passed on a local build in CI, run 43954317539, while no preview could run); our own limit and the watch on the
+free plan's use in review (PR "The live site closes its rooms itself…")
 Type: bug, outage (reported by the owner, 2026-11-16 19:05 UTC: "is dave down? I cant reach prod")
 
 ## The outage
@@ -94,7 +96,28 @@ Room has closed it, where it was `challenge` before.
   reset: the same cut-off client against a preview without the fix and against the PR's, read from the analytics.
 - Whether frames sent to a socket that is dead but not yet swept (up to 150 s) can fill its connection's buffer and hold
   a Room the same way. Nothing in the logs of that day says so: the stretches begin at sweeps.
-- Nothing watches the free plan's use. Had something said "40% of the day's Durable Object time is gone" at 16:45 UTC,
-  there were two hours left to act. To build: a check of `/relay-usage` on a schedule that tells the owner.
-- The runtime's bug is Cloudflare's to fix; not reported yet.
+- Nothing watched the free plan's use. Had something said "40% of the day's Durable Object time is gone" at 16:45 UTC,
+  there were two hours left to act. Built after: see below.
+- The runtime's bug is Cloudflare's to fix, and known there: workerd issue #7595 (2026-10-01) and pull request #8180
+  (2026-11-03, the one line that restores the flag), both open, neither saying that it keeps an object awake and billed.
 - The account is on the free plan, whose limits fail hard (ADR 0002). The paid plan ($5 a month) has no daily limit.
+
+## After: our own limit, and a watch
+The fix could not go the usual way that evening: master takes only a commit whose preview passed the browser suite, and
+the previews' Rooms were refused like the live ones. Two things so that it does not come to that again:
+
+- **Our own limit**, 12,000 GB-s of the day's Durable Object time (`OWN_COMPUTE_LIMIT`, wrangler.jsonc; the live site
+  only). From there on the Worker takes a socket itself and closes it with 4007 before any Room is asked, until the day
+  ends, UTC. The app says "Today's server time is used up: the rooms are back at 01:00" and asks again every five
+  minutes instead of every few seconds. The last 1,000 are meant for the previews, not promised to them: the figure
+  is Cloudflare's, some minutes behind, kept up to two more in the Worker (half a minute from 80 % on); a socket still
+  attached stays, and a Room already awake runs on. At that afternoon's worst pace (683 GB-s in five minutes) 1,000
+  last seven minutes. It does not keep dave up longer: it goes dark a little earlier, by its own word, and in all but
+  a runaway with the gate to master still working.
+- **A watch** (`quota-watch.yml`, every quarter of an hour): at 40 % and 70 % of a daily limit, an issue labelled `quota`
+  and a red run, which mails the owner. It asks Cloudflare itself, so it tells with the site down too.
+
+The recording PostHog has of that browser (15:40 to 21:15 UTC) added this: the friend was hardly at the machine (181
+active seconds), the sockets died one after the other, 30 to 90 s after each was opened, for minutes at a time, and the
+first video of a watch party was loaded at 16:43:53, after two of the bursts. Something on that browser's way to
+Cloudflare dropped quiet connections in phases; what, the recording cannot say.
