@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-16T15:12 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-16T20:57 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 26, branch 142, preview 168.
+Runs recorded: nightly 26, branch 139, preview 167.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -73,4 +73,3 @@ Runs recorded: nightly 26, branch 142, preview 168.
 | 1 | 1 | preview 1 | resilience.spec.ts › an offer stuck for a friend who then reloads leaves their new connection alone (the impolite side reloads, the last to join) | expect(locator).toHaveText(expected) failed | [10-18](https://github.com/fardolieri/dave/actions/runs/39170177231/attempts/1) | [10-18](https://github.com/fardolieri/dave/actions/runs/39170177231/attempts/1) | 51 |
 | 1 | 1 | preview 1 | attachment.spec.ts › regression: a picture cancelled and asked again while its first pull waited is one pull, and Cancel stops it | console warnings, errors or exceptions nobody expected: Alice: error: WebSocket connection to 'wss://dave-pr-78.danielmittereder.workers.dev/ws/qEi_igJRNcpz8r-4 | [10-18](https://github.com/fardolieri/dave/actions/runs/39080940242/attempts/1) | [10-18](https://github.com/fardolieri/dave/actions/runs/39080940242/attempts/1) | 55 |
 | 1 | 1 | preview 1 | privacy.spec.ts › a fresh browser is asked once, again only from the sidebar, and sends nothing to PostHog before a yes or after a no | console warnings, errors or exceptions nobody expected: Alice: error: WebSocket connection to 'wss://dave-pr-78.danielmittereder.workers.dev/ws/PqwaNHGDqaszUjC9 | [10-18](https://github.com/fardolieri/dave/actions/runs/39080940242/attempts/1) | [10-18](https://github.com/fardolieri/dave/actions/runs/39080940242/attempts/1) | 55 |
-| 1 | 1 | branch 1 | text.spec.ts › texts from more than 18 h before the room came on screen wait behind a button, folded again each time it does | expect(received).toEqual(expected) // deep equality | [10-17](https://github.com/fardolieri/dave/actions/runs/39049062343/attempts/1) | [10-17](https://github.com/fardolieri/dave/actions/runs/39049062343/attempts/1) | f9efd75 (fixed) |
