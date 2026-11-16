@@ -318,5 +318,9 @@
  {
   "match": "^attachment\\.spec\\.ts › a video goes big over the page on its button and back, .* \\| expect\\(received\\)\\.toBeGreaterThan",
   "ticket": "82"
+ },
+ {
+  "match": "^resilience\\.spec\\.ts › a friend whose server socket drops and comes back plays no join cue for a friend in the room but out of the call \\| expect\\(received\\)\\.toEqual",
+  "ticket": "83"
  }
 ]
