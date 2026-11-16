@@ -314,5 +314,9 @@
  {
   "match": "^attachment\\.spec\\.ts › ADR 0009: a picture sent while nobody else was there comes from the server, sealed, once its sender is gone \\|",
   "ticket": "81"
+ },
+ {
+  "match": "^attachment\\.spec\\.ts › a video goes big over the page on its button and back, .* \\| expect\\(received\\)\\.toBeGreaterThan",
+  "ticket": "82"
  }
 ]
