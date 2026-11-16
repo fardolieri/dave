@@ -10,6 +10,8 @@ import type { LaunchOptions } from '@playwright/test';
 export const LOCAL_PORT = Number(process.env['E2E_PORT']) || 4179;
 /** A deployed copy to drive, or undefined for the local build. Empty counts as unset: CI passes an empty E2E_URL for a local run. */
 export const target: string | undefined = process.env['E2E_URL'] || undefined;
+/** Whether a deployed copy is a pull request's preview (preview.yml names its Worker dave-pr-<number>). */
+export const isPreview = (url: string): boolean => /^https:\/\/dave-pr-\d+\./.test(url);
 
 
 /**

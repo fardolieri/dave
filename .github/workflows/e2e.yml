@@ -19,7 +19,8 @@ name: e2e
 # Each engine is split into shards on runners of their own, its tests dealt out one by one (scripts/e2e-shards.mjs): the
 # whole suite on one runner took about 7 minutes. Eight per engine: 16 jobs stay under the 20 a free account runs at once, and beyond that each runner's
 # ~40 s of setup outweighs its share of the tests. A preview's run adds the two @local jobs: 18, and with a ready PR's ci
-# and red-green beside them a job or two may wait a minute for a runner. A runner has its own IP, so a preview's upgrade limit sees one shard.
+# and red-green beside them a job or two may wait a minute for a runner. A runner has its own IP, so a preview's upgrade limit sees
+# one shard, which runs two tests at a time (playwright.config.ts).
 # The report and the traces of failures are kept as an artifact.
 #
 # The preview run is the gate to master, and master deploys the live site: its last job writes the commit status

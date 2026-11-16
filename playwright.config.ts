@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
-import { launchOptions, LOCAL_PORT, originFor, target } from './e2e/browsers';
+import { isPreview, launchOptions, LOCAL_PORT, originFor, target } from './e2e/browsers';
 
 /**
  * The browser test suite (e2e/). Real browsers, the real Worker and Room, real WebRTC between the browsers.
@@ -27,8 +27,10 @@ export default defineConfig({
   // Tests tagged @local need the preview server (vite.config.ts), where a deploy or an outage is staged: not run against a
   // deployed copy. A ready PR's preview run has them run against a local build of the PR instead (e2e.yml).
   grepInvert: target ? /@local/ : undefined,
-  // A deployed Worker limits socket upgrades per IP (see wrangler.jsonc): one test at a time there.
-  workers: Number(process.env['E2E_WORKERS']) || (ci && !target ? 2 : 1),
+  // Two tests at a time on a CI runner: against a local build, and against a pull request's preview, whose limit on
+  // socket upgrades per IP leaves room for them (wrangler.jsonc; every shard has a runner and so an IP of its own). Any
+  // other deployed copy has the live site's limit: one test at a time there, as on a dev box.
+  workers: Number(process.env['E2E_WORKERS']) || (ci && (!target || isPreview(target)) ? 2 : 1),
   retries: ci ? 1 : 0,
   // Against a deployed copy in CI, and in the gate's run against a local build (E2E_GATE, e2e.yml: a preview's run is the
   // gate to master), a test that only passed on its retry fails the run: a flake is a bug to explain, not noise (ticket 35).
