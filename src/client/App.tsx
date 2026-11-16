@@ -512,10 +512,10 @@ function Workspace(props: WorkspaceProps) {
   };
   const unstageFile = dropStaged;
   /** The cards of the videos the composer's text links to (Composer, `onVideos`): those of other videos go. */
-  const stageVideos = (videos: string[]) => {
-    for (const x of untrack(staged)) if (x.youtube && !videos.includes(x.youtube.id)) dropStaged(x.id);
+  const stageVideos = (videos: string[]) => untrack(() => {
+    for (const x of staged()) if (x.youtube && !videos.includes(x.youtube.id)) dropStaged(x.id);
     for (const video of videos) stageVideo(video);
-  };
+  });
   // A file dropped anywhere on the page waits above the composer, as a picked one does: friends drop it on the text
   // field or the sidebar as often as on the log. It is never left to the browser, which would open it in place of the
   // app; it is staged only while something can be sent.
@@ -2153,8 +2153,8 @@ function VersionDialog() {
   const [history, setHistory] = createSignal<HistoryUsage | 'unknown' | null>(null);
   let historyAsks = 0;
   // The figure nearest its limit of those shown below, for the fold's summary; none while a section is not known, which
-  // could hold a nearer one.
-  const nearest = () => {
+  // could hold a nearer one. The same object while it says the same, so the summary is not drawn again on every tick.
+  const nearest = createMemo(() => {
     const r = relay();
     const h = history();
     if (r === 'unknown' || h === 'unknown') return null;
@@ -2170,7 +2170,7 @@ function VersionDialog() {
     }
     const top = shown.sort((a, b) => b.value / b.limit - a.value / a.limit)[0];
     return top ? { name: top.name, pct: formatPercent(top.value, top.limit), fill: fillOf(top.value, top.limit) } : null;
-  };
+  }, { equals: (a, b) => a === b || (!!a && !!b && a.name === b.name && a.pct === b.pct && a.fill === b.fill) });
   // Whether any meter shown has a pace line, as the sections below decide: a figure of this day or month.
   const paced = () => {
     const r = relay();
@@ -2371,7 +2371,9 @@ function Composer(props: {
   // off stays off while its link stays in the text. Each draft (the room's, a conversation's) has its own taken off.
   const draftVideos = createMemo(() => videosIn(draft()), { equals: sameItems });
   const takenOff = new Map<string, Set<string>>();
-  const takenOffHere = () => { const k = privateKey() ?? ''; if (!takenOff.has(k)) takenOff.set(k, new Set()); return takenOff.get(k)!; };
+  // The draft on screen's, read as it is: a conversation comes on screen with its draft empty, so the links change with
+  // the draft (or stay none), and the effect below need not watch which draft it is.
+  const takenOffHere = () => { const k = untrack(privateKey) ?? ''; if (!takenOff.has(k)) takenOff.set(k, new Set()); return takenOff.get(k)!; };
   // After `privateHeld`: an effect reads what it watches as it is made.
   // Only when either changes: a friend's presence changing (`privateTo`) must not ask YouTube again for a card that took
   // itself off.

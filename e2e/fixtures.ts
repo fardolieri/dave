@@ -749,6 +749,21 @@ const SOLID_ALLOWED: RegExp[] = [
   /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "createCall\.inCall": .* by writing "rooms"/,
   // The page wears the top room's look (client/theme.ts): set on the document and told to PostHog as it changes.
   /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "rooms": .* by writing "theme"/,
+  // A room or a conversation is read as it comes on screen and while it is there (client/App.tsx, client/privates.ts):
+  // the count is kept over a reload, and what was unread at that moment holds the log open until the next time
+  // (`readFrom`), a snapshot of then, not something to compute from the lines. The room counts a text unread as it comes
+  // and does not know it is on screen, so the one on screen is read after it (a conversation's badge already shows none).
+  /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "(selected|createRoom\.lines)": .* by writing "createRoom\.readFrom"/,
+  /^warning: \[EFFECT_WRITES_OWN_SOURCE\] effect "effect" re-ran because of its own write: it wrote "createRoom\.unread" \(\d+ → 0\)/,
+  // The conversation list is kept, and written by opening, deleting and reading it back as well as by a room of two's
+  // newest line (client/privates.ts): it follows that line a flush later.
+  /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "createRoom\.(lines|pending)": .* by writing "createPrivates\.threads"/,
+  // A YouTube link in the draft stages its card (client/App.tsx), which is fetched, can be taken off and stays off: the
+  // staged files are state of their own, not computed from the draft.
+  /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "(roomDraft|privateDraft)": .* by writing "(roomStaged|privateStaged)"/,
+  // Taking a friend's newer change to the watch party declares it as mine (client/party.ts), sealed and sent to the
+  // room: what I declared is mine to change, not a copy of theirs.
+  /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "createParty\.parties": .* by writing "createParty\.mine"/,
 ];
 
 async function writeSolidDiagnostics(friends: Friend[], testInfo: TestInfo): Promise<void> {
