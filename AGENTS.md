@@ -93,8 +93,14 @@ bad deploy: `rollback.yml` from the Actions tab, then a fix. Prefer small PRs, s
 - **Every night:** the chaos soak (`soak.yml`, 01:00 UTC, a local build of master) opens `soak` issues with a minimal
   sequence; the night shift (`scripts/night-shift/`, on the dev box, 02:30 UTC) turns new problem reports into
   draft "Repro:" PRs.
+- **Every quarter of an hour:** the Workers Free plan's daily limits (`quota-watch.yml`, asked of Cloudflare itself). At 40 %
+  and at 70 % of one, each once a day: an issue labelled `quota` and a red run, which mails the owner. Past a limit every
+  Durable Object of the account fails until midnight UTC, the previews' with the live site's. The live site lets no new
+  socket into a room from 12,000 GB-s of Durable Object time on (`OWN_COMPUTE_LIMIT`, `wrangler.jsonc`) and tells the
+  friends when the rooms are back: the last 1,000 are meant for the previews, and with them the gate to master, though
+  a runaway can still use them up (ticket 84).
 - **Every session's briefing** (`scripts/claude/session-start.sh`) says how the unattended parts did: the night shift's last
-  run, open soak issues, waiting reproductions, whether master's head reached the live site. A warning there comes before
+  run, open soak and `quota` issues, waiting reproductions, whether master's head reached the live site. A warning there comes before
   new work.
 - **In the field:** `invariant_violation`, `$exception` and `bug_report` in PostHog (read recipe in the auto memory).
 

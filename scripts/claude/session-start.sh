@@ -46,10 +46,14 @@ if [ -n "$token" ]; then
   head=$(git rev-parse origin/master 2>/dev/null)
   tmp=$(mktemp -d)
   gh_api "issues?labels=soak&state=open&per_page=50" > "$tmp/soak" & gh_api "pulls?state=open&per_page=50" > "$tmp/pulls" &
+  gh_api "issues?labels=quota&state=open&per_page=5" > "$tmp/quota" &
   gh_api "actions/workflows/deploy.yml/runs?branch=master&event=push&per_page=1" > "$tmp/deploy" &
   gh_api "actions/workflows/rollback.yml/runs?status=success&per_page=1" > "$tmp/rollback" & gh_api "contents/top.txt?ref=flake-ledger" > "$tmp/flakes" & wait
   soak=$(jq -r 'if type == "array" then [.[] | "#\(.number) \(.title[0:90])"] | join("\n") else empty end' "$tmp/soak" 2>/dev/null)
   [ -n "$soak" ] && { echo "- Open soak issues (the nightly chaos soak found these; triage before new work):"; echo "$soak" | sed 's/^/    /'; }
+  # Much of a daily limit of Cloudflare's free plan used (quota-watch.yml): past it no room lets anyone in (ticket 84).
+  quota=$(jq -r 'if type == "array" then [.[] | "#\(.number) \(.title[0:90])"] | join("\n") else empty end' "$tmp/quota" 2>/dev/null)
+  [ -n "$quota" ] && { echo "- WARNING: the free plan's day is running out (find what uses it before new work):"; echo "$quota" | sed 's/^/    /'; }
   repro=$(jq -r 'if type == "array" then [.[] | select(.head.ref | startswith("night-shift/")) | "#\(.number) \(.title[0:90])"] | join("\n") else empty end' "$tmp/pulls" 2>/dev/null)
   [ -n "$repro" ] && { echo "- Night shift reproductions waiting:"; echo "$repro" | sed 's/^/    /'; }
   deploy=$(jq -r '.workflow_runs[0]? // empty | if .status == "completed" then .conclusion else .status end' "$tmp/deploy" 2>/dev/null)

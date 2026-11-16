@@ -1,0 +1,39 @@
+name: quota-watch
+# Tells the owner when the account has used much of one of the Workers Free plan's daily limits (scripts/quota-watch.mjs):
+# at 40 % and at 70 %, each once a day, with an issue labelled `quota` and a red run, which is what mails. Past a limit
+# every Durable Object of the account fails until midnight UTC, the live site's rooms and the previews' alike, and nothing
+# said so before it did (ticket 84, 2026-11-16). Every other run is green and says the day's use in its summary.
+# It asks Cloudflare itself, with the token the Worker reads its analytics with, so it tells with the live site down too.
+on:
+  schedule:
+    # Every quarter of an hour, off the full hour, when GitHub starts scheduled runs latest.
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "ask Cloudflare and say what it would do, without an issue or a red run"
+        type: boolean
+        default: true
+concurrency:
+  group: quota-watch
+permissions:
+  contents: read
+  issues: write
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      # Node runs the script as it is, and reads core/relayusage.ts with its types taken off: nothing to install.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: node scripts/quota-watch.mjs ${{ inputs.dry_run && '--dry-run' || '' }}
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          RELAY_USAGE_API_TOKEN: ${{ secrets.RELAY_USAGE_API_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
