@@ -1,3 +1,3 @@
 1x this week (2x in 30 days) attachment.spec.ts › a picture that could not be pulled while its sender was frozen is pull: expect(received).not.toContain(expected) // indexOf (ticket 51)
+1x this week (1x in 30 days) resilience.spec.ts › a friend whose server socket drops and comes back plays no join cue fo: expect(received).toEqual(expected) // deep equality (no ticket)
 1x this week (1x in 30 days) resilience.spec.ts › a relay-only rebuild whose ICE failed comes back with voice both ways : expect(locator).toHaveText(expected) failed (no ticket)
-1x this week (1x in 30 days) attachment.spec.ts › a video goes big over the page on its button and back, playing on, the: expect(received).toBeGreaterThan(expected) (ticket 82)
