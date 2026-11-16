@@ -12,7 +12,16 @@
     "POSTHOG_HOST": "https://eu.i.posthog.com",
     // Which copy of the app this Worker is, sent as `build_target` with its PostHog events like the client's (vite.config.ts buildInfo).
     // `pnpm dev` runs with these top-level vars: .dev.vars sets it to "local" there (.dev.vars.example); one without it says "live".
-    "BUILD_TARGET": "live"
+    "BUILD_TARGET": "live",
+    // Our own limit on the account's Durable Object time in a day (UTC), GB-s, under the Workers Free plan's 13,000: from
+    // here on the Worker lets no new socket into a Room until the day ends, and tells the app why (worker/index.ts,
+    // CLOSE_USED_UP). Past Cloudflare's limit every Durable Object of the account fails, the previews' with the live
+    // site's, and no change can pass its preview's tests on the way to master: on 2026-11-16 a fix waited for midnight
+    // that way (ticket 84). The 1,000 between are meant for the previews. Not a promise: the figure is Cloudflare's,
+    // minutes behind; sockets already attached stay, and a Room already awake runs on. At that day's worst pace (137
+    // GB-s a minute) the 1,000 last seven minutes. The live site only: the previews' environment has no such var. On
+    // the paid plan, which has no daily limit: 0, or it closes the rooms for nothing.
+    "OWN_COMPUTE_LIMIT": 12000
   },
   "durable_objects": {
     // STORE: the one object that keeps every room's sealed texts for friends who were away (docs/adr/0009).

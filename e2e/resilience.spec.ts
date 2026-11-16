@@ -1,4 +1,5 @@
 import { roomIdOf } from '../src/core/rooms';
+import { CLOSE_USED_UP } from '../src/core/protocol';
 import { expect, needHooks, newSecret, test, type Friend } from './fixtures';
 
 test('the call survives the server going away and coming back', async ({ crowd }) => {
@@ -20,6 +21,21 @@ test('the call survives the server going away and coming back', async ({ crowd }
   await expect.poll(() => bob.inCall()).toEqual(['Bob', 'Alice']);
   await alice.connectedTo('Bob');
   await bob.connectedTo('Alice');
+});
+
+test("the day's server time used up is said as it is, with the time the rooms are back, and asked again seldom", async ({ crowd }) => {
+  // Our own limit on the day's Durable Object time (wrangler.jsonc, OWN_COMPUTE_LIMIT; ticket 84): past it the Worker
+  // closes every socket with 4007 before any Room is asked. Staged at the page's wire: a preview has no such limit.
+  const alice = await crowd.open('Alice');
+  await alice.connected();
+  alice.wire.refusal = { code: CLOSE_USED_UP, reason: 'server time used up for today' };
+  await alice.wire.cut();
+  await expect(alice.banner).toContainText(/Today's server time is used up: the rooms are back at \d\d:\d\d\. Voice and shares under way continue, texts wait\./);
+  // Not every second or two, as after a lost socket: the answer would be the same until the day ends.
+  const refused = alice.wire.refused;
+  await alice.page.waitForTimeout(4_000);
+  expect(alice.wire.refused, 'no further try in four seconds').toBe(refused);
+  await expect(alice.banner).toContainText("Today's server time is used up");
 });
 
 test('a frame on its way to the server as it goes away is lost with the socket, and nothing is written to it closing', async ({ crowd }) => {

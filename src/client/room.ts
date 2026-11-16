@@ -9,7 +9,7 @@ import { createFileWatchdog } from './invariants';
 import { exposeHooks } from './hooks';
 import { big, hashOf, holdSent, holdSentList, keepFile, keptFile, makePreview, noRoom, piecesOf, sweepFiles } from './files';
 import {
-  CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, MAX_TEXT_LENGTH, PING_FRAME, PING_INTERVAL_MS,
+  CLOSE_AUTH_FAILED, CLOSE_SUPERSEDED, CLOSE_USED_UP, MAX_TEXT_LENGTH, PING_FRAME, PING_INTERVAL_MS,
   identityOf, sameIdentity, type ClientMessage, type Identity, type KeptEntry, type Person, type PrivateTextKey, type RequestId, type ServerMessage, type TextId, type WireIdentity, type WirePerson,
 } from '../core/protocol';
 import {
@@ -25,13 +25,15 @@ import { mergeByAt } from '../core/chatlog';
 import { pieceTagOf } from '../core/rooms';
 import { FROM_JOIN, KEPT_PIECE_BYTES, SYNC_COOLDOWN_MS, keptKind, keptPiecesOf, pieceId, syncSince } from '../core/kept';
 import { PIECE_RATE_PER_SECOND } from '../core/room';
+import { dayEnds } from '../core/relayusage';
 import { appendHistory, clearHistory, doneForgetting, FORGET_NOW, forgettingOf, historyFromAt, keepForgetting, historySyncedTo, keepHistoryFrom, keepHistorySynced, keepUnsent, lineKey, loadHistory, loadUnsent, type StoredText } from './history';
 
 export type ServerStatus =
   | { kind: 'connecting' }
   | { kind: 'connected' }
   | { kind: 'reconnecting'; since: number }
-  | { kind: 'unavailable'; since: number }
+  /** `usedUp`: the day's server time is used up (close code 4007), and when the day ends: the server says so itself. */
+  | { kind: 'unavailable'; since: number; usedUp?: number }
   | { kind: 'refused'; reason: string }
   /** Another tab or window of this browser opened the room; this one stepped back (close code 4004). */
   | { kind: 'elsewhere' };
@@ -77,6 +79,12 @@ const UNAVAILABLE_AFTER_MS = 30_000;
 /** Texts shown remembered by writer and id, to show a text sent again only once (ticket 51); the oldest are forgotten. */
 const SEEN_TEXTS_MAX = 1000;
 const BACKOFF_MAX_MS = 30_000;
+/**
+ * How often a room asks again while the day's server time is used up (CLOSE_USED_UP): the answer costs the server next
+ * to nothing, and comes sooner than the day's end should the limit be lifted. Each room a little apart from the others.
+ */
+const USED_UP_RETRY_MS = 5 * 60_000;
+const USED_UP_SPREAD_MS = 30_000;
 /**
  * A socket the server has not let in after this long is given up and tried again. The upgrade or the handshake can hang
  * on the way to the Room, and no close comes for it: the app sat on "Connecting…" for good (nightly, ticket 48). The
@@ -1347,6 +1355,15 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     if (code === CLOSE_AUTH_FAILED) {
       stopped = true;
       setStatus({ kind: 'refused', reason: 'the invite link is wrong or has been rotated' });
+      return;
+    }
+    if (code === CLOSE_USED_UP) {
+      // No Room was asked, and none will be until the day ends (UTC): said as it is, and asked again seldom.
+      clearTimeout(unavailableTimer);
+      downSince ??= now;
+      const until = dayEnds(now);
+      setStatus({ kind: 'unavailable', since: downSince, usedUp: until });
+      reconnectTimer = setTimeout(open, Math.min(until - now, USED_UP_RETRY_MS) + Math.random() * USED_UP_SPREAD_MS);
       return;
     }
     if (downSince === null) {

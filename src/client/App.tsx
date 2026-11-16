@@ -1946,6 +1946,7 @@ function Banner(props: { status: ServerStatus; onTakeOver: () => void }) {
       <Match when={props.status.kind === 'elsewhere'}><div class="banner banner-warn">This room is open in another tab or window of this browser. <button class="link" onClick={props.onTakeOver}>Use it here instead</button></div></Match>
       <Match when={props.status.kind === 'connecting'}><div class="banner banner-warn">Connecting…</div></Match>
       <Match when={props.status.kind === 'reconnecting'}><div class="banner banner-warn">Reconnecting to server… voice and shares continue, texts go out once it is back</div></Match>
+      <Match when={props.status.kind === 'unavailable' && props.status.usedUp !== undefined && props.status}>{(s) => <div class="banner banner-bad">Today's server time is used up: the rooms are back at {new Date(s().usedUp!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}. Voice and shares under way continue, texts wait.</div>}</Match>
       <Match when={props.status.kind === 'unavailable'}><div class="banner banner-bad">Server unavailable, retrying. Voice and shares continue, texts wait.</div></Match>
       <Match when={props.status.kind === 'refused' && props.status}>{(s) => <div class="banner banner-bad">Refused: {s().reason}. Ask for a fresh invite link.</div>}</Match>
     </Switch>

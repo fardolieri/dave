@@ -37,6 +37,10 @@ export type Tamper = (frame: string, pass: (frame: string) => void) => string | 
 export class Wire {
   private routes = new Set<{ page: WebSocketRoute; server: WebSocketRoute; closing: boolean; severed: boolean }>();
   private refusing = false;
+  /** What a socket opened while the server is away (`cut`) is closed with: the server down, unless a test says otherwise. */
+  refusal: { code: number; reason: string } = { code: 1011, reason: 'e2e: server down' };
+  /** How many sockets were refused so. */
+  refused = 0;
   /**
    * This many of the next sockets open and are never answered, as when the upgrade or the handshake hangs somewhere on the
    * way to the Room (nightly, ticket 48): no challenge comes, and nothing closes them.
@@ -60,7 +64,7 @@ export class Wire {
   droppedSince(at: number): boolean { return this.closes.some((c) => c.side === 'server' && c.code === 1006 && c.at >= at); }
 
   attach(route: WebSocketRoute): void {
-    if (this.refusing) { void route.close({ code: 1011, reason: 'e2e: server down' }); return; }
+    if (this.refusing) { this.refused++; void route.close(this.refusal); return; }
     // Not connected to the server, the page's socket opens all the same (Playwright's mock) and hears nothing.
     if (this.unanswered > 0) { this.unanswered--; return; }
     const server = route.connectToServer();

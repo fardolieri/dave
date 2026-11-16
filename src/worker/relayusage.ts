@@ -1,5 +1,5 @@
 import type { CredentialRequest } from '../core/turn';
-import { RELAY_FREE_BYTES, freePlanRequest, monthSoFar, parseFreePlan, parseRelayBytes, relayUsageRequest, type FreePlanToday, type RelayUsage } from '../core/relayusage';
+import { RELAY_FREE_BYTES, freePlanRequest, monthSoFar, parseFreePlan, parseRelayBytes, relayUsageRequest, usedUp, type FreePlanToday, type RelayUsage } from '../core/relayusage';
 
 /**
  * `/relay-usage`: how much the TURN relay sent this month, and what the account used today of the free plan's limits
@@ -13,6 +13,19 @@ export const RELAY_USAGE_PATH = '/relay-usage';
 
 /** How long an answer is kept, in this isolate: the About dialog of every friend asks the API at most this often per isolate. */
 const KEEP_MS = 10 * 60_000;
+/**
+ * How long the free plan's figure is kept for the gate (`usedUpToday`), and how long from 80 % of our limit on: the limit
+ * is 1,000 GB-s under Cloudflare's, and on 2026-11-16 the Rooms used 3,720 in their worst hour, 137 a minute in its
+ * worst five (ticket 84). Cloudflare's count is some minutes behind too.
+ */
+const GATE_KEEP_MS = 2 * 60_000;
+const GATE_KEEP_NEAR_MS = 30_000;
+/**
+ * How long a socket waits at the gate for the day's figure when this isolate has none, or none younger than
+ * GATE_FRESH_MS (an isolate no socket came to for a while): then it goes on, not known.
+ */
+const GATE_WAIT_MS = 1500;
+const GATE_FRESH_MS = 5 * 60_000;
 /** How long a failure is kept, so a broken token or an API outage is not asked again on every open. */
 const KEEP_FAILURE_MS = 60_000;
 /** A call older than its 5 s timeout and some is not joined: the next request asks anew. */
@@ -42,8 +55,8 @@ function keptFigure<T>(period: (now: number) => string, ask: (token: string, acc
   let asking: { since: number; done: Promise<void> } | null = null;
   let calls = 0;
   return {
-    async get(token: string, account: string, now: number, keepAlive?: (call: Promise<unknown>) => void): Promise<T | null> {
-      const stale = () => !kept || now - kept.at > (kept.value === null ? KEEP_FAILURE_MS : KEEP_MS) || kept.period !== period(now);
+    async get(token: string, account: string, now: number, keepAlive?: (call: Promise<unknown>) => void, keepMs = KEEP_MS, waitMs = WAIT_MS): Promise<T | null> {
+      const stale = () => !kept || now - kept.at > (kept.value === null ? KEEP_FAILURE_MS : keepMs) || kept.period !== period(now);
       if (stale()) {
         if (!asking || Date.now() - asking.since > ASKING_MS) {
           const call = ++calls;
@@ -56,11 +69,13 @@ function keptFigure<T>(period: (now: number) => string, ask: (token: string, acc
           asking = mine;
           keepAlive?.(mine.done);
         }
-        await atMost(asking.done, WAIT_MS);
+        await atMost(asking.done, waitMs);
         if (stale()) return null; // not answered in time: not known, rather than an old figure as today's
       }
       return kept?.value ?? null;
     },
+    /** The last answer of this period, if no older than `maxAgeMs`; null for none, or a failure. Never asks. */
+    known(now: number, maxAgeMs: number): T | null { return kept && kept.period === period(now) && now - kept.at <= maxAgeMs ? kept.value : null; },
     forget(): void { kept = null; asking = null; },
   };
 }
@@ -89,6 +104,34 @@ export async function relayUsage(env: Env, now = Date.now(), keepAlive?: (call: 
   }
 }
 
+/** The day this isolate saw our own limit used up: a day's use only grows, so it stays so until the day ends. */
+let stoppedOn: string | null = null;
+
+/**
+ * Whether the day's server time is used up by our own limit (core/relayusage.ts, `usedUp`; `OWN_COMPUTE_LIMIT`,
+ * wrangler.jsonc), as far as this isolate knows: the gate before every socket (worker/index.ts). With a figure of the
+ * last minutes it does not wait for Cloudflare: it reads the one kept here, and has it asked anew in `keepAlive` when
+ * that is older than GATE_KEEP_MS. With none (a new isolate, a new day, one no socket came to for a while) the socket
+ * waits for the answer, GATE_WAIT_MS at most, so that a browser is not let in where its friends are told the day is used up.
+ * No limit, no token, or Cloudflare not saying: not used up, and the socket goes on to its Room.
+ */
+export async function usedUpToday(env: Env, now: number, keepAlive: (call: Promise<unknown>) => void): Promise<boolean> {
+  const limit = env.OWN_COMPUTE_LIMIT;
+  const token = env.RELAY_USAGE_API_TOKEN;
+  const account = env.CLOUDFLARE_ACCOUNT_ID;
+  if (!limit || !token || !account) return false;
+  const day = monthSoFar(now).to;
+  if (stoppedOn === day) return true;
+  let today = freePlan.known(now, GATE_FRESH_MS);
+  const asked = freePlan.get(token, account, now, keepAlive, today && today.compute >= limit * 0.8 ? GATE_KEEP_NEAR_MS : GATE_KEEP_MS, GATE_WAIT_MS).catch(() => null);
+  if (today) keepAlive(asked);
+  else today = await asked;
+  if (!usedUp(today, now, limit)) return false;
+  stoppedOn = day;
+  console.warn('own limit reached', JSON.stringify({ day, compute: today?.compute, limit }));
+  return true;
+}
+
 /** One question to Cloudflare's API, its answer read by `parse`; null for any failure. */
 async function askFor<T>(req: CredentialRequest, parse: (json: unknown) => T | null): Promise<T | null> {
   try {
@@ -99,8 +142,14 @@ async function askFor<T>(req: CredentialRequest, parse: (json: unknown) => T | n
   }
 }
 
+/** Tests only: forget the free plan's figure, as a new isolate has none, but not that the day was seen used up. */
+export function forgetFreePlanFigure(): void {
+  freePlan.forget();
+}
+
 /** Tests only: forget what is kept. */
 export function forgetRelayUsage(): void {
   relay.forget();
   freePlan.forget();
+  stoppedOn = null;
 }

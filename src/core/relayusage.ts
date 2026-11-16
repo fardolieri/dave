@@ -59,6 +59,40 @@ export const FREE_PLAN: Record<keyof Omit<FreePlanToday, 'day'>, number> = {
   stored: 5_000_000_000,
 };
 
+/**
+ * Whether `today`, the account's use as last known, says the day `now` is in has used up `limit`: our own limit on the
+ * day's Durable Object time, GB-s, under Cloudflare's (the Worker's OWN_COMPUTE_LIMIT, wrangler.jsonc, which says why).
+ * No limit set, or the day's use not known: no.
+ */
+export function usedUp(today: FreePlanToday | null | undefined, now: number, limit: number | undefined): boolean {
+  return !!today && typeof limit === 'number' && limit > 0 && today.day === monthSoFar(now).to && today.compute >= limit;
+}
+
+/** When the day `now` is in ends, UTC: the free plan's daily limits start again, and ours with them. */
+export function dayEnds(now: number): number {
+  const d = new Date(now);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+}
+
+/**
+ * The shares of a daily limit at which the owner is told (scripts/quota-watch.mjs), each once a day: early enough to
+ * act, the first far above a usual day (under 15 % of the day's Durable Object time before ticket 84's fix).
+ */
+export const ALERT_SHARES = [0.4, 0.7] as const;
+
+/** The limits a day starts anew: all but `stored`, a total that the history's window keeps (ADR 0009). */
+export const DAILY_LIMITS = ['compute', 'objectRequests', 'workerRequests', 'rowsWritten', 'rowsRead'] as const satisfies ReadonlyArray<keyof typeof FREE_PLAN>;
+
+/** The daily limit `today` has used the largest share of, and that share (1 is all of it). */
+export function fullest(today: FreePlanToday): { limit: (typeof DAILY_LIMITS)[number]; share: number } {
+  return DAILY_LIMITS.map((limit) => ({ limit, share: today[limit] / FREE_PLAN[limit] })).reduce((a, b) => (b.share > a.share ? b : a));
+}
+
+/** The highest of ALERT_SHARES that `share` has reached, as a whole percentage (40, 70), or 0 for none. */
+export function alertStep(share: number): number {
+  return Math.round(Math.max(0, ...ALERT_SHARES.filter((s) => share >= s)) * 100);
+}
+
 /** The first day of `now`'s month and `now`'s day, UTC, as the API's `Date`s. A month never spans more than the 31 days it keeps. */
 export function monthSoFar(now: number): { from: string; to: string } {
   const to = new Date(now).toISOString().slice(0, 10);

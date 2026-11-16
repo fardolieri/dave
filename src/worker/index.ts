@@ -3,7 +3,8 @@ export { Store } from './store';
 import { isRoomId } from '../core/rooms';
 import { forward, PREFIX } from './posthog';
 import { logUpgradeFailed } from './telemetry';
-import { RELAY_USAGE_PATH, relayUsage } from './relayusage';
+import { RELAY_USAGE_PATH, relayUsage, usedUpToday } from './relayusage';
+import { CLOSE_USED_UP } from '../core/protocol';
 import { HISTORY_USAGE_PATH, historyUsage } from './historyusage';
 
 // Static assets are served by the platform before this code runs (see wrangler.jsonc),
@@ -20,6 +21,15 @@ export default {
     if (roomId !== null && isRoomId(roomId)) {
       if (request.headers.get('Upgrade') !== 'websocket') {
         return new Response('expected a websocket upgrade', { status: 426 });
+      }
+      // Our own limit on the day's Durable Object time (wrangler.jsonc, OWN_COMPUTE_LIMIT): past it no Room is asked for a
+      // new socket.
+      // The socket is taken here and closed with the reason, which the app shows; a refused upgrade would tell it nothing.
+      if (await usedUpToday(env, Date.now(), (call) => ctx.waitUntil(call))) {
+        const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket];
+        server.accept();
+        server.close(CLOSE_USED_UP, 'server time used up for today');
+        return new Response(null, { status: 101, webSocket: client });
       }
       // Per-IP cap on upgrade attempts so a stranger hammering the gate never wakes a Room.
       // The binding is optional so local dev and tests work without it.

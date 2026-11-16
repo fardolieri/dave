@@ -1,8 +1,11 @@
 import { env, exports } from 'cloudflare:workers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FREE_PLAN, RELAY_FREE_BYTES, elapsedOf, fillOf, formatBytes, formatCount, formatPercent, freePlanRequest, monthSoFar, parseFreePlan, parseRelayBytes, parseRelayUsage, relayUsageRequest, savesRelay } from '../src/core/relayusage';
+import { ALERT_SHARES, FREE_PLAN, RELAY_FREE_BYTES, alertStep, dayEnds, elapsedOf, fillOf, fullest, usedUp, formatBytes, formatCount, formatPercent, freePlanRequest, monthSoFar, parseFreePlan, parseRelayBytes, parseRelayUsage, relayUsageRequest, savesRelay } from '../src/core/relayusage';
 import { withoutTurn } from '../src/core/turn';
-import { forgetRelayUsage, relayUsage } from '../src/worker/relayusage';
+import { forgetFreePlanFigure, forgetRelayUsage, relayUsage, usedUpToday } from '../src/worker/relayusage';
+import worker from '../src/worker/index';
+import { CLOSE_USED_UP } from '../src/core/protocol';
+import { roomIdOf } from '../src/core/rooms';
 
 // The answer Cloudflare's GraphQL API gave for this account on 2026-11-02, TURN only (no SFU rows).
 const ANSWER = { data: { viewer: { accounts: [{ sfu: [], turn: [{ sum: { egressBytes: 14066575220 } }] }] } }, errors: null };
@@ -234,5 +237,139 @@ describe('the Worker’s /relay-usage', () => {
     expect(elapsedOf('month', Date.UTC(2026, 10, 1))).toBe(0);
     expect(elapsedOf('month', Date.UTC(2026, 10, 16))).toBe(0.5); // November: 30 days
     expect(elapsedOf('month', Date.UTC(2026, 1, 15))).toBe(0.5); // February 2026: 28 days
+  });
+});
+
+describe("our own limit on the day's server time (ticket 84)", () => {
+  afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); forgetRelayUsage(); });
+  const NOV_16 = Date.parse('2026-11-16T18:00:00Z');
+  const used = (compute: number, day = '2026-11-16') => ({ day, objectRequests: 0, workerRequests: 0, rowsWritten: 0, rowsRead: 0, compute, stored: 0 });
+
+  it('is used up from the limit on, for the day the figure is of, and never without a limit or a figure', () => {
+    expect(usedUp(used(11_999.9), NOV_16, 12_000)).toBe(false);
+    expect(usedUp(used(12_000), NOV_16, 12_000)).toBe(true);
+    expect(usedUp(used(13_217), NOV_16, 12_000)).toBe(true);
+    expect(usedUp(used(13_217, '2026-11-15'), NOV_16, 12_000), "yesterday's figure").toBe(false);
+    expect(usedUp(used(13_217), NOV_16, undefined), 'no limit: the previews').toBe(false);
+    expect(usedUp(used(13_217), NOV_16, 0), 'no limit: the paid plan').toBe(false);
+    expect(usedUp(null, NOV_16, 12_000), 'not known').toBe(false);
+    expect(dayEnds(NOV_16)).toBe(Date.parse('2026-11-17T00:00:00Z'));
+    expect(dayEnds(Date.parse('2026-12-31T23:59:59Z'))).toBe(Date.parse('2027-01-01T00:00:00Z'));
+  });
+
+  it('the watch tells at 40 and 70 % of the daily limit used most, and leaves out what is stored', () => {
+    expect(ALERT_SHARES).toEqual([0.4, 0.7]);
+    // The afternoon of 2026-11-16, as /relay-usage had it at 19:07 UTC.
+    const outage = { day: '2026-11-16', objectRequests: 38508.5, workerRequests: 16006, rowsWritten: 17921, rowsRead: 56359, compute: 13216.46, stored: 227504130 };
+    expect(fullest(outage).limit).toBe('compute');
+    expect(fullest(outage).share).toBeCloseTo(1.0167, 3);
+    expect(fullest({ ...outage, compute: 100, stored: FREE_PLAN.stored })).toEqual({ limit: 'objectRequests', share: 38508.5 / FREE_PLAN.objectRequests });
+    expect([0, 0.399, 0.4, 0.69, 0.7, 1.02].map(alertStep)).toEqual([0, 0, 40, 40, 70, 70]);
+  });
+
+  const configured = { ...env, RELAY_USAGE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acct', OWN_COMPUTE_LIMIT: 12_000 } as Env;
+  /** Cloudflare as the gate asks it: the day's Durable Object time, GB-s. */
+  const cloudflare = (duration: number) => vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+    Response.json({ data: { viewer: { accounts: [{ objects: [], workers: [], periodic: [{ sum: { rowsRead: 0, rowsWritten: 0, duration } }], stored: [] }] } } }));
+  /** The request's waitUntil, and what it was handed. */
+  const kept = () => { const calls: Array<Promise<unknown>> = []; return { keep: (p: Promise<unknown>) => { calls.push(p); }, done: () => Promise.all(calls) }; };
+
+  it('the gate is shut from our limit on, and for the rest of that day whatever Cloudflare says after; the next day starts open', async () => {
+    const api = cloudflare(12_000.5);
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const k = kept();
+    expect(await usedUpToday(configured, NOV_16, k.keep), 'no figure yet: the socket waits for it').toBe(true);
+    expect(api).toHaveBeenCalledTimes(1);
+    expect(warned).toHaveBeenCalledWith('own limit reached', expect.stringContaining('"limit":12000'));
+    // Cloudflare failing later, and the failure known, opens nothing: a day's use only grows.
+    api.mockImplementation(async () => new Response('no', { status: 500 }));
+    forgetFreePlanFigure();
+    expect(await usedUpToday(configured, NOV_16 + 10 * 60_000, k.keep)).toBe(true);
+    await k.done();
+    expect(await usedUpToday(configured, NOV_16 + 11 * 60_000, k.keep)).toBe(true);
+    // The next day starts open, with its own figure.
+    api.mockImplementation(async () => Response.json({ data: { viewer: { accounts: [{ objects: [], workers: [], periodic: [], stored: [] }] } } }));
+    const nov17 = Date.parse('2026-11-17T00:00:30Z');
+    expect(await usedUpToday(configured, nov17, k.keep)).toBe(false);
+    expect(await usedUpToday(configured, nov17 + 1000, k.keep)).toBe(false);
+  });
+
+  it('with a figure of today it does not wait: Cloudflare is asked again after two minutes, half a minute near the limit, never at every socket', async () => {
+    let duration = 9_000;
+    const api = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({ data: { viewer: { accounts: [{ objects: [], workers: [], periodic: [{ sum: { rowsRead: 0, rowsWritten: 0, duration } }], stored: [] }] } } }));
+    const k = kept();
+    for (const at of [0, 1000, 60_000, 119_000]) { expect(await usedUpToday(configured, NOV_16 + at, k.keep)).toBe(false); await k.done(); }
+    expect(api).toHaveBeenCalledTimes(1);
+    duration = 11_000; // from 80 % of the limit on, asked every half minute
+    expect(await usedUpToday(configured, NOV_16 + 121_000, k.keep), 'the old figure, while the new one is asked').toBe(false);
+    await k.done();
+    expect(api).toHaveBeenCalledTimes(2);
+    duration = 12_100;
+    expect(await usedUpToday(configured, NOV_16 + 140_000, k.keep), 'not yet asked again').toBe(false);
+    await k.done();
+    expect(api).toHaveBeenCalledTimes(2);
+    expect(await usedUpToday(configured, NOV_16 + 152_000, k.keep), 'the old figure once more').toBe(false);
+    await k.done();
+    expect(api).toHaveBeenCalledTimes(3);
+    expect(await usedUpToday(configured, NOV_16 + 153_000, k.keep)).toBe(true);
+  });
+
+  it('a figure hours old is not gone by: the socket waits for today\'s', async () => {
+    let duration = 5_000;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({ data: { viewer: { accounts: [{ objects: [], workers: [], periodic: [{ sum: { rowsRead: 0, rowsWritten: 0, duration } }], stored: [] }] } } }));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const k = kept();
+    const morning = Date.parse('2026-11-16T15:00:00Z');
+    expect(await usedUpToday(configured, morning, k.keep)).toBe(false);
+    duration = 12_500; // three hours on, no socket having come to this isolate meanwhile
+    expect(await usedUpToday(configured, morning + 3 * 3_600_000, k.keep)).toBe(true);
+  });
+
+  it('a socket waits a second and a half at most for a figure Cloudflare is slow with, then goes on; one that failed is not waited for again within the minute', async () => {
+    let answer: (r: Response) => void = () => {};
+    const api = vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>((resolve) => { answer = resolve; }));
+    const k = kept();
+    const before = Date.now();
+    expect(await usedUpToday(configured, NOV_16, k.keep), 'not known: open').toBe(false);
+    expect(Date.now() - before).toBeGreaterThanOrEqual(1400);
+    expect(Date.now() - before).toBeLessThan(4000);
+    answer(new Response('no', { status: 500 }));
+    await k.done();
+    const again = Date.now();
+    expect(await usedUpToday(configured, NOV_16 + 30_000, k.keep)).toBe(false);
+    expect(Date.now() - again, 'a failure half a minute old is not asked about again').toBeLessThan(500);
+    expect(api).toHaveBeenCalledTimes(1);
+  });
+
+  it('has no limit where none is set (the previews, the paid plan), and none without the token to ask', async () => {
+    const api = cloudflare(20_000);
+    const k = kept();
+    for (const e of [{ ...configured, OWN_COMPUTE_LIMIT: undefined }, { ...configured, OWN_COMPUTE_LIMIT: 0 }, { ...configured, RELAY_USAGE_API_TOKEN: undefined }] as Env[]) {
+      expect(await usedUpToday(e, NOV_16, k.keep)).toBe(false);
+      await k.done();
+      expect(await usedUpToday(e, NOV_16 + 1000, k.keep)).toBe(false);
+    }
+    expect(api).not.toHaveBeenCalled();
+  });
+
+  it('past the limit the Worker takes a socket itself and closes it with the reason: no Room is asked', async () => {
+    cloudflare(12_500);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOV_16);
+    let asked = 0;
+    const room = { idFromName: env.ROOM.idFromName.bind(env.ROOM), get: () => ({ fetch: () => { asked++; return Promise.resolve(new Response('a Room', { status: 418 })); } }) };
+    const testEnv = { ...configured, ROOM: room, UPGRADE_LIMIT: undefined } as unknown as Env;
+    const k = kept();
+    const ctx = { waitUntil: k.keep, passThroughOnException: () => {} } as unknown as ExecutionContext;
+    const upgrade = async () => worker.fetch!(new Request(`https://dave.test/ws/${await roomIdOf('used-up-test-room')}`, { headers: { Upgrade: 'websocket' } }) as Parameters<NonNullable<typeof worker.fetch>>[0], testEnv, ctx);
+    const res = await upgrade(); // the first socket of this isolate: it waits for the figure
+    expect(res.status).toBe(101);
+    const ws = res.webSocket!;
+    const closed = new Promise<CloseEvent>((resolve) => ws.addEventListener('close', (e) => resolve(e as CloseEvent)));
+    ws.accept();
+    expect((await closed).code).toBe(CLOSE_USED_UP);
+    expect(asked, 'no Room was asked').toBe(0);
+    await k.done();
   });
 });

@@ -270,6 +270,12 @@ export const CLOSE_SUPERSEDED = 4004;
  * (which a deploy brings within minutes) has it reloaded.
  */
 export const CLOSE_OUT_OF_DATE = 4006;
+/**
+ * The day's server time is used up (our own limit, OWN_COMPUTE_LIMIT in wrangler.jsonc): the Worker closes a socket
+ * with this before any Room is asked, until the day ends, UTC. The app says so and tries again seldom. An app from
+ * before it tries again as after any lost socket.
+ */
+export const CLOSE_USED_UP = 4007;
 
 const B64URL = /^[A-Za-z0-9_-]+$/;
 const str = (v: unknown, max = MAX_MESSAGE_BYTES): v is string => typeof v === 'string' && v.length > 0 && v.length <= max;
