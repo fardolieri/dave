@@ -37,14 +37,17 @@ export async function keepsSettled(): Promise<void> {
   }
 }
 
-/** Opens (and accepts) a socket to the room of `secret`. */
-export async function openRoomSocket(secret: string, ip = randomIp()): Promise<WebSocket> {
+/**
+ * Opens (and accepts) a socket to the room of `secret`. `cutOff`: this end never answers a close by itself, as a client
+ * the network cut off does not, so the Room's end stays, closing, until the test closes this one (closeonce.test.ts).
+ */
+export async function openRoomSocket(secret: string, ip = randomIp(), cutOff = false): Promise<WebSocket> {
   opened.add(await roomIdOf(secret));
   const res = await exports.default.fetch(new Request(`https://dave.test${await wsPath(secret)}`, { headers: { Upgrade: 'websocket', 'cf-connecting-ip': ip } }));
   if (res.status !== 101) throw new Error(`expected 101, got ${res.status}`);
   const ws = res.webSocket;
   if (!ws) throw new Error('no websocket on 101 response');
-  ws.accept();
+  ws.accept(cutOff ? { allowHalfOpen: true } : undefined);
   return ws;
 }
 
