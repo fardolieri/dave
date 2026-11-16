@@ -40,11 +40,12 @@ const awayOf = (v: unknown): Away | null => {
  * One line in Workers observability per socket end the runtime reports: does the Room ever hear of a socket the network
  * cut (1006), and how long after it was let in (ticket 54)? `attached` is whether it was still in presence; a socket the
  * Room had told to close already is `closing`. `age_ms` counts from the welcome, or from the challenge for a socket never
- * let in. No names or keys.
+ * let in (`let_in` false). No names or keys.
  */
 function logEnd(event: 'close' | 'error', code: number | null, state: SocketState | null): void {
-  const since = state?.stage === 'attached' || state?.stage === 'closing' ? state.attachedAt : state?.stage === 'challenge' ? state.since : undefined;
-  console.log('socket end', JSON.stringify({ event, code, stage: state?.stage ?? null, attached: state?.stage === 'attached', age_ms: since === undefined ? null : Date.now() - since }));
+  const since = state?.stage === 'attached' ? state.attachedAt : state?.stage === 'closing' ? state.attachedAt ?? state.since : state?.stage === 'challenge' ? state.since : undefined;
+  const letIn = state?.stage === 'attached' || (state?.stage === 'closing' && state.attachedAt !== undefined);
+  console.log('socket end', JSON.stringify({ event, code, stage: state?.stage ?? null, attached: state?.stage === 'attached', let_in: letIn, age_ms: since === undefined ? null : Date.now() - since }));
 }
 
 // One Room per room id (ADR 0004). Uses the WebSocket Hibernation API so the object can be
@@ -118,8 +119,7 @@ export class Room extends DurableObject<Env> {
     const valid = code === 1000 || (code >= 3000 && code <= 4999);
     const state = ws.deserializeAttachment() as SocketState | null;
     logEnd('close', code, state);
-    if (state?.stage === 'attached') this.letGo(ws, state); // before the close, while the attachment is surely writable
-    ws.close(valid ? code : 1000, reason);
+    this.end(ws, valid ? code : 1000, reason); // the answer to its close; none to a socket this Room closed first
     if (state?.stage !== 'attached') return; // never in presence (a challenge), or out of it since it was told to close
     this.broadcastPresence(ws);
   }
@@ -132,8 +132,7 @@ export class Room extends DurableObject<Env> {
     const state = ws.deserializeAttachment() as SocketState | null;
     logEnd('error', null, state);
     if (state?.stage !== 'attached') return;
-    this.letGo(ws, state);
-    try { ws.close(CLOSE_ERRORED, 'socket error'); } catch { /* already gone */ }
+    this.end(ws, CLOSE_ERRORED, 'socket error');
     this.broadcastPresence(ws);
   }
 
@@ -151,15 +150,14 @@ export class Room extends DurableObject<Env> {
       const state = ws.deserializeAttachment() as SocketState | null;
       if (!state) continue;
       if (state.stage === 'challenge') {
-        if (challengeExpired(state, now)) { try { ws.close(CLOSE_AUTH_FAILED, 'challenge timed out'); } catch { /* closed by an earlier sweep */ } }
+        if (challengeExpired(state, now)) this.end(ws, CLOSE_AUTH_FAILED, 'challenge timed out');
         else challengesLeft++;
         continue;
       }
-      if (state.stage === 'closing') { try { ws.close(CLOSE_SILENT, 'still closing'); } catch { /* handshake under way */ } continue; }
+      if (state.stage === 'closing') continue; // closed already, and never twice (`end`): it goes when its client answers, or its connection ends
       const lastPing = this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? state.attachedAt;
       if (now - lastPing >= SILENT_TIMEOUT_MS) {
-        this.letGo(ws, state); // out of presence now, whenever the runtime lets go
-        try { ws.close(CLOSE_SILENT, 'no sign of life'); } catch { /* already gone */ }
+        this.end(ws, CLOSE_SILENT, 'no sign of life'); // out of presence now, whenever the runtime lets go
         dropped = true;
       } else attachedLeft++;
     }
@@ -190,7 +188,7 @@ export class Room extends DurableObject<Env> {
     if (outcome.takeOverTurn) this.takeOverTurn(ws, outcome.takeOverTurn);
     if (outcome.presenceChanged) this.broadcastPresence(...superseded);
     for (const user of outcome.revokeTurn ?? []) this.ctx.waitUntil(revokeIce(this.env, user));
-    if (outcome.close) ws.close(outcome.close.code, outcome.close.reason);
+    if (outcome.close) this.end(ws, outcome.close.code, outcome.close.reason);
     if (outcome.rejected) logRejected(this.env, this.ctx, outcome.rejected);
     if (outcome.keep) this.keep(outcome.keep);
     if (outcome.after) {
@@ -218,19 +216,40 @@ export class Room extends DurableObject<Env> {
       if (s === keeper) continue;
       const state = s.deserializeAttachment() as SocketState | null;
       if (state?.stage !== 'attached' || state.person.publicKey !== publicKey) continue;
-      this.letGo(s, state);
-      try { s.close(CLOSE_SUPERSEDED, 'opened elsewhere'); } catch { /* already gone */ }
+      this.end(s, CLOSE_SUPERSEDED, 'opened elsewhere');
       gone.push(s);
     }
     return gone;
   }
 
   /**
-   * Out of presence for good: marked closing. Its TURN users wait for this friend's next join (AWAY_PREFIX), since her
-   * peer connections may outlive this socket. The caller closes it.
+   * Closes a socket, once: every close of this Room goes through here. It is marked closing first, in its attachment,
+   * and one marked so is left alone, whoever asks: a later sweep, or its own close coming in at last.
+   *
+   * Never twice, because the runtime forgets. It ignores a second close() only while it remembers the first, and a
+   * socket woken from hibernation a second time has lost that note (workerd, api/web-socket.c++: `closedOutgoingForHib`
+   * is not restored with `closedOutgoing`). A close() after that queues a second close frame, which nothing reads, the
+   * first having gone through: the write waits until the connection ends, and the Room stays awake, and billed, as
+   * long. A client the network cut off answers no close, and its connection takes a quarter of an hour to end. The
+   * sweep closed such sockets again every minute ("still closing"): on 2026-11-16 a friend's line dropping again and
+   * again kept the Rooms awake until the account's day of Durable Object time was used up (the Workers Free plan,
+   * core/relayusage.ts), and no room let anyone in until midnight UTC.
    */
-  private letGo(ws: WebSocket, state: Extract<SocketState, { stage: 'attached' }>): void {
-    ws.serializeAttachment({ stage: 'closing', attachedAt: state.attachedAt } satisfies SocketState);
+  private end(ws: WebSocket, code: number, reason: string): void {
+    const state = ws.deserializeAttachment() as SocketState | null;
+    if (state?.stage === 'closing') return;
+    // The mark before the close, while the attachment is surely writable; the close before anything that can fail
+    // (`letGo` writes to storage), so that a socket marked closing is one that was closed.
+    ws.serializeAttachment({ stage: 'closing', ...(state?.stage === 'attached' ? { attachedAt: state.attachedAt } : state?.stage === 'challenge' ? { since: state.since } : {}) } satisfies SocketState);
+    try { ws.close(code, reason); } catch { /* already gone */ }
+    if (state?.stage === 'attached') this.letGo(state);
+  }
+
+  /**
+   * A socket out of presence for good (`end`): its TURN users wait for this friend's next join (AWAY_PREFIX), since her
+   * peer connections may outlive it.
+   */
+  private letGo(state: Extract<SocketState, { stage: 'attached' }>): void {
     if (!state.turnUsers?.length) return;
     const key = AWAY_PREFIX + state.person.publicKey;
     const users = [...(awayOf(this.ctx.storage.kv.get(key))?.users ?? []), ...state.turnUsers].slice(-MAX_TURN_USERS);

@@ -28,10 +28,12 @@ export type SocketState =
    */
   | { stage: 'attached'; person: Person; bucket: Bucket; signalBucket?: Bucket; linkBucket?: Bucket; linkIceAt?: number; syncAt?: number; forgetAt?: number; pieceBucket?: Bucket; fetchBucket?: Bucket; attachedAt: number; turnUsers?: string[]; joins?: number; telemetry?: true }
   /**
-   * Told to close (superseded, silent too long, errored) or closed, but still attached until the runtime finishes the handshake; invisible meanwhile.
+   * Told to close (superseded, silent too long, errored, never let in) or closed, but still attached until the runtime finishes the handshake; invisible meanwhile.
+   * The Room closes a socket once, and this is how it knows it did (worker/room.ts, `end`).
    * `attachedAt` as it was when attached, for the log of its close (worker/room.ts); none in sockets from before it was kept.
+   * `since` as it was in a socket closed before it was let in, for the same log.
    */
-  | { stage: 'closing'; attachedAt?: number };
+  | { stage: 'closing'; attachedAt?: number; since?: number };
 
 export type Outcome = {
   state: SocketState;

@@ -127,4 +127,24 @@ describe('the Room closes a socket once', () => {
     expect(closedTimes(old.ws), 'three sweeps later').toBe(1);
     here.ws.close(1000);
   });
+
+  it('a socket whose TURN users cannot be kept is closed all the same: one marked closing is one that was closed', async () => {
+    // Nothing closes a socket marked closing, so the mark must never be there without the close: here the write that
+    // follows both fails (the free plan's day of rows written used up, say), and the sweep with it.
+    const secret = freshSecret();
+    const silent = await attach(secret, 'Alice');
+    const here = await attach(secret, 'Bob');
+    await runInDurableObject(await stubOf(secret), (_room, state) => {
+      for (const ws of state.getWebSockets()) {
+        const s = ws.deserializeAttachment() as SocketState | null;
+        if (s?.stage === 'attached' && s.person.publicKey === silent.you.publicKey) ws.serializeAttachment({ ...s, attachedAt: Date.now() - SILENT_TIMEOUT_MS - 1000, turnUsers: ['a-turn-user'] });
+      }
+      const kv = state.storage.kv as unknown as { put: (...args: unknown[]) => unknown };
+      const put = kv.put;
+      kv.put = () => { kv.put = put; throw new Error('Exceeded allowed rows written in Durable Objects free tier.'); };
+    });
+    await expect(runDurableObjectAlarm(await stubOf(secret)), 'the write was tried, and failed').rejects.toThrow('rows written');
+    expect(await silent.closed).toBe(CLOSE_SILENT);
+    here.ws.close(1000);
+  });
 });
