@@ -326,5 +326,9 @@
  {
   "match": "^privacy\\.spec\\.ts › the Worker really passes /diag on to PostHog: scripts and remote config to its assets host, the rest to its ingest host \\| TimeoutError: apiRequestContext\\.post",
   "ticket": "85"
+ },
+ {
+  "match": "^settings\\.spec\\.ts › phone width: one column, the composer pinned to the bottom of the screen and usable \\| page\\.goto: net::ERR_CONNECTION_RESET",
+  "ticket": "86"
  }
 ]
