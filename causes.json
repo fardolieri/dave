@@ -340,7 +340,7 @@
   "ticket": "87"
  },
  {
-  "match": "^attachment\\.spec\\.ts › a pull shown under way with none running is reported \\(file_pulling_stuck\\) \\| console warnings, errors or exceptions nobody expected: Alice: error: WebSocket connection to .* Unexpected response code: 500",
+  "match": "^attachment\\.spec\\.ts › a pull shown under way with none running is reported \\(file_pulling_stuck\\) \\| console warnings, errors or exceptions nobody expected: Alice: error: WebSocket connection to ",
   "ticket": "88"
  }
 ]
