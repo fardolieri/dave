@@ -1,17 +1,17 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-17T18:50 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-17T18:55 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 26, branch 145, preview 171.
+Runs recorded: nightly 26, branch 146, preview 172.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
+| 3 | 3 | preview 3 | attachment.spec.ts › a picture that could not be pulled while its sender was frozen is pulled once she is back | expect(received).not.toContain(expected) // indexOf | [10-19](https://github.com/fardolieri/dave/actions/runs/39290036217/attempts/1) | [11-17](https://github.com/fardolieri/dave/actions/runs/44151462674/attempts/1) | 51 |
 | 3 | 3 | preview 2, nightly 1 | resilience.spec.ts › regression: a socket gone silent without a close is given up, and the text written into it arrives once | Alice gives the silent socket up herself | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | [11-05](https://github.com/fardolieri/dave/actions/runs/42066686999/attempts/1) | 61 |
-| 2 | 2 | preview 2 | attachment.spec.ts › a picture that could not be pulled while its sender was frozen is pulled once she is back | expect(received).not.toContain(expected) // indexOf | [10-19](https://github.com/fardolieri/dave/actions/runs/39290036217/attempts/1) | [11-12](https://github.com/fardolieri/dave/actions/runs/43127137009/attempts/1) | 51 |
 | 2 | 2 | preview 2 | attachment.spec.ts › regression: a pull tried again after its friend could not be reached is answered | expect(locator).toHaveCount(expected) failed | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | [10-27](https://github.com/fardolieri/dave/actions/runs/40585343590/attempts/1) | 61 |
 | 2 | 2 | nightly 1, preview 1 | resilience.spec.ts › after a stalled attempt the rebuild goes through the TURN relay, and both sides take it (ticket 22) | Bob hears Alice | [10-21](https://github.com/fardolieri/dave/actions/runs/39566936449/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40239237252/attempts/1) | 63 |
 | 2 | 2 | nightly 1, preview 1 | themes.spec.ts › every theme applies, loads its fonts and keeps the console quiet, at desktop and phone width; the pick survives a reload | expect(locator).toHaveCount(expected) failed | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40194632521/attempts/1) | 61 |
