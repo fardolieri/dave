@@ -338,5 +338,9 @@
  {
   "match": "^themes\\.spec\\.ts › the invite panel stands clear of the rows below it, in every theme \\| expect\\(locator\\)\\.toHaveAttribute\\(expected\\) failed",
   "ticket": "87"
+ },
+ {
+  "match": "^attachment\\.spec\\.ts › a pull shown under way with none running is reported \\(file_pulling_stuck\\) \\| console warnings, errors or exceptions nobody expected: Alice: error: WebSocket connection to .* Unexpected response code: 500",
+  "ticket": "88"
  }
 ]
