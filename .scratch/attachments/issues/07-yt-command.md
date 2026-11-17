@@ -23,6 +23,16 @@ until it comes, the sender neither: a little gamble (owner).
   (ticket 84). Per IP under the same limit as sockets, counted apart. The words go in the POST's body: Cloudflare's logs
   of the Worker keep request addresses, and the words are a sealed text's. YouTube sees them, as it would in a browser.
 
+**Rolling, for everyone** (owner, 2026-11-17, after it shipped): under a `/yt` text whose video is on the way, every
+friend's app shows "🎲 rolling…", the die tumbling (still, for reduced motion). No new frame: each app tells it from its log
+(core/youtube.ts, `rollsWaiting`), on the Room's clock, so apps from before simply show none. It waits for a YouTube
+card from the text's writer after it, each card answering the oldest that still waited when it came; the writer's own app
+also stops on its "No video sent" line, which names the text by its id; anyone's stops at the latest 25 s after the text was written (the sender's app
+gives up after 20), when no card can still come. Known slips, for friends only:
+of two quick rolls where the first finds none, the second's card stops the first's rolling and the second rolls on until
+its 25 s are up; a link's card from the writer meanwhile stops it too; a card caught by a dropped socket is sent again before its
+text, which then rolls its 25 s.
+
 **Two layouts:** on 2026-11-17 YouTube served about one results page in eight in a newer layout (`lockupViewModel`), the
 same search in either from one request to the next: both are read. Seen on PR #155's preview, where 4 of 30 searches
 said "YouTube did not answer" before.

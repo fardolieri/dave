@@ -375,16 +375,19 @@ export function createPrivates(opts: {
       posthog.capture('private_text_sent', { file: true });
       return true;
     },
-    /** Sends a private text through our room of two; false when it is not made, and the text stays in the composer. */
-    send: (friend: string, text: string): boolean => {
+    /**
+     * Sends a private text through our room of two: its id; null for one too long, which the conversation says was not
+     * sent; false when the room is not made, and the text stays in the composer.
+     */
+    send: (friend: string, text: string): string | null | false => {
       const pair = pairs.get(friend);
       if (!pair || !usable(pair.room)) return false;
-      pair.room.sendText(text);
+      const id = pair.room.sendText(text);
       posthog.capture('private_text_sent');
-      return true;
+      return id;
     },
-    /** A line in this browser's conversation with a friend alone (client/room.ts, `note`). */
-    note: (friend: string, text: string): void => { pairs.get(friend)?.room.note(text); },
+    /** A `/yt` of mine to a friend sent no video (client/room.ts, `rollEnded`). */
+    rollEnded: (friend: string, text: string, rolled: string): void => { pairs.get(friend)?.room.rollEnded(text, rolled); },
     /** My name and picture changed: in every room of two too. */
     rename: (name: string): void => { for (const p of pairs.values()) p.room.rename(name); },
     setPicture: (picture: string | null): void => { for (const p of pairs.values()) p.room.setPicture(picture); },

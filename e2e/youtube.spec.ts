@@ -226,7 +226,7 @@ test('a video with no HD thumbnail goes with the one every video has, and a link
   await expect.poll(() => order(bob)).toEqual(['card', LINK, 'https://youtu.be/dQw4w9WgXcQ']);
 });
 
-test('/yt sends as it is, then the first video YouTube finds for it as its card; none found, the sender alone is told', async ({ crowd }) => {
+test('/yt sends as it is, says it is rolling, then the first video YouTube finds for it comes as its card; none found, the sender alone is told', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   await noThumbnails(alice);
@@ -235,9 +235,12 @@ test('/yt sends as it is, then the first video YouTube finds for it as its card;
   // Our Worker's search (worker/ytsearch.ts), which reads YouTube's results page: stood in for, as YouTube is.
   const searched: string[] = [];
   let answer: (search: string) => unknown = () => ({ id: ID });
+  let answerFirst = () => {};
+  const first = new Promise<void>((done) => { answerFirst = done; });
   await alice.context.route('**/yt-search', async (r) => {
     const q = r.request().postData()!;
     searched.push(q);
+    if (q === 'lofi beats') await first;
     if (q === 'slow') await new Promise((done) => setTimeout(done, 1500));
     return serve('application/json', JSON.stringify(answer(q)))(r);
   });
@@ -247,9 +250,13 @@ test('/yt sends as it is, then the first video YouTube finds for it as its card;
   await expect(alice.sendButton).toBeEnabled();
   await expect(alice.staged).toHaveCount(0);
   await alice.composer.press('Enter');
+  // While YouTube is asked, everyone sees it rolling under the text.
+  for (const f of [alice, bob]) await expect(f.page.locator('.chat-log .msg', { hasText: '/yt lofi  beats' }).locator('.msg-roll')).toHaveText('🎲 rolling…');
+  answerFirst();
   for (const f of [alice, bob]) {
     await expect(f.page.locator('.chat-log .att-video .title')).toHaveText(TITLE);
     await expect.poll(() => order(f)).toEqual(['/yt lofi  beats', 'card']);
+    await expect(f.page.locator('.chat-log .msg-roll')).toHaveCount(0);
   }
   expect(searched).toEqual(['lofi beats']);
 
@@ -263,4 +270,30 @@ test('/yt sends as it is, then the first video YouTube finds for it as its card;
     .toEqual(['No video sent: YouTube did not answer.', 'No video sent: YouTube found none for “zzzz”.']);
   await expect.poll(() => order(bob)).toEqual(['/yt lofi  beats', 'card', '/yt slow', '/yt zzzz']);
   await expect(bob.page.locator('.chat-log .msg-sys', { hasText: 'No video sent' })).toHaveCount(0);
+  // Alice's app said so, and stopped rolling with it, well before a roll's own time is up; Bob's, told nothing, stops once
+  // no card could still come.
+  await expect(alice.page.locator('.chat-log .msg-roll')).toHaveCount(0, { timeout: 5_000 });
+  await expect(bob.page.locator('.chat-log .msg-roll')).toHaveCount(0, { timeout: 40_000 });
+});
+
+test('a /yt in a private conversation rolls until its sender\'s app says it found none', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  await crowd.open('Bob');
+  let answer = () => {};
+  const answered = new Promise<void>((done) => { answer = done; });
+  await alice.context.route('**/yt-search', async (r) => { await answered; return serve('application/json', JSON.stringify({ error: 'none' }))(r); });
+  // The conversation with Bob, as from his card in the sidebar (private.spec.ts).
+  await alice.settledOnline('Bob');
+  await alice.page.locator('aside.side ul.plist.visitors li', { hasText: 'Bob' }).first().locator('.nm').click();
+  await alice.page.locator('.profile .profile-message').click();
+  await expect(alice.page.locator('.private-head')).toContainText('Bob');
+  await alice.composer.fill('/yt zzzz');
+  await alice.composer.press('Enter');
+  await expect(alice.page.locator('.chat.private .msg', { hasText: '/yt zzzz' }).locator('.msg-roll')).toHaveText('🎲 rolling…');
+  // Back from the Room, under her key in their room of two, before YouTube answers.
+  await expect(alice.page.locator('.chat.private .msg', { hasText: '/yt zzzz' })).not.toHaveClass(/msg-pending/);
+  answer();
+  // Its line names the text: rolling ends with it, well before a roll's own time is up.
+  await expect(alice.page.locator('.chat.private .msg-sys .msg-text')).toHaveText('No video sent: YouTube found none for “zzzz”.');
+  await expect(alice.page.locator('.chat.private .msg-roll')).toHaveCount(0, { timeout: 5_000 });
 });

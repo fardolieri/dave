@@ -11,7 +11,7 @@ import { encodeQr, qrPath } from '../core/qr';
 import { createRoom, prepareFile, type Attachment, type ChatLine, type PreparedFile, type ServerStatus } from './room';
 import { createPrivates } from './privates';
 import { formatSize, inlineKind, pastedImageUrl, type FileMeta } from '../core/attachment';
-import { videoSearchOf, videosIn, type VideoCard } from '../core/youtube';
+import { ROLL_WAIT_MS, rollsWaiting, sameRolls, videoSearchOf, videosIn, type VideoCard } from '../core/youtube';
 import { searchVideo, videoCard } from './youtube';
 import type { PullError } from './links';
 import { MIC_TEST_RECORD_MS, createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
@@ -570,20 +570,22 @@ function Workspace(props: WorkspaceProps) {
       const kept = files.filter((x) => x.prepared && !privates.sendFile(priv.key, x.prepared));
       setStaged(() => kept);
       const sent = text ? privates.send(priv.key, text) : false;
-      if (sent || kept.length < files.length) setPrivateJump((n) => n + 1);
-      const search = sent ? videoSearchOf(text) : null;
-      if (search) roll(search, (p) => privates.sendFile(priv.key, p), (note) => privates.note(priv.key, note));
+      if (sent !== false || kept.length < files.length) setPrivateJump((n) => n + 1);
+      const search = typeof sent === 'string' ? videoSearchOf(text) : null;
+      if (search && typeof sent === 'string') roll(search, (p) => privates.sendFile(priv.key, p), (note) => privates.rollEnded(priv.key, note, sent));
       // True when the text went, so the field empties: the files no room took stay staged, and the conversation says why.
-      return text ? sent : kept.length === 0;
+      return text ? sent !== false : kept.length === 0;
     }
     setStaged(() => []);
     for (const x of files) if (x.prepared) room.sendPrepared(x.prepared);
-    if (text) room.sendText(text);
+    const sent = text ? room.sendText(text) : null;
     setJumpToken((n) => n + 1);
     const search = videoSearchOf(text);
-    if (search) roll(search, (p) => { room.sendPrepared(p); return true; }, room.note);
+    if (search && sent !== null) roll(search, (p) => { room.sendPrepared(p); return true; }, (note) => room.rollEnded(note, sent));
     return true;
   };
+  /** The Room's clock now, as the room on screen last heard it: every Room's is Cloudflare's. */
+  const roomNow = () => current()?.room.roomNow() ?? Date.now();
   /**
    * `/yt rick roll`, sent as it is: then the first video YouTube finds for it goes after it, as its card, from this app
    * (core/youtube.ts, `videoSearchOf`). Nobody knows which until it comes, the sender neither. None found, or YouTube out
@@ -944,12 +946,12 @@ function Workspace(props: WorkspaceProps) {
             </section>
           )}</Show>
           {/* Kept while a conversation is on screen, hidden: back from it, the reader is where they were in the room */}
-          <ChatLog lines={cur().room.lines()} openedAt={openedAt()} readFrom={cur().room.readFrom()} jumpToken={jumpToken()} label={labelOf} hidden={!!privateFriend()} look={chatLook()}
+          <ChatLog me={me} now={roomNow} lines={cur().room.lines()} openedAt={openedAt()} readFrom={cur().room.readFrom()} jumpToken={jumpToken()} label={labelOf} hidden={!!privateFriend()} look={chatLook()}
                    party={active() === cur() ? cur().party : undefined}
                    holder={(from) => (from.publicKey === me ? null : labelOf(from).shown)}
                    attachment={(hash) => cur().room.attachment(hash)} onPull={(hash) => cur().room.pull(hash)} onCancel={(hash) => cur().room.cancelPull(hash)} />
           <Show when={privateFriend()}>{(pf) => (
-            <ChatLog lines={privates.lines(pf().key)} openedAt={privateOpenedAt()} readFrom={privates.readFrom(pf().key)} jumpToken={privateJump()} label={labelOf} private
+            <ChatLog me={me} now={() => privates.via(pf().key)?.roomNow() ?? roomNow()} lines={privates.lines(pf().key)} openedAt={privateOpenedAt()} readFrom={privates.readFrom(pf().key)} jumpToken={privateJump()} label={labelOf} private
                      empty={privates.isRead(pf().key) ? `Only ${labelOf(pf().friend).shown} gets what you write here.` : undefined}
                      attachment={(hash) => privates.attachment(hash, pf().key)} onPull={(hash) => privates.pull(hash, pf().key)} onCancel={(hash) => privates.cancelPull(hash, pf().key)}
                      holder={(from) => (from.publicKey === me ? labelOf(pf().friend).shown : labelOf(from).shown)}
@@ -2713,6 +2715,8 @@ function Composer(props: {
  */
 function ChatLog(props: {
   lines: ChatLine[]; openedAt: number; readFrom: number | null; jumpToken: number; label: (id: Identity) => Label;
+  /** My key: a `/yt` of mine ends with a line of my app's when it sent no video (`rollsWaiting`). The Room's clock now. */
+  me: string; now: () => number;
   /** Above the log: a private conversation's head (ADR 0007), which is all `private` then. */
   head?: any; private?: boolean; hidden?: boolean;
   /** What an empty log says. */
@@ -2742,6 +2746,22 @@ function ChatLog(props: {
   const shownOlder = () => (unfolded()?.openedAt === props.openedAt ? unfolded()!.lines : 0);
   const folded = createMemo(() => Math.max(0, foldedCount(props.lines, props.openedAt - FOLD_OLDER_MS, props.readFrom) - shownOlder()));
   const lines = createMemo(() => props.lines.slice(folded()), { equals: sameItems });
+  // `/yt` texts whose video is on the way say so under them, in every friend's log (core/youtube.ts, `rollsWaiting`), on
+  // the Room's clock, which the lines are on. Read again as lines come, and when the next one stops waiting for a card that
+  // never came: by then it is at least as late as the wait, whatever this clock says. The wait is never longer than a
+  // roll's, which a clock far off could make it, and goes on from there.
+  const [atLeast, setAtLeast] = createSignal(0);
+  const rolls = createMemo(() => rollsWaiting(props.lines, props.me, Math.max(atLeast(), props.now())), { equals: sameRolls });
+  createEffect(() => ({ next: rolls().next, floor: atLeast() }), ({ next, floor }) => {
+    if (next === null) return;
+    const now = Math.max(floor, untrack(props.now));
+    const wait = Math.min(Math.max(0, next - now), ROLL_WAIT_MS) + 50;
+    const later = setTimeout(() => setAtLeast(now + wait), wait);
+    return () => clearTimeout(later);
+  });
+  const rolling = (id: string) => (
+    <Show when={rolls().ids.has(id)}><div class="msg-roll" role="status"><span class="dice" aria-hidden="true">🎲</span> rolling…</div></Show>
+  );
   // Lines in reading order, so selecting text works as it reads. The browser measures scroll positions from the
   // top edge, which is the edge that moves when the share strip comes or goes, so the log keeps its own distance
   // to the bottom edge and restores it after every size change (ResizeObserver) and every change of the lines:
@@ -2772,6 +2792,12 @@ function ChatLog(props: {
     // new line waits below, so only the distance to the bottom changes. Otherwise the log stays at the newest line;
     // lines that came in above it (the history as it loads, the older lines unfolded) leave the reader where they were.
     if (prev !== undefined && now.n > prev.n && now.last !== prev.last && !atBottom()) { measure(); setUnseen(true); } else restore();
+  });
+  // A `/yt` that stopped rolling with no line coming (its time up) takes its row with it: like a line arriving, the newest
+  // line stays in view, and a reader up in the older ones keeps them in place.
+  createEffect(() => rolls().ids, (_now, prev) => {
+    if (!log || prev === undefined || untrack(() => props.hidden)) return;
+    if (atBottom()) restore(); else measure();
   });
   createEffect(() => props.jumpToken, (t, prev) => { if (prev !== undefined && t !== prev) jump(); });
   // Hidden behind a private conversation and shown again: back where the reader was, counted from the top, which lines
@@ -2814,12 +2840,13 @@ function ChatLog(props: {
               <Match when={ofKind(l(), 'text')}>
                 {(m) => (
                   <Show when={!continues(lines(), i())} fallback={
-                    <div class={['msg msg-cont', { 'msg-pending': !!m().pending }]}><div class="msg-text" title={m().pending ? 'Not sent yet' : when(m().at)}><Markdown text={m().text} /></div></div>
+                    <div class={['msg msg-cont', { 'msg-pending': !!m().pending }]}><div class="msg-text" title={m().pending ? 'Not sent yet' : when(m().at)}><Markdown text={m().text} /></div>{rolling(m().id)}</div>
                   }>
                     <div class={['msg', { 'msg-pending': !!m().pending }]}>
                       <span class="msg-from" title={props.label(m().from).title}>{props.label(m().from).shown}</span>
                       <span class="msg-at">{when(m().at)}</span>
                       <div class="msg-text" title={m().pending ? 'Not sent yet' : undefined}><Markdown text={m().text} /></div>
+                      {rolling(m().id)}
                     </div>
                   </Show>
                 )}

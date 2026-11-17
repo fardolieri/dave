@@ -45,7 +45,8 @@ export type ChatLine =
   | { kind: 'text'; id: string; from: Identity; text: string; at: number; pending?: true }
   /** An attachment (ADR 0006); its bytes are in `attachment(file.hash)`. `pending`: mine, not back from the Room yet. */
   | { kind: 'file'; id: string; from: Identity; file: FileMeta; at: number; pending?: true }
-  | { kind: 'system'; id: string; text: string; at: number };
+  /** `roll`: the id of a `/yt` text of mine that sent no video (core/youtube.ts, `rollsWaiting`). */
+  | { kind: 'system'; id: string; text: string; at: number; roll?: string };
 
 /** A friend's text as opened: the Room relayed it sealed (ADR 0005). An attachment's `text` is its name. */
 export type Text = { from: Identity; text: string; at: number; id: TextId };
@@ -373,7 +374,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     waitingLines.set(source, line);
     return line;
   };
-  const push = (line: { kind: 'text'; id: string; from: Identity; text: string; at: number } | { kind: 'file'; id: string; from: Identity; file: FileMeta; at: number } | { kind: 'system'; text: string; at: number }) =>
+  const push = (line: { kind: 'text'; id: string; from: Identity; text: string; at: number } | { kind: 'file'; id: string; from: Identity; file: FileMeta; at: number } | { kind: 'system'; text: string; at: number; roll?: string }) =>
     setLines((l) => [...l, 'id' in line ? (line as ChatLine) : ({ ...line, id: `sys-${nextId++}` } as ChatLine)]);
   let ws: WebSocket | null = null;
   /** The socket the server has let in (its welcome came), and how many sockets it has let in so far. */
@@ -1482,14 +1483,15 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
      * Sends a text, or keeps it for the next socket while there is none. It shows as waiting until the Room brings it back;
      * a socket lost meanwhile sends it again on the next one.
      */
-    sendText: (text: string) => {
+    sendText: (text: string): string | null => {
       // The Room cannot read a sealed text to refuse it, and friends would drop it unseen (core/sealed.ts): said here instead.
-      if (text.length > MAX_TEXT_LENGTH) { push({ kind: 'system', text: `Not sent: message longer than ${MAX_TEXT_LENGTH} characters.`, at: Date.now() }); return; }
+      if (text.length > MAX_TEXT_LENGTH) { push({ kind: 'system', text: `Not sent: message longer than ${MAX_TEXT_LENGTH} characters.`, at: Date.now() }); return null; }
       const id = randomHex(12);
       unconfirmed.push({ id, text, at: Date.now() });
       unconfirmedChanged();
       sendText({ id, text });
       posthog.capture('message_sent');
+      return id;
     },
     /**
      * Sends a file (ADR 0006), prepared beforehand (`prepareFile`): it is kept here, and its announcement goes sealed, with
@@ -1498,8 +1500,11 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
      * at once: after what was sent before it and before what is sent after it, a text among them.
      */
     sendPrepared,
-    /** A line in this browser's log alone, as the room's own say what was not sent: nobody else sees it. */
-    note: (text: string): void => { push({ kind: 'system', text, at: Date.now() }); },
+    /**
+     * A `/yt` of mine, the text of that id (`sendText`), sent no video, and why: a line in this browser's log alone, as the
+     * room's own say what was not sent.
+     */
+    rollEnded: (text: string, rolled: string): void => { push({ kind: 'system', text, at: Date.now(), roll: rolled }); },
     /**
      * Deletes everything I wrote in this room from the server's history (ADR 0009): texts, file announcements and the
      * pieces of my files, up to when the Room gets the ask; what friends have already stays theirs. Asked again after
