@@ -27,10 +27,13 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      # Node runs the script as it is, and reads core/relayusage.ts with its types taken off: nothing to install.
+      # Node runs the script as it is, and reads core/relayusage.ts with its types taken off: nothing to install. No
+      # package cache either: setup-node turns one on by itself for a repo that names pnpm (package.json), looks for
+      # pnpm, and fails the job without it (the first run, 2026-11-17).
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+          package-manager-cache: false
       - run: node scripts/quota-watch.mjs ${{ inputs.dry_run && '--dry-run' || '' }}
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
