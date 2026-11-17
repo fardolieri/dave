@@ -21,3 +21,8 @@ PostHog's EU ingest host itself, a third party, through the preview Worker.
 Whether PostHog's `/flags` was slow then (its status page for 2026-11-17 ~18:19 UTC), or the Worker's forward held the
 request (its logs for dave-pr-155, while the preview lives). If it was PostHog: the test claims something about our
 Worker but waits on PostHog's speed; a POST answered at all by PostHog (any status, in time) proves the passing on.
+
+2026-11-17: the preview run of #157 at 7e97f8a (run 44167146579, Firefox shard 7), failed on its retry too: the same
+test, the same 15 s timeout on its first try, then `apiRequestContext.post: read ECONNRESET` on the retry. #157 makes a
+YouTube card's title a link (App.tsx, styles.css): nothing on the Worker or `/diag`. The second sighting in 30 days, the
+first that failed both tries.
