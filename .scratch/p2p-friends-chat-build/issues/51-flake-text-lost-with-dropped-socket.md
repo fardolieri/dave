@@ -61,3 +61,6 @@ pulled once she is back": after `alice.wire.cut()`, Bob still listed Alice onlin
 (`expect(received).not.toContain`, received `["Alice", "Bob"]`), which looks like the Room not noticing her socket was
 gone (above); the run's artifacts were not read. #137 changes only the agent hooks, `ci.yml` and `CLAUDE.md`: the
 preview ran master's app. The ledger's one earlier sighting of this test and error: 2026-10-19, Chromium (a0c2a9a).
+2026-11-17: the preview run of #155 at cd25246 (run 44151462674), Chromium, shard 1, passed on its retry: the same test
+(now `attachment.spec.ts:594`) and error, Bob still listing Alice after her cut. #155 adds `/yt` (a Worker route that
+asks no Room, and a card sent after a text): nothing on sockets, presence or pulls. The third sighting in 30 days.
