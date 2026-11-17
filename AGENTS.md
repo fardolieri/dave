@@ -86,8 +86,8 @@ bad deploy: `rollback.yml` from the Actions tab, then a fix. Prefer small PRs, s
   inspection hooks, with the whole e2e suite run against it once deployed (once ready, not while a draft), and the tests a
   deployed copy cannot run (tagged `@local`: a deploy or an outage staged at the preview server) against a local build of
   the PR: together the gate to master. One comment on the PR links it and a room of the PR's own, so the owner can try a
-  change from the phone before it goes live. It starts with empty storage. The night shift's drafts get none. A weekly
-  sweep (`preview-sweep.yml`) deletes previews whose PR closed.
+  change from the phone before it goes live. It starts with empty storage. The night shift's drafts get none. A nightly
+  sweep (`preview-sweep.yml`) deletes previews whose PR closed, once the day it closed on has ended.
 - **Inside every e2e test:** unexpected console warnings and runtime invariants (`src/client/invariants.ts`: UI that
   contradicts the call) fail the test.
 - **Every night:** the chaos soak (`soak.yml`, 01:00 UTC, a local build of master) opens `soak` issues with a minimal

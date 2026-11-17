@@ -2,8 +2,9 @@ name: preview
 # A preview of every open pull request, deployed so it can be tried from a phone in one tap: a Worker of its own,
 # dave-pr-<number>, built like the live site but with the inspection hooks (CLOUDFLARE_ENV=preview) and redeployed on
 # every push.
-# One comment on the PR carries the link and is rewritten in place. The Worker is deleted when the PR closes;
-# preview-sweep.yml catches any left behind.
+# One comment on the PR carries the link and is rewritten in place. The Worker is deleted by preview-sweep.yml once the
+# day (UTC) its PR closed on has ended, not when it closes: deleted, its rooms leave Cloudflare's analytics with what they
+# used that day, which Cloudflare still counts against the day's limits (core/relayusage.ts).
 # The link is an invite to a room of the PR's own (the bare URL shows only the invite notice), the same on every push, so
 # a friend tapping it lands where the PR is being tried. Its secret is public (so is the repo), which is fine for a
 # throwaway Worker; any other invite link works there too with the host swapped (a room is only its secret, ADR 0004).
@@ -129,20 +130,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REF: ${{ github.event.pull_request.head.ref }}
         run: for w in ci.yml red-green.yml; do gh workflow run "$w" --repo "$GITHUB_REPOSITORY" --ref "$REF"; done
+  # Closing ends this run's suite, should one be under way (the concurrency group). The Worker stays until the day ends:
+  # preview-sweep.yml deletes it after midnight UTC.
   cleanup:
     if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      # A PR that never had a preview (a night-shift draft closed as draft) has no Worker to delete (Cloudflare error
-      # 10007); that is not a failure, anything else is.
-      - run: |
-          if ! out=$(npx --yes wrangler@4.146.0 delete --name "$WORKER" --force 2>&1); then
-            echo "$out"
-            echo "$out" | grep -q 10007 && echo "::notice::no Worker $WORKER to delete" || exit 1
-          fi
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       # The room marker stays, so a reopened PR gets its old room link back.
       - name: Mark the comment
         env:
@@ -153,4 +146,4 @@ jobs:
           [ -n "$id" ] || exit 0
           room=$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" --jq .body | grep -o '<!-- room [A-Za-z0-9_-]* -->' || true)
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="<!-- preview -->$room
-          The preview was deleted when this PR closed." >/dev/null
+          This PR is closed: its preview is deleted after midnight UTC." >/dev/null

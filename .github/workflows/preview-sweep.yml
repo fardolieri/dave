@@ -1,12 +1,15 @@
 name: preview-sweep
-# A preview Worker (preview.yml) is deleted when its PR closes. A run that failed or was cancelled then would leave it
-# behind, and the free plan allows 100 Workers. Once a week, and by hand from the Actions tab, every dave-pr-<n> whose PR is
-# closed or is a night-shift draft (one marked ready got a preview, then went back) is deleted, and `dave-preview`, which no
-# deploy uses: a preview deploy's secrets once went to that name from wrangler.jsonc and made a Worker of it (2026-10-16,
-# e2e/turn.spec.ts).
+# Deletes the preview Workers (preview.yml) whose PR is closed, or is a night-shift draft (one marked ready got a preview,
+# then went back), or is not there, once the day (UTC) they were last used on has ended: the day the PR closed, or the
+# Worker was last deployed. Not sooner: a deleted Worker's rooms leave Cloudflare's analytics with what they used that
+# day, which Cloudflare still counts against the day's limits; on 2026-11-17 the previews deleted that day had used tens
+# of thousands of requests to Durable Objects that neither the About dialog nor quota-watch saw, and the account ran out
+# at 20:44 UTC (core/relayusage.ts). Every night after midnight, and by hand from the Actions tab; also deletes
+# `dave-preview`, which no deploy uses: a preview deploy's secrets once went to that name from wrangler.jsonc and made a
+# Worker of it (2026-10-16, e2e/turn.spec.ts). The free plan allows 100 Workers: a day's closed PRs fit.
 on:
   schedule:
-    - cron: '0 4 * * 1' # Mondays 04:00 UTC, clear of the soak (01:00) and the night shift (02:30)
+    - cron: '40 0 * * *' # the day before is over; clear of the soak (01:00) and the night shift (02:30)
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,24 +25,33 @@ jobs:
         # A failed listing fails the run instead of passing having swept nothing.
         shell: bash
         run: |
+          today=$(date -u +%F)
           scripts=$(curl -sSf -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts")
-          workers=$(jq -r '.result[].id | select(test("^dave-pr-[0-9]+$"))' <<<"$scripts")
+          workers=$(jq -r '.result[] | select(.id | test("^dave-pr-[0-9]+$")) | "\(.id) \((.modified_on // .created_on // "0000-00-00")[0:10])"' <<<"$scripts")
           [ -n "$workers" ] || echo "no preview Workers"
           failed=0
-          for w in $workers; do
+          while read -r w deployed; do
+            [ -n "$w" ] || continue
             pr=${w#dave-pr-}
             # Only a PR GitHub says is closed, a night-shift draft or not there is swept: an API error keeps the Worker for
-            # next week. Other drafts keep theirs: a draft is a PR still being iterated on, with its preview (preview.yml).
-            if ! state=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr" \
-                --jq 'if .draft and (.head.ref | startswith("night-shift/")) then "a night-shift draft" else .state end' 2>&1); then
-              grep -q 'HTTP 404' <<<"$state" || { echo "::warning::$w: $state"; failed=1; continue; }
-              state=gone
+            # the next night. Other drafts keep theirs: a draft is a PR still being iterated on, with its preview (preview.yml).
+            # Neither this nor the delete may read the loop's own input, the list.
+            if ! info=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr" \
+                --jq '[(if .draft and (.head.ref | startswith("night-shift/")) then "a-night-shift-draft" else .state end), ((.closed_at // "")[0:10])] | join(" ")' 2>&1 </dev/null); then
+              grep -q 'HTTP 404' <<<"$info" || { echo "::warning::$w: $info"; failed=1; continue; }
+              info=gone
             fi
+            read -r state closed <<<"$info"
             if [ "$state" = open ]; then echo "$w: PR open, kept"; continue; fi
-            echo "$w: PR $state, deleting"
-            npx --yes wrangler@4.146.0 delete --name "$w" --force || { echo "::warning::$w: delete failed"; failed=1; }
-          done
+            # The last day it was used on: its PR's closing, or its last deploy, whichever is later (a Worker listed without
+            # a date goes by its PR's).
+            last=$deployed
+            [[ -n "$closed" && "$closed" > "$last" ]] && last=$closed
+            if [[ ! "$last" < "$today" ]]; then echo "$w: PR $state, last used $last, kept until that day ends"; continue; fi
+            echo "$w: PR $state, last used $last, deleting"
+            npx --yes wrangler@4.146.0 delete --name "$w" --force </dev/null || { echo "::warning::$w: delete failed"; failed=1; }
+          done <<<"$workers"
           if jq -e '.result[] | select(.id == "dave-preview")' <<<"$scripts" >/dev/null; then
             echo "dave-preview: no deploy uses it, deleting"
             npx --yes wrangler@4.146.0 delete --name dave-preview --force || { echo "::warning::dave-preview: delete failed"; failed=1; }

@@ -40,8 +40,8 @@
   },
   "env": {
     // Pull request previews (.github/workflows/preview.yml), built per PR and deployed under the name dave-pr-<number>,
-    // which the workflow writes into the built config. Each preview is its own Worker with its own rooms, deleted when the
-    // PR closes. Bindings and vars are not inherited from the top level by Wrangler, so they are repeated here; keep them
+    // which the workflow writes into the built config. Each preview is its own Worker with its own rooms, deleted after
+    // the day its PR closed on (preview-sweep.yml). Bindings and vars are not inherited from the top level by Wrangler, so they are repeated here; keep them
     // in step with the ones above. One rate-limit namespace for all of them, apart from the live site's (ids are per account),
     // and higher than its 60: the browser suite (e2e.yml) opens a few hundred sockets a minute per test it runs at once,
     // two at once from one runner IP (playwright.config.ts), a room of two's for each pair of friends in a test among
