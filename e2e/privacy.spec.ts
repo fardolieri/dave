@@ -1,4 +1,5 @@
-import type { Page } from '@playwright/test';
+import type { Page, Request } from '@playwright/test';
+import { gunzipSync } from 'node:zlib';
 import { target } from './browsers';
 import { expect, test, openMenu, pickTheme, themeNames } from './fixtures';
 
@@ -114,6 +115,47 @@ test('with the yes, every event says which theme is on screen, from the load and
   await alice.page.reload();
   await alice.connected();
   await expect.poll(theme, { message: 'after a reload, the stored pick' }).toBe(other);
+});
+
+type Sent = { event: string; timestamp?: string; properties?: Record<string, unknown> };
+/** The events a request to PostHog's capture endpoint (`/e/`, `/i/v0/e/`) carries; none for any other request. */
+function eventsOf(r: Request): Sent[] {
+  const url = new URL(r.url());
+  const body = r.postDataBuffer();
+  if (!/\/e\/$/.test(url.pathname) || !body) return [];
+  // Gzipped or not, as the SDK pleases: told apart by gzip's magic bytes.
+  // A beacon is a form: `data=` and the batch in base64.
+  const text = (body[0] === 0x1f && body[1] === 0x8b ? gunzipSync(body) : body).toString();
+  const json = JSON.parse(text.startsWith('data=') ? Buffer.from(decodeURIComponent(text.slice(5)), 'base64').toString() : text) as unknown;
+  return (Array.isArray(json) ? json : (json as { batch?: unknown[] }).batch ?? [json]) as Sent[];
+}
+
+test('the app\'s own events wait to go to PostHog together, with the time each happened, and go when the page is left', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { plainUserAgent: true });
+  const requests: Sent[][] = [];
+  // On the context's route, as the fixtures' stand-in for PostHog: a request event may miss one the service worker sends.
+  await alice.page.context().route(/\/diag\//, (route) => { const events = eventsOf(route.request()); if (events.length) requests.push(events); return route.fallback(); });
+  const said = Date.now();
+  await alice.say('one');
+  await alice.say('two');
+  // Past the 3 s in which the SDK would have sent them by itself: held, as they are for up to 30 s (core/outbox.ts).
+  await alice.page.waitForTimeout(5000);
+  const named = (name: string) => requests.filter((r) => r.some((e) => e.event === name));
+  expect(named('message_sent'), 'held').toEqual([]);
+  // The page going away. A real one (a reload) sends by beacon, which Playwright does not see from a page that is leaving.
+  const left = Date.now();
+  await alice.page.evaluate(() => { dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false })); });
+  await expect.poll(() => named('message_sent').length, { message: 'sent as the page went' }).toBeGreaterThan(0);
+  const [request, ...more] = named('message_sent');
+  expect(more, 'in one request').toEqual([]);
+  const texts = request!.filter((e) => e.event === 'message_sent');
+  expect(texts, 'both texts').toHaveLength(2);
+  for (const e of texts) {
+    const at = Date.parse(e.timestamp ?? '');
+    expect(at, 'the time it happened, not the time it went').toBeGreaterThanOrEqual(said - 1000);
+    expect(at, 'the time it happened, not the time it went').toBeLessThan(left - 4000);
+    expect(e.properties, 'the time carried to the SDK is taken off again').not.toHaveProperty('held_at');
+  }
 });
 
 test('a yes during the handshake neither refuses the room nor gets lost', async ({ crowd }) => {

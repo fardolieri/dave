@@ -10,6 +10,7 @@
  */
 import type { PostHog } from 'posthog-js';
 import { createSignal, untrack } from 'solid-js';
+import { Outbox } from '../core/outbox';
 import { local } from './storage';
 import { build } from './version';
 
@@ -46,6 +47,25 @@ const MAX_QUEUE = 100;
 let person: { id: string; props: Props } | null = null;
 const listeners = new Set<(on: boolean) => void>();
 
+/**
+ * The app's own events, handed to the SDK together at most every 30 s (core/outbox.ts): every request to PostHog is one
+ * of the Worker's for the day. The SDK's own (a page view, an exception, the replay) and a problem report
+ * (`captureOnce`) go as they come.
+ *
+ * Each keeps the time it happened, in HELD_AT, which `before_send` makes the event's timestamp. Not `capture`'s own
+ * `timestamp` option: the SDK sends an event given any options at once, alone, outside its batch.
+ */
+const HELD_AT = 'held_at';
+const outbox = new Outbox<[string, Props | undefined, number]>((held) => {
+  if (!sdk || !untrack(telemetryOn)) return;
+  for (const [event, props, at] of held) sdk.capture(event, { ...props, [HELD_AT]: at });
+});
+// Hidden, it may never be shown again (a phone closes a tab in the background without a pagehide): what is held goes to
+// the SDK then, which sends it in its next 3 s. On pagehide this runs before the SDK's own listener, added later (at
+// init), which sends what the SDK holds by beacon.
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') outbox.flush(); });
+addEventListener('pagehide', () => outbox.flush());
+
 /** What the app adds to every event besides the build, as it changes (`posthog.register`): the theme on screen. */
 const appProps: Props = {};
 
@@ -79,6 +99,14 @@ function start(): void {
       opt_out_capturing_by_default: true,
       opt_out_persistence_by_default: true,
       persistence_save_debounce_ms: 0,
+      before_send: (event) => {
+        const at = event?.properties[HELD_AT];
+        if (event && typeof at === 'number') {
+          event.timestamp = new Date(at);
+          delete event.properties[HELD_AT];
+        }
+        return event;
+      },
       session_recording: {
         maskAllInputs: true,
         maskTextSelector: '*', // chat, names, fingerprints: never in a recording
@@ -102,6 +130,7 @@ function start(): void {
 
 function stop(): void {
   queue = [];
+  outbox.drop();
   if (sdk) {
     sdk.stopSessionRecording();
     sdk.opt_out_capturing(); // before the reset, which drops that record again: opted out by default, it stays out
@@ -164,7 +193,8 @@ export function onConsentChange(l: (on: boolean) => void): () => void {
  * straight to PostHog's capture endpoint: no SDK, no cookies, no person profile, no replay beside it.
  */
 export function captureOnce(event: string, props: Props): void {
-  if (telemetryOn() && sdk) { sdk.capture(event, props); return; }
+  // What led up to the report goes with it, not up to 30 s after.
+  if (telemetryOn() && sdk) { outbox.flush(); sdk.capture(event, props); return; }
   if (!key || !host) return;
   const body = {
     api_key: key,
@@ -181,7 +211,7 @@ export function captureOnce(event: string, props: Props): void {
 const posthog = {
   capture(event: string, props?: Props): void {
     if (!untrack(telemetryOn) || !key || !host) return;
-    if (sdk) sdk.capture(event, props);
+    if (sdk) outbox.add([event, { ...appProps, ...props }, Date.now()]); // the theme on screen then, not at the send
     else if (queue.length < MAX_QUEUE) queue.push([event, { ...appProps, ...props }]); // as they were when it happened, not when the SDK is up
   },
   /** Super properties of the app's own: on every event from now on, also after a later yes in this visit. */
