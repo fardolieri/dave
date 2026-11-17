@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-17T19:59 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-17T20:14 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 26, branch 149, preview 175.
+Runs recorded: nightly 26, branch 150, preview 176.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -17,6 +17,7 @@ Runs recorded: nightly 26, branch 149, preview 175.
 | 2 | 2 | nightly 1, preview 1 | themes.spec.ts › every theme applies, loads its fonts and keeps the console quiet, at desktop and phone width; the pick survives a reload | expect(locator).toHaveCount(expected) failed | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40194632521/attempts/1) | 61 |
 | 2 | 2 | nightly 1, branch 1 | presence.spec.ts › the room whose call I join goes to the top of the list, and stays there after a reload | console warnings, errors or exceptions nobody expected: Alice: error: [JavaScript Error: "Failed to load ‘https://dave-nightly.danielmittereder.workers.dev/asse | [10-24](https://github.com/fardolieri/dave/actions/runs/40046533309/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40191892619/attempts/1) | 62 |
 | 2 | 2 | branch 2 | update.spec.ts › ticket 33: Reload moves only its own tab; a tab waiting behind it is asked once it takes over | expect(locator).toBeVisible() failed | [10-21](https://github.com/fardolieri/dave/actions/runs/39573928882/attempts/1) | [10-21](https://github.com/fardolieri/dave/actions/runs/39576350056/attempts/1) | 65 |
+| 1 | 1 | preview 1 | adversary.spec.ts › the shared secret never crosses the wire | TimeoutError: page.goto: Timeout 30000ms exceeded. | [11-17](https://github.com/fardolieri/dave/actions/runs/44166220176/attempts/1) | [11-17](https://github.com/fardolieri/dave/actions/runs/44166220176/attempts/1) |  |
 | 1 | 1 | preview 1 | settings.spec.ts › phone width: one column, the composer pinned to the bottom of the screen and usable | page.goto: net::ERR_CONNECTION_RESET at https://dave-pr-155.danielmittereder.workers.dev/ | [11-17](https://github.com/fardolieri/dave/actions/runs/44149735035/attempts/1) | [11-17](https://github.com/fardolieri/dave/actions/runs/44149735035/attempts/1) | 86 |
 | 1 | 1 | preview 1 | privacy.spec.ts › the Worker really passes /diag on to PostHog: scripts and remote config to its assets host, the rest to its ingest host | TimeoutError: apiRequestContext.post: Timeout 15000ms exceeded. | [11-17](https://github.com/fardolieri/dave/actions/runs/44146139627/attempts/1) | [11-17](https://github.com/fardolieri/dave/actions/runs/44146139627/attempts/1) | 85 |
 | 1 | 1 | preview 1 | resilience.spec.ts › a friend whose server socket drops and comes back plays no join cue for a friend in the room but out of the call | expect(received).toEqual(expected) // deep equality | [11-16](https://github.com/fardolieri/dave/actions/runs/43891354222/attempts/1) | [11-16](https://github.com/fardolieri/dave/actions/runs/43891354222/attempts/1) | 83 |
