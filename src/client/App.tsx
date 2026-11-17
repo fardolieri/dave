@@ -2950,7 +2950,8 @@ function FileView(props: { file: FileMeta; title: string | undefined; attachment
           <Show when={big()}><div class="att-media att-hold" aria-hidden="true" /></Show>
           <Show when={video().title || video().channel || url() || playing() || props.party}>
             <div class="att-video-about">
-              <span class="about"><span class="title">{video().title}</span><span class="channel">{video().channel}</span></span>
+              {/* The title opens the video on YouTube, in a tab of its own: the thumbnail plays it here. */}
+              <span class="about"><Show when={video().title}>{(t) => <a class="title" href={`https://www.youtube.com/watch?v=${video().id}`} target="_blank" rel="noopener noreferrer">{t()}</a>}</Show><span class="channel">{video().channel}</span></span>
               <Show when={props.party}>{(party) => (
                 <Show when={party().joined()} fallback={
                   <button type="button" class="att-together" onClick={() => party().start(props.file)} title="Watch it together with everyone in the call">Watch together</button>

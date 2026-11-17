@@ -332,6 +332,8 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .att-queue[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 .att-queue.done { color: var(--acc); }
 .att-video-about .title { font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.att-video-about a.title { align-self: flex-start; max-width: 100%; text-decoration: none; }
+.att-video-about a.title:hover, .att-video-about a.title:focus-visible { text-decoration: underline; }
 .att-video-about .channel { color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-video-about .channel:empty { display: none; }
 .att-save { font-size: 12px; font-weight: 600; text-decoration: none; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; }

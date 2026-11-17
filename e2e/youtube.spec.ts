@@ -65,6 +65,10 @@ test('a YouTube link put in waits above the composer as its card, goes above the
   for (const f of [alice, bob]) {
     const card = f.page.locator('.chat-log .att-video');
     await expect(card.locator('.title')).toHaveText(TITLE);
+    // The title opens the video on YouTube, in a tab of its own, telling YouTube nothing of the room it came from.
+    await expect(card.getByRole('link', { name: TITLE })).toHaveAttribute('href', LINK);
+    await expect(card.getByRole('link', { name: TITLE })).toHaveAttribute('target', '_blank');
+    await expect(card.getByRole('link', { name: TITLE })).toHaveAttribute('rel', 'noopener noreferrer');
     await expect(card.locator('.channel')).toHaveText('Lofi Girl');
     await expect.poll(() => card.locator('img:not(.att-preview)').evaluate((img: HTMLImageElement) => img.naturalWidth), { timeout: 30_000 }).toBe(1280);
     await expect.poll(() => order(f)).toEqual(['card', `listen ${LINK}`]);
