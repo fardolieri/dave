@@ -308,8 +308,9 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
    YouTube's player drops its fullscreen button from its control bar (sometimes, as YouTube picks the player). */
 .att-video.tall { width: 300px; width: clamp(160px, 70dvh * 9 / 16, 300px); }
 .att-video.tall .att-media { aspect-ratio: 9 / 16; }
-.att-video-about { display: flex; align-items: flex-start; gap: 8px; padding: 6px 2px 0; min-width: 0; }
-.att-video-about .about { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.att-video-about { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; padding: 6px 2px 0; min-width: 0; }
+/* The title keeps 120 px at least: on a narrow card (a Short's) the buttons go below it, one under the other if need be */
+.att-video-about .about { flex: 1 1 120px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .att-big { flex: none; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border-radius: 8px; }
 /* On a video, in its top right corner, clear of a video's controls */
 .att-big.over { position: absolute; top: 6px; right: 6px; z-index: 1; width: 30px; height: 30px; border: 0; border-radius: 999px; background: rgba(17,19,24,.6); color: #fff; }
@@ -327,9 +328,11 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 .att-hold { visibility: hidden; }
 /* Beside the big picture button, as tall and as round */
 .att-together { flex: none; display: inline-flex; align-items: center; height: 32px; padding: 0 12px; font-size: 13px; border-radius: 8px; white-space: nowrap; }
-/* In the watch party, Play next and Add to queue in its place: icons, for a card 300 px wide */
-.att-queue { flex: none; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border-radius: 8px; }
+/* In the watch party, Play now and Add to queue in its place */
 .att-queue[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+.att-queue-words { display: grid; }
+.att-queue-words > span { grid-area: 1 / 1; text-align: center; }
+.att-queue-words > span[aria-hidden="true"] { visibility: hidden; }
 .att-queue.done { color: var(--acc); }
 .att-video-about .title { font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .att-video-about a.title { align-self: flex-start; max-width: 100%; text-decoration: none; }

@@ -1980,35 +1980,33 @@ function PartyPlayer(props: { party: PartyHandle; video: string }) {
 }
 
 /**
- * A YouTube card's buttons while I am in the watch party, in place of Watch together, icons for a narrow card: Play next
- * and Add to queue. Each says ✓ for a moment once it took; a full queue takes neither.
+ * A YouTube card's buttons while I am in the watch party, in place of Watch together (owner, 2026-11-17): Play now puts
+ * it on in place of the video playing, the queue left as it is; Add to queue puts it last, and says ✓ for a moment once
+ * it took. A full queue takes no more.
  */
-function QueueButtons(props: { party: PartyHandle; file: FileMeta }) {
-  const [took, setTook] = createSignal<'next' | 'last' | null>(null);
+function QueueButtons(props: { party: PartyHandle; file: FileMeta; onPlayNow: () => void }) {
+  const [took, setTook] = createSignal(false);
   let timer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => clearTimeout(timer));
-  const add = (first: boolean) => {
-    if (!props.party.enqueue(props.file, first)) return;
-    setTook(first ? 'next' : 'last');
+  const add = () => {
+    if (!props.party.enqueue(props.file)) return;
+    setTook(true);
     clearTimeout(timer);
-    timer = setTimeout(() => setTook(null), QUEUED_TICK_MS);
+    timer = setTimeout(() => setTook(false), QUEUED_TICK_MS);
   };
   const full = () => props.party.full();
-  const tip = (what: string) => (full() ? `The watch party's queue is full (${MAX_QUEUE} videos)` : what);
-  const icon = (d: string) => <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d={d} fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>;
-  const tick = 'M5 12.5l4.5 4.5L19 7.5';
   return (
     <>
-      <button type="button" class={['att-queue', { done: took() === 'next' }]} aria-disabled={full() ? "true" : "false"} onClick={() => add(true)} title={tip('Play next in the watch party')} aria-label="Play next">
-        {icon(took() === 'next' ? tick : 'M4 5l5 3.5L4 12zM12 8.5h8M4 16h16M4 20h16')}
-      </button>
-      <button type="button" class={['att-queue', { done: took() === 'last' }]} aria-disabled={full() ? "true" : "false"} onClick={() => add(false)} title={tip("Add to the watch party's queue")} aria-label="Add to queue">
-        {icon(took() === 'last' ? tick : 'M4 6h12M4 11h12M4 16h7M17 13v7M13.5 16.5h7')}
+      <button type="button" class="att-together" onClick={() => { props.onPlayNow(); props.party.playNow(props.file); }} title="Play it now in the watch party, in place of the video playing">Play now</button>
+      {/* Both words in one place, one shown: the button keeps its width, so Play now beside it does not move under the pointer */}
+      <button type="button" class={['att-together', 'att-queue', { done: took() }]} aria-disabled={full() ? 'true' : 'false'} onClick={add}
+              title={full() ? `The watch party's queue is full (${MAX_QUEUE} videos)` : "Add it to the watch party's queue"}>
+        <span class="att-queue-words"><span aria-hidden={took() ? 'true' : 'false'}>Add to queue</span><span aria-hidden={took() ? 'false' : 'true'}>Added ✓</span></span>
       </button>
     </>
   );
 }
-/** How long a queue button says ✓ after it took. */
+/** How long Add to queue says ✓ after it took. */
 const QUEUED_TICK_MS = 1500;
 
 /** Who watches a share, as overlapping pictures like a folded room's faces; with `tip`, each shows it on hover (and on keyboard focus). */
@@ -2998,10 +2996,12 @@ function FileView(props: { file: FileMeta; title: string | undefined; attachment
                 <Show when={party().joined()} fallback={
                   <button type="button" class="att-together" onClick={() => party().start(props.file)} title="Watch it together with everyone in the call">Watch together</button>
                 }>
-                  <QueueButtons party={party()} file={props.file} />
+                  {/* Played in the card meanwhile, the card's own player stops: the party's plays it */}
+                  <QueueButtons party={party()} file={props.file} onPlayNow={() => setPlaying(false)} />
                 </Show>
               )}</Show>
-              <Show when={url() || playing()}>{enlarger('att-big')}</Show>
+              {/* Not in a watch party: nobody watches a card big meanwhile, and it would crowd its buttons (owner, 2026-11-17) */}
+              <Show when={(url() || playing()) && !props.party?.joined()}>{enlarger('att-big')}</Show>
             </div>
           </Show>
         </div>

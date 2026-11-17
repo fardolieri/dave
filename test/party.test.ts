@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_PARTY_BODY_BYTES, MAX_QUEUE, MAX_QUEUED_TITLE_BYTES, QUEUED_BY_LENGTH, asIs, change, current, driftAllowed, enqueue, fromSeeking, jumped, later, moveQueued, next, parseParty, partyText, positionAt, queuedTitle, sameChange, seekMore, type Party, type Queued } from '../src/core/party';
+import { MAX_PARTY_BODY_BYTES, MAX_QUEUE, MAX_QUEUED_TITLE_BYTES, QUEUED_BY_LENGTH, asIs, change, current, putOn, driftAllowed, enqueue, fromSeeking, jumped, later, moveQueued, next, parseParty, partyText, positionAt, queuedTitle, sameChange, seekMore, type Party, type Queued } from '../src/core/party';
 import { MAX_SEALED_PARTY_LENGTH, MAX_SEALED_PROFILE_LENGTH, MAX_VIEWERS } from '../src/core/protocol';
 import { MAX_TURN_USERS, type SocketState } from '../src/core/room';
 
@@ -175,12 +175,11 @@ describe('a watch party (core/party.ts)', () => {
     expect(current([made, after])).toBe(after);
   });
 
-  it('puts videos in the queue first or last, moves and plays them in order', () => {
+  it('puts videos last in the queue, moves and plays them in order', () => {
     const [a, b, c] = [queued('a'), queued('b'), queued('c')];
-    expect(enqueue([a], b, false)).toEqual([a, b]);
-    expect(enqueue([a], b, true)).toEqual([b, a]);
+    expect(enqueue([a], b)).toEqual([a, b]);
     const full = Array.from({ length: MAX_QUEUE }, (_, i) => queued(`q${i}`));
-    expect(enqueue(full, a, true)).toBeNull();
+    expect(enqueue(full, a)).toBeNull();
     expect(moveQueued([a, b, c], c.id, -1)).toEqual([a, c, b]);
     expect(moveQueued([a, b, c], a.id, 1)).toEqual([b, a, c]);
     expect(moveQueued([a, b, c], a.id, -1)).toEqual([a, b, c]);
@@ -192,6 +191,9 @@ describe('a watch party (core/party.ts)', () => {
     expect(next(p, false, () => 'Me at the zoo, the whole title')).toMatchObject({ playing: false, title: 'Me at the zoo, the whole title' });
     expect(next(party({ queue: [] }), true, () => undefined)).toBeNull();
     expect(next(party(), true, () => undefined)).toBeNull();
+    // A card put on now: from its start, at the party's speed, the queue as it was.
+    const zoo = { hash: 'z'.repeat(43), video: 'jNQXAC9IVRw', title: 'Me at the zoo' };
+    expect(putOn(p, zoo, true)).toEqual({ ...zoo, playing: true, pos: 0, rate: 1.5, queue: [a, b] });
     // The party as it is, to change its queue alone: where it is by now.
     expect(asIs(party({ queue: [a] }), 1_000_000 + 2000)).toEqual({ hash: 'h'.repeat(43), video: 'dQw4w9WgXcQ', title: undefined, playing: true, pos: 12, rate: 1, queue: [a] });
   });

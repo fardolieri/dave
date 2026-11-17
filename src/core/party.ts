@@ -176,9 +176,8 @@ export function change(from: Party | null, me: string, now: number, to: Pick<Par
 export const asIs = (p: Party, now: number, title = p.title): Pick<Party, 'hash' | 'video' | 'title' | 'playing' | 'pos' | 'rate' | 'queue'> =>
   ({ hash: p.hash, video: p.video, title, playing: p.playing, pos: positionAt(p, now), rate: p.rate, queue: p.queue });
 
-/** The queue with `q` put in it: first (play next) or last; null when full. */
-export const enqueue = (queue: Queued[], q: Queued, first: boolean): Queued[] | null =>
-  queue.length >= MAX_QUEUE ? null : first ? [q, ...queue] : [...queue, q];
+/** The queue with `q` put last in it; null when full. */
+export const enqueue = (queue: Queued[], q: Queued): Queued[] | null => (queue.length >= MAX_QUEUE ? null : [...queue, q]);
 /** The queue with the entry `id` moved `by` places on (-1: up, 1: down), as far as it goes. */
 export function moveQueued(queue: Queued[], id: string, by: number): Queued[] {
   const i = queue.findIndex((q) => q.id === id);
@@ -189,14 +188,18 @@ export function moveQueued(queue: Queued[], id: string, by: number): Queued[] {
   return out;
 }
 
+/** A card put on in the party `p`, from its start, at the party's speed: playing as `playing` says, with `queue`. */
+export const putOn = (p: Party, card: Pick<Party, 'hash' | 'video' | 'title'>, playing: boolean, queue = p.queue): Pick<Party, 'hash' | 'video' | 'title' | 'playing' | 'pos' | 'rate' | 'queue'> =>
+  ({ hash: card.hash, video: card.video, title: card.title, playing, pos: 0, rate: p.rate, queue });
+
 /**
- * The next video of the queue put on, from its start, and out of the queue: playing as `playing` says, at the party's
- * speed. Its title is my card's where I have it (`titleOf`), else the queue's. Null with nothing queued.
+ * The next video of the queue put on, and out of the queue (`putOn`). Its title is my card's where I have it
+ * (`titleOf`), else the queue's. Null with nothing queued.
  */
-export function next(p: Party, playing: boolean, titleOf: (q: Queued) => string | undefined): Pick<Party, 'hash' | 'video' | 'title' | 'playing' | 'pos' | 'rate' | 'queue'> | null {
+export function next(p: Party, playing: boolean, titleOf: (q: Queued) => string | undefined): ReturnType<typeof putOn> | null {
   const [q, ...rest] = p.queue ?? [];
   if (!q) return null;
-  return { hash: q.hash, video: q.video, title: titleOf(q) ?? q.title, playing, pos: 0, rate: p.rate, queue: rest };
+  return putOn(p, { hash: q.hash, video: q.video, title: titleOf(q) ?? q.title }, playing, rest);
 }
 
 /**

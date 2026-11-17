@@ -276,7 +276,7 @@ test('a friend who joins a paused party finds it paused, where it is, and it pla
   await expect.poll(() => inStep([alice, bob, carol], true, 1.5), { timeout: 30_000 }).toBe(true);
 });
 
-test('a watch party\'s queue: cards queued by anyone in it, moved and taken out, the next played at the end, and skipped to', async ({ crowd }) => {
+test('a watch party\'s queue: cards queued by anyone in it, moved and taken out, the next played at the end, skipped to, and a card played now', async ({ crowd }) => {
   test.setTimeout(240_000);
   const ZOO = 'jNQXAC9IVRw';
   const ZOO_TITLE = 'Me at the zoo';
@@ -310,26 +310,31 @@ test('a watch party\'s queue: cards queued by anyone in it, moved and taken out,
   await heldAt(alice, 0);
   await playPause(alice);
   await youtubePlays(alice);
-  // Out of the party, Bob may watch together; queueing is for those in it.
+  // Out of the party, Bob may watch together, or a card big; queueing is for those in it, who watch no card big meanwhile.
   await expect(card(bob, ZOO_TITLE).getByRole('button', { name: 'Watch together' })).toBeVisible({ timeout: 30_000 });
+  await expect(card(bob, ZOO_TITLE).getByRole('button', { name: 'Big picture', exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(card(bob, ZOO_TITLE).getByRole('button', { name: 'Add to queue' })).toHaveCount(0);
   await tile(bob).click();
   await youtubePlays(bob);
   await expect(card(bob, ZOO_TITLE).getByRole('button', { name: 'Watch together' })).toHaveCount(0);
+  await expect(card(bob, ZOO_TITLE).getByRole('button', { name: 'Big picture', exact: true })).toHaveCount(0);
+  await expect(card(bob, ZOO_TITLE).getByRole('button', { name: 'Play now' })).toBeVisible();
 
-  // Bob queues the other video, Alice this one, then this one again to play next: a tick says each took.
+  // Bob queues the other video, Alice this one, twice: the button says each took.
   await card(bob, ZOO_TITLE).getByRole('button', { name: 'Add to queue' }).click();
-  await expect(card(bob, ZOO_TITLE).getByRole('button', { name: 'Add to queue' })).toHaveClass(/done/);
+  await expect(card(bob, ZOO_TITLE).getByRole('button', { name: 'Added ✓' })).toBeVisible();
   await expect(queue(alice)).toHaveText([ZOO_TITLE]);
   await card(alice, TITLE).getByRole('button', { name: 'Add to queue' }).click();
   await expect(queue(bob)).toHaveText([ZOO_TITLE, TITLE]);
-  await card(alice, TITLE).getByRole('button', { name: 'Play next' }).click();
-  await expect(queue(bob)).toHaveText([TITLE, ZOO_TITLE, TITLE]);
-  await expect(queue(alice)).toHaveText([TITLE, ZOO_TITLE, TITLE]);
+  await card(alice, TITLE).getByRole('button', { name: 'Add to queue' }).click();
+  await expect(queue(bob)).toHaveText([ZOO_TITLE, TITLE, TITLE]);
+  await expect(queue(alice)).toHaveText([ZOO_TITLE, TITLE, TITLE]);
   // Each with the face of who queued it.
   await expect(tile(alice).locator('.party-queue li .face')).toHaveCount(3);
 
-  // Bob moves the other video up, then down to the end.
+  // Bob moves the other video down, up again, then down to the end.
+  await tile(bob).getByRole('button', { name: `Move ${ZOO_TITLE} down` }).click();
+  await expect(queue(alice)).toHaveText([TITLE, ZOO_TITLE, TITLE]);
   await tile(bob).getByRole('button', { name: `Move ${ZOO_TITLE} up` }).click();
   await expect(queue(alice)).toHaveText([ZOO_TITLE, TITLE, TITLE]);
   await tile(bob).getByRole('button', { name: `Move ${ZOO_TITLE} down` }).click();
@@ -352,6 +357,17 @@ test('a watch party\'s queue: cards queued by anyone in it, moved and taken out,
   await expect(queue(alice)).toHaveText([ZOO_TITLE]);
   await expect.poll(async () => (await all(alice, bob)).every((w) => w.t < 30), { timeout: 15_000 }).toBe(true);
   await expect.poll(() => inStep([alice, bob], true, 1.5), { timeout: 15_000 }).toBe(true);
+
+  // Further on, Bob plays this card now: it goes on from its start, playing, and the queue stays as it was. Further on
+  // elsewhere than before the skip: a jump back to where a player was before the app's own seek, a moment after it, is
+  // taken for a report from before that seek (ADR 0012), and put right (a runner of #159's preview).
+  await seek(alice, 0.6);
+  await expect.poll(async () => (await all(alice, bob)).every((w) => w.t > 100), { timeout: 15_000 }).toBe(true);
+  await card(bob, TITLE).getByRole('button', { name: 'Play now' }).click();
+  await expect.poll(async () => (await all(alice, bob)).every((w) => w.t < 30), { timeout: 15_000 }).toBe(true);
+  await expect.poll(() => inStep([alice, bob], true, 1.5), { timeout: 15_000 }).toBe(true);
+  await expect(queue(alice)).toHaveText([ZOO_TITLE]);
+  await expect(queue(bob)).toHaveText([ZOO_TITLE]);
 
   // Alice takes the last one out: nothing to skip to.
   await tile(alice).getByRole('button', { name: `Remove ${ZOO_TITLE}` }).click();

@@ -6,7 +6,7 @@ date: 2026-11-17
 # A watch party's queue is part of its state, cut to fit a socket's attachment
 
 The owner wants friends in a watch party to line up what plays next (2026-11-17, ticket 02 of watch-party): a card's
-Play next and Add to queue, a list anyone in it reorders or takes from, Skip, and the next played when the video ends.
+Play next (Play now since, which leaves the queue alone) and Add to queue, a list anyone in it reorders or takes from, Skip, and the next played when the video ends.
 
 The queue goes in the party's state (`queue` of `Party`, core/party.ts), sealed and declared in presence as the rest of
 it is (ADR 0012): every edit is a change like a play or a pause, and the latest change wins. Each entry names a card as

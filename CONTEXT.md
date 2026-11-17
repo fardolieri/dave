@@ -93,7 +93,7 @@ A YouTube video of the room's chat that participants watch together, in step, ea
 _Avoid_: Watch together (the button's words, fine in UI copy), stream, share (a share is a screen)
 
 **Queue** (of a watch party):
-What plays next in a watch party, in order: cards of the chat its friends lined up with Play next or Add to queue. When the video ends, the first plays. Part of the party's state, and gone with it.
+What plays next in a watch party, in order: cards of the chat its friends lined up with Add to queue. When the video ends, the first plays. Part of the party's state, and gone with it.
 _Avoid_: Playlist (YouTube's, made elsewhere)
 
 **Signaling**:

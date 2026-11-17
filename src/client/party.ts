@@ -5,7 +5,7 @@
 import { createEffect, createMemo, createSignal, untrack } from 'solid-js';
 import type { LocalIdentity } from './identity';
 import type { FileMeta } from '../core/attachment';
-import { MAX_QUEUE, QUEUED_BY_LENGTH, asIs, change, current, enqueue, moveQueued, next, queuedTitle, sameQueue, sameState, type Party, type Queued } from '../core/party';
+import { MAX_QUEUE, QUEUED_BY_LENGTH, asIs, change, current, enqueue, moveQueued, next, putOn, queuedTitle, sameQueue, sameState, type Party, type Queued } from '../core/party';
 import { toBase64Url } from '../core/identity';
 import { TICK_MS, createPartySync, type Step } from '../core/partysync';
 import { openParty, sealParty } from '../core/sealed';
@@ -124,6 +124,15 @@ export function createParty(room: Room, identity: LocalIdentity, textKey: Crypto
       // The queue goes on with the party: Watch together puts a card on now, ahead of it.
       declare(change(untrack(now), me, roomNow(), { hash: card.hash, video: card.youtube.id, title: card.youtube.title, playing: false, pos: 0, rate: 1, queue: going?.queue }));
     },
+    /**
+     * Puts this YouTube card of the chat on now, from its start, playing, in place of the video playing; the queue as it
+     * is, the speed the party's. Only while I am in the party.
+     */
+    playNow: (card: FileMeta): void => {
+      const video = card.youtube?.id;
+      if (!video) return;
+      edit((p) => putOn(p, { hash: card.hash, video, title: card.youtube?.title }, true));
+    },
     /** Into the party going on, where it is. */
     join: (): void => { const p = untrack(now); if (p && inCall()) declare(p); },
     /** Out of it; it goes on for whoever else is in it. */
@@ -137,14 +146,14 @@ export function createParty(room: Room, identity: LocalIdentity, textKey: Crypto
     queue: (): Queued[] => now()?.queue ?? [],
     /** Whether the queue holds as many as it can. */
     full: (): boolean => (now()?.queue?.length ?? 0) >= MAX_QUEUE,
-    /** Puts a YouTube card of the chat in the queue, next (`first`) or last, while I am in the party; false when it could not. */
-    enqueue: (card: FileMeta, first: boolean): boolean => {
+    /** Puts a YouTube card of the chat last in the queue, while I am in the party; false when it could not. */
+    enqueue: (card: FileMeta): boolean => {
       const video = card.youtube?.id;
       if (!video) return false;
       const id = toBase64Url(crypto.getRandomValues(new Uint8Array(6)));
       const title = queuedTitle(card.youtube?.title);
       const q: Queued = { id, by: me.slice(0, QUEUED_BY_LENGTH), hash: card.hash, video, ...(title ? { title } : {}) };
-      return edit((p, t) => { const queue = enqueue(p.queue ?? [], q, first); return queue && keep(p, t, queue); }) !== null;
+      return edit((p, t) => { const queue = enqueue(p.queue ?? [], q); return queue && keep(p, t, queue); }) !== null;
     },
     /** Takes an entry out of the queue. */
     unqueue: (id: string): void => { edit((p, t) => (p.queue?.some((q) => q.id === id) ? keep(p, t, p.queue.filter((q) => q.id !== id)) : null)); },

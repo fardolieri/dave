@@ -30,5 +30,12 @@ playing. Friends want to line up what comes next, and have it play when the vide
   his app had taken the next, and put the one after on: one video skipped. An end counts only while the party is near
   its end too (test/partysync.test.ts).
 
+**Changed after it shipped** (owner, 2026-11-17, the day it went live):
+- Play now in place of Play next: it stops the video playing and plays the card at once, from its start, at the party's
+  speed; the queue stays as it was.
+- Text buttons, Play now and Add to queue (Added ✓ for a moment), in place of the icons.
+- No Big picture on a YouTube card while in the party: nobody watches a card big meanwhile, and it made room for the
+  text. A video file keeps its own.
+
 **Not verified here:** a phone (the list and the buttons were looked at in a 390 px wide Chromium only), Firefox and
 Safari with the real player, an ad between two videos.
