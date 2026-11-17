@@ -322,5 +322,9 @@
  {
   "match": "^resilience\\.spec\\.ts › a friend whose server socket drops and comes back plays no join cue for a friend in the room but out of the call \\| expect\\(received\\)\\.toEqual",
   "ticket": "83"
+ },
+ {
+  "match": "^privacy\\.spec\\.ts › the Worker really passes /diag on to PostHog: scripts and remote config to its assets host, the rest to its ingest host \\| TimeoutError: apiRequestContext\\.post",
+  "ticket": "85"
  }
 ]
