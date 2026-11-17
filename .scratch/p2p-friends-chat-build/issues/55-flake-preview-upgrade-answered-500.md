@@ -59,3 +59,16 @@ PostHog has three `server_upgrade_failed` from `dave-worker-preview`, all "inter
 The preview's deploy had finished at 23:57:23, almost three minutes before, so this one was not a Room reset by a deploy.
 It came while the run's 16 shards were all opening rooms on the same preview Worker at once. Two friends got a 500, yet
 only one attempt 2 was reported: an event was lost on the way, or a 500 came from somewhere the catch does not reach.
+
+## Seen 2026-11-17, a burst again
+The preview run of #157 at 6616e80 (run 44168521032, Chromium shard 6), passed on its retry: `attachment.spec.ts:715` "a
+pull shown under way with none running is reported (file_pulling_stuck)" failed on its console check, Alice's socket
+refused again and again ("Error during WebSocket handshake: Unexpected response code: 500" against `dave-pr-157`). #157
+makes a YouTube card's title a link: nothing on the Worker or the Room. PostHog has 45 `server_upgrade_failed` from
+previews between 20:24:06 and 20:37:57 UTC, 42 of them in the 26 seconds from 20:24:06: all "internal error; reference =
+…" but three "Network connection lost.", all attempt 1, 36 of them `overloaded`, which the Worker does not ask again, so
+each of those was a friend's 500. No other preview's suite was running at 20:24 (preview.yml: #157's run alone, its 16
+shards starting together at 20:22; #158's started at 20:34). Not the account's limit: "Exceeded allowed volume of
+requests in Durable Objects free tier." starts only at 20:44:21 (ticket 89), and no upgrade failed that way before it.
+So the same as 2026-10-18, more of it: one run's shards opening rooms at once, Cloudflare answering `overloaded`.
+The live site had its first ones the same day: four at 18:55 UTC, three `overloaded`, all attempt 1.
