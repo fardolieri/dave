@@ -24,7 +24,7 @@ import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, identityOf, normaliseName, type Ident
 import { displayName, formatAgo, knownAgo } from '../core/names';
 import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatStream } from '../core/format';
-import { FREE_PLAN, RELAY_SAVE_FROM, elapsedOf, fillOf, formatBytes, formatCount, formatPercent, monthSoFar, type FreePlanToday, type RelayUsage } from '../core/relayusage';
+import { FREE_PLAN, RELAY_SAVE_FROM, SIDE_SHARE, elapsedOf, fillOf, formatBytes, formatCount, formatPercent, monthSoFar, sideOf, type Fill, type FreePlanToday, type RelayUsage, type Side } from '../core/relayusage';
 import { refreshRelayUsage, relaySaving, relayUsage } from './relay';
 import { parseHistoryUsage, type HistoryToday, type HistoryUsage } from '../core/kept';
 import { Markdown, MarkdownMirror } from './Markdown';
@@ -2167,8 +2167,8 @@ function untilReset(now: number): string {
  * the bar marks it, where the bar would stand had the limit been used at an even pace since the reset; a bar past it
  * runs out before the reset if it goes on so, and says that in words too.
  */
-function UsageMeter(props: { id: string; name: string; title: string; value: number; limit: number; shown: string; pace?: number; children?: JSX.Element }) {
-  const fill = () => fillOf(props.value, props.limit);
+function UsageMeter(props: { id: string; name: string; title: string; value: number; limit: number; shown: string; pace?: number; fill?: Fill; children?: JSX.Element }) {
+  const fill = () => props.fill ?? fillOf(props.value, props.limit);
   const pct = () => formatPercent(props.value, props.limit);
   const width = () => (props.value > 0 ? `max(3px, ${Math.min(100, (props.value / props.limit) * 100)}%)` : '0');
   const ahead = () => props.pace !== undefined && props.value / props.limit > props.pace;
@@ -2190,16 +2190,53 @@ function UsageMeter(props: { id: string; name: string; title: string; value: num
 /** What the pace line means, once under the meters that have it. */
 const PACE_NOTE = 'The line on a bar is where an even pace would have it by now. Past it, the limit runs out before it resets, if use goes on like this.';
 
-/** The free plan's figures for today, the one nearest its limit first: what to keep an eye on. */
+/** What the line under the free plan's figures says of the shares: the live site and the previews each stop at theirs. */
+const SHARES_NOTE = `The live site and the previews each get ${Math.round(SIDE_SHARE * 100)} % of every daily limit. Past its share of one, a side lets no one into a room until midnight UTC, and the other goes on.`;
+const SIDE_NAMES = { live: 'live site', preview: 'previews' } as const;
+/** The side this copy of the app spends from, whose share its warnings follow: a preview's, or the live site's. */
+const OWN_SIDE: Side = build.target === 'preview' ? 'preview' : 'live';
+/** Said after a daily figure's own title: neither side gets as far as the limit. */
+const SHARES_TITLE = `Before that, the live site and the previews each stop at their ${Math.round(SIDE_SHARE * 100)} % share of it.`;
+
+/** Each side's part of a daily figure as `shown` prints it, against its share; null where the parts are not known. */
+function sidesOf(today: FreePlanToday, key: keyof typeof FREE_PLAN): Array<{ side: Side; value: number; share: number }> | null {
+  if (key === 'stored') return null;
+  const parts = (['live', 'preview'] as const).map((side) => ({ side, figures: sideOf(today, side) }));
+  if (parts.some((p) => !p.figures)) return null;
+  return parts.map(({ side, figures }) => ({ side, value: figures![key], share: FREE_PLAN[key] * SIDE_SHARE }));
+}
+
+/** How full a daily figure is for this copy of the app: its whole limit's, or its own side's share's, whichever is further on. */
+function nearness(today: FreePlanToday, key: keyof typeof FREE_PLAN): number {
+  return Math.max(today[key] / FREE_PLAN[key], ...(sidesOf(today, key) ?? []).filter((s) => s.side === OWN_SIDE).map((s) => s.value / s.share));
+}
+
+/**
+ * The free plan's figures for today, the one nearest its limit first: what to keep an eye on. Under each daily one, the
+ * live site's part and the previews', when the Worker said (core/relayusage.ts, `sideOf`): each may use its share. A
+ * meter warns as this copy's own side nears its share, as for its whole limit: the previews' use stops no friend's room.
+ */
 function FreePlanToday(props: { today: FreePlanToday; now: number }) {
-  const rows = () => FREE_PLAN_ROWS.map((r) => ({ ...r, value: props.today[r.key], limit: FREE_PLAN[r.key] })).sort((a, b) => b.value / b.limit - a.value / a.limit);
+  const near = (key: keyof typeof FREE_PLAN) => nearness(props.today, key);
+  const rows = () => FREE_PLAN_ROWS.map((r) => ({ ...r, value: props.today[r.key], limit: FREE_PLAN[r.key] })).sort((a, b) => near(b.key) - near(a.key));
+  const split = (key: keyof typeof FREE_PLAN, shown: (n: number) => string) => {
+    const sides = sidesOf(props.today, key);
+    if (!sides) return null;
+    // Past half its share a side says so in words too (⚠), as a meter does.
+    return sides.map((s, i) => `${fillOf(s.value, s.share) === 'ok' ? '' : '⚠ '}${i ? SIDE_NAMES[s.side] : 'Live site'} ${shown(s.value)} (${formatPercent(s.value, s.share)}%${i ? '' : ' of its share'})`).join(' · ');
+  };
   return (
     <section class="usage" aria-label="Cloudflare free plan today">
       <h4>Free plan today <small>resets in {untilReset(props.now)} (00:00 UTC)</small></h4>
       <ul>
-        {/* Stored is a total, not a day's: it has no pace. */}
-        <For each={rows()}>{(r) => <UsageMeter id={r.key} name={r.name} title={r.title} value={r.value} limit={r.limit} shown={`${r.shown(r.value)} of ${r.shown(r.limit)}`} pace={r.key === 'stored' ? undefined : elapsedOf('day', props.now)} />}</For>
+        {/* Stored is a total, not a day's: it has no pace, and no share. */}
+        <For each={rows()}>{(r) => (
+          <UsageMeter id={r.key} name={r.name} title={sidesOf(props.today, r.key) ? `${r.title} ${SHARES_TITLE}` : r.title} value={r.value} limit={r.limit} shown={`${r.shown(r.value)} of ${r.shown(r.limit)}`} pace={r.key === 'stored' ? undefined : elapsedOf('day', props.now)} fill={fillOf(near(r.key), 1)}>
+            <Show when={split(r.key, r.shown)}>{(text) => <small class="meter-note meter-split">{text()}</small>}</Show>
+          </UsageMeter>
+        )}</For>
       </ul>
+      <Show when={sidesOf(props.today, 'objectRequests')}><p class="shares-note">{SHARES_NOTE}</p></Show>
     </section>
   );
 }
@@ -2250,7 +2287,12 @@ function VersionDialog() {
     const shown: Array<{ name: string; value: number; limit: number }> = [];
     if (typeof r === 'object' && r !== null) {
       shown.push({ name: 'Relay', value: r.bytes, limit: r.limit });
-      if (r.today?.day === to) for (const row of FREE_PLAN_ROWS) shown.push({ name: row.name, value: r.today[row.key], limit: FREE_PLAN[row.key] });
+      if (r.today?.day === to) {
+        for (const row of FREE_PLAN_ROWS) {
+          shown.push({ name: row.name, value: r.today[row.key], limit: FREE_PLAN[row.key] });
+          for (const s of sidesOf(r.today, row.key) ?? []) if (s.side === OWN_SIDE) shown.push({ name: `${row.name} (${SIDE_NAMES[s.side]})`, value: s.value, limit: s.share });
+        }
+      }
     }
     if (typeof h === 'object' && h !== null) {
       shown.push({ name: 'Kept on the server', value: h.bytes, limit: h.budget });

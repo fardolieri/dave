@@ -1,7 +1,7 @@
 // What the server keeps of the rooms' chat (ADR 0009): every text and file announcement as the Room broadcast it, sealed,
 // in one window for all rooms together, the oldest dropped first once it holds HISTORY_BUDGET_BYTES or is older than
 // HISTORY_KEEP_MS. A browser asks for what it missed after every welcome (`sync`), so a friend who was away still gets it.
-import { formatShare } from './relayusage';
+import { SIDE_SHARE, formatShare } from './relayusage';
 import type { KeptEntry } from './protocol';
 
 /**
@@ -36,25 +36,27 @@ export const entryBytes = (json: string): number => new TextEncoder().encode(jso
 
 /**
  * The free plan's rows and requests are the account's, 100,000 rows written, 5 million read and 100,000 requests a day,
- * and the Rooms need theirs: a room's verifier is read on every challenge, every socket is a request. So the history
- * takes a share of each and no more, whoever asks: past it, until 00:00 UTC, texts go out live but are not kept, a sync
- * is answered `unavailable`, and a file's pieces are neither kept nor given. Writes are counted as SQLite counts them,
- * what a keep drops from the tail of the window included (one piece of a file kept into a window full of texts drops
- * hundreds of them at once), and the totals a keep, a piece given or every SYNCS_PER_WRITE syncs write. A kept text is
- * about four rows (its row, two indexes, the totals), seven once the window is full. A sync is one request to the
- * Store, asked on every welcome: a browser opens a socket per room and one per friend (ADR 0011), and the browser suite
- * against a preview a few thousand a run. What is left for the Rooms: 11,000 rows written (the syncs' own writes, below,
- * go past the share), a million read, and 60,000
- * requests less what keeps take.
+ * and each side, the live site and the previews, may use SIDE_SHARE of them (core/relayusage.ts): the figures below are
+ * of the whole account, scaled to that share (`ofSide`). The Rooms need theirs: a room's verifier is read on every
+ * challenge, every socket is a request. So the history takes a share of each and no more, whoever asks: past it, until
+ * 00:00 UTC, texts go out live but are not kept, a sync is answered `unavailable`, and a file's pieces are neither kept
+ * nor given. Writes are counted as SQLite counts them, what a keep drops from the tail of the window included (one
+ * piece of a file kept into a window full of texts drops hundreds of them at once), and the totals a keep, a piece
+ * given or every SYNCS_PER_WRITE syncs write. A kept text is about four rows (its row, two indexes, the totals), seven
+ * once the window is full. A sync is one request to the Store, asked on every welcome: a browser opens a socket per
+ * room and one per friend (ADR 0011), and the browser suite against a preview a few thousand a run. What is left for
+ * the Rooms, of the whole account's figures: 11,000 rows written (the syncs' own writes, below, go past the share), a
+ * million read, and 60,000 requests less what keeps take; of a side's, SIDE_SHARE of each.
  */
-export const WRITES_PER_DAY = 85_000;
-export const SYNCS_PER_DAY = 40_000;
-export const SYNC_ROWS_PER_DAY = 4_000_000;
+const ofSide = (n: number): number => Math.round(n * SIDE_SHARE);
+export const WRITES_PER_DAY = ofSide(85_000);
+export const SYNCS_PER_DAY = ofSide(40_000);
+export const SYNC_ROWS_PER_DAY = ofSide(4_000_000);
 /**
  * Syncs, and the rows they and fetches that found nothing read, are counted in memory and written with the totals every
  * this many syncs, or sooner with a keep: a row written per sync would be as many rows as syncs. These writes go on
- * past WRITES_PER_DAY, 4,000 a day at most, or the syncs share would hold only until the next eviction. What an eviction
- * forgets is a few syncs of an idle object's, never of a busy one's, which stays awake.
+ * past WRITES_PER_DAY, SYNCS_PER_DAY / SYNCS_PER_WRITE a day at most, or the syncs share would hold only until the next
+ * eviction. What an eviction forgets is a few syncs of an idle object's, never of a busy one's, which stays awake.
  */
 export const SYNCS_PER_WRITE = 10;
 

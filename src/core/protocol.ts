@@ -271,9 +271,9 @@ export const CLOSE_SUPERSEDED = 4004;
  */
 export const CLOSE_OUT_OF_DATE = 4006;
 /**
- * The day's server time is used up (our own limit, OWN_COMPUTE_LIMIT in wrangler.jsonc): the Worker closes a socket
- * with this before any Room is asked, until the day ends, UTC. The app says so and tries again seldom. An app from
- * before it tries again as after any lost socket.
+ * The day's server time is used up (this side's share of a daily limit, SIDE_SHARE; FREE_PLAN_SHARES in
+ * wrangler.jsonc): the Worker closes a socket with this before any Room is asked, until the day ends, UTC. The app says so
+ * and tries again seldom. An app from before it tries again as after any lost socket.
  */
 export const CLOSE_USED_UP = 4007;
 

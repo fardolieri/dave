@@ -24,8 +24,8 @@ test('the call survives the server going away and coming back', async ({ crowd }
 });
 
 test("the day's server time used up is said as it is, with the time the rooms are back, and asked again seldom", async ({ crowd }) => {
-  // Our own limit on the day's Durable Object time (wrangler.jsonc, OWN_COMPUTE_LIMIT; ticket 84): past it the Worker
-  // closes every socket with 4007 before any Room is asked. Staged at the page's wire: a preview has no such limit.
+  // This side's share of the day's limits (SIDE_SHARE, FREE_PLAN_SHARES; tickets 84, 89): past it the Worker closes every
+  // socket with 4007 before any Room is asked. Staged at the page's wire: a preview's share is not used up on purpose.
   const alice = await crowd.open('Alice');
   await alice.connected();
   alice.wire.refusal = { code: CLOSE_USED_UP, reason: 'server time used up for today' };

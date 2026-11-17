@@ -10,7 +10,7 @@ interface __BaseEnv_Env {
 	POSTHOG_KEY?: string;
 	POSTHOG_HOST?: string;
 	BUILD_TARGET: string;
-	OWN_COMPUTE_LIMIT?: number;
+	FREE_PLAN_SHARES?: boolean;
 	ROOM: DurableObjectNamespace<import("./src/worker/index").Room>;
 	STORE: DurableObjectNamespace<import("./src/worker/index").Store>;
 }

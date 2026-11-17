@@ -784,6 +784,6 @@ dialog.about .meter-note { grid-column: 1 / -1; font-size: 12px; color: var(--di
 /* The pace line: a tick in the text colour standing out past the bar, ringed in the dialog's surface so it parts from the fill. */
 dialog.about .meter-pace { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--fg); box-shadow: 0 0 0 1px var(--panel); }
 dialog.about .meter-ahead { color: var(--fg); }
-dialog.about .usage-note { margin: 12px 0 0; font-size: 12px; color: var(--dim); }
+dialog.about .usage-note, dialog.about .shares-note { margin: 12px 0 0; font-size: 12px; color: var(--dim); }
 
 /* The design-trial picker (theme.ts): as quiet as the links around it. */

@@ -1,6 +1,6 @@
 import { env, exports } from 'cloudflare:workers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ALERT_SHARES, FREE_PLAN, RELAY_FREE_BYTES, alertStep, dayEnds, elapsedOf, fillOf, fullest, usedUp, formatBytes, formatCount, formatPercent, freePlanRequest, monthSoFar, parseFreePlan, parseRelayBytes, parseRelayUsage, relayUsageRequest, savesRelay } from '../src/core/relayusage';
+import { ALERT_SHARES, FREE_PLAN, LIVE_NAMESPACES, RELAY_FREE_BYTES, SIDE_SHARE, alertStep, dayEnds, elapsedOf, fillOf, fullestOf, sideOf, usedUp, formatBytes, formatCount, formatPercent, freePlanRequest, monthSoFar, parseFreePlan, parseRelayBytes, parseRelayUsage, relayUsageRequest, savesRelay } from '../src/core/relayusage';
 import { withoutTurn } from '../src/core/turn';
 import { forgetFreePlanFigure, forgetRelayUsage, relayUsage, usedUpToday } from '../src/worker/relayusage';
 import worker from '../src/worker/index';
@@ -26,23 +26,38 @@ describe('relay usage, as Cloudflare is asked and answers', () => {
     // The free plan's figures for today (UTC), for the whole account: asked apart, so a refusal leaves the relay's.
     for (const group of ['durableObjectsInvocationsAdaptiveGroups', 'workersInvocationsAdaptive']) expect(body.query).not.toContain(group);
     const plan = JSON.parse(freePlanRequest('acct', 'tok', NOV_2).body) as { query: string; variables: unknown };
-    expect(plan.variables).toEqual({ account: 'acct', day: '2026-11-02' });
+    expect(plan.variables).toEqual({ account: 'acct', day: '2026-11-02', live: 'dave' });
     for (const group of ['durableObjectsInvocationsAdaptiveGroups', 'workersInvocationsAdaptive', 'durableObjectsPeriodicGroups', 'durableObjectsSqlStorageGroups']) expect(plan.query).toContain(group);
   });
 
-  it("reads today's free plan figures: requests, rows, time, and storage added up over every namespace", () => {
+  it("reads today's free plan figures: requests, rows, time, and storage added up over every namespace, and the live site's part", () => {
+    const [room, store] = LIVE_NAMESPACES;
+    const preview = 'ffffffffffffffffffffffffffffffff';
     const answer = { data: { viewer: { accounts: [{
       turn: [], sfu: [],
       // A frame a hibernating room is woken for is billed 20 to 1: 51,461 of them are 2,573.05 requests, shown whole.
-      objects: [{ sum: { requests: 51461 }, dimensions: { type: 'hibernation' } }, { sum: { requests: 9648 }, dimensions: { type: 'http' } }, { sum: { requests: 12385 }, dimensions: { type: 'jsrpc' } }, { sum: { requests: 5126 }, dimensions: { type: 'alarm' } }],
+      objects: [
+        { sum: { requests: 51461 }, dimensions: { type: 'hibernation', namespaceId: preview } }, { sum: { requests: 9648 }, dimensions: { type: 'http', namespaceId: preview } },
+        { sum: { requests: 12385 }, dimensions: { type: 'jsrpc', namespaceId: store } }, { sum: { requests: 5126 }, dimensions: { type: 'alarm', namespaceId: room } }, { sum: { requests: 2000 }, dimensions: { type: 'hibernation', namespaceId: room } },
+      ],
       workers: [{ sum: { requests: 14232 } }],
-      periodic: [{ sum: { rowsRead: 53650, rowsWritten: 26147, duration: 1336.5 } }],
+      liveWorkers: [{ sum: { requests: 4232 } }],
+      periodic: [{ sum: { rowsRead: 50000, rowsWritten: 26000, duration: 1300 }, dimensions: { namespaceId: preview } }, { sum: { rowsRead: 3650, rowsWritten: 147, duration: 36.5 }, dimensions: { namespaceId: room } }],
       stored: [{ max: { storedBytes: 13_000_000 } }, { max: { storedBytes: 70_000_000 } }],
     }] } } };
-    expect(parseFreePlan(answer, '2026-11-05')).toEqual({ day: '2026-11-05', objectRequests: 2573.05 + 9648 + 12385 + 5126, workerRequests: 14232, rowsWritten: 26147, rowsRead: 53650, compute: 1336.5, stored: 83_000_000 });
+    const today = parseFreePlan(answer, '2026-11-05')!;
+    expect(today).toEqual({
+      day: '2026-11-05', objectRequests: 2573.05 + 9648 + 12385 + 5126 + 100, workerRequests: 14232, rowsWritten: 26147, rowsRead: 53650, compute: 1336.5, stored: 83_000_000,
+      live: { objectRequests: 12385 + 5126 + 100, workerRequests: 4232, rowsWritten: 147, rowsRead: 3650, compute: 36.5 },
+    });
+    // The previews: everything that is not the live site's.
+    expect(sideOf(today, 'preview')).toEqual({ objectRequests: 2573.05 + 9648, workerRequests: 10000, rowsWritten: 26000, rowsRead: 50000, compute: 1300 });
     // Nothing yet today: no rows in a group is nothing used.
-    const quiet = { data: { viewer: { accounts: [{ turn: [], sfu: [], objects: [], workers: [], periodic: [], stored: [] }] } } };
-    expect(parseFreePlan(quiet, '2026-11-05')).toEqual({ day: '2026-11-05', objectRequests: 0, workerRequests: 0, rowsWritten: 0, rowsRead: 0, compute: 0, stored: 0 });
+    const quiet = { data: { viewer: { accounts: [{ turn: [], sfu: [], objects: [], workers: [], liveWorkers: [], periodic: [], stored: [] }] } } };
+    const none = { objectRequests: 0, workerRequests: 0, rowsWritten: 0, rowsRead: 0, compute: 0 };
+    expect(parseFreePlan(quiet, '2026-11-05')).toEqual({ day: '2026-11-05', ...none, stored: 0, live: none });
+    // The live site's Worker not asked about (an answer of another shape): not known, rather than all the previews'.
+    expect(parseFreePlan({ data: { viewer: { accounts: [{ ...quiet.data.viewer.accounts[0], liveWorkers: undefined }] } } }, '2026-11-05')).toBeNull();
     // An answer from before the groups were asked, an odd value, or errors: not known.
     expect(parseFreePlan({ data: { viewer: { accounts: [{ turn: [], sfu: [] }] } } }, '2026-11-05')).toBeNull();
     expect(parseFreePlan({ data: { viewer: { accounts: [{ ...quiet.data.viewer.accounts[0], objects: [{ sum: { requests: '5' } }] }] } } }, '2026-11-05')).toBeNull();
@@ -94,6 +109,9 @@ describe('relay usage, as the About dialog shows it', () => {
     const today = { day: '2026-11-02', objectRequests: 1, workerRequests: 2, rowsWritten: 3, rowsRead: 4, compute: 5.5, stored: 6 };
     expect(parseRelayUsage({ ...u, today })).toEqual({ ...u, today });
     expect(parseRelayUsage({ ...u, today: { ...today, stored: -1 } }), 'the relay without a figure that does not parse').toEqual(u);
+    const live = { objectRequests: 50, workerRequests: 5, rowsWritten: 1, rowsRead: 2, compute: 0.5 };
+    expect(parseRelayUsage({ ...u, today: { ...today, live } }), "the live site's part").toEqual({ ...u, today: { ...today, live } });
+    expect(parseRelayUsage({ ...u, today: { ...today, live: { ...live, compute: 'a lot' } } }), "a part not whole is left out, the day's figures kept").toEqual({ ...u, today });
     expect(parseRelayUsage({ ...u, limit: 0 })).toBeNull();
     expect(parseRelayUsage({ ...u, bytes: -1 })).toBeNull();
     expect(parseRelayUsage({ ...u, since: 'November' })).toBeNull();
@@ -133,12 +151,12 @@ describe('the Worker’s /relay-usage', () => {
   /** Cloudflare as the tests have it: the relay's answer, and the free plan's (`plan`, a refusal when null). */
   const cloudflare = (plan: unknown = PLAN) => vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) =>
     String((init as RequestInit | undefined)?.body).includes('durableObjectsInvocationsAdaptiveGroups') ? Response.json(plan ?? { data: null, errors: [{ message: 'not authorized' }] }) : Response.json(ANSWER));
-  const PLAN = { data: { viewer: { accounts: [{ objects: [{ sum: { requests: 100 }, dimensions: { type: 'http' } }], workers: [{ sum: { requests: 7 } }], periodic: [{ sum: { rowsRead: 9, rowsWritten: 8, duration: 1.5 } }], stored: [{ max: { storedBytes: 1000 } }] }] } } };
+  const PLAN = { data: { viewer: { accounts: [{ objects: [{ sum: { requests: 100 }, dimensions: { type: 'http', namespaceId: LIVE_NAMESPACES[0] } }], workers: [{ sum: { requests: 7 } }], liveWorkers: [{ sum: { requests: 5 } }], periodic: [{ sum: { rowsRead: 9, rowsWritten: 8, duration: 1.5 } }], stored: [{ max: { storedBytes: 1000 } }] }] } } };
   it('answers what Cloudflare said, and asks again only after ten minutes', async () => {
     const api = cloudflare();
     const res = await relayUsage(configured, NOV_2);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ bytes: 14066575220, limit: RELAY_FREE_BYTES, since: '2026-11-01', asOf: NOV_2, today: { day: '2026-11-02', objectRequests: 100, workerRequests: 7, rowsWritten: 8, rowsRead: 9, compute: 1.5, stored: 1000 } });
+    expect(await res.json()).toEqual({ bytes: 14066575220, limit: RELAY_FREE_BYTES, since: '2026-11-01', asOf: NOV_2, today: { day: '2026-11-02', objectRequests: 100, workerRequests: 7, rowsWritten: 8, rowsRead: 9, compute: 1.5, stored: 1000, live: { objectRequests: 100, workerRequests: 5, rowsWritten: 0, rowsRead: 0, compute: 0 } } });
     await relayUsage(configured, NOV_2 + 9 * 60_000);
     expect(api).toHaveBeenCalledTimes(2); // the relay's and the free plan's
     await relayUsage(configured, NOV_2 + 11 * 60_000);
@@ -240,47 +258,65 @@ describe('the Worker’s /relay-usage', () => {
   });
 });
 
-describe("our own limit on the day's server time (ticket 84)", () => {
+describe("each side's share of the day's limits: the live site's, the previews' (tickets 84, 89)", () => {
   afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); forgetRelayUsage(); });
   const NOV_16 = Date.parse('2026-11-16T18:00:00Z');
-  const used = (compute: number, day = '2026-11-16') => ({ day, objectRequests: 0, workerRequests: 0, rowsWritten: 0, rowsRead: 0, compute, stored: 0 });
+  const none = { objectRequests: 0, workerRequests: 0, rowsWritten: 0, rowsRead: 0, compute: 0 };
+  /** A day on which the live site used `live` of Durable Object time, and the previews `previews`. */
+  const used = (live: number, previews = 0, day = '2026-11-16') => ({ day, ...none, compute: live + previews, stored: 0, live: { ...none, compute: live } });
 
-  it('is used up from the limit on, for the day the figure is of, and never without a limit or a figure', () => {
-    expect(usedUp(used(11_999.9), NOV_16, 12_000)).toBe(false);
-    expect(usedUp(used(12_000), NOV_16, 12_000)).toBe(true);
-    expect(usedUp(used(13_217), NOV_16, 12_000)).toBe(true);
-    expect(usedUp(used(13_217, '2026-11-15'), NOV_16, 12_000), "yesterday's figure").toBe(false);
-    expect(usedUp(used(13_217), NOV_16, undefined), 'no limit: the previews').toBe(false);
-    expect(usedUp(used(13_217), NOV_16, 0), 'no limit: the paid plan').toBe(false);
-    expect(usedUp(null, NOV_16, 12_000), 'not known').toBe(false);
+  it('a side has used its share from half of a limit on, its own use counted, for the day the figure is of; never without a share or a figure', () => {
+    expect(SIDE_SHARE).toBe(0.45);
+    // One namespace of the live site's per Durable Object class it binds: a class added to it is a namespace to add to
+    // LIVE_NAMESPACES (its id from the namespaces API), or its use would be counted as the previews'.
+    const classes = Object.entries(env).filter(([name, v]) => !name.startsWith('__VITEST') && !!v && typeof v === 'object' && 'idFromName' in v);
+    expect(classes.length, 'LIVE_NAMESPACES lists one per class').toBe(LIVE_NAMESPACES.length);
+    expect(usedUp(used(6_499.9), NOV_16, 'live', 0.5)).toBeNull();
+    expect(usedUp(used(6_500), NOV_16, 'live', 0.5)).toBe('compute');
+    expect(usedUp(used(6_499.9, 6_600), NOV_16, 'live', 0.5), "the previews' use is not the live site's").toBeNull();
+    expect(usedUp(used(6_499.9, 6_600), NOV_16, 'preview', 0.5), 'the previews: all that is not the live site').toBe('compute');
+    expect(usedUp(used(6_600, 6_499.9), NOV_16, 'preview', 0.5)).toBeNull();
+    expect(usedUp(used(13_217, 0, '2026-11-15'), NOV_16, 'live', 0.5), "yesterday's figure").toBeNull();
+    expect(usedUp(used(13_217), NOV_16, 'live', undefined), 'no share').toBeNull();
+    expect(usedUp(used(13_217), NOV_16, 'live', 0), 'no share: the paid plan').toBeNull();
+    expect(usedUp(null, NOV_16, 'live', 0.5), 'not known').toBeNull();
+    expect(usedUp({ ...used(13_217), live: undefined }, NOV_16, 'preview', 0.5), "the live site's part not known").toBeNull();
+    // Any daily limit: 2026-11-17 at 20:44 UTC, when the previews' runs had used the account's requests to Durable Objects.
+    const nov17 = { day: '2026-11-17', objectRequests: 100_000, workerRequests: 60_000, rowsWritten: 9_310, rowsRead: 37_142, compute: 690, stored: 0, live: { objectRequests: 13_264, workerRequests: 7_744, rowsWritten: 773, rowsRead: 15_394, compute: 104 } };
+    expect(usedUp(nov17, Date.parse('2026-11-17T20:44:00Z'), 'preview', 0.5)).toBe('objectRequests');
+    expect(fullestOf(nov17, 'preview')).toEqual({ limit: 'objectRequests', share: (100_000 - 13_264) / 45_000 });
+    expect(usedUp(nov17, Date.parse('2026-11-17T20:44:00Z'), 'live', 0.5)).toBeNull();
     expect(dayEnds(NOV_16)).toBe(Date.parse('2026-11-17T00:00:00Z'));
     expect(dayEnds(Date.parse('2026-12-31T23:59:59Z'))).toBe(Date.parse('2027-01-01T00:00:00Z'));
   });
 
-  it('the watch tells at 40 and 70 % of the daily limit used most, and leaves out what is stored', () => {
-    expect(ALERT_SHARES).toEqual([0.4, 0.7]);
-    // The afternoon of 2026-11-16, as /relay-usage had it at 19:07 UTC.
-    const outage = { day: '2026-11-16', objectRequests: 38508.5, workerRequests: 16006, rowsWritten: 17921, rowsRead: 56359, compute: 13216.46, stored: 227504130 };
-    expect(fullest(outage).limit).toBe('compute');
-    expect(fullest(outage).share).toBeCloseTo(1.0167, 3);
-    expect(fullest({ ...outage, compute: 100, stored: FREE_PLAN.stored })).toEqual({ limit: 'objectRequests', share: 38508.5 / FREE_PLAN.objectRequests });
-    expect([0, 0.399, 0.4, 0.69, 0.7, 1.02].map(alertStep)).toEqual([0, 0, 40, 40, 70, 70]);
+  it("the watch tells at 70 and 90 % of a side's share of the daily limit it used most of, and leaves out what is stored", () => {
+    expect(ALERT_SHARES).toEqual([0.7, 0.9]);
+    // The afternoon of 2026-11-16, as /relay-usage had it at 19:07 UTC, the live site's rooms kept awake (ticket 84).
+    const live = { objectRequests: 30_000, workerRequests: 8_000, rowsWritten: 900, rowsRead: 20_000, compute: 10_106 };
+    const outage = { day: '2026-11-16', objectRequests: 38508.5, workerRequests: 16006, rowsWritten: 17921, rowsRead: 56359, compute: 13216.46, stored: 227504130, live };
+    expect(fullestOf(outage, 'live')).toEqual({ limit: 'compute', share: 10_106 / (13_000 * SIDE_SHARE) });
+    expect(fullestOf({ ...outage, stored: FREE_PLAN.stored, live: { ...live, compute: 100 } }, 'live')).toEqual({ limit: 'objectRequests', share: 30_000 / (100_000 * SIDE_SHARE) });
+    expect([0, 0.699, 0.7, 0.89, 0.9, 1.02].map(alertStep)).toEqual([0, 0, 70, 70, 90, 90]);
   });
 
-  const configured = { ...env, RELAY_USAGE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acct', OWN_COMPUTE_LIMIT: 12_000 } as Env;
-  /** Cloudflare as the gate asks it: the day's Durable Object time, GB-s. */
-  const cloudflare = (duration: number) => vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
-    Response.json({ data: { viewer: { accounts: [{ objects: [], workers: [], periodic: [{ sum: { rowsRead: 0, rowsWritten: 0, duration } }], stored: [] }] } } }));
+  const configured = { ...env, RELAY_USAGE_API_TOKEN: 'tok', CLOUDFLARE_ACCOUNT_ID: 'acct', FREE_PLAN_SHARES: true, BUILD_TARGET: 'live' } as Env;
+  /** Cloudflare's answer to the gate: the day's Durable Object time, GB-s, of the live site's rooms and a preview's. */
+  const answer = (duration: number, previews = 0) => ({ data: { viewer: { accounts: [{ objects: [], workers: [], liveWorkers: [], periodic: [
+    { sum: { rowsRead: 0, rowsWritten: 0, duration }, dimensions: { namespaceId: LIVE_NAMESPACES[0] } },
+    { sum: { rowsRead: 0, rowsWritten: 0, duration: previews }, dimensions: { namespaceId: 'ffffffffffffffffffffffffffffffff' } },
+  ], stored: [] }] } } });
+  const cloudflare = (duration: number, previews = 0) => vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(answer(duration, previews)));
   /** The request's waitUntil, and what it was handed. */
   const kept = () => { const calls: Array<Promise<unknown>> = []; return { keep: (p: Promise<unknown>) => { calls.push(p); }, done: () => Promise.all(calls) }; };
 
   it('the gate is shut from our limit on, and for the rest of that day whatever Cloudflare says after; the next day starts open', async () => {
-    const api = cloudflare(12_000.5);
+    const api = cloudflare(6_500.5);
     const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const k = kept();
     expect(await usedUpToday(configured, NOV_16, k.keep), 'no figure yet: the socket waits for it').toBe(true);
     expect(api).toHaveBeenCalledTimes(1);
-    expect(warned).toHaveBeenCalledWith('own limit reached', expect.stringContaining('"limit":12000'));
+    expect(warned).toHaveBeenCalledWith('own share reached', expect.stringContaining('"side":"live","limit":"compute"'));
     // Cloudflare failing later, and the failure known, opens nothing: a day's use only grows.
     api.mockImplementation(async () => new Response('no', { status: 500 }));
     forgetFreePlanFigure();
@@ -288,23 +324,23 @@ describe("our own limit on the day's server time (ticket 84)", () => {
     await k.done();
     expect(await usedUpToday(configured, NOV_16 + 11 * 60_000, k.keep)).toBe(true);
     // The next day starts open, with its own figure.
-    api.mockImplementation(async () => Response.json({ data: { viewer: { accounts: [{ objects: [], workers: [], periodic: [], stored: [] }] } } }));
+    api.mockImplementation(async () => Response.json(answer(0)));
     const nov17 = Date.parse('2026-11-17T00:00:30Z');
     expect(await usedUpToday(configured, nov17, k.keep)).toBe(false);
     expect(await usedUpToday(configured, nov17 + 1000, k.keep)).toBe(false);
   });
 
-  it('with a figure of today it does not wait: Cloudflare is asked again after two minutes, half a minute near the limit, never at every socket', async () => {
-    let duration = 9_000;
-    const api = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({ data: { viewer: { accounts: [{ objects: [], workers: [], periodic: [{ sum: { rowsRead: 0, rowsWritten: 0, duration } }], stored: [] }] } } }));
+  it('with a figure of today it does not wait: Cloudflare is asked again after two minutes, half a minute near the share, never at every socket', async () => {
+    let duration = 4_500;
+    const api = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(answer(duration)));
     const k = kept();
     for (const at of [0, 1000, 60_000, 119_000]) { expect(await usedUpToday(configured, NOV_16 + at, k.keep)).toBe(false); await k.done(); }
     expect(api).toHaveBeenCalledTimes(1);
-    duration = 11_000; // from 80 % of the limit on, asked every half minute
+    duration = 5_500; // from 80 % of the share on, asked every half minute
     expect(await usedUpToday(configured, NOV_16 + 121_000, k.keep), 'the old figure, while the new one is asked').toBe(false);
     await k.done();
     expect(api).toHaveBeenCalledTimes(2);
-    duration = 12_100;
+    duration = 6_600;
     expect(await usedUpToday(configured, NOV_16 + 140_000, k.keep), 'not yet asked again').toBe(false);
     await k.done();
     expect(api).toHaveBeenCalledTimes(2);
@@ -315,13 +351,13 @@ describe("our own limit on the day's server time (ticket 84)", () => {
   });
 
   it('a figure hours old is not gone by: the socket waits for today\'s', async () => {
-    let duration = 5_000;
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({ data: { viewer: { accounts: [{ objects: [], workers: [], periodic: [{ sum: { rowsRead: 0, rowsWritten: 0, duration } }], stored: [] }] } } }));
+    let duration = 2_500;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(answer(duration)));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const k = kept();
     const morning = Date.parse('2026-11-16T15:00:00Z');
     expect(await usedUpToday(configured, morning, k.keep)).toBe(false);
-    duration = 12_500; // three hours on, no socket having come to this isolate meanwhile
+    duration = 6_600; // three hours on, no socket having come to this isolate meanwhile
     expect(await usedUpToday(configured, morning + 3 * 3_600_000, k.keep)).toBe(true);
   });
 
@@ -341,10 +377,20 @@ describe("our own limit on the day's server time (ticket 84)", () => {
     expect(api).toHaveBeenCalledTimes(1);
   });
 
-  it('has no limit where none is set (the previews, the paid plan), and none without the token to ask', async () => {
-    const api = cloudflare(20_000);
+  it("the previews' Worker stops at their share, all that is not the live site's; the live site's goes on", async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    cloudflare(1_000, 6_600);
     const k = kept();
-    for (const e of [{ ...configured, OWN_COMPUTE_LIMIT: undefined }, { ...configured, OWN_COMPUTE_LIMIT: 0 }, { ...configured, RELAY_USAGE_API_TOKEN: undefined }] as Env[]) {
+    expect(await usedUpToday({ ...configured, BUILD_TARGET: 'preview' } as Env, NOV_16, k.keep)).toBe(true);
+    await k.done();
+    forgetRelayUsage(); // another Worker
+    expect(await usedUpToday(configured, NOV_16, k.keep)).toBe(false);
+  });
+
+  it('has no share where none is set (the paid plan) or for a build of neither side, and none without the token to ask', async () => {
+    const api = cloudflare(20_000, 20_000);
+    const k = kept();
+    for (const e of [{ ...configured, FREE_PLAN_SHARES: undefined }, { ...configured, FREE_PLAN_SHARES: false }, { ...configured, BUILD_TARGET: 'e2e' }, { ...configured, RELAY_USAGE_API_TOKEN: undefined }] as Env[]) {
       expect(await usedUpToday(e, NOV_16, k.keep)).toBe(false);
       await k.done();
       expect(await usedUpToday(e, NOV_16 + 1000, k.keep)).toBe(false);
@@ -352,8 +398,8 @@ describe("our own limit on the day's server time (ticket 84)", () => {
     expect(api).not.toHaveBeenCalled();
   });
 
-  it('past the limit the Worker takes a socket itself and closes it with the reason: no Room is asked', async () => {
-    cloudflare(12_500);
+  it('past its share the Worker takes a socket itself and closes it with the reason: no Room is asked', async () => {
+    cloudflare(6_600);
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOV_16);
