@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_PARTY_BODY_BYTES, change, current, driftAllowed, fromSeeking, jumped, later, parseParty, partyText, positionAt, sameChange, seekMore, type Party } from '../src/core/party';
+import { MAX_PARTY_BODY_BYTES, MAX_QUEUE, MAX_QUEUED_TITLE_BYTES, QUEUED_BY_LENGTH, asIs, change, current, driftAllowed, enqueue, fromSeeking, jumped, later, moveQueued, next, parseParty, partyText, positionAt, queuedTitle, sameChange, seekMore, type Party, type Queued } from '../src/core/party';
+import { MAX_SEALED_PARTY_LENGTH, MAX_SEALED_PROFILE_LENGTH, MAX_VIEWERS } from '../src/core/protocol';
+import { MAX_TURN_USERS, type SocketState } from '../src/core/room';
 
 const ALICE = 'a'.repeat(87);
 const BOB = 'b'.repeat(87);
+const queued = (id: string, over: Partial<Queued> = {}): Queued => ({ id: id.padEnd(8, '-'), by: ALICE.slice(0, QUEUED_BY_LENGTH), hash: 'q'.repeat(43), video: 'jNQXAC9IVRw', title: 'Me at the zoo', ...over });
 const party = (over: Partial<Party> = {}): Party => ({ n: 1, by: ALICE, hash: 'h'.repeat(43), video: 'dQw4w9WgXcQ', playing: true, pos: 10, rate: 1, at: 1_000_000, ...over });
 
 describe('a watch party (core/party.ts)', () => {
@@ -65,7 +68,7 @@ describe('a watch party (core/party.ts)', () => {
   });
 
   it('takes a change of mine as one more than the newest I have seen, made by me now', () => {
-    expect(change(null, BOB, 7, { hash: 'h'.repeat(43), video: 'dQw4w9WgXcQ', playing: true, pos: 0, rate: 1 })).toEqual({ n: 1, by: BOB, at: 7, hash: 'h'.repeat(43), video: 'dQw4w9WgXcQ', playing: true, pos: 0, rate: 1 });
+    expect(change(null, BOB, 7, { hash: 'h'.repeat(43), video: 'dQw4w9WgXcQ', playing: true, pos: 0, rate: 1 })).toEqual({ n: 1, by: BOB, at: 7, hash: 'h'.repeat(43), video: 'dQw4w9WgXcQ', playing: true, pos: 0, rate: 1, queue: [] });
     expect(change(party({ n: 41, at: 5 }), BOB, 8, { ...party(), playing: false, pos: -0.2 })).toMatchObject({ n: 42, by: BOB, at: 8, playing: false, pos: 0 });
     expect(change(party({ n: 1 }), BOB, 9, { ...party(), title: 'A title' }).title).toBe('A title');
     // My idea of the Room's clock a little behind the friend's who made the last change: mine still comes after it.
@@ -105,5 +108,91 @@ describe('a watch party (core/party.ts)', () => {
   it('lets a playing player drift a little, a paused one hardly at all', () => {
     expect(driftAllowed(party())).toBeGreaterThan(1);
     expect(driftAllowed(party({ playing: false }))).toBeLessThan(0.5);
+  });
+
+  it('carries a queue it reads back, empty too, and nothing off; an app from before writes none', () => {
+    const q = party({ queue: [queued('a'), queued('b', { title: undefined }), queued('a2', { video: 'dQw4w9WgXcQ', hash: 'h'.repeat(43) })] });
+    expect(parseParty(partyText(q))).toEqual(q);
+    expect(parseParty(partyText(party({ queue: [] })))).toEqual(party({ queue: [] }));
+    expect(parseParty(partyText(party()))).not.toHaveProperty('queue');
+    for (const off of [{ id: 'short' }, { by: ALICE }, { hash: 'x' }, { video: 'nope' }, { title: '' }, { title: 'x'.repeat(MAX_QUEUED_TITLE_BYTES + 1) }, { title: 'a\u0001b' }, { title: ' padded ' }]) {
+      expect(parseParty(partyText(party({ queue: [queued('a', off as Partial<Queued>)] })))).toBeNull();
+    }
+    expect(parseParty(JSON.stringify({ ...party(), queue: 'none' }))).toBeNull();
+    expect(parseParty(partyText(party({ queue: [queued('a'), queued('a', { title: 'Another' })] })))).toBeNull(); // the same id twice
+    expect(parseParty(partyText(party({ queue: Array.from({ length: MAX_QUEUE + 1 }, (_, i) => queued(`q${i}`)) })))).toBeNull();
+  });
+
+  it('cuts a queued title to whole characters that fit, as JSON writes them, and leaves out what JSON writes longer', () => {
+    expect(queuedTitle('Rick Astley - Never Gonna Give You Up')).toBe('Rick Astley - Never Gonna Give You Up');
+    expect(queuedTitle(undefined)).toBeUndefined();
+    expect(queuedTitle(' \u0001 ')).toBeUndefined();
+    expect(queuedTitle('x'.repeat(200))).toBe('x'.repeat(MAX_QUEUED_TITLE_BYTES));
+    expect(queuedTitle('日本'.repeat(40))).toBe('日本'.repeat(15)); // 3 bytes each
+    expect(queuedTitle('🎉'.repeat(40))).toBe('🎉'.repeat(22)); // 4 bytes, never half of one
+    expect(queuedTitle('"'.repeat(100))).toBe('"'.repeat(45)); // \" in JSON
+    expect(queuedTitle('a\u0007b\uD800c')).toBe('a b c');
+    for (const t of ['x'.repeat(200), '日本'.repeat(40), '🎉'.repeat(40), 'a\u0007b']) expect(queuedTitle(queuedTitle(t))).toBe(queuedTitle(t));
+  });
+
+  it('seals a full queue of the longest entries within its bound, and the longest sealed party fits a socket\'s attachment with the rest', () => {
+    const longTitles = ['x', '日', '"', '🎉'].map((c) => queuedTitle(c.repeat(MAX_QUEUED_TITLE_BYTES))!);
+    for (const title of longTitles) {
+      const full = party({ n: Number.MAX_SAFE_INTEGER, pos: 99999.999, at: Number.MAX_SAFE_INTEGER, rate: 0.25, title: '\u0001'.repeat(100), queue: Array.from({ length: MAX_QUEUE }, (_, i) => queued(`q${i}`, { title })) });
+      expect(parseParty(partyText(full))).toEqual(full);
+      expect(new TextEncoder().encode(partyText(full)).length).toBeLessThanOrEqual(MAX_PARTY_BODY_BYTES);
+    }
+    // Everything the Room keeps of a socket, each at its longest (TURN usernames: Cloudflare's are hex, 128 at most here),
+    // as workerd keeps it: V8's serialisation, at most 16384 bytes (measured with wrangler dev, 2026-11-17). Here as JSON,
+    // which V8's is within a few bytes a field of (one byte a character, no quotes, a number in 9): a kilobyte to spare.
+    const key = 'k'.repeat(87);
+    const bucket = { tokens: 39.999999, at: Number.MAX_SAFE_INTEGER };
+    const worst: SocketState = {
+      stage: 'attached',
+      person: { publicKey: key, fingerprint: 'ABCDEF', profile: 'p'.repeat(MAX_SEALED_PROFILE_LENGTH), role: 'participant', joinSeq: Number.MAX_SAFE_INTEGER, sharing: true, viewers: Array.from({ length: MAX_VIEWERS }, () => key), muted: true, party: 'P'.repeat(MAX_SEALED_PARTY_LENGTH), privateTexts: { key, sig: 's'.repeat(86) } },
+      bucket, signalBucket: bucket, linkBucket: bucket, pieceBucket: bucket, fetchBucket: bucket,
+      linkIceAt: Number.MAX_SAFE_INTEGER, syncAt: Number.MAX_SAFE_INTEGER, forgetAt: Number.MAX_SAFE_INTEGER, attachedAt: Number.MAX_SAFE_INTEGER,
+      turnUsers: Array.from({ length: MAX_TURN_USERS }, () => 'f'.repeat(128)), joins: Number.MAX_SAFE_INTEGER, telemetry: true,
+    };
+    expect(JSON.stringify(worst).length).toBeLessThan(16384 - 1024);
+  });
+
+  it('takes, of two copies of the same change, the one with a queue, the same one for everyone', () => {
+    const made = party({ n: 5, queue: [queued('a')] });
+    const { queue: _, ...stripped } = made; // as an app from before declares it again
+    expect(current([stripped, made])).toBe(made);
+    expect(current([made, stripped])).toBe(made);
+    const other = { ...made, queue: [queued('b')] };
+    expect(current([made, other])).toBe(current([other, made]));
+    // A queue carried on stale beside one carried on as it is: the longer.
+    const longer = { ...made, queue: [queued('a'), queued('b')] };
+    expect(current([made, longer])).toBe(longer);
+    expect(current([longer, made])).toBe(longer);
+    const empty = { ...made, queue: [] };
+    expect(current([empty, made])).toBe(made);
+    // A later change counts, queue or none.
+    const after = party({ n: 6, at: made.at + 1 });
+    expect(current([made, after])).toBe(after);
+  });
+
+  it('puts videos in the queue first or last, moves and plays them in order', () => {
+    const [a, b, c] = [queued('a'), queued('b'), queued('c')];
+    expect(enqueue([a], b, false)).toEqual([a, b]);
+    expect(enqueue([a], b, true)).toEqual([b, a]);
+    const full = Array.from({ length: MAX_QUEUE }, (_, i) => queued(`q${i}`));
+    expect(enqueue(full, a, true)).toBeNull();
+    expect(moveQueued([a, b, c], c.id, -1)).toEqual([a, c, b]);
+    expect(moveQueued([a, b, c], a.id, 1)).toEqual([b, a, c]);
+    expect(moveQueued([a, b, c], a.id, -1)).toEqual([a, b, c]);
+    expect(moveQueued([a, b, c], c.id, 1)).toEqual([a, b, c]);
+    expect(moveQueued([a, b, c], 'gone----', 1)).toEqual([a, b, c]);
+    // The next goes on from its start at the party's speed, out of the queue; its title my card's where I have it.
+    const p = party({ rate: 1.5, playing: false, queue: [a, b] });
+    expect(next(p, true, () => undefined)).toEqual({ hash: a.hash, video: a.video, title: a.title, playing: true, pos: 0, rate: 1.5, queue: [b] });
+    expect(next(p, false, () => 'Me at the zoo, the whole title')).toMatchObject({ playing: false, title: 'Me at the zoo, the whole title' });
+    expect(next(party({ queue: [] }), true, () => undefined)).toBeNull();
+    expect(next(party(), true, () => undefined)).toBeNull();
+    // The party as it is, to change its queue alone: where it is by now.
+    expect(asIs(party({ queue: [a] }), 1_000_000 + 2000)).toEqual({ hash: 'h'.repeat(43), video: 'dQw4w9WgXcQ', title: undefined, playing: true, pos: 12, rate: 1, queue: [a] });
   });
 });

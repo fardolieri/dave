@@ -1252,6 +1252,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             // chat: an oversized signal once showed as "Not sent" (ticket 30).
             posthog.capture('frame_dropped', { ref: m.ref ?? 'unknown', reason: m.reason });
             if (m.ref === 'link' || m.ref === 'linkice') return; // the pull that sent it times out and says so
+            if (m.ref === 'party') return; // a Room from before refuses a longer party (ADR 0013): the declaration stays as it was
             if (m.ref === 'piece' && socket === welcomed) pieceAnswered();
             if (m.ref === 'piece' || m.ref === 'fetch') return; // a fetch says so by its answer not coming; a piece not kept goes again
             if (m.ref === 'sync') {

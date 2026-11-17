@@ -15,25 +15,30 @@ function player(video = RICK) {
   const sync: PartySync = createPartySync(video);
   const sent: Array<Command | { changed: Changed }> = [];
   let party: Party | null = null;
-  const take = (s: Step) => { sent.push(...s.commands); if (s.changed) { sent.push({ changed: s.changed }); party = change(party, 'm'.repeat(87), clock.room, { ...party!, ...s.changed }); sync.took(party); } return p; };
+  const ended: Party[] = [];
+  const take = (s: Step) => { if (s.ended) ended.push(s.ended); sent.push(...s.commands); if (s.changed) { sent.push({ changed: s.changed }); party = change(party, 'm'.repeat(87), clock.room, { ...party!, ...s.changed }); sync.took(party); } return p; };
   const p: {
-    sent: typeof sent; clock: Clock; party: Party;
-    wait(ms: number): typeof p; hide(hidden: boolean): typeof p; friend(to: Partial<Pick<Party, 'video' | 'playing' | 'pos' | 'rate'>>): typeof p; ready(): typeof p;
+    sent: typeof sent; ended: Party[]; clock: Clock; party: Party;
+    wait(ms: number): typeof p; hide(hidden: boolean): typeof p; friend(to: Partial<Pick<Party, 'video' | 'playing' | 'pos' | 'rate' | 'queue'>>): typeof p; again(to: Partial<Party>): typeof p; ready(): typeof p;
     report(state: number, time: number, more?: Partial<PlayerReport>, timed?: boolean, stated?: boolean): typeof p; tick(): typeof p;
     error(code: number): typeof p;
     changes(): Changed[]; mark(): () => typeof sent;
   } = {
     sent,
+    /** Every time the player said it played the video to its end, with the party as it was put to it. */
+    ended,
     get clock() { return clock; },
     /** Time passes, on both clocks. */
     wait(ms: number) { clock = { ...clock, now: clock.now + ms, room: clock.room + ms }; return p; },
     /** The page hidden (another app, a locked screen, a new tab), or shown again. */
     hide(hidden: boolean) { clock = { ...clock, hidden }; return p; },
     /** A friend changes the party (or it is as it is when I join): from where it is now. */
-    friend(to: Partial<Pick<Party, 'video' | 'playing' | 'pos' | 'rate'>>) {
-      party = change(party, FRIEND, clock.room, { hash: 'h'.repeat(43), video: party?.video ?? video, playing: party?.playing ?? true, pos: party ? positionAt(party, clock.room) : 0, rate: party?.rate ?? 1, ...to });
+    friend(to: Partial<Pick<Party, 'video' | 'playing' | 'pos' | 'rate' | 'queue'>>) {
+      party = change(party, FRIEND, clock.room, { hash: 'h'.repeat(43), video: party?.video ?? video, playing: party?.playing ?? true, pos: party ? positionAt(party, clock.room) : 0, rate: party?.rate ?? 1, queue: party?.queue, ...to });
       return take(sync.follow(party, clock));
     },
+    /** The same change, declared again otherwise (an app from before queues declares it without one). */
+    again(to: Partial<Party>) { party = { ...party!, ...to }; return take(sync.follow(party, clock)); },
     ready: () => take(sync.ready(party, clock)),
     report: (state: number, time: number, more: Partial<PlayerReport> = {}, timed = true, stated = true) => take(sync.report({ state, time, rate: 1, duration: 214, muted: false, at: clock.now, ...more }, timed, clock, stated)),
     error: (code: number) => take(sync.error(code)),
@@ -126,6 +131,79 @@ describe('a watch party\'s player (core/partysync.ts)', () => {
     for (let i = 0; i < 3; i++) p.wait(1000).tick();
     expect(did(after())).toEqual(['rate']);
     expect(p.changes()).toEqual([]);
+  });
+
+  it('says once that it played the video to its end while the party plays, with the party it was put to: the queue\'s next is due', () => {
+    const p = playingInStep();
+    p.friend({ playing: true, pos: 207 });
+    p.wait(20).report(PLAYING, 207);
+    expect(p.ended).toEqual([]);
+    p.wait(6000).report(ENDED, 213.061);
+    expect(p.ended).toEqual([p.party]);
+    // Ended still: not again.
+    p.wait(250).report(ENDED, 213.061);
+    for (let i = 0; i < 3; i++) p.wait(1000).tick();
+    expect(p.ended).toHaveLength(1);
+  });
+
+  it('says nothing of an end that came just after another friend\'s end put the next on, the same video, at its start', () => {
+    const p = playingInStep();
+    p.friend({ playing: true, pos: 211 });
+    p.wait(20).report(PLAYING, 211);
+    p.wait(1500).friend({ playing: true, pos: 0 }); // the queue's next, put on by the friend whose player ended first
+    p.wait(400).report(ENDED, 213.061);
+    expect(p.ended).toEqual([]);
+  });
+
+  it('says its video ended, a while after, once a video is queued: one queued after the end goes on then', () => {
+    const p = playingInStep();
+    p.friend({ playing: true, pos: 207, queue: [] });
+    p.wait(20).report(PLAYING, 207);
+    p.wait(6000).report(ENDED, 213.061);
+    expect(p.ended).toHaveLength(1); // nothing queued: the app puts nothing on
+    for (let i = 0; i < 5; i++) p.wait(1000).tick();
+    expect(p.ended).toHaveLength(1);
+    const zoo = { id: 'zzzzzzzz', by: 'f'.repeat(11), hash: 'q'.repeat(43), video: OTHER };
+    p.wait(30_000).friend({ queue: [zoo] });
+    p.wait(1000).tick();
+    expect(p.ended.at(-1)?.queue).toEqual([zoo]);
+  });
+
+  it('takes the same change declared again with a queue: its end is the queued party\'s', () => {
+    const p = playingInStep();
+    p.friend({ playing: true, pos: 207 });
+    const { queue: _, ...old } = p.party; // as an app from before queues made it
+    p.again({ ...old, queue: undefined });
+    const zoo = { id: 'zzzzzzzz', by: 'f'.repeat(11), hash: 'q'.repeat(43), video: OTHER };
+    p.again({ queue: [zoo] }); // carried on by a friend's app
+    p.wait(20).report(PLAYING, 207);
+    p.wait(6000).report(ENDED, 213.061);
+    expect(p.ended.at(-1)?.queue).toEqual([zoo]);
+  });
+
+  it('says nothing of a short video\'s end that came after another friend\'s end put the next on', () => {
+    const p = playingInStep();
+    p.friend({ playing: true, pos: 0.5 });
+    p.wait(1700).friend({ playing: true, pos: 0 }); // a clip of 2.2 s ended at a friend's, and the next put on
+    p.wait(300).report(ENDED, 2.2, { duration: 2.2 });
+    expect(p.ended).toEqual([]);
+  });
+
+  it('says nothing of an end while it does not know the video\'s length', () => {
+    const p = playingInStep();
+    p.friend({ playing: true, pos: 5 });
+    p.wait(500).report(ENDED, 0, { duration: 0 });
+    expect(p.ended).toEqual([]);
+  });
+
+  it('says nothing of an end the party is not playing to: a paused party, a video YouTube refused', () => {
+    const paused = heldPaused(212);
+    paused.wait(500).report(ENDED, 213.061);
+    expect(paused.ended).toEqual([]);
+    const refused = playingInStep();
+    refused.error(150);
+    refused.wait(500).report(ENDED, 0);
+    expect(refused.ended).toEqual([]);
   });
 
   it('pauses where a friend paused a moment before the end, though its own video had ended', () => {

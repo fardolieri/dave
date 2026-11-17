@@ -2,7 +2,7 @@
 // and what the friend does in the player changes the party for everyone. Runtime-neutral: the app (client/party.ts)
 // hands it what YouTube's player reports (client/ytplayer.ts) and each change of the party, and does what it answers:
 // commands for the player, and a change to declare.
-import { atOrPast, driftAllowed, fromSeeking, jumped, positionAt, sameChange, seekMore, type Party, type Seeking } from './party';
+import { DRIFT_S, atOrPast, driftAllowed, fromSeeking, jumped, positionAt, sameState, seekMore, type Party, type Seeking } from './party';
 
 /** YouTube's player states. */
 export const UNSTARTED = -1, ENDED = 0, PLAYING = 1, PAUSED = 2, BUFFERING = 3, CUED = 5;
@@ -26,8 +26,11 @@ export type Changed = { playing: boolean; pos: number; rate: number };
  */
 export type Clock = { now: number; room: number; hidden?: boolean };
 
-/** What a step answers: commands for the player, in order, and maybe the friend's change, for the party. */
-export type Step = { commands: Command[]; changed?: Changed };
+/**
+ * What a step answers: commands for the player, in order, and maybe the friend's change, for the party. `ended`: the
+ * player played the video to its end, the party as it was put to it: its queue's next goes on (client/party.ts).
+ */
+export type Step = { commands: Command[]; changed?: Changed; ended?: Party };
 
 /** How long a seek asked of the player may go unanswered before the player is taken to have done otherwise. */
 export const ASKED_MS = 4000;
@@ -112,10 +115,15 @@ export function createPartySync(video: string) {
    */
   let starting = true;
 
-  /** The commands of the step under way. */
+  /** The commands of the step under way, and whether the player ended in it. */
   let out: Command[] = [];
+  let ended: Party | null = null;
   const send = (c: Command) => { out.push(c); };
-  const step = (changed?: Changed): Step => { const s: Step = changed ? { commands: out, changed } : { commands: out }; out = []; return s; };
+  const step = (changed?: Changed): Step => {
+    const s: Step = { commands: out, ...(changed ? { changed } : {}), ...(ended ? { ended } : {}) };
+    out = []; ended = null;
+    return s;
+  };
 
   const now = (t: Clock) => (last ? playerTime(last, t.now) : 0);
   /** Asks the player to play, or to pause; until `until`, if it may never. */
@@ -189,6 +197,15 @@ export function createPartySync(video: string) {
     // An ended player plays on a seek (YouTube's way): paused again, as the party is.
     if (!playing && state === ENDED) ask(false, t);
   };
+  /**
+   * Played to its end while the party plays, and the party near its end too: the queue's next is due, whoever's player
+   * ends first. Not a player that ended a moment after another's end put the next on, the same video maybe: that party
+   * is at its start (a video a few seconds long ends unseen: Skip goes on). Nor one whose video's length is not known yet.
+   */
+  const endedAt = (r: PlayerReport, t: Clock) => {
+    const at = applied?.playing ? positionAt(applied, t.room) : 0;
+    if (applied?.playing && refused !== loaded && r.duration > 0 && at > r.duration - DRIFT_S - 1 && at > DRIFT_S + 1) ended = applied;
+  };
   /** Where the player is, as far as the party goes: a cued one where it was cued. */
   const position = (t: Clock) => (cuedAt !== null && last?.state === CUED ? cuedAt : now(t));
   const rate = (to: number, t: Clock) => { wantRate = { to, sent: t.now, tries: 1 }; send({ do: 'rate', to }); };
@@ -250,7 +267,7 @@ export function createPartySync(video: string) {
     /** A change of the party, anyone's. */
     follow(p: Party | null, t: Clock): Step {
       see(t);
-      if (ready && p && !sameChange(p, applied)) apply(p, t);
+      if (ready && p && !sameState(p, applied)) apply(p, t);
       return step();
     },
     /** YouTube refused to play the video here (`onError`): a hold under way is ended, unmuted as it owes. */
@@ -280,6 +297,7 @@ export function createPartySync(video: string) {
         return step();
       }
       if (!ready || !applied || !before) return step();
+      if (stated && r.state === ENDED && before.state !== ENDED) endedAt(r, t);
       // Judged before the speed is asked again below: the report that sets it off may be the friend's own play.
       const quiet = t.hidden || t.now < quietUntil;
       if (rateOwed && stated && r.state === PLAYING && !t.hidden) {
@@ -346,6 +364,9 @@ export function createPartySync(video: string) {
         return step();
       }
       if (wantTime || r.state === BUFFERING) return step();
+      // Ended with more queued since: a video queued after the party's had ended goes on now, not when a player comes to
+      // the end again (a friend joining).
+      if (r.state === ENDED && applied.queue?.length) endedAt(r, t);
       if (atEnd(applied, r, t)) { toEnd(r, t); return step(); }
       const at = positionAt(applied, t.room);
       if (Math.abs(position(t) - at) > driftAllowed(applied)) seek(at, applied.playing, t);

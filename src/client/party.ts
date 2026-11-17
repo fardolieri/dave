@@ -5,7 +5,8 @@
 import { createEffect, createMemo, createSignal, untrack } from 'solid-js';
 import type { LocalIdentity } from './identity';
 import type { FileMeta } from '../core/attachment';
-import { change, current, sameChange, type Party } from '../core/party';
+import { MAX_QUEUE, QUEUED_BY_LENGTH, asIs, change, current, enqueue, moveQueued, next, queuedTitle, sameQueue, sameState, type Party, type Queued } from '../core/party';
+import { toBase64Url } from '../core/identity';
 import { TICK_MS, createPartySync, type Step } from '../core/partysync';
 import { openParty, sealParty } from '../core/sealed';
 import type { ChatLine, createRoom } from './room';
@@ -56,7 +57,7 @@ export function createParty(room: Room, identity: LocalIdentity, textKey: Crypto
     const own = mine();
     const newest = current(own ? [...all, own] : all);
     return newest && { ...newest, card: cardOf(lines, newest.hash, newest.video) };
-  }, { equals: (a, b) => sameChange(a, b) && a?.card === b?.card });
+  }, { equals: (a, b) => sameState(a, b) && a?.card === b?.card });
   /** Who is in it: friends in the call who declare one, and me while I am in it. */
   const members = createMemo((): string[] => {
     const keys = [...parties().keys()].filter((k) => k !== me);
@@ -74,11 +75,37 @@ export function createParty(room: Room, identity: LocalIdentity, textKey: Crypto
       (e: unknown) => console.error('sealing the watch party failed', e),
     );
   };
-  // Taking a newer change declares it again: should its maker leave, the party goes on as they left it.
-  createEffect(now, (p) => { const own = untrack(mine); if (own && p && !sameChange(own, p)) declare(p); });
+  // Taking a newer change declares it again: should its maker leave, the party goes on as they left it. One from an app
+  // before queues (none) carries on the queue I had: its friend played, paused or put a card on, and queued nothing.
+  createEffect(now, (p) => {
+    const own = untrack(mine);
+    if (own && p && !sameState(own, p)) declare(p.queue === undefined && own.queue ? { ...p, queue: own.queue } : p);
+  });
   // Out of the call, out of the party: the Room forgets it with my place in the call, and so does the app (client/room.ts).
   createEffect(inCall, (on) => { if (!on && untrack(mine)) { setMine(null); sealing++; } });
   const roomNow = (): number => room.roomNow() ?? Date.now();
+  /** The YouTube cards of the chat by file and video, for the titles of the queue's. */
+  const cards = createMemo(() => {
+    const out = new Map<string, FileMeta>();
+    // The first of two, as the party's own card is (`cardOf`).
+    for (const l of room.lines()) if (l.kind === 'file' && l.file.youtube && !out.has(`${l.file.hash}:${l.file.youtube.id}`)) out.set(`${l.file.hash}:${l.file.youtube.id}`, l.file);
+    return out;
+  });
+  /** The title of my card of a queued video, where my chat has it. */
+  const titleOf = (q: Queued): string | undefined => cards().get(`${q.hash}:${q.video}`)?.youtube?.title;
+  /** A change of mine to the party going on, as `to` makes it of the party as it is; only while I am in it. */
+  const edit = (to: (p: PartyNow, now: number) => Parameters<typeof change>[3] | null): Party | null => {
+    const p = untrack(now);
+    if (!p || !untrack(mine)) return null;
+    const t = roomNow();
+    const made = to(p, t);
+    if (!made) return null;
+    const next = change(p, me, t, made);
+    declare(next);
+    return next;
+  };
+  /** The party as it is, to change only its queue: the title from my card where I have it. */
+  const keep = (p: PartyNow, t: number, queue: Queued[]) => ({ ...asIs(p, t, p.card?.youtube?.title ?? p.title), queue });
 
   return {
     now,
@@ -94,7 +121,8 @@ export function createParty(room: Room, identity: LocalIdentity, textKey: Crypto
       if (!card.youtube || !inCall()) return;
       const going = untrack(now);
       if (going && going.hash === card.hash && going.video === card.youtube.id) { if (!untrack(mine)) declare(going); return; }
-      declare(change(untrack(now), me, roomNow(), { hash: card.hash, video: card.youtube.id, title: card.youtube.title, playing: false, pos: 0, rate: 1 }));
+      // The queue goes on with the party: Watch together puts a card on now, ahead of it.
+      declare(change(untrack(now), me, roomNow(), { hash: card.hash, video: card.youtube.id, title: card.youtube.title, playing: false, pos: 0, rate: 1, queue: going?.queue }));
     },
     /** Into the party going on, where it is. */
     join: (): void => { const p = untrack(now); if (p && inCall()) declare(p); },
@@ -102,13 +130,36 @@ export function createParty(room: Room, identity: LocalIdentity, textKey: Crypto
     leave: (): void => { if (untrack(mine)) declare(null); },
     /** A change I made in my player: played, paused, sought or a new speed, for everyone in it. */
     set: (to: { playing: boolean; pos: number; rate: number }): Party | null => {
-      const p = untrack(now);
-      if (!p || !untrack(mine)) return null;
       // The title from my card where I have it: a change from an app before titles carries none.
-      const next = change(p, me, roomNow(), { hash: p.hash, video: p.video, title: p.card?.youtube?.title ?? p.title, ...to });
-      declare(next);
-      return next;
+      return edit((p) => ({ hash: p.hash, video: p.video, title: p.card?.youtube?.title ?? p.title, ...to, queue: p.queue }));
     },
+    /** What plays next, in order; nothing while there is no party. */
+    queue: (): Queued[] => now()?.queue ?? [],
+    /** Whether the queue holds as many as it can. */
+    full: (): boolean => (now()?.queue?.length ?? 0) >= MAX_QUEUE,
+    /** Puts a YouTube card of the chat in the queue, next (`first`) or last, while I am in the party; false when it could not. */
+    enqueue: (card: FileMeta, first: boolean): boolean => {
+      const video = card.youtube?.id;
+      if (!video) return false;
+      const id = toBase64Url(crypto.getRandomValues(new Uint8Array(6)));
+      const title = queuedTitle(card.youtube?.title);
+      const q: Queued = { id, by: me.slice(0, QUEUED_BY_LENGTH), hash: card.hash, video, ...(title ? { title } : {}) };
+      return edit((p, t) => { const queue = enqueue(p.queue ?? [], q, first); return queue && keep(p, t, queue); }) !== null;
+    },
+    /** Takes an entry out of the queue. */
+    unqueue: (id: string): void => { edit((p, t) => (p.queue?.some((q) => q.id === id) ? keep(p, t, p.queue.filter((q) => q.id !== id)) : null)); },
+    /** Moves an entry of the queue up (-1) or down (1). */
+    move: (id: string, by: number): void => { edit((p, t) => { const queue = p.queue ?? []; const moved = moveQueued(queue, id, by); return moved === queue ? null : keep(p, t, moved); }); },
+    /** The queue's next, now: playing or paused, as the party is. */
+    skip: (): void => { edit((p) => next(p, p.playing, (q) => untrack(() => titleOf(q)))); },
+    /**
+     * My player played `ended` to its end: the queue's next goes on, playing. Not when the party has gone on since to
+     * another video or queue (someone else's player ended first): a seek or a speed since is the same video still.
+     */
+    advance: (ended: Party): boolean =>
+      edit((p) => (p.hash === ended.hash && p.video === ended.video && sameQueue(p.queue, ended.queue) ? next(p, true, (q) => untrack(() => titleOf(q))) : null)) !== null,
+    /** A queued video's title as my card has it, else as the queue carries it. */
+    titleOf: (q: Queued): string | undefined => titleOf(q) ?? q.title,
     roomNow,
   };
 }
@@ -132,6 +183,9 @@ export function syncPlayer(frame: HTMLIFrameElement, video: string, party: Party
       else if (c.do === 'unMute') player.unMute();
       else player.load(c.video, c.seconds, c.playing);
     }
+    // Played to the end, with more queued: the next goes on, and puts the player there. Not the friend's seek too, which
+    // may have taken it to its end: one change, not two at once.
+    if (s.ended && party.advance(s.ended)) return;
     if (s.changed) { const next = party.set(s.changed); if (next) sync.took(next); }
   };
   const player: Player = connectPlayer(frame, video, {

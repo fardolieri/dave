@@ -195,18 +195,16 @@ test('a watch party: started from a card, joined from its tile, played, paused, 
   await expect.poll(() => rates(alice, bob), { timeout: 15_000 }).toEqual([1.5, 1.5]);
   await expect.poll(() => inStep([alice, bob], true, 1.5), { timeout: 15_000 }).toBe(true);
 
-  // Carol joins the call, and the party, where it is and as fast.
+  // Carol joins the call, and the party, where it is and as fast: by Watch together on the card the party plays, which
+  // puts her in it where it is, not from its start (review of #146). In it, the card queues instead.
   await carol.join();
-  await tile(carol).click();
+  await carol.page.locator('.chat-log .att-video').getByRole('button', { name: 'Watch together' }).click();
   await youtubePlays(carol);
   await expect.poll(() => inStep([alice, bob, carol], true, 1.5), { timeout: 30_000 }).toBe(true);
   await expect.poll(() => rates(carol), { timeout: 15_000 }).toEqual([1.5]);
   await expect(tile(alice).locator('.share-faces .face')).toHaveCount(3);
-  // Watch together on the card the party plays: it goes on where it is, not from its start (review of #146).
-  await carol.page.locator('.chat-log .att-video').getByRole('button', { name: 'Watch together' }).click();
-  await carol.page.waitForTimeout(2000);
-  await expect.poll(() => inStep([alice, bob, carol], true, 1.5), { timeout: 15_000 }).toBe(true);
   expect((await all(alice, bob, carol)).every((w) => w.t > 140)).toBe(true);
+  await expect(carol.page.locator('.chat-log .att-video').getByRole('button', { name: 'Watch together' })).toHaveCount(0);
 
   // Alice leaves it: it goes on for the others, and she can come back to it from its tile.
   await tile(alice).getByRole('button', { name: 'Stop watching' }).click();
@@ -276,4 +274,89 @@ test('a friend who joins a paused party finds it paused, where it is, and it pla
   await tile(carol).click();
   await youtubePlays(carol);
   await expect.poll(() => inStep([alice, bob, carol], true, 1.5), { timeout: 30_000 }).toBe(true);
+});
+
+test('a watch party\'s queue: cards queued by anyone in it, moved and taken out, the next played at the end, and skipped to', async ({ crowd }) => {
+  test.setTimeout(240_000);
+  const ZOO = 'jNQXAC9IVRw';
+  const ZOO_TITLE = 'Me at the zoo';
+  const alice = await open(crowd, 'Alice');
+  const bob = await open(crowd, 'Bob');
+  await cardFor(alice);
+  // Another video's card, its own picture and title (later routes come first). It is never played: YouTube plays the
+  // test browsers Rick Astley's video alone.
+  const blue = await alice.page.evaluate(async () => {
+    const c = Object.assign(document.createElement('canvas'), { width: 1280, height: 720 });
+    const g = c.getContext('2d')!;
+    g.fillStyle = '#33c';
+    g.fillRect(0, 0, 1280, 720);
+    const blob = await new Promise<Blob>((resolve) => c.toBlob((b) => resolve(b!), 'image/jpeg'));
+    return Array.from(new Uint8Array(await blob.arrayBuffer()));
+  });
+  await alice.context.route(`https://i.ytimg.com/vi/${ZOO}/**`, serve('image/jpeg', Buffer.from(blue)));
+  await alice.context.route((u) => u.href.startsWith('https://www.youtube.com/oembed?') && u.href.includes(ZOO), serve('application/json', JSON.stringify({ title: ZOO_TITLE, author_name: 'jawed' })));
+  await alice.join();
+  await bob.join();
+  await alice.composer.fill(`https://youtu.be/${RICK}`);
+  await expect(alice.staged.locator('.size')).toHaveText('Rick Astley');
+  await alice.composer.press('Enter');
+  await alice.composer.fill(`https://youtu.be/${ZOO}`);
+  await expect(alice.staged.locator('.size')).toHaveText('jawed');
+  await alice.composer.press('Enter');
+  const card = (f: Friend, title: string) => f.page.locator('.chat-log .att-video').filter({ hasText: title });
+  const queue = (f: Friend) => tile(f).locator('.party-queue li .queued-title');
+
+  await card(alice, TITLE).getByRole('button', { name: 'Watch together' }).click();
+  await heldAt(alice, 0);
+  await playPause(alice);
+  await youtubePlays(alice);
+  // Out of the party, Bob may watch together; queueing is for those in it.
+  await expect(card(bob, ZOO_TITLE).getByRole('button', { name: 'Watch together' })).toBeVisible({ timeout: 30_000 });
+  await expect(card(bob, ZOO_TITLE).getByRole('button', { name: 'Add to queue' })).toHaveCount(0);
+  await tile(bob).click();
+  await youtubePlays(bob);
+  await expect(card(bob, ZOO_TITLE).getByRole('button', { name: 'Watch together' })).toHaveCount(0);
+
+  // Bob queues the other video, Alice this one, then this one again to play next: a tick says each took.
+  await card(bob, ZOO_TITLE).getByRole('button', { name: 'Add to queue' }).click();
+  await expect(card(bob, ZOO_TITLE).getByRole('button', { name: 'Add to queue' })).toHaveClass(/done/);
+  await expect(queue(alice)).toHaveText([ZOO_TITLE]);
+  await card(alice, TITLE).getByRole('button', { name: 'Add to queue' }).click();
+  await expect(queue(bob)).toHaveText([ZOO_TITLE, TITLE]);
+  await card(alice, TITLE).getByRole('button', { name: 'Play next' }).click();
+  await expect(queue(bob)).toHaveText([TITLE, ZOO_TITLE, TITLE]);
+  await expect(queue(alice)).toHaveText([TITLE, ZOO_TITLE, TITLE]);
+  // Each with the face of who queued it.
+  await expect(tile(alice).locator('.party-queue li .face')).toHaveCount(3);
+
+  // Bob moves the other video up, then down to the end.
+  await tile(bob).getByRole('button', { name: `Move ${ZOO_TITLE} up` }).click();
+  await expect(queue(alice)).toHaveText([ZOO_TITLE, TITLE, TITLE]);
+  await tile(bob).getByRole('button', { name: `Move ${ZOO_TITLE} down` }).click();
+  await expect(queue(bob)).toHaveText([TITLE, ZOO_TITLE, TITLE]);
+  await tile(bob).getByRole('button', { name: `Move ${ZOO_TITLE} down` }).click();
+  await expect(queue(alice)).toHaveText([TITLE, TITLE, ZOO_TITLE]);
+
+  // Alice seeks to a few seconds before the end: when it ends, the next plays from its start, for both, out of the queue.
+  await expect.poll(() => inStep([alice, bob], true, 1.5), { timeout: 15_000 }).toBe(true);
+  await seek(alice, 0.97);
+  await expect(queue(bob)).toHaveText([TITLE, ZOO_TITLE], { timeout: 30_000 });
+  await expect(queue(alice)).toHaveText([TITLE, ZOO_TITLE]);
+  await expect.poll(async () => (await all(alice, bob)).every((w) => w.t < 30), { timeout: 15_000 }).toBe(true);
+  await expect.poll(() => inStep([alice, bob], true, 1.5), { timeout: 15_000 }).toBe(true);
+
+  // Further on, Bob skips: the next goes on now, from its start, playing as the party was.
+  await seek(alice, 0.4);
+  await expect.poll(async () => (await all(alice, bob)).every((w) => w.t > 60), { timeout: 15_000 }).toBe(true);
+  await tile(bob).getByRole('button', { name: 'Skip' }).click();
+  await expect(queue(alice)).toHaveText([ZOO_TITLE]);
+  await expect.poll(async () => (await all(alice, bob)).every((w) => w.t < 30), { timeout: 15_000 }).toBe(true);
+  await expect.poll(() => inStep([alice, bob], true, 1.5), { timeout: 15_000 }).toBe(true);
+
+  // Alice takes the last one out: nothing to skip to.
+  await tile(alice).getByRole('button', { name: `Remove ${ZOO_TITLE}` }).click();
+  for (const f of [alice, bob]) {
+    await expect(tile(f).locator('.party-queue')).toHaveCount(0);
+    await expect(tile(f).getByRole('button', { name: 'Skip' })).toHaveCount(0);
+  }
 });

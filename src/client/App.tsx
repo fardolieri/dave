@@ -17,6 +17,7 @@ import type { PullError } from './links';
 import { MIC_TEST_RECORD_MS, createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
 import { createAttention, type RoomLink } from './attention';
 import { createParty, syncPlayer, type PartyHandle } from './party';
+import { MAX_QUEUE } from '../core/party';
 import { windowFocused } from './focus';
 import { contactOf, isKnown, markKnown, setNickname } from './contacts';
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, identityOf, normaliseName, type Identity, type Person } from '../core/protocol';
@@ -918,7 +919,8 @@ function Workspace(props: WorkspaceProps) {
               <Show when={s().party.now()}>{(p) => (
                 <PartyTile party={s().party} title={p().card?.youtube?.title ?? p().title} video={p().video} inCall={s().call.inCall()}
                            thumb={(() => { const card = p().card; if (!card) return undefined; const a = s().room.attachment(card.hash); return a?.status === 'ready' ? a.url : card.preview; })()}
-                           faceOf={(k) => { const f = present(k); return f && labelOf(f); }} />
+                           faceOf={(k) => { const f = present(k); return f && labelOf(f); }}
+                           queuedBy={(start) => (me.startsWith(start) ? me : everyone().find((f) => f.publicKey.startsWith(start))?.publicKey)} />
               )}</Show>
               <For each={sharerKeys()}>
                 {(key) => (
@@ -943,7 +945,7 @@ function Workspace(props: WorkspaceProps) {
           )}</Show>
           {/* Kept while a conversation is on screen, hidden: back from it, the reader is where they were in the room */}
           <ChatLog lines={cur().room.lines()} openedAt={openedAt()} readFrom={cur().room.readFrom()} jumpToken={jumpToken()} label={labelOf} hidden={!!privateFriend()} look={chatLook()}
-                   watchTogether={active() === cur() ? (file) => cur().party.start(file) : undefined}
+                   party={active() === cur() ? cur().party : undefined}
                    holder={(from) => (from.publicKey === me ? null : labelOf(from).shown)}
                    attachment={(hash) => cur().room.attachment(hash)} onPull={(hash) => cur().room.pull(hash)} onCancel={(hash) => cur().room.cancelPull(hash)} />
           <Show when={privateFriend()}>{(pf) => (
@@ -1900,13 +1902,14 @@ function ShareTile(props: ShareTileProps) {
  * A watch party, beside the shares: its card's thumbnail and title, or only the title for a friend whose chat does not
  * have the card (new to the room since), whose browser does not ask YouTube for a picture before they choose to watch.
  */
-function PartyTile(props: { party: PartyHandle; title: string | undefined; video: string; inCall: boolean; thumb: string | undefined; faceOf: (publicKey: string) => Label | undefined }) {
+function PartyTile(props: { party: PartyHandle; title: string | undefined; video: string; inCall: boolean; thumb: string | undefined; faceOf: (publicKey: string) => Label | undefined; queuedBy: (start: string) => string | undefined }) {
   const title = () => props.title ?? 'A YouTube video';
   const joined = () => props.party.joined();
   return (
     <div class={['share', 'party', joined() ? 'share-live' : props.inCall ? 'share-closed' : 'share-locked']} onClick={() => { if (!joined() && props.inCall) props.party.join(); }}>
       <div class="share-head">
         <span class="party-title" title={title()}>▶ {title()}</span>
+        <Show when={joined() && props.party.queue().length > 0}><button class="stop skip" title="Play the next video of the queue now" onClick={(e) => { e.stopPropagation(); props.party.skip(); }}>Skip</button></Show>
         <Show when={joined()}><button class="stop" title="Leave the watch party; it goes on for the others" onClick={(e) => { e.stopPropagation(); props.party.leave(); }}>Stop watching</button></Show>
       </div>
       <Show when={joined()} fallback={
@@ -1916,6 +1919,9 @@ function PartyTile(props: { party: PartyHandle; title: string | undefined; video
         </>
       }>
         <PartyPlayer party={props.party} video={props.video} />
+        <Show when={props.party.queue().length > 0}>
+          <PartyQueue party={props.party} faceOf={props.faceOf} queuedBy={props.queuedBy} />
+        </Show>
       </Show>
       <Show when={props.party.members().length > 0}>
         <div class="share-bar party-bar" onClick={(e) => e.stopPropagation()}><ShareFaces keys={props.party.members()} label={props.faceOf} /><span class="share-stats">watching together</span></div>
@@ -1924,25 +1930,86 @@ function PartyTile(props: { party: PartyHandle; title: string | undefined; video
   );
 }
 
+/**
+ * Up next in a watch party, for whoever is in it: each video with the face of who put it there, moved up or down, or
+ * taken out, by anyone in it.
+ */
+function PartyQueue(props: { party: PartyHandle; faceOf: (publicKey: string) => Label | undefined; queuedBy: (start: string) => string | undefined }) {
+  const queue = () => props.party.queue();
+  return (
+    <ol class="party-queue" aria-label="Up next" onClick={(e) => e.stopPropagation()}>
+      {/* By id, so a row stays (and its button keeps the focus) through every change of the party, which comes parsed anew */}
+      <For each={queue()} keyed={(q) => q.id}>{(q, at) => {
+        const id = untrack(q).id;
+        const title = () => props.party.titleOf(q()) ?? 'A YouTube video';
+        const by = () => props.queuedBy(q().by);
+        return (
+          <li>
+            <span class="queued-title" title={title()}>{title()}</span>
+            <Show when={by()}>{(k) => <ShareFaces keys={[k()]} label={props.faceOf} />}</Show>
+            {/* Not disabled at the ends, which would drop the keyboard's focus from a row just moved there: no change */}
+            <button type="button" class="queued-move" aria-disabled={at() === 0 ? 'true' : 'false'} onClick={() => props.party.move(id, -1)} title="Earlier" aria-label={`Move ${title()} up`}>↑</button>
+            <button type="button" class="queued-move" aria-disabled={at() === queue().length - 1 ? 'true' : 'false'} onClick={() => props.party.move(id, 1)} title="Later" aria-label={`Move ${title()} down`}>↓</button>
+            <button type="button" class="queued-move" onClick={() => props.party.unqueue(id)} title="Take it out of the queue" aria-label={`Remove ${title()}`}>✕</button>
+          </li>
+        );
+      }}</For>
+    </ol>
+  );
+}
+
 /** YouTube's player in a watch party, made once for the video the party played then: other videos it loads in place. */
 function PartyPlayer(props: { party: PartyHandle; video: string }) {
   let frame: HTMLIFrameElement | undefined;
   const video = untrack(() => props.video);
-  const [refused, setRefused] = createSignal(false);
+  /** The video YouTube refused to play here: its note goes with it, when the party goes on to another (the queue's next). */
+  const [refused, setRefused] = createSignal<string | null>(null);
   let sync: ReturnType<typeof syncPlayer> | undefined;
   onSettled(() => {
     if (!frame) return;
-    sync = syncPlayer(frame, video, props.party, (code) => { if (code === 101 || code === 150) setRefused(true); });
+    sync = syncPlayer(frame, video, props.party, (code) => { if (code === 101 || code === 150) setRefused(untrack(props.party.now)?.video ?? null); });
     return () => { sync?.dispose(); sync = undefined; };
   });
   createEffect(() => props.party.now(), (p) => { sync?.follow(p); });
   return (
     <>
       <iframe ref={frame} class="party-player" title="YouTube video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" />
-      <Show when={refused()}><div class="share-note">YouTube does not let this video play here</div></Show>
+      <Show when={refused() !== null && refused() === props.party.now()?.video}><div class="share-note">YouTube does not let this video play here</div></Show>
     </>
   );
 }
+
+/**
+ * A YouTube card's buttons while I am in the watch party, in place of Watch together, icons for a narrow card: Play next
+ * and Add to queue. Each says ✓ for a moment once it took; a full queue takes neither.
+ */
+function QueueButtons(props: { party: PartyHandle; file: FileMeta }) {
+  const [took, setTook] = createSignal<'next' | 'last' | null>(null);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(timer));
+  const add = (first: boolean) => {
+    if (!props.party.enqueue(props.file, first)) return;
+    setTook(first ? 'next' : 'last');
+    clearTimeout(timer);
+    timer = setTimeout(() => setTook(null), QUEUED_TICK_MS);
+  };
+  const full = () => props.party.full();
+  const tip = (what: string) => (full() ? `The watch party's queue is full (${MAX_QUEUE} videos)` : what);
+  const icon = (d: string) => <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d={d} fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>;
+  const tick = 'M5 12.5l4.5 4.5L19 7.5';
+  return (
+    <>
+      <button type="button" class={['att-queue', { done: took() === 'next' }]} aria-disabled={full() ? "true" : "false"} onClick={() => add(true)} title={tip('Play next in the watch party')} aria-label="Play next">
+        {icon(took() === 'next' ? tick : 'M4 5l5 3.5L4 12zM12 8.5h8M4 16h16M4 20h16')}
+      </button>
+      <button type="button" class={['att-queue', { done: took() === 'last' }]} aria-disabled={full() ? "true" : "false"} onClick={() => add(false)} title={tip("Add to the watch party's queue")} aria-label="Add to queue">
+        {icon(took() === 'last' ? tick : 'M4 6h12M4 11h12M4 16h7M17 13v7M13.5 16.5h7')}
+      </button>
+    </>
+  );
+}
+/** How long a queue button says ✓ after it took. */
+const QUEUED_TICK_MS = 1500;
 
 /** Who watches a share, as overlapping pictures like a folded room's faces; with `tip`, each shows it on hover (and on keyboard focus). */
 function ShareFaces(props: { keys: string[]; label: (publicKey: string) => Label | undefined; tip?: (publicKey: string) => JSX.Element }) {
@@ -2616,8 +2683,8 @@ function ChatLog(props: {
   attachment: (hash: string) => Attachment | undefined; onPull: (hash: string) => void; onCancel: (hash: string) => void;
   /** The look it wears when not the page's: its room has another (client/theme.ts). */
   look?: string;
-  /** Starts a watch party with a YouTube card of the log (client/party.ts): while I am in this room's call. */
-  watchTogether?: (file: FileMeta) => void;
+  /** The watch party of this room's call (client/party.ts), while I am in the call: a YouTube card starts it, or is queued in it. */
+  party?: PartyHandle;
 }) {
   let log: HTMLDivElement | undefined;
   let viewer: HTMLDialogElement | undefined;
@@ -2627,7 +2694,7 @@ function ChatLog(props: {
   const file = (m: Extract<ChatLine, { kind: 'file' }>, title: string | undefined) => (
     <FileView file={m.file} title={title} attachment={props.attachment(m.file.hash)} holder={props.holder ? props.holder(m.from) : props.label(m.from).shown}
               onPull={() => props.onPull(m.file.hash)} onCancel={() => props.onCancel(m.file.hash)} onView={view}
-              onWatchTogether={props.watchTogether && m.file.youtube ? () => props.watchTogether?.(m.file) : undefined} />
+              party={m.file.youtube ? props.party : undefined} />
   );
   // How many older lines the reader unfolded, and in which opening of the room: OLDER_STEP more each time, so four weeks
   // of a busy room do not all come on screen at once.
@@ -2764,7 +2831,7 @@ const PULL_FAILED: Record<PullError, (holder: string | null, file: FileMeta) => 
  * with what is happening over it; anything else a card with its name, size and a button. A picture opens full size; a
  * video and a YouTube card go big over the page on a button.
  */
-function FileView(props: { file: FileMeta; title: string | undefined; attachment: Attachment | undefined; holder: string | null; onPull: () => void; onCancel: () => void; onView: (url: string, name: string, type: string) => void; onWatchTogether?: () => void }) {
+function FileView(props: { file: FileMeta; title: string | undefined; attachment: Attachment | undefined; holder: string | null; onPull: () => void; onCancel: () => void; onView: (url: string, name: string, type: string) => void; party?: PartyHandle }) {
   const kind = () => inlineKind(props.file.type);
   const a = () => props.attachment ?? { status: 'idle' as const };
   // A YouTube card's player, once its play button was pressed.
@@ -2881,11 +2948,15 @@ function FileView(props: { file: FileMeta; title: string | undefined; attachment
             </Show>
           </figure>
           <Show when={big()}><div class="att-media att-hold" aria-hidden="true" /></Show>
-          <Show when={video().title || video().channel || url() || playing() || props.onWatchTogether}>
+          <Show when={video().title || video().channel || url() || playing() || props.party}>
             <div class="att-video-about">
               <span class="about"><span class="title">{video().title}</span><span class="channel">{video().channel}</span></span>
-              <Show when={props.onWatchTogether}>{(go) => (
-                <button type="button" class="att-together" onClick={() => go()()} title="Watch it together with everyone in the call">Watch together</button>
+              <Show when={props.party}>{(party) => (
+                <Show when={party().joined()} fallback={
+                  <button type="button" class="att-together" onClick={() => party().start(props.file)} title="Watch it together with everyone in the call">Watch together</button>
+                }>
+                  <QueueButtons party={party()} file={props.file} />
+                </Show>
               )}</Show>
               <Show when={url() || playing()}>{enlarger('att-big')}</Show>
             </div>

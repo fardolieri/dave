@@ -10,3 +10,5 @@ A YouTube card of the chat, watched together by friends in the call, in step (AD
    and everyone's player does the same. A player that drifts off is put back.
 4. **Stop watching** takes a friend out; it goes on for the others. Leaving the call does too. It ends when nobody is in it.
 5. Only videos of the chat: the party names its card, and an app follows only a party whose card it has.
+6. **Up next** (ticket 02, ADR 0013): in it, a card's Play next and Add to queue line it up; the tile lists what comes
+   next, for anyone in it to move, take out or skip to. When the video ends, the next plays.
