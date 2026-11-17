@@ -221,3 +221,42 @@ test('a video with no HD thumbnail goes with the one every video has, and a link
   await alice.composer.press('Enter');
   await expect.poll(() => order(bob)).toEqual(['card', LINK, 'https://youtu.be/dQw4w9WgXcQ']);
 });
+
+test('/yt sends as it is, then the first video YouTube finds for it as its card; none found, the sender alone is told', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await noThumbnails(alice);
+  await alice.context.route(`https://i.ytimg.com/vi/${ID}/maxresdefault.jpg`, serve('image/jpeg', await jpeg(alice, 1280, 720)));
+  await alice.context.route('https://www.youtube.com/oembed?**', serve('application/json', JSON.stringify({ title: TITLE, author_name: 'Lofi Girl' })));
+  // Our Worker's search (worker/ytsearch.ts), which reads YouTube's results page: stood in for, as YouTube is.
+  const searched: string[] = [];
+  let answer: (search: string) => unknown = () => ({ id: ID });
+  await alice.context.route('**/yt-search', async (r) => {
+    const q = r.request().postData()!;
+    searched.push(q);
+    if (q === 'slow') await new Promise((done) => setTimeout(done, 1500));
+    return serve('application/json', JSON.stringify(answer(q)))(r);
+  });
+
+  // Nothing waits above the composer: what comes is a surprise.
+  await alice.composer.fill('/yt lofi  beats');
+  await expect(alice.sendButton).toBeEnabled();
+  await expect(alice.staged).toHaveCount(0);
+  await alice.composer.press('Enter');
+  for (const f of [alice, bob]) {
+    await expect(f.page.locator('.chat-log .att-video .title')).toHaveText(TITLE);
+    await expect.poll(() => order(f)).toEqual(['/yt lofi  beats', 'card']);
+  }
+  expect(searched).toEqual(['lofi beats']);
+
+  // Two at once, the first answered last: what each brought goes in the order they were sent.
+  answer = (q) => ({ error: q === 'slow' ? 'unavailable' : 'none' });
+  await alice.composer.fill('/yt slow');
+  await alice.composer.press('Enter');
+  await alice.composer.fill('/yt zzzz');
+  await alice.composer.press('Enter');
+  await expect.poll(() => alice.page.locator('.chat-log .msg-sys .msg-text').allTextContents())
+    .toEqual(['No video sent: YouTube did not answer.', 'No video sent: YouTube found none for “zzzz”.']);
+  await expect.poll(() => order(bob)).toEqual(['/yt lofi  beats', 'card', '/yt slow', '/yt zzzz']);
+  await expect(bob.page.locator('.chat-log .msg-sys', { hasText: 'No video sent' })).toHaveCount(0);
+});

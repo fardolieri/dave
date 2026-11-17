@@ -11,8 +11,8 @@ import { encodeQr, qrPath } from '../core/qr';
 import { createRoom, prepareFile, type Attachment, type ChatLine, type PreparedFile, type ServerStatus } from './room';
 import { createPrivates } from './privates';
 import { formatSize, inlineKind, pastedImageUrl, type FileMeta } from '../core/attachment';
-import { videosIn, type VideoCard } from '../core/youtube';
-import { videoCard } from './youtube';
+import { videoSearchOf, videosIn, type VideoCard } from '../core/youtube';
+import { searchVideo, videoCard } from './youtube';
 import type { PullError } from './links';
 import { MIC_TEST_RECORD_MS, createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
 import { createAttention, type RoomLink } from './attention';
@@ -570,6 +570,8 @@ function Workspace(props: WorkspaceProps) {
       setStaged(() => kept);
       const sent = text ? privates.send(priv.key, text) : false;
       if (sent || kept.length < files.length) setPrivateJump((n) => n + 1);
+      const search = sent ? videoSearchOf(text) : null;
+      if (search) roll(search, (p) => privates.sendFile(priv.key, p), (note) => privates.note(priv.key, note));
       // True when the text went, so the field empties: the files no room took stay staged, and the conversation says why.
       return text ? sent : kept.length === 0;
     }
@@ -577,8 +579,27 @@ function Workspace(props: WorkspaceProps) {
     for (const x of files) if (x.prepared) room.sendPrepared(x.prepared);
     if (text) room.sendText(text);
     setJumpToken((n) => n + 1);
+    const search = videoSearchOf(text);
+    if (search) roll(search, (p) => { room.sendPrepared(p); return true; }, room.note);
     return true;
   };
+  /**
+   * `/yt rick roll`, sent as it is: then the first video YouTube finds for it goes after it, as its card, from this app
+   * (core/youtube.ts, `videoSearchOf`). Nobody knows which until it comes, the sender neither. None found, or YouTube out
+   * of reach, this browser alone is told; a page closed meanwhile sends none.
+   */
+  const roll = (search: string, sendCard: (p: PreparedFile) => boolean, note: (text: string) => void) => {
+    const found = searchVideo(search).then(async (id) => {
+      const made = id && id !== 'none' ? await videoCard(id) : null;
+      return { id, prepared: made ? await prepareFile(made.picture, made.card).catch(() => null) : null };
+    });
+    // The searches go at once, the cards in the order of their texts: each after the one before it.
+    rolling = rolling.then(() => found).then(({ id, prepared }) => {
+      if (prepared && sendCard(prepared)) return;
+      note(`No video sent: ${id === 'none' ? `YouTube found none for “${search}”` : prepared ? 'the conversation took no file' : 'YouTube did not answer'}.`);
+    }).catch((e: unknown) => console.error('a /yt card failed', e)); // one that throws leaves the next their turn
+  };
+  let rolling: Promise<void> = Promise.resolve();
   // When the room on screen came on screen: texts from well before then start out folded away (ticket 38). The same for
   // a private conversation.
   const openedAt = createMemo(() => (current(), Date.now()));

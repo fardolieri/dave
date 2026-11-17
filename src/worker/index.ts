@@ -6,16 +6,19 @@ import { logUpgradeFailed } from './telemetry';
 import { RELAY_USAGE_PATH, relayUsage, usedUpToday } from './relayusage';
 import { CLOSE_USED_UP } from '../core/protocol';
 import { HISTORY_USAGE_PATH, historyUsage } from './historyusage';
+import { VIDEO_SEARCH_PATH, videoSearch } from './ytsearch';
 
 // Static assets are served by the platform before this code runs (see wrangler.jsonc),
 // so the Worker only ever sees the WebSocket upgrade, what goes to PostHog (worker/posthog.ts), the relay's usage for the
-// About dialog (worker/relayusage.ts), how full the server's history is (worker/historyusage.ts) and true 404s.
+// About dialog (worker/relayusage.ts), how full the server's history is (worker/historyusage.ts), `/yt`'s searches
+// (worker/ytsearch.ts) and true 404s.
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname.startsWith(`${PREFIX}/`)) return forward(request, env);
     if (url.pathname === RELAY_USAGE_PATH && request.method === 'GET') return relayUsage(env, Date.now(), (call) => ctx.waitUntil(call));
     if (url.pathname === HISTORY_USAGE_PATH && request.method === 'GET') return historyUsage(env);
+    if (url.pathname === VIDEO_SEARCH_PATH && request.method === 'POST') return videoSearch(request, env);
     // One Durable Object per room, named by the room id derived from the invite secret (ADR 0004).
     const roomId = url.pathname.startsWith('/ws/') ? url.pathname.slice(4) : null;
     if (roomId !== null && isRoomId(roomId)) {

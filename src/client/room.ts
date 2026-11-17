@@ -1497,6 +1497,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
      * at once: after what was sent before it and before what is sent after it, a text among them.
      */
     sendPrepared,
+    /** A line in this browser's log alone, as the room's own say what was not sent: nobody else sees it. */
+    note: (text: string): void => { push({ kind: 'system', text, at: Date.now() }); },
     /**
      * Deletes everything I wrote in this room from the server's history (ADR 0009): texts, file announcements and the
      * pieces of my files, up to when the Room gets the ask; what friends have already stays theirs. Asked again after

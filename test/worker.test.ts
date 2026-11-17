@@ -8,6 +8,7 @@ import { authKeyOf, roomIdOf } from '../src/core/rooms';
 import worker from '../src/worker/index';
 import { upstream } from '../src/worker/posthog';
 import { logRejected } from '../src/worker/telemetry';
+import { VIDEO_SEARCH_PATH } from '../src/worker/ytsearch';
 import { authFrame, nameOf, openRoomSocket, wsPath, type Challenge } from './harness';
 
 /** A room some test has already entered, so its verifier is set. Tests that need a fresh room make their own secret. */
@@ -172,6 +173,52 @@ describe('worker routing', () => {
     expect(to('/diag/array/phc_key/config.js')).toBe('https://eu-assets.i.posthog.com/array/phc_key/config.js');
     expect(to('/diagnose')).toBeNull();
     expect(to('/nope')).toBeNull();
+  });
+});
+
+describe('/yt-search', () => {
+  const ask = (q: string | null) => {
+    const ctx = { waitUntil: () => {}, passThroughOnException: () => {} } as unknown as ExecutionContext;
+    const init = { method: 'POST', headers: { 'accept-language': 'de-DE' }, ...(q === null ? {} : { body: q }) };
+    return worker.fetch!(new Request(`https://dave.test${VIDEO_SEARCH_PATH}`, init) as Parameters<NonNullable<typeof worker.fetch>>[0], { ...env, UPGRADE_LIMIT: undefined } as unknown as Env, ctx);
+  };
+  const page = '<script>var ytInitialData = {"contents":[{"videoRenderer":{"videoId":"dQw4w9WgXcQ"}}]};</script>';
+  it('answers the first video of YouTube\'s results for the search, asked for videos alone in the asker\'s language', async () => {
+    const asked = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(page));
+    try {
+      const res = await ask(' rick \n roll ');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ id: 'dQw4w9WgXcQ' });
+      const [url, init] = asked.mock.calls[0] as [URL, RequestInit];
+      expect(String(url)).toBe('https://www.youtube.com/results?search_query=rick+roll&sp=EgIQAQ%3D%3D');
+      expect(new Headers(init.headers).get('accept-language')).toBe('de-DE');
+    } finally {
+      asked.mockRestore();
+    }
+  });
+  it('answers 200 with an error for no search, no result, and YouTube out of reach, and asks YouTube nothing for no search', async () => {
+    const logs = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const asked = vi.spyOn(globalThis, 'fetch');
+    try {
+      for (const q of [null, '', '   ']) expect(await (await ask(q)).json(), String(q)).toEqual({ error: 'no search' });
+      const long = 'x'.repeat(401);
+      expect(await (await ask(long)).json(), 'a body longer than any search').toEqual({ error: 'no search' });
+      expect(asked).not.toHaveBeenCalled();
+      for (const [answer, error] of [
+        [() => Promise.resolve(new Response('<script>var ytInitialData = {"icon":{"iconType":"EMPTY_SEARCH"}};</script>')), 'none'],
+        [() => Promise.resolve(new Response('<html>Sign in to confirm you’re not a bot</html>')), 'unavailable'],
+        [() => Promise.resolve(new Response('busy', { status: 429 })), 'unavailable'],
+        [() => Promise.reject(new Error('timed out')), 'unavailable'],
+      ] as const) {
+        asked.mockImplementationOnce(answer);
+        const res = await ask('rick roll');
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ error });
+      }
+    } finally {
+      asked.mockRestore();
+      logs.mockRestore();
+    }
   });
 });
 

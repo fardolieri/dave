@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_VIDEO_CHANNEL, MAX_VIDEO_TITLE, aboutVideo, parseVideoCard, videoOf, videosIn } from '../src/core/youtube';
+import { MAX_VIDEO_CHANNEL, MAX_VIDEO_SEARCH, MAX_VIDEO_TITLE, aboutVideo, firstVideoIn, parseVideoCard, videoOf, videoSearchOf, videosIn } from '../src/core/youtube';
 import { MAX_FILE_BODY_BYTES, MAX_PREVIEW_LENGTH, parseFileMeta, type FileMeta } from '../src/core/attachment';
 
 const ID = 'rFZHOHl-L8A';
@@ -66,5 +66,27 @@ describe('YouTube links', () => {
     };
     expect(parseFileMeta(file)).toEqual(file);
     expect(new TextEncoder().encode(JSON.stringify(file)).length).toBeLessThanOrEqual(MAX_FILE_BODY_BYTES);
+  });
+});
+
+describe('/yt', () => {
+  it('asks YouTube for the words after /yt, on one line, and for nothing in any other text', () => {
+    expect(videoSearchOf('/yt rick roll')).toBe('rick roll');
+    expect(videoSearchOf('  /YT   rick\n  roll  ')).toBe('rick roll');
+    expect(videoSearchOf('/yt 🎲'.padEnd(200, 'x'))).toHaveLength(MAX_VIDEO_SEARCH);
+    for (const text of ['/yt', '/yt   ', '/ytrick roll', 'say /yt rick roll', '//yt rick roll', '/youtube rick roll', 'rick roll']) expect(videoSearchOf(text), text).toBeNull();
+  });
+  it('takes the first video of a page of results, not an ad or a broken id', () => {
+    const video = (id: string) => `{"videoRenderer":{"videoId":"${id}","thumbnail":{}}}`;
+    const page = `<script>var ytInitialData = {"contents":[{"adSlotRenderer":{"videoId":"AAAAAAAAAAA"}},${video('dQw4w9WgXcQ')},${video(ID)}]};</script>`;
+    expect(firstVideoIn(page)).toBe('dQw4w9WgXcQ');
+    // YouTube's newer layout, served for about one page in eight on 2026-11-17: each result a lockup.
+    const lockup = (id: string, type: string) => `{"lockupViewModel":{"contentImage":{},"metadata":{"contentId":"${id}","contentType":"METADATA_ROW_CONTENT_TYPE_BYLINE"},"contentId":"${id}","contentType":"${type}"}}`;
+    expect(firstVideoIn(`var ytInitialData = {"contents":[${lockup('PLx0sYbCqOb', 'LOCKUP_CONTENT_TYPE_PLAYLIST')},${lockup('uLK2r3sG4lE', 'LOCKUP_CONTENT_TYPE_VIDEO')},${lockup(ID, 'LOCKUP_CONTENT_TYPE_VIDEO')}]};`)).toBe('uLK2r3sG4lE');
+    expect(firstVideoIn(`${lockup('uLK2r3sG4lE', 'LOCKUP_CONTENT_TYPE_VIDEO')}${video(ID)}`), 'whichever comes first').toBe('uLK2r3sG4lE');
+    // YouTube's page for none, as it was on 2026-11-17.
+    expect(firstVideoIn('var ytInitialData = {"backgroundPromoRenderer":{"title":{"runs":[{"text":"No results found"}]},"icon":{"iconType":"EMPTY_SEARCH"}}};')).toBeNull();
+    // Anything else is YouTube refusing, or changed.
+    for (const other of ['<html>Sign in to confirm you’re not a bot</html>', 'var ytInitialData = {"contents":[{"shelfViewModel":{"contentId":"dQw4w9WgXcQ"}}]};', video('dQw4w9WgXcQx'), video('dQw4w9W"XcQ'), '"videoRenderer":{"videoId":"dQw4']) expect(firstVideoIn(other), other).toBeUndefined();
   });
 });

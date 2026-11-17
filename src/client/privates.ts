@@ -383,6 +383,8 @@ export function createPrivates(opts: {
       posthog.capture('private_text_sent');
       return true;
     },
+    /** A line in this browser's conversation with a friend alone (client/room.ts, `note`). */
+    note: (friend: string, text: string): void => { pairs.get(friend)?.room.note(text); },
     /** My name and picture changed: in every room of two too. */
     rename: (name: string): void => { for (const p of pairs.values()) p.room.rename(name); },
     setPicture: (picture: string | null): void => { for (const p of pairs.values()) p.room.setPicture(picture); },

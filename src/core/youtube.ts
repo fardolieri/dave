@@ -71,3 +71,37 @@ export function parseVideoCard(raw: unknown): VideoCard | null {
   }
   return card;
 }
+
+/** The longest search `/yt` asks YouTube for, in UTF-16 units: the rest of a longer one is left out. */
+export const MAX_VIDEO_SEARCH = 100;
+
+/**
+ * What a text asks YouTube for with `/yt`, or null when it asks for nothing: `/yt rick roll` sends as it is, and the sender's
+ * app sends the first video YouTube finds for "rick roll" after it, whatever that turns out to be. Its words on one line.
+ */
+export function videoSearchOf(text: string): string | null {
+  const m = /^\/yt\s+(\S[\s\S]*)$/i.exec(text.trim());
+  return m ? normalSearch(m[1]!) : null;
+}
+
+/** A search's words on one line, at most MAX_VIDEO_SEARCH units of them; null for none. */
+export const normalSearch = (words: string): string | null => cut(words.replace(/\s+/g, ' '), MAX_VIDEO_SEARCH) ?? null;
+
+/**
+ * A video among YouTube's results, in either of the two layouts it served on 2026-11-17, about one page in eight the
+ * newer: a `videoRenderer` named by its `videoId`, or a `lockupViewModel` by its `contentId`, of the type a video's is.
+ * Ads are renderers of other names.
+ */
+const RESULT = /"videoRenderer":\{"videoId":"([A-Za-z0-9_-]{11})"|"contentId":"([A-Za-z0-9_-]{11})","contentType":"LOCKUP_CONTENT_TYPE_VIDEO"/;
+
+/**
+ * The first video on a page of YouTube's search results, in the order shown; null when YouTube says it found none (its
+ * EMPTY_SEARCH icon, "No results found"); undefined for anything else, a page that is no page of results (a bot check, a
+ * consent page) or one laid out anew, so that the Worker says YouTube did not answer, and logs it (worker/ytsearch.ts).
+ * Read without parsing the page, which is a megabyte.
+ */
+export function firstVideoIn(page: string): string | null | undefined {
+  const m = RESULT.exec(page);
+  if (m) return m[1] ?? m[2];
+  return page.includes('"iconType":"EMPTY_SEARCH"') ? null : undefined;
+}

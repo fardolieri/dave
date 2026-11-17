@@ -2,7 +2,7 @@
 // thumbnail as a picture to send, and the title and channel from its oEmbed answer. Both let any page read them (CORS).
 // Friends' apps show the picture they pull from the sender, so only the sender's browser asks YouTube, until a friend
 // presses play.
-import { aboutVideo, type VideoCard } from '../core/youtube';
+import { aboutVideo, isVideoId, type VideoCard } from '../core/youtube';
 
 /** How long the sender's browser waits for YouTube before the link goes without a card. */
 const CARD_WAIT_MS = 10_000;
@@ -32,6 +32,24 @@ export async function videoCard(id: string): Promise<{ picture: File; card: Vide
     const blob = tall ?? jpeg(await wide);
     if (!blob) return null;
     return { picture: new File([blob], `youtube-${id}.jpg`, { type: 'image/jpeg' }), card: { id, ...aboutVideo(about) } };
+  } catch {
+    return null;
+  }
+}
+
+/** How long the sender's app waits for the Worker's search (worker/ytsearch.ts), which waits for YouTube up to 8 s. */
+const SEARCH_WAIT_MS = 10_000;
+
+/**
+ * The first video YouTube finds for a search, asked of our Worker (`/yt`, core/youtube.ts); `none` when YouTube found
+ * none, null when no answer came. The words go in the body, which Cloudflare's logs of the Worker do not keep, as they
+ * keep its addresses: they are a text's, sealed for friends alone.
+ */
+export async function searchVideo(query: string): Promise<string | 'none' | null> {
+  try {
+    const r = await fetch('/yt-search', { method: 'POST', body: query, cache: 'no-store', signal: AbortSignal.timeout(SEARCH_WAIT_MS) });
+    const answer = r.ok ? ((await r.json()) as { id?: unknown; error?: unknown }) : null;
+    return isVideoId(answer?.id) ? answer.id : answer?.error === 'none' ? 'none' : null;
   } catch {
     return null;
   }
