@@ -330,5 +330,13 @@
  {
   "match": "^settings\\.spec\\.ts › phone width: one column, the composer pinned to the bottom of the screen and usable \\| page\\.goto: net::ERR_CONNECTION_RESET",
   "ticket": "86"
+ },
+ {
+  "match": "^privacy\\.spec\\.ts › the Worker really passes /diag on to PostHog: scripts and remote config to its assets host, the rest to its ingest host \\| Error: apiRequestContext\\.post: read ECONNRESET",
+  "ticket": "85"
+ },
+ {
+  "match": "^themes\\.spec\\.ts › the invite panel stands clear of the rows below it, in every theme \\| expect\\(locator\\)\\.toHaveAttribute\\(expected\\) failed",
+  "ticket": "87"
  }
 ]
