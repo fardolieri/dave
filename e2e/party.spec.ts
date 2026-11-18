@@ -39,6 +39,8 @@ async function open(crowd: { open: (name: string, options?: { rooms?: Array<{ se
   const refusal = /^Failed to load resource: the server responded with a status of 403 \([^)]*\)$/;
   f.page.on('console', (m) => { if (refusal.test(m.text()) && /^https:\/\/www\.youtube-nocookie\.com\/youtubei\//.test(m.location().url)) refused.add(name); });
   f.expectWarning(/^error: Failed to load resource: the server responded with a status of 403 \([^)]*\) \(https:\/\/www\.youtube-nocookie\.com\/youtubei\//);
+  // A host of YouTube's videos may refuse a connection, and the player plays all the same (ticket 90).
+  f.expectWarning(/^error: Failed to load resource: net::ERR_CONNECTION_REFUSED \(https:\/\/[^/]+\.googlevideo\.com\//);
   f.expectWarning(/^warning: No available adapters\.$/);
   f.expectWarning(/^error: Permissions policy violation: compute-pressure is not allowed in this document\.$/);
   return f;
