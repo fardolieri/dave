@@ -26,9 +26,14 @@ export function createParty(room: Room, identity: LocalIdentity, textKey: Crypto
   const me = identity.publicKey;
   /** Each friend's party as opened, by the sealed text it came as: the same text is opened once. */
   const opened = new Map<string, Promise<Party | null>>();
-  const [parties, setParties] = createSignal<ReadonlyMap<string, Party>>(new Map());
-  // Every participant's party opened, in the order presence lists them; one that does not open counts as none.
-  createEffect(() => room.people().filter((p) => p.role === 'participant' && p.party).map((p) => [p.publicKey, p.party!] as const), (entries) => {
+  // The same parties opened again are no change: presence comes many times a minute, with or without a party in it.
+  const [parties, setParties] = createSignal<ReadonlyMap<string, Party>>(new Map(), { equals: (a, b) => a.size === b.size && [...a].every(([key, p]) => b.get(key) === p) });
+  /** Every participant's sealed party, in the order presence lists them: anew only when one of them declares another. */
+  const declared = createMemo(() => room.people().filter((p) => p.role === 'participant' && p.party).map((p) => [p.publicKey, p.party!] as const), {
+    equals: (a, b) => a.length === b.length && a.every(([key, sealed], i) => key === b[i]![0] && sealed === b[i]![1]),
+  });
+  // Every participant's party opened; one that does not open counts as none.
+  createEffect(declared, (entries) => {
     let stale = false;
     void Promise.all(entries.map(async ([key, sealed]) => {
       const id = `${key}:${sealed}`;
@@ -52,11 +57,11 @@ export function createParty(room: Room, identity: LocalIdentity, textKey: Crypto
    * have: it came to the room after the card, and does not see what was said before (ADR 0009).
    */
   const now = createMemo((): PartyNow | null => {
-    const lines = room.lines();
     const all = [...parties().entries()].filter(([key]) => key !== me).map(([, p]) => p);
     const own = mine();
     const newest = current(own ? [...all, own] : all);
-    return newest && { ...newest, card: cardOf(lines, newest.hash, newest.video) };
+    // The chat is looked through only while there is a party: a room with none does not follow its lines.
+    return newest && { ...newest, card: cardOf(room.lines(), newest.hash, newest.video) };
   }, { equals: (a, b) => sameState(a, b) && a?.card === b?.card });
   /** Who is in it: friends in the call who declare one, and me while I am in it. */
   const members = createMemo((): string[] => {
