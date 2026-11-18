@@ -341,7 +341,7 @@
  },
  {
   "match": "^attachment\\.spec\\.ts › a pull shown under way with none running is reported \\(file_pulling_stuck\\) \\| console warnings, errors or exceptions nobody expected: Alice: error: WebSocket connection to ",
-  "ticket": "88"
+  "ticket": "55"
  },
  {
   "match": "^party\\.spec\\.ts › .* \\| console warnings, errors or exceptions nobody expected: \\w+: error: Failed to load resource: net::ERR_CONNECTION_REFUSED \\(https://[^/]*googlevideo\\.com/",
