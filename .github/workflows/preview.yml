@@ -8,29 +8,109 @@ name: preview
 # The link is an invite to a room of the PR's own (the bare URL shows only the invite notice), the same on every push, so
 # a friend tapping it lands where the PR is being tried. Its secret is public (so is the repo), which is fine for a
 # throwaway Worker; any other invite link works there too with the host swapped (a room is only its secret, ADR 0004).
-# Once deployed, the browser suite runs against the preview (e2e.yml, called): real Cloudflare, flakes failing it, and the
-# tests a deployed copy cannot run (@local) against a local build of the PR. That run is the gate to master, which deploys
-# the live site: it writes the `preview e2e passed` status a ruleset on master requires.
-# A draft PR is one still being iterated on, often opened just for its preview: it gets the preview but not the suite against
-# it, and its branch pushes skip ci and red-green (draft-gate.yml). Marking it ready for review deploys again, runs the
-# suite here and dispatches those two on its head. The night shift's draft "Repro:" PRs (night-shift/*) need no preview and
-# get none until marked ready, which keeps the account far from its 100 Workers. PRs from forks are skipped: no secrets.
+# The browser suite runs when someone starts it, not on every push: `gh workflow run preview.yml --ref <branch> -f
+# pr=<number>`, once the PR is meant to land (AGENTS.md, Shipping): the branch's own workflows, as a push runs them. It is the gate to master, which deploys the live site: it writes the
+# `preview e2e passed` status a ruleset on master requires, on the PR's head as it was when the run started. A run costs
+# some 7,000 requests to Durable Objects of the previews' share of the day (core/relayusage.ts, SIDE_SHARES, RUN_COST),
+# 18 runners for a quarter of an hour, and every push ran it: on 2026-11-18 the previews' share was used up by 01:20 UTC
+# (ticket 89). So the run first asks Cloudflare whether the share has room for it (scripts/gate-mode.mjs):
+#   - room: against the preview (e2e.yml, called), real Cloudflare, flakes failing it, and the tests a deployed copy
+#     cannot run (@local) against a local build of the PR;
+#   - none: the whole suite against a local build of the PR on GitHub's runners, both engines, which uses none of the
+#     share. Its status says so: what only real Cloudflare shows is then first seen on the live site (rollback.yml).
+# `-f mode=preview` or `-f mode=local` overrides the choice. A push to the PR cancels a run under way: it tested a head
+# that is no longer the PR's. Marking it ready does not (its own group): the head is the same, and its run dispatches the
+# branch checks, which a gate started right after must not cancel.
+# Every push deploys the preview, for the link, ready or draft. A draft PR's branch pushes skip ci and red-green
+# (draft-gate.yml); marking it ready dispatches those two on its head. The night shift's draft "Repro:" PRs
+# (night-shift/*) need no preview and get none until marked ready, which keeps the account far from its 100 Workers. PRs
+# from forks are skipped: no secrets.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, closed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "the pull request's number"
+        required: true
+      mode:
+        description: "auto: the preview while the previews' share has room, else a local build; or preview, or local"
+        type: choice
+        options: [auto, preview, local]
+        default: auto
 permissions:
   contents: read
   pull-requests: write
 concurrency:
-  group: preview-${{ github.event.pull_request.number }}
+  group: preview-${{ github.event.pull_request.number || inputs.pr }}${{ github.event.action == 'ready_for_review' && '-ready' || '' }}
   cancel-in-progress: true
 env:
-  WORKER: dave-pr-${{ github.event.pull_request.number }}
+  WORKER: dave-pr-${{ github.event.pull_request.number || inputs.pr }}
 jobs:
+  # The pull request this run is for, from its event or, started by hand, from GitHub; and where the suite goes.
+  pr:
+    if: github.event_name == 'workflow_dispatch' || github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    outputs:
+      number: ${{ steps.pr.outputs.number }}
+      sha: ${{ steps.pr.outputs.sha }}
+      deploy: ${{ steps.pr.outputs.deploy }}
+      mode: ${{ steps.mode.outputs.mode }}
+      short: ${{ steps.mode.outputs.short }}
+    steps:
+      - id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # The fields read below, one by one, not the whole event: a long PR body could pass the size of a variable.
+          EV_NUMBER: ${{ github.event.pull_request.number }}
+          EV_STATE: ${{ github.event.pull_request.state }}
+          EV_DRAFT: ${{ github.event.pull_request.draft }}
+          EV_SHA: ${{ github.event.pull_request.head.sha }}
+          EV_REF: ${{ github.event.pull_request.head.ref }}
+          EV_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          INPUT_PR: ${{ inputs.pr }}
+        shell: bash
+        run: |
+          # As written in the Worker's name and the concurrency group: a number, nothing else.
+          if [ -n "$INPUT_PR" ] && ! [[ "$INPUT_PR" =~ ^[1-9][0-9]*$ ]]; then echo "::error::pr must be a PR's number, not '$INPUT_PR'"; exit 1; fi
+          if [ -n "$INPUT_PR" ]; then pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$INPUT_PR")
+          else pr=$(jq -n --arg n "$EV_NUMBER" --arg state "$EV_STATE" --arg draft "$EV_DRAFT" --arg sha "$EV_SHA" --arg ref "$EV_REF" --arg repo "$EV_REPO" \
+            '{number: ($n | tonumber), state: $state, draft: ($draft == "true"), head: {sha: $sha, ref: $ref, repo: {full_name: $repo}}}'); fi
+          jq -e '.state == "open"' <<<"$pr" >/dev/null || { echo "::error::PR ${INPUT_PR} is not open"; exit 1; }
+          if [ -n "$INPUT_PR" ]; then
+            # The gate lets a commit go to master: a draft's pushes skipped ci and red-green (draft-gate.yml), which marking
+            # it ready runs, and a fork's code would run with the token that writes the gate's status.
+            jq -e '.draft | not' <<<"$pr" >/dev/null || { echo "::error::PR $INPUT_PR is a draft: mark it ready first (gh pr ready $INPUT_PR), which runs ci and red-green on its head"; exit 1; }
+            jq -e --arg repo "$GITHUB_REPOSITORY" '.head.repo.full_name == $repo' <<<"$pr" >/dev/null || { echo "::error::PR $INPUT_PR is from a fork: no gate runs its code"; exit 1; }
+          fi
+          echo "number=$(jq -r .number <<<"$pr")" >> "$GITHUB_OUTPUT"
+          echo "sha=$(jq -r .head.sha <<<"$pr")" >> "$GITHUB_OUTPUT"
+          # A fork's gets no preview: its code would run with the secrets. A night-shift draft needs none. Marking a PR ready
+          # deploys nothing new, its head deployed by its last push, but for a night-shift branch, whose drafts got none:
+          # a deploy of its own would race a gate's started meanwhile, in another concurrency group (above).
+          echo "deploy=$(jq -r --arg repo "$GITHUB_REPOSITORY" --arg action "${{ github.event.action }}" '.head.repo.full_name == $repo and ((.draft and (.head.ref | startswith("night-shift/"))) | not) and ($action != "ready_for_review" or (.head.ref | startswith("night-shift/")))' <<<"$pr")" >> "$GITHUB_OUTPUT"
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      # Node runs the script as it is, core/relayusage.ts with its types taken off: nothing to install (quota-watch.yml).
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - id: mode
+        if: github.event_name == 'workflow_dispatch'
+        run: node scripts/gate-mode.mjs
+        env:
+          MODE: ${{ inputs.mode }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          RELAY_USAGE_API_TOKEN: ${{ secrets.RELAY_USAGE_API_TOKEN }}
   deploy:
-    if: >-
-      github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository &&
-      !(github.event.pull_request.draft && startsWith(github.event.pull_request.head.ref, 'night-shift/'))
+    needs: pr
+    # On every push, and started by hand: the suite against the preview then tests the head it deployed, and the link stays
+    # that head's should the run have cancelled a push's deploy under way.
+    if: needs.pr.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     outputs:
       url: ${{ steps.deploy.outputs.deployment-url }}
@@ -41,7 +121,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           # The branch's commit, not GitHub's merge commit, so About names a commit that exists on the branch.
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ needs.pr.outputs.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
@@ -84,8 +164,8 @@ jobs:
       - name: Link the preview on the PR
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number }}
-          SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ needs.pr.outputs.number }}
+          SHA: ${{ needs.pr.outputs.sha }}
           URL: ${{ steps.deploy.outputs.deployment-url }}
         # With pipefail: a failed read of the comment must fail the step, not post a second comment or a new room secret.
         shell: bash
@@ -104,9 +184,11 @@ jobs:
           **[Try this PR](${URL}/#${secret}/PR%20${PR})** (preview of ${SHA:0:7}, the same room on every push)"
           if [ -n "$id" ]; then gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" >/dev/null
           else gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$body" >/dev/null; fi
+  # Started by hand only: against the preview just deployed, or, with no room in the previews' share, a local build of
+  # the PR (below), which waits for no deploy.
   e2e:
-    needs: deploy
-    if: '!github.event.pull_request.draft'
+    needs: [pr, deploy]
+    if: github.event_name == 'workflow_dispatch' && needs.pr.outputs.mode == 'preview'
     uses: ./.github/workflows/e2e.yml
     # The called workflow's last job writes the gate's commit status, and a called job gets no more permissions than its
     # caller grants.
@@ -115,7 +197,18 @@ jobs:
       statuses: write
     with:
       target: ${{ needs.deploy.outputs.url }}
-      ref: ${{ github.event.pull_request.head.sha }}
+      ref: ${{ needs.pr.outputs.sha }}
+  e2e-local:
+    needs: pr
+    if: github.event_name == 'workflow_dispatch' && needs.pr.outputs.mode == 'local'
+    uses: ./.github/workflows/e2e.yml
+    permissions:
+      contents: read
+      statuses: write
+    with:
+      target: local
+      ref: ${{ needs.pr.outputs.sha }}
+      local_gate: ${{ needs.pr.outputs.short }}
   # The draft's pushes skipped the branch checks (draft-gate.yml); run them on the head now that it is ready. A night-shift
   # branch ran them on every push. The browser suite is the e2e job above.
   checks:

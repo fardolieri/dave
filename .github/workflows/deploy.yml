@@ -1,6 +1,7 @@
 name: deploy
-# master deploys the live site (dave). A ruleset on master accepts only a commit whose pull request preview passed the
-# whole browser suite (the `preview e2e passed` status, e2e.yml), so what deploys here was tested on real Cloudflare first.
+# master deploys the live site (dave). A ruleset on master accepts only a commit whose pull request's gate passed the
+# whole browser suite (the `preview e2e passed` status, e2e.yml): against its preview, real Cloudflare, or, the previews'
+# share of the day used up, against a local build (preview.yml), which the status's description says.
 # A bad deploy is undone with rollback.yml.
 on:
   push:

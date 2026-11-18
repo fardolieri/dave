@@ -10,24 +10,33 @@ read on a small screen by someone who did not watch you work: lead with the outc
 ## Before any work
 
 1. `git checkout master && git pull --ff-only`. The owner lands work from other machines; the clone here is often behind.
-2. Work on a branch (`<topic>/<slug>`), never on master directly: master takes only commits whose PR preview passed.
+2. Work on a branch (`<topic>/<slug>`), never on master directly: master takes only commits whose PR's gate passed.
 3. Another agent session may be running in this repo at the same time (the session-start hook says so). Stay on your branch,
    and fetch before every push: master moves under you.
 
 ## Testing: GitHub Actions is the receipt
 
 What the dev box can run locally depends on the machine: see `~/.claude/CLAUDE.md`. Whatever runs locally, the verdict
-that counts is CI's: `ci.yml` and `red-green.yml` on the branch, and the browser suite (`e2e.yml`) against the ready PR's
-preview. Push a branch, open the PR and read its results.
+that counts is CI's: `ci.yml` and `red-green.yml` on the branch, and the browser suite (`e2e.yml`), the gate, started by
+hand once the PR is meant to land: `gh workflow run preview.yml --ref <branch> -f pr=<n>` (`--ref`: the branch's own
+workflows, not master's). Push a branch, open the PR and read its results.
+
+- **The gate is run once per landing, not per push.** Each run costs some 7,000 of the previews' requests to Durable
+  Objects (`RUN_COST`, ticket 89) and 18 runners. Start it when the PR is done, rebased and reviewed; a push to the PR
+  cancels a run under way. It goes against the PR's preview, real Cloudflare, while the previews' share of the day has
+  room for it, and against a local build of the PR on GitHub's runners when it has not (`scripts/gate-mode.mjs`): either
+  writes the gate's status, and either lets the PR land. Never set that status by hand. A gate whose shards fail with
+  "Today's server time is used up" (4007) ran out of the previews' share under way: start it again rather than
+  re-running its failed jobs, which would go to the preview again.
 
 - To reproduce a bug: write the failing test, commit it ("Regression test: …"), commit the fix ("Problem report: …"), and
   push both together. `red-green.yml` runs the test against the app from before the fix and must see it fail (the "red,
   then green" receipt); the rest of CI must be green. Do not push the test alone just to watch it go red: every red run
   emails the owner, and these were 38 of the last 100 failed runs.
 - Push the test alone first only when `red-green.yml` cannot show the bug: it runs browser tests in Chromium only, against
-  a local build, once. A bug that needs Firefox or real Cloudflare goes red alone first, in a ready (not draft) PR whose
-  preview runs the suite in both engines (for Firefox alone, `gh workflow run e2e.yml --ref <branch>` also does); say why
-  in the report. Same-ref pushes cancel each other, so wait for the red run to finish first.
+  a local build, once. A bug that needs Firefox or real Cloudflare goes red alone first, through the gate started on its
+  PR with `-f mode=preview` (for Firefox alone, `gh workflow run e2e.yml --ref <branch>` also does); say why in the
+  report. Same-ref pushes cancel each other, so wait for the red run to finish first.
 - Watch CI with one waiting loop, not several background watchers.
 - Leave nothing running at the end of a turn (vite, workerd, chrome, firefox, playwright). The stop hook checks this
   session's, and leftovers no session runs any more; another session's are its own (`scripts/claude/heavy.sh`).
@@ -42,7 +51,7 @@ Every change climbs this ladder, and every report says which rung it reached, in
 | 0 typed | `pnpm typecheck` passes | here or CI |
 | 1 unit | `pnpm test` passes | CI (`ci.yml`) |
 | 2 browser | the e2e suite passes against a local build, both engines | by hand: `e2e.yml` from the Actions tab (Chromium alone here is not this rung: say so). Rung 3 covers it |
-| 3 preview | the e2e suite passed against the PR's preview, both engines, real Cloudflare, and its `@local` tests against a local build of the PR: the gate to master | CI (`preview.yml` on the ready PR) |
+| 3 preview | the e2e suite passed against the PR's preview, both engines, real Cloudflare, and its `@local` tests against a local build of the PR: the gate to master. With the previews' share of the day used up, the gate runs it against a local build of the PR instead: that is rung 3 (local), not real Cloudflare: say so | CI (`preview.yml`, started for the PR) |
 | 4 seen | a human or a recording looked at the real thing (real browser, real device for phone features) | owner, or a recording |
 
 Rules:
@@ -68,12 +77,13 @@ Rules:
 
 ## Shipping
 
-Every change goes through a ready PR. A push to master deploys the live site, and GitHub accepts only a fast-forward to a
-commit with the `preview e2e passed` status, which the PR's preview run writes on its head (rung 3). So: rebase, review,
-wait for the preview, `git push origin HEAD:master`, then check that `deploy` passed (it waits until the site serves the
-commit; a commit that changes only tickets, docs or tests has no run to check, `deploy.yml`'s `paths`, and the site stays
-on the last commit that changed the app). A full send ends there; a full stop ends with the PR ready and rung 3 reached. A
-bad deploy: `rollback.yml` from the Actions tab, then a fix. Prefer small PRs, squashed into one commit per idea.
+Every change goes through a ready PR. A push to master deploys the live site, and GitHub accepts only a fast-forward to
+a commit with the `preview e2e passed` status, which the gate's run writes on its head (rung 3). So: rebase, review,
+start the gate (`gh workflow run preview.yml --ref <branch> -f pr=<n>`) and wait for it, `git push origin HEAD:master`,
+then check that `deploy` passed (it waits until the site serves the commit; a commit that changes only tickets, docs or
+tests has no run to check, `deploy.yml`'s `paths`, and the site stays on the last commit that changed the app). A full
+send ends there; a full stop ends with the PR ready and rung 3 reached. A bad deploy: `rollback.yml` from the Actions
+tab, then a fix. Prefer small PRs, squashed into one commit per idea.
 
 ## What watches the app
 
@@ -81,11 +91,12 @@ bad deploy: `rollback.yml` from the Actions tab, then a fix. Prefer small PRs, s
   (`red-green.yml`). Not while the branch's PR is a draft (`draft-gate.yml`): a draft is still being iterated on, and its
   pushes end green with the jobs skipped, which is no verdict. Marking it ready runs both on its head. `night-shift/*`
   branches always run them, and the browser suite against a local build too (`e2e.yml`): their drafts get no preview.
-  Other branches get the browser suite from their PR's preview only (below); a run against a local build is by hand.
+  Other branches get the browser suite from their PR's gate only (below); a run against a local build is by hand.
 - **On every open PR**, drafts too: a preview Worker of its own, `dave-pr-<n>` (`preview.yml`), the live build plus the
-  inspection hooks, with the whole e2e suite run against it once deployed (once ready, not while a draft), and the tests a
-  deployed copy cannot run (tagged `@local`: a deploy or an outage staged at the preview server) against a local build of
-  the PR: together the gate to master. One comment on the PR links it and a room of the PR's own, so the owner can try a
+  inspection hooks, deployed on every push. The gate to master, started by hand (Testing, above): the whole e2e suite
+  against the preview, and the tests a deployed copy cannot run (tagged `@local`: a deploy or an outage staged at the
+  preview server) against a local build of the PR; or, with the previews' share of the day used up, the whole suite
+  against a local build. One comment on the PR links it and a room of the PR's own, so the owner can try a
   change from the phone before it goes live. It starts with empty storage. The night shift's drafts get none. A nightly
   sweep (`preview-sweep.yml`) deletes previews whose PR closed, once the day it closed on has ended.
 - **Inside every e2e test:** unexpected console warnings and runtime invariants (`src/client/invariants.ts`: UI that
@@ -93,13 +104,14 @@ bad deploy: `rollback.yml` from the Actions tab, then a fix. Prefer small PRs, s
 - **Every night:** the chaos soak (`soak.yml`, 01:00 UTC, a local build of master) opens `soak` issues with a minimal
   sequence; the night shift (`scripts/night-shift/`, on the dev box, 02:30 UTC) turns new problem reports into
   draft "Repro:" PRs.
-- **Every quarter of an hour:** the Workers Free plan's daily limits (`quota-watch.yml`, asked of Cloudflare itself). At 70 %
-  and at 90 % of the live site's or the previews' share of one, each once a day: an issue labelled `quota` and a red run,
-  which mails the owner. Past a limit every Durable Object of the account fails until midnight UTC, the previews' with
-  the live site's. The live site lets no new socket into a room once it has used 45 % of any daily limit (`FREE_PLAN_SHARES`,
-  `wrangler.jsonc`), and tells the friends when the rooms are back; the previews, together, stop at another 45 %, so
-  neither can use up the other's half (`SIDE_SHARE`, `src/core/relayusage.ts`). A preview Worker is kept until the day its PR closed has ended: deleted, its
-  rooms' use leaves Cloudflare's analytics while Cloudflare still counts it against the day (`preview-sweep.yml`).
+- **Every quarter of an hour:** the Workers Free plan's daily limits (`quota-watch.yml`, asked of Cloudflare itself). At
+  70 % and at 90 % of the live site's or the previews' share of one, each once a day: an issue labelled `quota` and a
+  red run, which mails the owner. Past a limit every Durable Object of the account fails until midnight UTC, the
+  previews' with the live site's. The live site lets no new socket into a room once it has used 25 % of any daily limit
+  (`FREE_PLAN_SHARES`, `wrangler.jsonc`), and tells the friends when the rooms are back; the previews, together, stop at
+  65 %, so neither can use up the other's share (`SIDE_SHARES`, `src/core/relayusage.ts`). A preview Worker is kept
+  until the day its PR closed has ended: deleted, its rooms' use leaves Cloudflare's analytics while Cloudflare still
+  counts it against the day (`preview-sweep.yml`).
 - **Every session's briefing** (`scripts/claude/session-start.sh`) says how the unattended parts did: the night shift's last
   run, open soak and `quota` issues, waiting reproductions, whether master's head reached the live site. A warning there comes before
   new work.

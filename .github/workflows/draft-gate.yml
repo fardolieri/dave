@@ -1,8 +1,8 @@
 name: draft-gate
 # Called first by ci.yml and red-green.yml: says whether their checks run. A push to a branch whose open pull request
 # is a draft skips them, so a PR opened only for its preview (preview.yml deploys drafts too) can take quick pushes without a
-# full CI run each. Marking it ready for review runs both on its head (preview.yml dispatches them), and the browser suite
-# against its preview.
+# full CI run each. Marking it ready for review runs both on its head (preview.yml dispatches them); the browser suite is
+# the gate, started by hand (AGENTS.md).
 # Everything else runs: other events (by hand, preview.yml's dispatch on ready), a branch with no PR yet (its first push usually
 # comes before the PR), and night-shift/* branches, whose draft "Repro:" PRs are read as they are, with no preview. An API
 # error runs the checks too: a missed skip costs a run, a wrong skip would pass a branch nobody tested.
@@ -33,7 +33,7 @@ jobs:
               if [ -n "$pr" ]; then
                 run=false
                 echo "::notice::Skipped: PR #$pr is a draft. Mark it ready for review to run the checks on its head."
-                echo "Skipped: [PR #$pr](${{ github.server_url }}/$GITHUB_REPOSITORY/pull/$pr) is a draft. Marking it ready for review runs \`ci\` and \`red-green\` on its head, and the browser suite against its preview." >> "$GITHUB_STEP_SUMMARY"
+                echo "Skipped: [PR #$pr](${{ github.server_url }}/$GITHUB_REPOSITORY/pull/$pr) is a draft. Marking it ready for review runs \`ci\` and \`red-green\` on its head; the browser suite runs when its gate is started (\`gh workflow run preview.yml --ref <branch> -f pr=$pr\`)." >> "$GITHUB_STEP_SUMMARY"
               fi
             else
               echo "::warning::could not look up the PR of $BRANCH, running the checks: $pr"

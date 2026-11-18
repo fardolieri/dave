@@ -51,3 +51,17 @@ first, after three or four runs a day, all PRs together. quota-watch tells at 70
 - Fewer requests per preview run, and fewer alarms in rooms with one friend in them (the sweep matters only with two):
   the next levers, not part of this fix.
 - GitHub's dropped scheduled runs: quota-watch still relies on them.
+
+## Comments
+
+2026-11-18, the morning after: the previews' share (45 %) was used up by 01:20 UTC, 6 to 7 suite runs (#159 pushed three
+times in 20 minutes, #162 two runs and two re-runs, #161 one); the live site used 1 % of its own. A run measured on #161:
+some 7,000 requests to Durable Objects (the history's syncs 42 %, sockets 32 %, the sweep's alarm 17 %, frames to
+sleeping rooms 9 %), 3,200 to the Worker, 4,300 rows written, 10,900 read, 280 GB-s. On the owner's word:
+- The shares are now 25 % for the live site (twice its busiest day) and 65 % for the previews (`SIDE_SHARES`).
+- The browser suite no longer runs on every push to a ready PR: it is the gate, started once a PR is meant to land
+  (`gh workflow run preview.yml --ref <branch> -f pr=<n>`). With no room left in the previews' share for a run (`RUN_COST`,
+  `scripts/gate-mode.mjs`), it runs against a local build of the PR on GitHub's runners and writes the gate's status all
+  the same, saying so: a PR no longer waits for midnight.
+- quota-watch ran once between 18:25 on 2026-11-17 and 07:45 the next day: GitHub drops most of its quarter-hour runs.
+  Not fixed here.

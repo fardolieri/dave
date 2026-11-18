@@ -1,10 +1,12 @@
 name: e2e
 # The browser suite (e2e/, playwright.config.ts) in Chromium and Firefox, the only browser tests this repo has:
-#   - called by preview.yml after each pull request preview deploy: against that preview, real Cloudflare with the same
-#     hooks. This run is the gate to master. Two more jobs, one per engine, run the tests a deployed copy cannot (tagged
-#     @local: a deploy or an outage staged at the preview server, vite.config.ts) against a local build of the same commit:
-#     before those were only run weekly, and a change that broke them reached master unseen (2026-11-09). A PR not yet
-#     rebased onto the tag has none at its head, and its @local jobs pass with no tests.
+#   - called by preview.yml when someone starts the gate for a pull request: against its preview, real Cloudflare with the
+#     same hooks. This run is the gate to master. Two more jobs, one per engine, run the tests a deployed copy cannot
+#     (tagged @local: a deploy or an outage staged at the preview server, vite.config.ts) against a local build of the
+#     same commit: before those were only run weekly, and a change that broke them reached master unseen (2026-11-09). A
+#     PR not yet rebased onto the tag has none at its head, and its @local jobs pass with no tests. With no room left in
+#     the previews' share of the day (`local_gate`), the whole suite against a local build of the PR instead, the @local
+#     tests among it: the gate all the same, its status saying so.
 #   - every pushed night-shift/* branch: against a local build (Worker and Room in workerd, inspection hooks on). Its red
 #     run is the evidence of a draft "Repro:" PR, which gets no preview (scripts/night-shift).
 #     Other branches get the suite from their pull request's preview only: on a ready PR, a whole run against a local build
@@ -61,10 +63,15 @@ on:
         description: "the commit deployed there"
         type: string
         required: true
+      local_gate:
+        description: "why the gate runs against a local build of `ref` (target local), in a few words for its status; empty against a preview"
+        type: string
+        default: ''
 concurrency:
   # When called, the caller's event and ref apply: preview.yml's concurrency already cancels a superseded preview run.
-  # The weekly run on Solid's development build has its own, so a run by hand on master does not cancel it.
-  group: e2e-${{ github.event_name == 'schedule' && 'solid-dev' || github.event_name == 'pull_request' && format('preview-{0}', github.ref) || github.ref }}
+  # Started by hand, that ref is master's for every pull request: the commit tested keeps one PR's gate from cancelling
+  # another's. The weekly run on Solid's development build has its own, so a run by hand on master does not cancel it.
+  group: e2e-${{ github.event_name == 'schedule' && 'solid-dev' || inputs.ref && format('gate-{0}', inputs.ref) || github.ref }}
   cancel-in-progress: true
 jobs:
   e2e:
@@ -85,7 +92,7 @@ jobs:
         project: [chromium, firefox]
         shard: [1, 2, 3, 4, 5, 6, 7, 8] # the total is written out again in the test step below
         # Called from a preview: the @local tests against a local build, a job per engine (18 jobs, still under the 20).
-        include: ${{ fromJSON(inputs.ref && '[{"project":"chromium","shard":"local"},{"project":"firefox","shard":"local"}]' || '[]') }}
+        include: ${{ fromJSON(inputs.ref && !inputs.local_gate && '[{"project":"chromium","shard":"local"},{"project":"firefox","shard":"local"}]' || '[]') }}
     env:
       # Empty means a local build.
       E2E_URL: ${{ matrix.shard != 'local' && inputs.target != 'local' && inputs.target || '' }}
@@ -108,14 +115,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Nothing to do when the image matches the checked-out Playwright, which it need not: this file can be newer than
-      # the commit tested. A preview (preview.yml) runs the copy merged with master on the pull request's head, and a
-      # run by hand on an older commit runs this copy too. The browsers of the other
+      # the commit tested. A gate (preview.yml) runs the copy of the ref it was started on, the PR's branch as AGENTS.md
+      # starts it, and a run by hand on an older commit runs this copy too. The browsers of the other
       # version then come from Playwright's own servers, not the apt mirror; the image's system packages fit them closely.
       - run: pnpm exec playwright install chromium firefox
       # After a deploy, the edge serves the new page and its files together only a minute or so later: a page opened before
       # that loads a file that is not there (ticket 64). Each shard waits on its own, since each runner may reach another edge.
       # A pull request not yet rebased onto the script has none at its head, and runs as before.
-      - if: inputs.ref && matrix.shard != 'local'
+      - if: inputs.ref && !inputs.local_gate && matrix.shard != 'local'
         run: test ! -f scripts/wait-for-deploy.mjs || node scripts/wait-for-deploy.mjs "${{ inputs.ref }}"
       # HOME=/root: Firefox refuses to start as root in another user's home (the runner's, /github/home). Inside the command
       # only: set as `env:` it also reaches the runner's own docker commands, which then cannot read root's docker config.
@@ -202,7 +209,7 @@ jobs:
     # ruleset on master requires that status. A commit status, not this job's own check: a check belongs to the run's
     # commit, and the status must name the commit that was tested and would be pushed to master.
     # Branch runs against a local build and runs by hand never write it.
-    name: ${{ github.event_name == 'pull_request' && 'gate to master' || 'result' }}
+    name: ${{ inputs.ref && 'gate to master' || 'result' }}
     needs: e2e
     if: always()
     runs-on: ubuntu-latest
@@ -213,7 +220,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RESULT: ${{ needs.e2e.result }}
-          GATE: ${{ github.event_name == 'pull_request' && inputs.ref != '' }}
+          GATE: ${{ inputs.ref != '' }}
+          # At most 140 characters, the status's description and the verdict together: GitHub refuses a longer one.
+          WHERE: ${{ inputs.local_gate && format('Full e2e suite on a local build of the PR ({0})', inputs.local_gate) || 'Full e2e suite against the PR''s preview, and its @local tests on a local build' }}
           SHA: ${{ inputs.ref || github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -224,7 +233,7 @@ jobs:
           if [ "$GATE" = true ]; then
             state=$([ "$RESULT" = success ] && echo success || echo failure)
             gh api -X POST "repos/${{ github.repository }}/statuses/$SHA" -f state="$state" -f context="preview e2e passed" \
-              -f description="Full e2e suite against the PR's preview, and its @local tests on a local build, both engines, no flakes: $RESULT" -f target_url="$RUN_URL" > /dev/null
+              -f description="$WHERE, both engines, no flakes: $RESULT" -f target_url="$RUN_URL" > /dev/null
             echo "Wrote 'preview e2e passed' = $state on $SHA"
           fi
           test "$RESULT" = success
