@@ -310,6 +310,11 @@ function Workspace(props: WorkspaceProps) {
     const title = [c?.nick ? `calls themselves ${own}` : null, `fingerprint ${id.fingerprint}`, isMe ? null : ago ? `known since ${ago}` : 'first time this key shows up here'].filter(Boolean).join(' · ');
     return { shown, known, title, picture: now ? now.picture : id.picture };
   };
+  /**
+   * The label of the friend a row of the sidebar is, kept while it says the same: each read of `labelOf` looks through
+   * everyone and makes a new one, and a row reads it for its picture, name and title on every presence frame.
+   */
+  const labelFor = (id: () => Identity) => createMemo(() => labelOf(id()), { equals: sameLabel });
   /** My private conversations (ADR 0007), one per friend, whichever rooms we share. */
   // Each conversation its own room of two (ADR 0011): made as a room is, under my name and picture as they are then.
   const privates = createPrivates({
@@ -389,6 +394,7 @@ function Workspace(props: WorkspaceProps) {
   // Your own row follows this browser's call state, not the server's echo of it: a Leave moves you in one step, not two.
   // Until the server's first presence it is drawn from what this browser knows, so it is on screen from the start.
   const localSelf = (): Person => ({ publicKey: me, fingerprint: identity.fingerprint, name: props.name, ...(getPicture() ? { picture: getPicture()! } : {}), role: 'visitor', joinSeq: null, sharing: false, muted: false });
+  const selfLabel = labelFor(localSelf);
   /** Everyone, and you before the server has you: what the lists and the profile card show. */
   const withMe = createMemo(() => (everyone().some((p) => p.publicKey === me) ? everyone() : [...everyone(), localSelf()]), { equals: sameItems });
   const cameAt = new Map<string, number>();
@@ -778,11 +784,12 @@ function Workspace(props: WorkspaceProps) {
                         <For each={roomFaceKeys()}>{(key) => {
                           let last = untrack(() => faces().find((p) => p.publicKey === key)!);
                           const p = () => (last = faces().find((q) => q.publicKey === key) ?? last);
+                          const label = labelFor(p);
                           return (
                             <span class={['face', { 'in-call': p().role === 'participant' || (key === me && inThis()) }]}>
-                              <span class={['avatar', { pic: !!labelOf(p()).picture }]} title={`${labelOf(p()).shown}${key === me ? ' (you)' : ''}${p().role === 'participant' || (key === me && inThis()) ? ', in the call' : ''}${labelOf(p()).known || key === me ? '' : ', a new key'}`}>{labelOf(p()).picture ?? labelOf(p()).shown[0]}</span>
+                              <span class={['avatar', { pic: !!label().picture }]} title={`${label().shown}${key === me ? ' (you)' : ''}${p().role === 'participant' || (key === me && inThis()) ? ', in the call' : ''}${label().known || key === me ? '' : ', a new key'}`}>{label().picture ?? label().shown[0]}</span>
                               <Show when={privates.unread(key) > 0}><b class="unread" title="New private messages">{privates.unread(key)}</b></Show>
-                              <Show when={!labelOf(p()).known}><b class="newdot" title="new" /></Show>
+                              <Show when={!label().known}><b class="newdot" title="new" /></Show>
                             </span>
                           );
                         }}</For>
@@ -834,19 +841,21 @@ function Workspace(props: WorkspaceProps) {
                       <For each={hereKeys()}>{(key) => {
                         let last = untrack(() => here().find((p) => p.publicKey === key)!);
                         const p = () => (last = here().find((q) => q.publicKey === key) ?? last);
-                        return <PersonRow p={p()} isMe={key === me} label={labelOf(p())} arrive={key !== me && justCame(key)} onProfile={(el) => openProfile(p(), el, l.saved.id)} unread={privates.unread(key)} inCallOf={callElsewhere(l, key)?.saved.name} />;
+                        const label = labelFor(p);
+                        return <PersonRow p={p()} isMe={key === me} label={label()} arrive={key !== me && justCame(key)} onProfile={(el) => openProfile(p(), el, l.saved.id)} unread={privates.unread(key)} inCallOf={callElsewhere(l, key)?.saved.name} />;
                       }}</For>
                     </ul>
                   </Show>
                   {/* The room on screen: its call in full, in a box of its own */}
                   <Show when={expanded()}>
                   <ul class={['plist', { callbox: !!participants().self || participants().others.length > 0 || lost().length > 0 }]}>
-                    <Show when={participants().self}>{(s) => <ParticipantRow p={s()} isMe label={labelOf(s())} onProfile={(el) => openProfile(s(), el, l.saved.id)} speaking={l.call.speakingSelf()} />}</Show>
+                    <Show when={participants().self}>{(s) => { const label = labelFor(s); return <ParticipantRow p={s()} isMe label={label()} onProfile={(el) => openProfile(s(), el, l.saved.id)} speaking={l.call.speakingSelf()} />; }}</Show>
                     {/* Keyed by friend: a row made anew on each presence frame would lose its open slider, and the card it holds open */}
                     <For each={faceKeys()}>{(key) => {
                       let last = untrack(() => participants().others.find((p) => p.publicKey === key)!);
                       const p = () => (last = participants().others.find((q) => q.publicKey === key) ?? last);
-                      return <ParticipantRow p={p()} isMe={false} label={labelOf(p())} onProfile={(el) => openProfile(p(), el, l.saved.id)} unread={privates.unread(key)} view={inThis() ? viewOf(l, key) : undefined} speaking={viewOf(l, key)?.speaking ?? false} onVolume={inThis() ? (v) => l.call.setVolume(key, v) : undefined} />;
+                      const label = labelFor(p);
+                      return <ParticipantRow p={p()} isMe={false} label={label()} onProfile={(el) => openProfile(p(), el, l.saved.id)} unread={privates.unread(key)} view={inThis() ? viewOf(l, key) : undefined} speaking={viewOf(l, key)?.speaking ?? false} onVolume={inThis() ? (v) => l.call.setVolume(key, v) : undefined} />;
                     }}</For>
                     <For each={lost()}>{(v) => <li class="lost"><span class="avatar">{displayName(v.name, contactOf(v.publicKey))[0]}</span><span class="pname">{displayName(v.name, contactOf(v.publicKey))} <em>connection to server lost</em></span></li>}</For>
                     <Show when={!participants().self && participants().others.length === 0 && lost().length === 0}><li class="dim">nobody in the call</li></Show>
@@ -877,12 +886,13 @@ function Workspace(props: WorkspaceProps) {
                     const t = () => (last = privates.threads().find((x) => x.friend.publicKey === key) ?? last);
                     // The friend as presence has them now, else as I last saw them
                     const friend = () => present(key) ?? t().friend;
+                    const label = labelFor(friend);
                     return (
                     <li class={{ offline: !present(key), on: privates.openWith() === key }} onClick={() => openPrivate(friend())}>
-                      <Avatar initial={labelOf(friend()).shown[0]!} picture={labelOf(friend()).picture} title={`Your private conversation with ${labelOf(friend()).shown}`} onOpen={() => openPrivate(friend())} />
+                      <Avatar initial={label().shown[0]!} picture={label().picture} title={`Your private conversation with ${label().shown}`} onOpen={() => openPrivate(friend())} />
                       <Show when={privates.unread(key) > 0}><b class="unread" title="New private messages">{privates.unread(key)}</b></Show>
-                      <span class="pname" title={labelOf(friend()).title}><span class="tname">{labelOf(friend()).shown}</span>
-                        <Show when={!labelOf(friend()).known}><b class="new">new</b></Show>
+                      <span class="pname" title={label().title}><span class="tname">{label().shown}</span>
+                        <Show when={!label().known}><b class="new">new</b></Show>
                       </span>
                     </li>
                     );
@@ -894,8 +904,8 @@ function Workspace(props: WorkspaceProps) {
             <div class="side-me">
               {/* Picture and name are one handle, as a person's row in a room: my profile card */}
               <span class="who" title="Your profile" onClick={(e) => openProfile(withMe().find((p) => p.publicKey === me)!, e.currentTarget)}>
-                <Avatar initial={labelOf(localSelf()).shown[0]!} picture={labelOf(localSelf()).picture} title="Your profile" onOpen={(el) => openProfile(withMe().find((p) => p.publicKey === me)!, el.parentElement ?? el)} />
-                <span class={['nm', { pending: !connected() }]} title={connected() ? undefined : 'Connecting…'}>{labelOf(localSelf()).shown}</span>
+                <Avatar initial={selfLabel().shown[0]!} picture={selfLabel().picture} title="Your profile" onOpen={(el) => openProfile(withMe().find((p) => p.publicKey === me)!, el.parentElement ?? el)} />
+                <span class={['nm', { pending: !connected() }]} title={connected() ? undefined : 'Connecting…'}>{selfLabel().shown}</span>
               </span>
               <button class="gear" ref={gearMenu.anchor} popovertarget="side-menu" title="New room, join by link, report a problem, and more" aria-label="Settings and more">⚙</button>
             </div>
