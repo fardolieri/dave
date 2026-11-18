@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-17T21:02 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-18T00:46 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 26, branch 157, preview 184.
+Runs recorded: nightly 25, branch 158, preview 184.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -18,6 +18,7 @@ Runs recorded: nightly 26, branch 157, preview 184.
 | 2 | 2 | nightly 1, preview 1 | themes.spec.ts › every theme applies, loads its fonts and keeps the console quiet, at desktop and phone width; the pick survives a reload | expect(locator).toHaveCount(expected) failed | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40194632521/attempts/1) | 61 |
 | 2 | 2 | nightly 1, branch 1 | presence.spec.ts › the room whose call I join goes to the top of the list, and stays there after a reload | console warnings, errors or exceptions nobody expected: Alice: error: [JavaScript Error: "Failed to load ‘https://dave-nightly.danielmittereder.workers.dev/asse | [10-24](https://github.com/fardolieri/dave/actions/runs/40046533309/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40191892619/attempts/1) | 62 |
 | 2 | 2 | branch 2 | update.spec.ts › ticket 33: Reload moves only its own tab; a tab waiting behind it is asked once it takes over | expect(locator).toBeVisible() failed | [10-21](https://github.com/fardolieri/dave/actions/runs/39573928882/attempts/1) | [10-21](https://github.com/fardolieri/dave/actions/runs/39576350056/attempts/1) | 65 |
+| 1 | 1 | preview 1 | party.spec.ts › a watch party's queue: cards queued by anyone in it, moved and taken out, the next played at the end, skipped to, and a card played now | expect(received).toBe(expected) // Object.is equality | [11-18](https://github.com/fardolieri/dave/actions/runs/44172718677/attempts/2) | [11-18](https://github.com/fardolieri/dave/actions/runs/44172718677/attempts/2) |  |
 | 1 | 1 | preview 1 | attachment.spec.ts › a file dropped on the Report a problem dialog is not staged, unseen, for the room behind it | expect(locator).toHaveCount(expected) failed | [11-17](https://github.com/fardolieri/dave/actions/runs/44171638764/attempts/1) | [11-17](https://github.com/fardolieri/dave/actions/runs/44171638764/attempts/1) |  |
 | 1 | 1 | preview 1 | privacy.spec.ts › a yes during the handshake neither refuses the room nor gets lost | expect(received).not.toBeNull() | [11-17](https://github.com/fardolieri/dave/actions/runs/44171638764/attempts/1) | [11-17](https://github.com/fardolieri/dave/actions/runs/44171638764/attempts/1) |  |
 | 1 | 1 | preview 1 | attachment.spec.ts › a pull shown under way with none running is reported (file_pulling_stuck) | console warnings, errors or exceptions nobody expected: Alice: error: WebSocket connection to 'wss://dave-pr-157.danielmittereder.workers.dev/ws/44pt_g7N-6oLXKR | [11-17](https://github.com/fardolieri/dave/actions/runs/44168521032/attempts/1) | [11-17](https://github.com/fardolieri/dave/actions/runs/44168521032/attempts/1) | 88 |
@@ -78,5 +79,3 @@ Runs recorded: nightly 26, branch 157, preview 184.
 | 1 | 1 | preview 1 | resilience.spec.ts › a friend whose server socket drops and comes back while the voice stays up plays no leave or join cue | expect(locator).toBeVisible() failed | [10-20](https://github.com/fardolieri/dave/actions/runs/39351641633/attempts/1) | [10-20](https://github.com/fardolieri/dave/actions/runs/39351641633/attempts/1) |  |
 | 1 | 1 | preview 1 | share.spec.ts › the speaker gives back the volume it took, also after the share started again | expect(locator).toHaveCount(expected) failed | [10-19](https://github.com/fardolieri/dave/actions/runs/39304433460/attempts/1) | [10-19](https://github.com/fardolieri/dave/actions/runs/39304433460/attempts/1) | 61 |
 | 1 | 1 | preview 1 | settings.spec.ts › a friend's volume and the master volume multiply, and survive a reload | expect(locator).toHaveText(expected) failed | [10-19](https://github.com/fardolieri/dave/actions/runs/39290036217/attempts/1) | [10-19](https://github.com/fardolieri/dave/actions/runs/39290036217/attempts/1) | 51 |
-| 1 | 1 | nightly 1 | attachment.spec.ts › a file sent again by a second friend comes from her while the first is away | expect(received).not.toContain(expected) // indexOf | [10-18](https://github.com/fardolieri/dave/actions/runs/39171574137/attempts/1) | [10-18](https://github.com/fardolieri/dave/actions/runs/39171574137/attempts/1) | 59 |
-| 1 | 1 | preview 1 | resilience.spec.ts › an offer stuck for a friend who then reloads leaves their new connection alone (the impolite side reloads, the last to join) | expect(locator).toHaveText(expected) failed | [10-18](https://github.com/fardolieri/dave/actions/runs/39170177231/attempts/1) | [10-18](https://github.com/fardolieri/dave/actions/runs/39170177231/attempts/1) | 51 |
