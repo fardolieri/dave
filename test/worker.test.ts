@@ -9,6 +9,7 @@ import worker from '../src/worker/index';
 import { upstream } from '../src/worker/posthog';
 import { logRejected } from '../src/worker/telemetry';
 import { VIDEO_SEARCH_PATH } from '../src/worker/ytsearch';
+import { GIF_SEARCH_PATH } from '../src/worker/gifsearch';
 import { authFrame, nameOf, openRoomSocket, wsPath, type Challenge } from './harness';
 
 /** A room some test has already entered, so its verifier is set. Tests that need a fresh room make their own secret. */
@@ -207,6 +208,54 @@ describe('/yt-search', () => {
       for (const [answer, error] of [
         [() => Promise.resolve(new Response('<script>var ytInitialData = {"icon":{"iconType":"EMPTY_SEARCH"}};</script>')), 'none'],
         [() => Promise.resolve(new Response('<html>Sign in to confirm you’re not a bot</html>')), 'unavailable'],
+        [() => Promise.resolve(new Response('busy', { status: 429 })), 'unavailable'],
+        [() => Promise.reject(new Error('timed out')), 'unavailable'],
+      ] as const) {
+        asked.mockImplementationOnce(answer);
+        const res = await ask('rick roll');
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ error });
+      }
+    } finally {
+      asked.mockRestore();
+      logs.mockRestore();
+    }
+  });
+});
+
+describe('/gif-search', () => {
+  const ask = (q: string | null) => {
+    const ctx = { waitUntil: () => {}, passThroughOnException: () => {} } as unknown as ExecutionContext;
+    const init = { method: 'POST', headers: { 'accept-language': 'de-DE' }, ...(q === null ? {} : { body: q }) };
+    return worker.fetch!(new Request(`https://dave.test${GIF_SEARCH_PATH}`, init) as Parameters<NonNullable<typeof worker.fetch>>[0], { ...env, UPGRADE_LIMIT: undefined } as unknown as Env, ctx);
+  };
+  const GIF = 'https://media.tenor.com/x8v1oNUOmg4AAAAx/rickroll-roll.webp';
+  const page = (results: unknown[]) => `<script id="store-cache" type="text/x-cache">${JSON.stringify({ universal: { search: { 'rick roll-low-all': { results } } } })}</script>`;
+  it('answers the first GIF of Tenor\'s results for the search, asked in the asker\'s language', async () => {
+    const asked = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(page([{ flags: [], media_formats: { webp: { url: GIF, size: 346_970 } } }])));
+    try {
+      const res = await ask(' rick \n roll ');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ url: GIF });
+      const [url, init] = asked.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://tenor.com/search/rick-roll-gifs');
+      expect(new Headers(init.headers).get('accept-language')).toBe('de-DE');
+    } finally {
+      asked.mockRestore();
+    }
+  });
+  it('answers 200 with an error for no search, no result, and Tenor out of reach, and asks Tenor nothing for no search', async () => {
+    const logs = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const asked = vi.spyOn(globalThis, 'fetch');
+    try {
+      for (const q of [null, '', '   ', 'x'.repeat(401)]) expect(await (await ask(q)).json(), String(q)).toEqual({ error: 'no search' });
+      expect(await (await ask('/ ??')).json(), 'nothing but marks Tenor reads as its own').toEqual({ error: 'none' });
+      expect(asked).not.toHaveBeenCalled();
+      for (const [answer, error] of [
+        [() => Promise.resolve(new Response(page([]))), 'none'],
+        [() => Promise.resolve(new Response(page([]), { status: 404 })), 'none'],
+        [() => Promise.resolve(new Response('Not Found', { status: 404 })), 'unavailable'],
+        [() => Promise.resolve(new Response('<html>unusual traffic</html>')), 'unavailable'],
         [() => Promise.resolve(new Response('busy', { status: 429 })), 'unavailable'],
         [() => Promise.reject(new Error('timed out')), 'unavailable'],
       ] as const) {

@@ -19,7 +19,7 @@ const SEARCH_WAIT_MS = 8_000;
 const MAX_BODY_BYTES = 4 * MAX_VIDEO_SEARCH;
 
 /** A body as text, or null when it is longer than `max` bytes; read only that far. */
-async function upTo(body: ReadableStream<Uint8Array> | null, max: number): Promise<string | null> {
+export async function upTo(body: ReadableStream<Uint8Array> | null, max: number): Promise<string | null> {
   if (!body) return '';
   const reader = body.getReader();
   const parts: Uint8Array[] = [];
@@ -37,7 +37,7 @@ async function upTo(body: ReadableStream<Uint8Array> | null, max: number): Promi
   return new TextDecoder().decode(all);
 }
 
-const json = (body: unknown): Response =>
+export const json = (body: unknown): Response =>
   new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 
 export async function videoSearch(request: Request, env: Env): Promise<Response> {

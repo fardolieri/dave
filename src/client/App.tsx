@@ -11,8 +11,10 @@ import { encodeQr, qrPath } from '../core/qr';
 import { createRoom, prepareFile, type Attachment, type ChatLine, type PreparedFile, type ServerStatus } from './room';
 import { createPrivates } from './privates';
 import { formatSize, inlineKind, pastedImageUrl, type FileMeta } from '../core/attachment';
-import { ROLL_WAIT_MS, rollsWaiting, sameRolls, videoSearchOf, videosIn, type VideoCard } from '../core/youtube';
+import { videosIn, type VideoCard } from '../core/youtube';
+import { ROLL_WAIT_MS, rollOf, rollsWaiting, sameRolls } from '../core/roll';
 import { searchVideo, videoCard } from './youtube';
+import { gifFile, searchGif } from './gif';
 import type { PullError } from './links';
 import { MIC_TEST_RECORD_MS, createCall, type ConnState, type OutgoingShare, type PeerView } from './call';
 import { createAttention, type RoomLink } from './attention';
@@ -572,8 +574,8 @@ function Workspace(props: WorkspaceProps) {
       setStaged(() => kept);
       const sent = text ? privates.send(priv.key, text) : false;
       if (sent !== false || kept.length < files.length) setPrivateJump((n) => n + 1);
-      const search = typeof sent === 'string' ? videoSearchOf(text) : null;
-      if (search && typeof sent === 'string') roll(search, (p) => privates.sendFile(priv.key, p), (note) => privates.rollEnded(priv.key, note, sent));
+      const rolled = typeof sent === 'string' ? rollOf(text) : null;
+      if (rolled && typeof sent === 'string') roll(rolled, (p) => privates.sendFile(priv.key, p), (note) => privates.rollEnded(priv.key, note, sent));
       // True when the text went, so the field empties: the files no room took stay staged, and the conversation says why.
       return text ? sent !== false : kept.length === 0;
     }
@@ -581,27 +583,34 @@ function Workspace(props: WorkspaceProps) {
     for (const x of files) if (x.prepared) room.sendPrepared(x.prepared);
     const sent = text ? room.sendText(text) : null;
     setJumpToken((n) => n + 1);
-    const search = videoSearchOf(text);
-    if (search && sent !== null) roll(search, (p) => { room.sendPrepared(p); return true; }, (note) => room.rollEnded(note, sent));
+    const rolled = rollOf(text);
+    if (rolled && sent !== null) roll(rolled, (p) => { room.sendPrepared(p); return true; }, (note) => room.rollEnded(note, sent));
     return true;
   };
   /** The Room's clock now, as the room on screen last heard it: every Room's is Cloudflare's. */
   const roomNow = () => current()?.room.roomNow() ?? Date.now();
   /**
    * `/yt rick roll`, sent as it is: then the first video YouTube finds for it goes after it, as its card, from this app
-   * (core/youtube.ts, `videoSearchOf`). Nobody knows which until it comes, the sender neither. None found, or YouTube out
-   * of reach, this browser alone is told; a page closed meanwhile sends none.
+   * (core/youtube.ts, `videoSearchOf`); `/gif rick roll` the first GIF Tenor finds, as a picture (core/gif.ts). Nobody
+   * knows which until it comes, the sender neither. None found, or YouTube or Tenor out of reach, this browser alone is
+   * told; a page closed meanwhile sends none.
    */
-  const roll = (search: string, sendCard: (p: PreparedFile) => boolean, note: (text: string) => void) => {
-    const found = searchVideo(search).then(async (id) => {
-      const made = id && id !== 'none' ? await videoCard(id) : null;
-      return { id, prepared: made ? await prepareFile(made.picture, made.card).catch(() => null) : null };
-    });
-    // The searches go at once, the cards in the order of their texts: each after the one before it.
-    rolling = rolling.then(() => found).then(({ id, prepared }) => {
+  const roll = ({ kind, search }: NonNullable<ReturnType<typeof rollOf>>, sendCard: (p: PreparedFile) => boolean, note: (text: string) => void) => {
+    const found: Promise<{ answer: string | null; prepared: PreparedFile | null }> = kind === 'video'
+      ? searchVideo(search).then(async (id) => {
+        const made = id && id !== 'none' ? await videoCard(id) : null;
+        return { answer: id, prepared: made ? await prepareFile(made.picture, made.card).catch(() => null) : null };
+      })
+      : searchGif(search).then(async (url) => {
+        const gif = url && url !== 'none' ? await gifFile(url) : null;
+        return { answer: url, prepared: gif ? await prepareFile(gif, undefined, true).catch(() => null) : null };
+      });
+    const [what, where] = kind === 'video' ? (['video', 'YouTube'] as const) : (['GIF', 'Tenor'] as const);
+    // The searches go at once, the files in the order of their texts: each after the one before it.
+    rolling = rolling.then(() => found).then(({ answer, prepared }) => {
       if (prepared && sendCard(prepared)) return;
-      note(`No video sent: ${id === 'none' ? `YouTube found none for “${search}”` : prepared ? 'the conversation took no file' : 'YouTube did not answer'}.`);
-    }).catch((e: unknown) => console.error('a /yt card failed', e)); // one that throws leaves the next their turn
+      note(`No ${what} sent: ${answer === 'none' ? `${where} found none for “${search}”` : prepared ? 'the conversation took no file' : `${where} did not answer`}.`);
+    }).catch((e: unknown) => console.error(`a /${kind === 'video' ? 'yt' : 'gif'} roll failed`, e)); // one that throws leaves the next their turn
   };
   let rolling: Promise<void> = Promise.resolve();
   // When the room on screen came on screen: texts from well before then start out folded away (ticket 38). The same for
@@ -2717,7 +2726,7 @@ function Composer(props: {
  */
 function ChatLog(props: {
   lines: ChatLine[]; openedAt: number; readFrom: number | null; jumpToken: number; label: (id: Identity) => Label;
-  /** My key: a `/yt` of mine ends with a line of my app's when it sent no video (`rollsWaiting`). The Room's clock now. */
+  /** My key: a `/yt` or `/gif` of mine ends with a line of my app's when it sent nothing (`rollsWaiting`). Room's clock now. */
   me: string; now: () => number;
   /** Above the log: a private conversation's head (ADR 0007), which is all `private` then. */
   head?: any; private?: boolean; hidden?: boolean;
@@ -2770,7 +2779,7 @@ function ChatLog(props: {
   const shownOlder = () => (unfolded()?.openedAt === props.openedAt ? unfolded()!.lines : 0);
   const folded = createMemo(() => Math.max(0, foldedCount(props.lines, props.openedAt - FOLD_OLDER_MS, props.readFrom) - shownOlder()));
   const lines = createMemo(() => props.lines.slice(folded()), { equals: sameItems });
-  // `/yt` texts whose video is on the way say so under them, in every friend's log (core/youtube.ts, `rollsWaiting`), on
+  // `/yt` and `/gif` texts whose video or GIF is on the way say so under them, in every friend's log (core/roll.ts), on
   // the Room's clock, which the lines are on. Read again as lines come, and when the next one stops waiting for a card that
   // never came: by then it is at least as late as the wait, whatever this clock says. The wait is never longer than a
   // roll's, which a clock far off could make it, and goes on from there.
@@ -2817,8 +2826,8 @@ function ChatLog(props: {
     // lines that came in above it (the history as it loads, the older lines unfolded) leave the reader where they were.
     if (prev !== undefined && now.n > prev.n && now.last !== prev.last && !atBottom()) { measure(); setUnseen(true); } else restore();
   });
-  // A `/yt` that stopped rolling with no line coming (its time up) takes its row with it: like a line arriving, the newest
-  // line stays in view, and a reader up in the older ones keeps them in place.
+  // A `/yt` or `/gif` that stopped rolling with no line coming (its time up) takes its row with it: like a line arriving,
+  // the newest line stays in view, and a reader up in the older ones keeps them in place.
   createEffect(() => rolls().ids, (_now, prev) => {
     if (!log || prev === undefined || untrack(() => props.hidden)) return;
     if (atBottom()) restore(); else measure();

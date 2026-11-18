@@ -268,7 +268,7 @@ button.avatar:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px
 /* My own text the Room has not brought back yet. Dimmed only after a second, so the usual round trip shows no flicker. */
 .msg-pending { animation: msg-pending 0s 1s forwards; }
 @keyframes msg-pending { to { opacity: 0.5; } }
-/* Under a `/yt` text while its video is on the way: the die tumbles. */
+/* Under a `/yt` or `/gif` text while its video or GIF is on the way: the die tumbles. */
 .msg-roll { font-size: 12px; color: var(--dim); font-style: italic; }
 .msg-roll .dice { display: inline-block; font-style: normal; animation: roll-dice 1s ease-in-out infinite; }
 @keyframes roll-dice { 0% { transform: rotate(0); } 50% { transform: rotate(200deg) scale(1.15); } 100% { transform: rotate(360deg); } }

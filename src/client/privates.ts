@@ -386,7 +386,7 @@ export function createPrivates(opts: {
       posthog.capture('private_text_sent');
       return id;
     },
-    /** A `/yt` of mine to a friend sent no video (client/room.ts, `rollEnded`). */
+    /** A `/yt` or `/gif` of mine to a friend sent no video or GIF (client/room.ts, `rollEnded`). */
     rollEnded: (friend: string, text: string, rolled: string): void => { pairs.get(friend)?.room.rollEnded(text, rolled); },
     /** My name and picture changed: in every room of two too. */
     rename: (name: string): void => { for (const p of pairs.values()) p.room.rename(name); },

@@ -28,6 +28,8 @@ export type FileMeta = {
    * card, which plays it. An app from before shows the picture.
    */
   youtube?: VideoCard;
+  /** A GIF that `/gif` found (core/gif.ts): marked so, a `/gif` text stops rolling when it comes (core/roll.ts). */
+  gif?: true;
 };
 
 /** The most a file may weigh: far past anything friends send, a sanity bound for what an announcement may claim. */
@@ -125,6 +127,7 @@ export function parseFileMeta(raw: unknown): FileMeta | null {
   // A card this app cannot read (a later app's, say) leaves the picture, as an app from before the cards shows it.
   const card = m.youtube === undefined ? null : parseVideoCard(m.youtube);
   if (card) meta.youtube = card;
+  if (m.gif === true) meta.gif = true;
   return meta;
 }
 

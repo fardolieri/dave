@@ -45,7 +45,7 @@ export type ChatLine =
   | { kind: 'text'; id: string; from: Identity; text: string; at: number; pending?: true }
   /** An attachment (ADR 0006); its bytes are in `attachment(file.hash)`. `pending`: mine, not back from the Room yet. */
   | { kind: 'file'; id: string; from: Identity; file: FileMeta; at: number; pending?: true }
-  /** `roll`: the id of a `/yt` text of mine that sent no video (core/youtube.ts, `rollsWaiting`). */
+  /** `roll`: the id of a `/yt` or `/gif` text of mine that sent no video or GIF (core/roll.ts, `rollsWaiting`). */
   | { kind: 'system'; id: string; text: string; at: number; roll?: string };
 
 /** A friend's text as opened: the Room relayed it sealed (ADR 0005). An attachment's `text` is its name. */
@@ -147,10 +147,10 @@ export type PreparedFile = { picked: File; file: FileMeta; list: Uint8Array | nu
  * served from the file picked: never copied, so it can be pulled while this tab stays open, and from friends who pulled
  * it after that (ticket 03).
  */
-export async function prepareFile(picked: File, youtube?: VideoCard): Promise<PreparedFile> {
+export async function prepareFile(picked: File, youtube?: VideoCard, gif?: true): Promise<PreparedFile> {
   const pieced = picked.size > PIECED_FROM;
   const [{ hash, list }, look] = await Promise.all([pieced ? piecesOf(picked) : hashOf(picked).then((h) => ({ hash: h, list: null })), makePreview(picked)]);
-  const file: FileMeta = { name: picked.name.slice(0, MAX_FILE_NAME).trim() || 'file', type: picked.type.slice(0, 100), size: picked.size, hash, ...look, ...(pieced ? { piece: PIECE_BYTES } : {}), ...(youtube ? { youtube } : {}) };
+  const file: FileMeta = { name: picked.name.slice(0, MAX_FILE_NAME).trim() || 'file', type: picked.type.slice(0, 100), size: picked.size, hash, ...look, ...(pieced ? { piece: PIECE_BYTES } : {}), ...(youtube ? { youtube } : {}), ...(gif ? { gif } : {}) };
   return { picked, file, list };
 }
 
@@ -441,7 +441,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       setPendingFiles((p) => p.map((f) => (f.id === id ? { ...f, sealed } : f)));
       send({ t: 'file', sealed, id });
     }).catch((e: unknown) => console.error('sealing a file failed', e));
-    posthog.capture('file_sent', { bytes: file.size, inline: inlineKind(file.type) ?? 'none', preview: !!file.preview, youtube: !!file.youtube });
+    posthog.capture('file_sent', { bytes: file.size, inline: inlineKind(file.type) ?? 'none', preview: !!file.preview, youtube: !!file.youtube, gif: !!file.gif });
   };
   /** Friends' texts are opened in the order the Room sent them, so they show in that order too. */
   let opening: Promise<void> = Promise.resolve();
@@ -1515,8 +1515,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
      */
     sendPrepared,
     /**
-     * A `/yt` of mine, the text of that id (`sendText`), sent no video, and why: a line in this browser's log alone, as the
-     * room's own say what was not sent.
+     * A `/yt` or `/gif` of mine, the text of that id (`sendText`), sent no video or GIF, and why: a line in this browser's
+     * log alone, as the room's own say what was not sent.
      */
     rollEnded: (text: string, rolled: string): void => { push({ kind: 'system', text, at: Date.now(), roll: rolled }); },
     /**
