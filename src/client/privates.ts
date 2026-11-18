@@ -16,7 +16,7 @@ type Room = ReturnType<typeof createRoom>;
 const PAIRS_AT_ONCE = 8;
 const PAIR_GAP_MS = 1500;
 /** What a room of two needs to be made: the rest (my name and picture, the hold) the caller adds. */
-export type PairRoomOptions = { identity: LocalIdentity; roomId: string; authKey: string; textKey: CryptoKey; pieceKey: CryptoKey };
+export type PairRoomOptions = { identity: LocalIdentity; roomId: string; authKey: string; textKey: CryptoKey; pieceKey: CryptoKey; shown: () => boolean };
 
 /** My room of two with a friend (ADR 0011): the room, the key I go by in it, and the friend's fingerprint to show them by. */
 type Pair = { friend: string; room: Room; mine: string; fingerprint: string; key: string };
@@ -88,7 +88,7 @@ export function createPrivates(opts: {
       disposers.get(friend)?.();
       const room = runWithOwner(owner, () => createRoot((dispose) => {
         disposers.set(friend, dispose);
-        const room = opts.makeRoom({ identity, roomId, authKey, textKey, pieceKey });
+        const room = opts.makeRoom({ identity, roomId, authKey, textKey, pieceKey, shown: () => openWith() === friend });
         watch(friend, room, identity.publicKey);
         return room;
       }));
@@ -265,9 +265,10 @@ export function createPrivates(opts: {
   const textListeners = new Set<() => void>();
   /** The friend whose conversation is on screen, by key; null while a room is. */
   const [openWith, setOpenWith] = createSignal<string | null>(null);
-  // Nothing is unread in the conversation on screen, what comes while it is on screen included.
-  createEffect(() => { const k = openWith(); const pair = k ? pairOf(k) : undefined; return pair ? { pair, n: pair.room.unread() } : null; }, (open) => {
-    if (open && open.n > 0) open.pair.room.markRead();
+  // Nothing is unread in the conversation on screen: it is read as it comes on screen, and what comes while it is up is
+  // read as it comes (`shown`, client/room.ts).
+  createEffect(() => { const k = openWith(); return k ? pairOf(k) : undefined; }, (pair) => {
+    if (pair && untrack(pair.room.unread) > 0) pair.room.markRead();
   });
 
   /** A conversation only looked at (a friend's avatar is how I see who they are) leaves the list again as I leave it. */

@@ -162,8 +162,9 @@ export async function prepareFile(picked: File, youtube?: VideoCard, gif?: true)
 /**
  * `allNews`: everything the server's history brings counts as missed (unread), even into a browser that held nothing of
  * the room: a room of two (ADR 0011) is new to this browser only once, when its first texts are news indeed.
+ * `shown`: whether the room is the one on screen, where what comes is read as it comes.
  */
-export function createRoom(opts: { identity: LocalIdentity; roomId: string; authKey: string; textKey: CryptoKey; pieceKey: CryptoKey; name: string; picture: string | null; hold?: () => boolean; allNews?: boolean }) {
+export function createRoom(opts: { identity: LocalIdentity; roomId: string; authKey: string; textKey: CryptoKey; pieceKey: CryptoKey; name: string; picture: string | null; hold?: () => boolean; allNews?: boolean; shown?: () => boolean }) {
   /**
    * The latest of everything this friend declares (core/declarations.ts): the auth of every socket carries her name,
    * picture and opt-in, the welcome is followed by what changed meanwhile, her join by what she declared in the call.
@@ -290,7 +291,14 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
    */
   let unreadSince = untrack(unread) > 0 ? keptUnread('unreadSince', opts.roomId) : 0;
   const keepSince = (at: number) => { if (at !== unreadSince) { unreadSince = at; if (!unreadLeft) keepUnread('unreadSince', opts.roomId, at); } };
-  const countUnread = (n: number, from: number) => { keepSince(unreadSince ? Math.min(unreadSince, from) : from); setUnread((v) => v + n); };
+  const countUnread = (n: number, from: number) => {
+    // On screen, what comes is read as it comes, as `markRead` would read it: no count, and one older than what was unread
+    // holds the log open from there. Counted and read a flush later, the badge came and went unseen, and the log folded
+    // with the new lines and the old `readFrom`.
+    if (opts.shown && untrack(opts.shown)) { setReadFrom((was) => (was === null ? from : Math.min(was, from))); return; }
+    keepSince(unreadSince ? Math.min(unreadSince, from) : from);
+    setUnread((v) => v + n);
+  };
   const noneUnread = () => { keepSince(0); setUnread(() => 0); };
   const listeners = new Set<(m: ServerMessage) => void>();
   const textListeners = new Set<(m: Text) => void>();

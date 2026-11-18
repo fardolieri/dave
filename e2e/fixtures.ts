@@ -749,12 +749,10 @@ const SOLID_ALLOWED: RegExp[] = [
   /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "createCall\.inCall": .* by writing "rooms"/,
   // The page wears the top room's look (client/theme.ts): set on the document and told to PostHog as it changes.
   /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "rooms": .* by writing "theme"/,
-  // A room or a conversation is read as it comes on screen and while it is there (client/App.tsx, client/privates.ts):
-  // the count is kept over a reload, and what was unread at that moment holds the log open until the next time
-  // (`readFrom`), a snapshot of then, not something to compute from the lines. The room counts a text unread as it comes
-  // and does not know it is on screen, so the one on screen is read after it (a conversation's badge already shows none).
-  /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "(selected|createRoom\.lines)": .* by writing "createRoom\.readFrom"/,
-  /^warning: \[EFFECT_WRITES_OWN_SOURCE\] effect "effect" re-ran because of its own write: it wrote "createRoom\.unread" \(\d+ → 0\)/,
+  // A room is read as it comes on screen (client/App.tsx): the count is kept over a reload, and what was unread at that
+  // moment holds the log open until the next time (`readFrom`), a snapshot of then, not something to compute from the
+  // lines. What comes while it is on screen is read as it comes, in the same flush (client/room.ts, `shown`).
+  /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "selected": .* by writing "createRoom\.readFrom"/,
   // The conversation list is kept, and written by opening, deleting and reading it back as well as by a room of two's
   // newest line (client/privates.ts): it follows that line a flush later.
   /^warning: \[EFFECT_RELAY_TEAR\] .* one write of "createRoom\.(lines|pending)": .* by writing "createPrivates\.threads"/,

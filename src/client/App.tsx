@@ -273,7 +273,7 @@ function Workspace(props: WorkspaceProps) {
   const links = mapArray(() => props.rooms.map((r) => r.secret), (secret): Link => {
     let last = untrack(() => props.rooms.find((r) => r.secret === secret)!);
     // A deliberate one-time snapshot of name and picture: the socket is created once; changes go through `rename` and `setPicture`.
-    const room = createRoom({ identity, roomId: last.id, authKey: last.authKey, textKey: last.textKey, pieceKey: last.pieceKey, name: untrack(() => props.name), picture: getPicture(), hold: holding });
+    const room: ReturnType<typeof createRoom> = createRoom({ identity, roomId: last.id, authKey: last.authKey, textKey: last.textKey, pieceKey: last.pieceKey, name: untrack(() => props.name), picture: getPicture(), hold: holding, shown: () => current()?.room === room && privates.openWith() === null });
     const call = createCall(room, identity, { mayRejoin: untrack(() => props.mayRejoin) });
     const party = createParty(room, identity, last.textKey, call.inCall);
     posthog.capture('room_entered');
@@ -623,10 +623,11 @@ function Workspace(props: WorkspaceProps) {
   // a private conversation.
   const openedAt = createMemo(() => (current(), Date.now()));
   const privateOpenedAt = createMemo(() => (privates.openWith(), Date.now()));
-  // The room on screen has nothing unread, however many lines arrive while it is up. What was unread stays in its log
-  // until it comes on screen the next time (`readFrom`): `readIn` is the opening it was last read in.
+  // The room on screen has nothing unread: it is read as it comes on screen, and what arrives while it is up is read as
+  // it comes (`shown`, client/room.ts). What was unread stays in its log until it comes on screen the next time
+  // (`readFrom`): `readIn` is the opening it was last read in.
   let readIn: { link: unknown; at: number } | null = null;
-  createEffect(() => ({ link: current(), at: openedAt(), lines: current()?.room.lines().length, away: privates.openWith() !== null }), ({ link, at, away }, prev) => {
+  createEffect(() => ({ link: current(), at: openedAt(), away: privates.openWith() !== null }), ({ link, at, away }, prev) => {
     if (!away && link) {
       link.room.markRead(readIn?.link !== link || readIn.at !== at);
       readIn = { link, at };
