@@ -696,12 +696,21 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   const notThere = new Map<string, Map<string, number>>();
   const NOT_THERE_MS = 10 * 60_000;
   const saidNotThere = (hash: string, key: string): boolean => Date.now() - (notThere.get(hash)?.get(key) ?? -Infinity) < NOT_THERE_MS;
+  /**
+   * Friends a link could not be opened to lately (`unreachable`), and when: for UNREACHED_MS they are asked for any file
+   * after the server, not before it. Else every file waited the whole connect timeout of a link to the same friend, two
+   * at a time, before the server gave it at once (report of 2026-11-17: six YouTube cards took a minute). Still asked
+   * for what the server does not keep; forgotten when they give a file, or come online again.
+   */
+  const unreached = new Map<string, number>();
+  const UNREACHED_MS = 2 * 60_000;
+  const unreachedLately = (key: string): boolean => Date.now() - (unreached.get(key) ?? -Infinity) < UNREACHED_MS;
   /** A new round: everyone may be asked again but those who said "not there" lately. */
   const newRound = (hash: string): void => { asked.delete(hash); roundReason.delete(hash); };
   /**
    * Whom to ask for a file, in order: friends who announced it, newest first, then every other friend online, who may
    * have pulled it (ticket 02). A friend without it answers "not there", and the next is asked. Not asked again within a
-   * round: those who did not give it.
+   * round: those who did not give it. Friends who could not be reached lately go after the server.
    */
   const candidates = (hash: string): string[] => {
     const tried = asked.get(hash);
@@ -710,7 +719,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     // The server last (ADR 0009): friends online first, which costs nobody anything; it when none of them gives it.
     const file = holders.get(hash)?.file;
     const server = file && keptOnServer(file) ? [SERVER] : [];
-    return [...announcers, ...others, ...server].filter((k, i, all) => all.indexOf(k) === i && !tried?.has(k) && !saidNotThere(hash, k));
+    const friends = [...announcers, ...others];
+    const late = new Set(friends.filter(unreachedLately));
+    return [...friends.filter((k) => !late.has(k)), ...server, ...late].filter((k, i, all) => all.indexOf(k) === i && !tried?.has(k) && !saidNotThere(hash, k));
   };
   const hold = (file: FileMeta, from: string): void => {
     const known = holders.get(file.hash);
@@ -1003,6 +1014,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
       };
       void run()
         .then(async (blob) => {
+          if (from !== SERVER) unreached.delete(from);
           // Let go meanwhile (the room left): not kept, not shown here.
           if (!current()) return;
           saving.add(hash); // a large file takes a while to write on a slow phone: not a pull gone quiet
@@ -1032,6 +1044,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           if (welcomed === null) { setAttachment(hash, { status: 'failed', reason, retryAt: Date.now() }); return; }
           // Someone else may have it: asked at once, not counted as a try. When nobody is left, the round ends.
           (asked.get(hash) ?? asked.set(hash, new Set()).get(hash)!).add(from);
+          if (from !== SERVER && reason === 'unreachable') unreached.set(from, Date.now());
           // The server's "not there" may be an upload still on its way: asked again next round. Its damaged copy stays so.
           if (from === SERVER ? reason === 'damaged' : reason === 'not there') (notThere.get(hash) ?? notThere.set(hash, new Map()).get(hash)!).set(from, Date.now());
           const best = roundReason.get(hash);
@@ -1085,6 +1098,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
   createEffect(() => people(), (ps) => {
     const now = new Set(ps.map((p) => p.publicKey));
     const back = (hash: string) => (holders.get(hash)?.from ?? []).some((k) => now.has(k) && !wasOnline.has(k));
+    for (const k of now) if (!wasOnline.has(k)) unreached.delete(k);
     for (const [hash, a] of attachmentNow) {
       // Only on someone coming online, not on every update (a mute, a rename): a waiting file asks the newcomer.
       const newcomer = [...now].some((k) => !wasOnline.has(k));
