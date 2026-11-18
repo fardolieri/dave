@@ -13,8 +13,8 @@
     // Which copy of the app this Worker is, sent as `build_target` with its PostHog events like the client's (vite.config.ts buildInfo).
     // `pnpm dev` runs with these top-level vars: .dev.vars sets it to "local" there (.dev.vars.example); one without it says "live".
     "BUILD_TARGET": "live",
-    // Whether this side keeps to its share of each of the Workers Free plan's daily limits (UTC): the live site 45 %, the
-    // previews together as much, a tenth between for the minutes the figures lag (core/relayusage.ts, SIDE_SHARE, which
+    // Whether this side keeps to its share of each of the Workers Free plan's daily limits (UTC): the live site 25 %, the
+    // previews together 65 %, a tenth between for the minutes the figures lag (core/relayusage.ts, SIDE_SHARES, which
     // says why). From its share of any on, the Worker lets no new socket into a Room until the day ends, and tells the
     // app why (worker/index.ts, CLOSE_USED_UP). Past Cloudflare's limit every Durable Object of the account fails, both
     // sides' (2026-11-16, ticket 84; 2026-11-17, ticket 89). Not a promise: the figures are Cloudflare's, minutes behind;

@@ -1,5 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
-import { HISTORY_BUDGET_BYTES, HISTORY_KEEP_MS, HISTORY_SHARES, SYNC_BYTES_MAX, SYNC_MAX, nextPrune, SYNCS_PER_DAY, SYNCS_PER_WRITE, SYNC_ROWS_PER_DAY, WRITES_PER_DAY, entryBytes, pieceBytes, type HistoryUsage } from '../core/kept';
+import { HISTORY_BUDGET_BYTES, HISTORY_KEEP_MS, SYNC_BYTES_MAX, SYNC_MAX, historyShares, nextPrune, SYNCS_PER_WRITE, entryBytes, pieceBytes, type HistoryToday, type HistoryUsage } from '../core/kept';
+import { SIDE_SHARES } from '../core/relayusage';
+import { sideOfWorker } from './relayusage';
 import type { KeptEntry } from '../core/protocol';
 
 /** The one Store there is: every room's history in one window (ADR 0009). */
@@ -33,8 +35,15 @@ const ROWS_PER_DROP = 4;
  * evicted between syncs minutes apart.
  */
 export class Store extends DurableObject<Env> {
+  /**
+   * Its daily shares, within its side's share of the free plan (core/kept.ts, `historyShares`): a preview's Store is the
+   * previews', any other the live site's.
+   */
+  private readonly shares: Omit<HistoryToday, 'day'>;
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    this.shares = historyShares(SIDE_SHARES[sideOfWorker(env) ?? 'live']);
     const sql = ctx.storage.sql;
     sql.exec(`CREATE TABLE IF NOT EXISTS entries (seq INTEGER PRIMARY KEY, room TEXT NOT NULL, writer TEXT NOT NULL, id TEXT NOT NULL, at INTEGER NOT NULL, bytes INTEGER NOT NULL, entry TEXT NOT NULL)`);
     // A text the writer's app sent again after a lost socket (ticket 51) is broadcast again under the same id: kept once.
@@ -73,7 +82,7 @@ export class Store extends DurableObject<Env> {
     const sql = this.ctx.storage.sql;
     return this.ctx.storage.transactionSync(() => {
       const t = this.totals(now);
-      const fits = Math.floor((WRITES_PER_DAY - t.written - 1) / ROWS_PER_DROP);
+      const fits = Math.floor((this.shares.written - t.written - 1) / ROWS_PER_DROP);
       if (fits <= 0) return 0;
       // The oldest, read lazily up to the first inside the window: only those rows are read.
       const cutoff = now - HISTORY_KEEP_MS;
@@ -120,7 +129,7 @@ export class Store extends DurableObject<Env> {
 
   /**
    * Counts syncs and rows read today, written with the totals every SYNCS_PER_WRITE syncs: past the share of writes too
-   * (SYNCS_PER_DAY / SYNCS_PER_WRITE rows at most), or an eviction would forget them and the syncs share with them.
+   * (its syncs share / SYNCS_PER_WRITE rows at most), or an eviction would forget them and the syncs share with them.
    */
   private count(now: number, syncs: number, read: number): void {
     const day = dayOf(now);
@@ -135,7 +144,7 @@ export class Store extends DurableObject<Env> {
 
   /**
    * Keeps one entry of `room`, then drops the oldest of all rooms until the window is within `budget` again. False when
-   * today's share of writes is used up (WRITES_PER_DAY); a text kept already is no keep.
+   * today's share of writes is used up (`shares`); a text kept already is no keep.
    */
   keep(room: string, entry: KeptEntry, budget = HISTORY_BUDGET_BYTES, now = Date.now()): boolean {
     const json = JSON.stringify(entry);
@@ -156,7 +165,7 @@ export class Store extends DurableObject<Env> {
       const t = this.totals(now);
       // A piece of mine kept from an earlier send (a file I sent again in this room has the same ids) is not this one: it
       // goes, and this one is kept at the end of the window, so it stays four weeks from now. A text kept is kept.
-      if (t.written >= WRITES_PER_DAY) return sql.exec('SELECT 1 FROM entries WHERE room = ? AND writer = ? AND id = ? AND (piece = 0 OR at >= ?)', room, writer, id, at).toArray().length > 0;
+      if (t.written >= this.shares.written) return sql.exec('SELECT 1 FROM entries WHERE room = ? AND writer = ? AND id = ? AND (piece = 0 OR at >= ?)', room, writer, id, at).toArray().length > 0;
       if (piece) {
         const older = sql.exec<{ bytes: number }>('DELETE FROM entries WHERE room = ? AND writer = ? AND id = ? AND at < ? RETURNING bytes', room, writer, id, at);
         for (const o of older) { t.bytes -= o.bytes; t.entries -= 1; }
@@ -191,7 +200,7 @@ export class Store extends DurableObject<Env> {
   /** A piece of a file `room` keeps, sealed; null when it is not kept (any more), or today's share of rows read is used up. */
   piece(room: string, id: string, now = Date.now()): Uint8Array | null {
     const t = this.totals(now);
-    if (t.read >= SYNC_ROWS_PER_DAY || t.written >= WRITES_PER_DAY) return null;
+    if (t.read >= this.shares.read || t.written >= this.shares.written) return null;
     const cursor = this.ctx.storage.sql.exec<{ entry: ArrayBuffer }>('SELECT entry FROM entries WHERE room = ? AND id = ? AND piece = 1 AND at > ? LIMIT 1', room, id, now - HISTORY_KEEP_MS);
     const row = cursor.toArray()[0];
     // A miss writes nothing: a friend's app asks for a file nobody online has, which the server may never have had. What
@@ -210,11 +219,11 @@ export class Store extends DurableObject<Env> {
   /**
    * The entries of `room` kept after `since` (the Room's clock), oldest first: `max` of them, or `maxBytes` of their JSON,
    * at most, and whether there are more after those. Null once today's share of rows read or of syncs is used up
-   * (SYNC_ROWS_PER_DAY, SYNCS_PER_DAY): not known, which is not none.
+   * (`shares`): not known, which is not none.
    */
   since(room: string, since: number, now = Date.now(), max = SYNC_MAX, maxBytes = SYNC_BYTES_MAX): { entries: KeptEntry[]; more: boolean } | null {
     const t = this.totals(now);
-    if (t.read >= SYNC_ROWS_PER_DAY || t.syncs >= SYNCS_PER_DAY) return null;
+    if (t.read >= this.shares.read || t.syncs >= this.shares.syncs) return null;
     // Texts and file announcements: not the pieces of files, which a browser asks for one by one (`piece`).
     // Nothing older than the window, though today's prune may not have dropped it yet.
     const from = Math.max(since, now - HISTORY_KEEP_MS);
@@ -241,7 +250,7 @@ export class Store extends DurableObject<Env> {
     const sql = this.ctx.storage.sql;
     return this.ctx.storage.transactionSync(() => {
       const t = this.totals(now);
-      const fits = Math.floor((WRITES_PER_DAY - t.written - 1) / ROWS_PER_DROP);
+      const fits = Math.floor((this.shares.written - t.written - 1) / ROWS_PER_DROP);
       if (fits <= 0) return false;
       const dropped = sql.exec<{ bytes: number }>('DELETE FROM entries WHERE seq IN (SELECT seq FROM entries WHERE room = ? AND writer = ? AND at <= ? LIMIT ?) RETURNING bytes', room, writer, before, fits);
       const rows = dropped.toArray();
@@ -258,6 +267,6 @@ export class Store extends DurableObject<Env> {
   usage(now = Date.now()): HistoryUsage {
     const { bytes, entries, day, syncs, written, read } = this.totals(now);
     const oldest = this.ctx.storage.sql.exec<{ at: number }>('SELECT at FROM entries ORDER BY seq LIMIT 1').toArray()[0]?.at ?? null;
-    return { bytes, budget: HISTORY_BUDGET_BYTES, entries, oldest, asOf: now, today: { day, syncs, written, read }, shares: HISTORY_SHARES };
+    return { bytes, budget: HISTORY_BUDGET_BYTES, entries, oldest, asOf: now, today: { day, syncs, written, read }, shares: this.shares };
   }
 }

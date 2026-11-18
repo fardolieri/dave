@@ -52,14 +52,19 @@ export type DailyFigures = Pick<FreePlanToday, (typeof DAILY_LIMITS)[number]>;
 
 /**
  * Who a daily limit is shared between: the live site, and the pull requests' previews (preview.yml), all of them
- * together. Each may use SIDE_SHARE of every daily limit (`usedUp`): the previews running the browser suite cannot use up
- * a day the friends need, and the friends cannot use up the day a fix needs to pass its preview. On 2026-11-17 the
- * previews' runs used the account's 100,000 requests to Durable Objects by 20:44 UTC, and every room of the live site
- * failed until midnight with theirs (ticket 89). Not half each: the figures are minutes behind, a side goes on past its
- * share until its Worker hears of it, and rooms already open go on after. The tenth between keeps each side its half.
+ * together. Each may use its share of every daily limit (SIDE_SHARES, `usedUp`): the previews running the browser suite
+ * cannot use up a day the friends need, and the friends cannot use up the day a fix needs to pass its preview. On
+ * 2026-11-17 the previews' runs used the account's 100,000 requests to Durable Objects by 20:44 UTC, and every room of the
+ * live site failed until midnight with theirs (ticket 89).
+ *
+ * The live site used 13 % of a daily limit on its busiest day (requests to Durable Objects, 2026-11-17, most of it the
+ * sweep's alarm), the previews far more: a run of the browser suite took some 7,000 of those requests on 2026-11-18, and
+ * a busy day has ten runs. So a quarter for the live site, nearly twice its busiest day, and 65 % for the previews: nine or so
+ * runs. Not the whole rest: the figures are minutes behind, a side goes on past its share until its Worker hears of it,
+ * and rooms already open go on after; the tenth between is for that.
  */
 export type Side = 'live' | 'preview';
-export const SIDE_SHARE = 0.45;
+export const SIDE_SHARES: Readonly<Record<Side, number>> = { live: 0.25, preview: 0.65 };
 
 /**
  * The live site's Worker, and its Durable Object namespaces (Room, Store), as Cloudflare's analytics name them: what is
@@ -95,14 +100,14 @@ export function sideOf(today: FreePlanToday, side: Side): DailyFigures | null {
  * The daily limit `side` has used most of its part of (`share` of each), and how much of that part (1 is all of it).
  * Null when its use is not known.
  */
-export function fullestOf(today: FreePlanToday, side: Side, share = SIDE_SHARE): { limit: (typeof DAILY_LIMITS)[number]; share: number } | null {
+export function fullestOf(today: FreePlanToday, side: Side, share = SIDE_SHARES[side]): { limit: (typeof DAILY_LIMITS)[number]; share: number } | null {
   const mine = sideOf(today, side);
   if (!mine) return null;
   return DAILY_LIMITS.map((limit) => ({ limit, share: mine[limit] / (FREE_PLAN[limit] * share) })).reduce((a, b) => (b.share > a.share ? b : a));
 }
 
 /**
- * Which daily limit, if any, `side` has used its part of (`share` of each: SIDE_SHARE where its Worker keeps to it,
+ * Which daily limit, if any, `side` has used its part of (`share` of each: its SIDE_SHARES where its Worker keeps to it,
  * FREE_PLAN_SHARES in wrangler.jsonc), as `today`, the use last known, says of the day `now` is in. No share (0, the paid
  * plan), or the day's use not known: none.
  */
@@ -119,16 +124,29 @@ export function dayEnds(now: number): number {
 }
 
 /**
- * How much of a side's share of a daily limit (SIDE_SHARE) it has used when the owner is told (scripts/quota-watch.mjs),
- * each once a day: early enough to act, and above a day with a couple of the previews' suite runs in it, which would
- * otherwise mail every day. A run of the browser suite against a preview (both engines) took some 10,000 to 13,000
- * requests to the Worker and some 7,000 to Durable Objects on 2026-11-17 (ticket 89): the Worker's are what the
- * previews' share runs out of first, after three or four runs; told at 70 %, one more is about what is left.
+ * How much of a side's share of a daily limit (SIDE_SHARES) it has used when the owner is told (scripts/quota-watch.mjs),
+ * each once a day: early enough to act, and above a day with a few of the previews' suite runs in it, which would
+ * otherwise mail every day. A run of the browser suite against a preview (both engines) took, on 2026-11-18, some 7,000
+ * requests to Durable Objects, 3,200 to the Worker, 4,300 rows written, 10,900 read and 280 GB-s (RUN_COST): the
+ * requests to Durable Objects are what the previews' share runs out of first. Past it, a run goes against a local build
+ * on GitHub's runners instead (preview.yml).
  */
 export const ALERT_SHARES = [0.7, 0.9] as const;
 
 /** The limits a day starts anew: all but `stored`, a total that the history's window keeps (ADR 0009). */
 export const DAILY_LIMITS = ['compute', 'objectRequests', 'workerRequests', 'rowsWritten', 'rowsRead'] as const satisfies ReadonlyArray<keyof Omit<FreePlanToday, 'day' | 'live'>>;
+
+/**
+ * What one run of the browser suite against a preview costs, a little over what #161's took on 2026-11-18: preview.yml
+ * runs it against the preview only while the previews' share has this much left (scripts/gate-mode.mjs).
+ */
+export const RUN_COST: DailyFigures = { objectRequests: 8_000, workerRequests: 4_000, rowsWritten: 5_000, rowsRead: 12_000, compute: 350 };
+
+/** Whether `side` still has room in its share for `cost` on top of what `today` says it used; null when not known. */
+export function roomFor(today: FreePlanToday, side: Side, cost: DailyFigures, share = SIDE_SHARES[side]): boolean | null {
+  const mine = sideOf(today, side);
+  return mine && DAILY_LIMITS.every((k) => mine[k] + cost[k] <= FREE_PLAN[k] * share);
+}
 
 /** The highest of ALERT_SHARES that `share` has reached, as a whole percentage (70, 90), or 0 for none. */
 export function alertStep(share: number): number {

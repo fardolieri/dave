@@ -1,7 +1,7 @@
 name: quota-watch
 # Tells the owner when the live site or the previews have used much of their share of one of the Workers Free plan's daily
 # limits (scripts/quota-watch.mjs): at 70 % and at 90 % of it, each once a day, with an issue labelled `quota` and a red
-# run, which is what mails. Past its share (45 %) a side lets no one into its rooms until midnight UTC; past a limit every Durable
+# run, which is what mails. Past its share (25 % live, 65 % previews) a side lets no one into its rooms until midnight UTC; past a limit every Durable
 # Object of the account fails, the live site's rooms and the previews' alike, and nothing said so before it did (ticket
 # 84, 2026-11-16; ticket 89, 2026-11-17). Every other run is green and says the day's use in its summary.
 # It asks Cloudflare itself, with the token the Worker reads its analytics with, so it tells with the live site down too.

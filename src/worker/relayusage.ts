@@ -1,5 +1,5 @@
 import type { CredentialRequest } from '../core/turn';
-import { RELAY_FREE_BYTES, SIDE_SHARE, freePlanRequest, fullestOf, monthSoFar, parseFreePlan, parseRelayBytes, relayUsageRequest, usedUp, type FreePlanToday, type RelayUsage, type Side } from '../core/relayusage';
+import { RELAY_FREE_BYTES, SIDE_SHARES, freePlanRequest, fullestOf, monthSoFar, parseFreePlan, parseRelayBytes, relayUsageRequest, usedUp, type FreePlanToday, type RelayUsage, type Side } from '../core/relayusage';
 
 /**
  * `/relay-usage`: how much the TURN relay sent this month, and what the account used today of the free plan's limits
@@ -121,8 +121,8 @@ export function sideOfWorker(env: Env): Side | null {
  * No share, no side (a local build), no token, or Cloudflare not saying: not used up, and the socket goes on to its Room.
  */
 export async function usedUpToday(env: Env, now: number, keepAlive: (call: Promise<unknown>) => void): Promise<boolean> {
-  const share = env.FREE_PLAN_SHARES ? SIDE_SHARE : 0;
   const side = sideOfWorker(env);
+  const share = env.FREE_PLAN_SHARES && side ? SIDE_SHARES[side] : 0;
   const token = env.RELAY_USAGE_API_TOKEN;
   const account = env.CLOUDFLARE_ACCOUNT_ID;
   if (!share || !side || !token || !account) return false;

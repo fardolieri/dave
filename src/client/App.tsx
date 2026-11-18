@@ -24,7 +24,7 @@ import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, identityOf, normaliseName, type Ident
 import { displayName, formatAgo, knownAgo } from '../core/names';
 import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatStream } from '../core/format';
-import { FREE_PLAN, RELAY_SAVE_FROM, SIDE_SHARE, elapsedOf, fillOf, formatBytes, formatCount, formatPercent, monthSoFar, sideOf, type Fill, type FreePlanToday, type RelayUsage, type Side } from '../core/relayusage';
+import { FREE_PLAN, RELAY_SAVE_FROM, SIDE_SHARES, elapsedOf, fillOf, formatBytes, formatCount, formatPercent, monthSoFar, sideOf, type Fill, type FreePlanToday, type RelayUsage, type Side } from '../core/relayusage';
 import { refreshRelayUsage, relaySaving, relayUsage } from './relay';
 import { parseHistoryUsage, type HistoryToday, type HistoryUsage } from '../core/kept';
 import { Markdown, MarkdownMirror } from './Markdown';
@@ -2189,19 +2189,19 @@ function UsageMeter(props: { id: string; name: string; title: string; value: num
 const PACE_NOTE = 'The line on a bar is where an even pace would have it by now. Past it, the limit runs out before it resets, if use goes on like this.';
 
 /** What the line under the free plan's figures says of the shares: the live site and the previews each stop at theirs. */
-const SHARES_NOTE = `The live site and the previews each get ${Math.round(SIDE_SHARE * 100)} % of every daily limit. Past its share of one, a side lets no one into a room until midnight UTC, and the other goes on.`;
+const SHARES_NOTE = `The live site gets ${Math.round(SIDE_SHARES.live * 100)} % of every daily limit, the previews ${Math.round(SIDE_SHARES.preview * 100)} %. Past its share of one, a side lets no one into a room until midnight UTC, and the other goes on.`;
 const SIDE_NAMES = { live: 'live site', preview: 'previews' } as const;
 /** The side this copy of the app spends from, whose share its warnings follow: a preview's, or the live site's. */
 const OWN_SIDE: Side = build.target === 'preview' ? 'preview' : 'live';
 /** Said after a daily figure's own title: neither side gets as far as the limit. */
-const SHARES_TITLE = `Before that, the live site and the previews each stop at their ${Math.round(SIDE_SHARE * 100)} % share of it.`;
+const SHARES_TITLE = `Before that, the live site stops at its ${Math.round(SIDE_SHARES.live * 100)} % share of it, the previews at theirs, ${Math.round(SIDE_SHARES.preview * 100)} %.`;
 
 /** Each side's part of a daily figure as `shown` prints it, against its share; null where the parts are not known. */
 function sidesOf(today: FreePlanToday, key: keyof typeof FREE_PLAN): Array<{ side: Side; value: number; share: number }> | null {
   if (key === 'stored') return null;
   const parts = (['live', 'preview'] as const).map((side) => ({ side, figures: sideOf(today, side) }));
   if (parts.some((p) => !p.figures)) return null;
-  return parts.map(({ side, figures }) => ({ side, value: figures![key], share: FREE_PLAN[key] * SIDE_SHARE }));
+  return parts.map(({ side, figures }) => ({ side, value: figures![key], share: FREE_PLAN[key] * SIDE_SHARES[side] }));
 }
 
 /** How full a daily figure is for this copy of the app: its whole limit's, or its own side's share's, whichever is further on. */

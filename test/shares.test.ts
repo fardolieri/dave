@@ -10,9 +10,10 @@ afterEach(() => { vi.restoreAllMocks(); forgetRelayUsage(); });
 it("a preview's Worker lets no new socket into a room once the previews have used their share of the day's requests to Durable Objects; the live site's goes on", async () => {
   const liveRoom = '4f5ba8a3f4464117a59e7a3a540651cd'; // the live site's Room namespace
   const previewRoom = 'ffffffffffffffffffffffffffffffff';
-  // As Cloudflare had the day at about 20:30 UTC: the live site's rooms 13,264 requests, the previews' 60,000.
+  // As Cloudflare had the day at about 20:30 UTC: the live site's rooms 13,264 requests; the previews' 70,000, past their
+  // share (core/relayusage.ts, SIDE_SHARES).
   vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({ data: { viewer: { accounts: [{
-    objects: [{ sum: { requests: 13_264 }, dimensions: { type: 'alarm', namespaceId: liveRoom } }, { sum: { requests: 60_000 }, dimensions: { type: 'http', namespaceId: previewRoom } }],
+    objects: [{ sum: { requests: 13_264 }, dimensions: { type: 'alarm', namespaceId: liveRoom } }, { sum: { requests: 70_000 }, dimensions: { type: 'http', namespaceId: previewRoom } }],
     workers: [{ sum: { requests: 60_000 } }],
     liveWorkers: [{ sum: { requests: 7_744 } }],
     periodic: [{ sum: { rowsRead: 0, rowsWritten: 0, duration: 104 }, dimensions: { namespaceId: liveRoom } }],

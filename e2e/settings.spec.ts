@@ -413,9 +413,10 @@ test('About shows the relay this month and the free plan today, the figure neare
 
   // The page's day, as the app reads it.
   const day = await alice.page.evaluate(() => new Date().toISOString().slice(0, 10));
-  // The live site's part, half of each: the previews used the other half (core/relayusage.ts, sideOf). The same for
-  // both sides, as the dialog warns by its own side's share, the live site's here, a preview's on a preview.
-  const live = { objectRequests: 39_317, workerRequests: 7_116, rowsWritten: 13_073.5, rowsRead: 26_825, compute: 668.25 };
+  // The live site's part: 25 of every 90, the previews the other 65, so each side is as far into its share as the other
+  // (core/relayusage.ts, sideOf, SIDE_SHARES): the dialog warns by its own side's share, the live site's here, a
+  // preview's on a preview.
+  const live = { objectRequests: 21_842.8, workerRequests: 3_953.3, rowsWritten: 7_263.1, rowsRead: 14_902.8, compute: 371.25 };
   const today = { day, objectRequests: 78_634, workerRequests: 14_232, rowsWritten: 26_147, rowsRead: 53_650, compute: 1336.5, stored: 83_210_240, live };
   answer = { status: 200, body: { bytes: 14_066_575_220, limit: 1e12, since: '2026-11-01', asOf: Date.now(), today } };
   await about();
@@ -426,16 +427,16 @@ test('About shows the relay this month and the free plan today, the figure neare
   // Today's free plan, the figure nearest its limit first, or nearest this side's share of it, said in words past half.
   await expect(dialog.locator('.usage', { hasText: 'Free plan today' }).locator('.meter-name')).toHaveText(['Room requests', 'Rows written', 'Worker requests', 'Room time', 'Stored', 'Rows read']);
   await expect(meter('objectRequests')).toContainText('⚠ 79%');
-  // The nearest of all: this side's part of the room requests, against its share (core/relayusage.ts, SIDE_SHARE).
+  // The nearest of all: this side's part of the room requests, against its share (core/relayusage.ts, SIDE_SHARES).
   await expect(fold.locator('summary'), 'the nearest named on the fold').toHaveText(/^Usage and limits⚠ nearest: Room requests \((live site|previews)\), 87%$/);
   await expect(meter('objectRequests')).toContainText('78,634 of 100,000');
   await expect(meter('stored')).toContainText('83 MB of 5 GB');
   // Each side's part, of its share: past half of it, said in words too.
-  await expect(meter('objectRequests').locator('.meter-split')).toHaveText('⚠ Live site 39,317 (87% of its share) · ⚠ previews 39,317 (87%)');
+  await expect(meter('objectRequests').locator('.meter-split')).toHaveText('⚠ Live site 21,843 (87% of its share) · ⚠ previews 56,791 (87%)');
   await expect(meter('objectRequests')).toHaveAttribute('data-fill', 'bad');
-  await expect(meter('compute').locator('.meter-split')).toHaveText('Live site 668 GB-s (11% of its share) · previews 668 GB-s (11%)');
+  await expect(meter('compute').locator('.meter-split')).toHaveText('Live site 371 GB-s (11% of its share) · previews 965 GB-s (11%)');
   await expect(meter('stored').locator('.meter-split'), 'a total, shared by none').toHaveCount(0);
-  await expect(dialog.locator('.shares-note')).toContainText('The live site and the previews each get 45 % of every daily limit');
+  await expect(dialog.locator('.shares-note')).toContainText('The live site gets 25 % of every daily limit, the previews 65 %');
   await expect(meter('rowsRead')).toHaveAttribute('data-fill', 'ok');
   await expect(dialog.locator('.usage', { hasText: 'Free plan today' })).toContainText(/resets in \d+ (h|min)/);
   // A line where an even pace would have each bar by now: the day's on the daily figures, the month's on the relay's,

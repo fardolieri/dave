@@ -1,6 +1,6 @@
 import { env, exports } from 'cloudflare:workers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ALERT_SHARES, FREE_PLAN, LIVE_NAMESPACES, RELAY_FREE_BYTES, SIDE_SHARE, alertStep, dayEnds, elapsedOf, fillOf, fullestOf, sideOf, usedUp, formatBytes, formatCount, formatPercent, freePlanRequest, monthSoFar, parseFreePlan, parseRelayBytes, parseRelayUsage, relayUsageRequest, savesRelay } from '../src/core/relayusage';
+import { ALERT_SHARES, FREE_PLAN, LIVE_NAMESPACES, RELAY_FREE_BYTES, RUN_COST, SIDE_SHARES, alertStep, dayEnds, elapsedOf, fillOf, fullestOf, roomFor, sideOf, usedUp, formatBytes, formatCount, formatPercent, freePlanRequest, monthSoFar, parseFreePlan, parseRelayBytes, parseRelayUsage, relayUsageRequest, savesRelay } from '../src/core/relayusage';
 import { withoutTurn } from '../src/core/turn';
 import { forgetFreePlanFigure, forgetRelayUsage, relayUsage, usedUpToday } from '../src/worker/relayusage';
 import worker from '../src/worker/index';
@@ -266,7 +266,7 @@ describe("each side's share of the day's limits: the live site's, the previews' 
   const used = (live: number, previews = 0, day = '2026-11-16') => ({ day, ...none, compute: live + previews, stored: 0, live: { ...none, compute: live } });
 
   it('a side has used its share from half of a limit on, its own use counted, for the day the figure is of; never without a share or a figure', () => {
-    expect(SIDE_SHARE).toBe(0.45);
+    expect(SIDE_SHARES).toEqual({ live: 0.25, preview: 0.65 });
     // One namespace of the live site's per Durable Object class it binds: a class added to it is a namespace to add to
     // LIVE_NAMESPACES (its id from the namespaces API), or its use would be counted as the previews'.
     const classes = Object.entries(env).filter(([name, v]) => !name.startsWith('__VITEST') && !!v && typeof v === 'object' && 'idFromName' in v);
@@ -284,8 +284,13 @@ describe("each side's share of the day's limits: the live site's, the previews' 
     // Any daily limit: 2026-11-17 at 20:44 UTC, when the previews' runs had used the account's requests to Durable Objects.
     const nov17 = { day: '2026-11-17', objectRequests: 100_000, workerRequests: 60_000, rowsWritten: 9_310, rowsRead: 37_142, compute: 690, stored: 0, live: { objectRequests: 13_264, workerRequests: 7_744, rowsWritten: 773, rowsRead: 15_394, compute: 104 } };
     expect(usedUp(nov17, Date.parse('2026-11-17T20:44:00Z'), 'preview', 0.5)).toBe('objectRequests');
-    expect(fullestOf(nov17, 'preview')).toEqual({ limit: 'objectRequests', share: (100_000 - 13_264) / 45_000 });
+    expect(fullestOf(nov17, 'preview')).toEqual({ limit: 'objectRequests', share: (100_000 - 13_264) / 65_000 });
     expect(usedUp(nov17, Date.parse('2026-11-17T20:44:00Z'), 'live', 0.5)).toBeNull();
+    // Whether one more run of the browser suite fits in the previews' share (preview.yml, scripts/gate-mode.mjs).
+    const morning = { day: '2026-11-18', objectRequests: 45_552, workerRequests: 20_945, rowsWritten: 9_000, rowsRead: 40_000, compute: 1_500, stored: 0, live: { objectRequests: 348, workerRequests: 46, rowsWritten: 5, rowsRead: 1_216, compute: 1.4 } };
+    expect(roomFor(morning, 'preview', RUN_COST), '45,204 + 8,000 of 65,000').toBe(true);
+    expect(roomFor({ ...morning, objectRequests: 58_000 }, 'preview', RUN_COST), '57,652 + 8,000').toBe(false);
+    expect(roomFor({ ...morning, live: undefined }, 'preview', RUN_COST), 'not known').toBeNull();
     expect(dayEnds(NOV_16)).toBe(Date.parse('2026-11-17T00:00:00Z'));
     expect(dayEnds(Date.parse('2026-12-31T23:59:59Z'))).toBe(Date.parse('2027-01-01T00:00:00Z'));
   });
@@ -295,8 +300,8 @@ describe("each side's share of the day's limits: the live site's, the previews' 
     // The afternoon of 2026-11-16, as /relay-usage had it at 19:07 UTC, the live site's rooms kept awake (ticket 84).
     const live = { objectRequests: 30_000, workerRequests: 8_000, rowsWritten: 900, rowsRead: 20_000, compute: 10_106 };
     const outage = { day: '2026-11-16', objectRequests: 38508.5, workerRequests: 16006, rowsWritten: 17921, rowsRead: 56359, compute: 13216.46, stored: 227504130, live };
-    expect(fullestOf(outage, 'live')).toEqual({ limit: 'compute', share: 10_106 / (13_000 * SIDE_SHARE) });
-    expect(fullestOf({ ...outage, stored: FREE_PLAN.stored, live: { ...live, compute: 100 } }, 'live')).toEqual({ limit: 'objectRequests', share: 30_000 / (100_000 * SIDE_SHARE) });
+    expect(fullestOf(outage, 'live')).toEqual({ limit: 'compute', share: 10_106 / (13_000 * SIDE_SHARES.live) });
+    expect(fullestOf({ ...outage, stored: FREE_PLAN.stored, live: { ...live, compute: 100 } }, 'live')).toEqual({ limit: 'objectRequests', share: 30_000 / (100_000 * SIDE_SHARES.live) });
     expect([0, 0.699, 0.7, 0.89, 0.9, 1.02].map(alertStep)).toEqual([0, 0, 70, 70, 90, 90]);
   });
 
@@ -331,12 +336,12 @@ describe("each side's share of the day's limits: the live site's, the previews' 
   });
 
   it('with a figure of today it does not wait: Cloudflare is asked again after two minutes, half a minute near the share, never at every socket', async () => {
-    let duration = 4_500;
+    let duration = 2_000;
     const api = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(answer(duration)));
     const k = kept();
     for (const at of [0, 1000, 60_000, 119_000]) { expect(await usedUpToday(configured, NOV_16 + at, k.keep)).toBe(false); await k.done(); }
     expect(api).toHaveBeenCalledTimes(1);
-    duration = 5_500; // from 80 % of the share on, asked every half minute
+    duration = 3_000; // from 80 % of the share on (3,250 GB-s, the live site's), asked every half minute
     expect(await usedUpToday(configured, NOV_16 + 121_000, k.keep), 'the old figure, while the new one is asked').toBe(false);
     await k.done();
     expect(api).toHaveBeenCalledTimes(2);
@@ -379,7 +384,7 @@ describe("each side's share of the day's limits: the live site's, the previews' 
 
   it("the previews' Worker stops at their share, all that is not the live site's; the live site's goes on", async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    cloudflare(1_000, 6_600);
+    cloudflare(1_000, 9_000);
     const k = kept();
     expect(await usedUpToday({ ...configured, BUILD_TARGET: 'preview' } as Env, NOV_16, k.keep)).toBe(true);
     await k.done();

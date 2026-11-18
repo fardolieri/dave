@@ -25,7 +25,7 @@ export default {
       if (request.headers.get('Upgrade') !== 'websocket') {
         return new Response('expected a websocket upgrade', { status: 426 });
       }
-      // This side's share of the day's limits (core/relayusage.ts, SIDE_SHARE; wrangler.jsonc, FREE_PLAN_SHARES): past it
+      // This side's share of the day's limits (core/relayusage.ts, SIDE_SHARES; wrangler.jsonc, FREE_PLAN_SHARES): past it
       // no Room is asked for a new socket.
       // The socket is taken here and closed with the reason, which the app shows; a refused upgrade would tell it nothing.
       if (await usedUpToday(env, Date.now(), (call) => ctx.waitUntil(call))) {

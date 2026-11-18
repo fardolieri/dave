@@ -2,7 +2,7 @@
 /**
  * Tells the owner when the live site or the previews have used much of their share of one of the Workers Free plan's
  * daily limits (quota-watch.yml, every quarter of an hour): at 70 % and at 90 % of it (core/relayusage.ts, ALERT_SHARES,
- * SIDE_SHARE), each once a day. Past its share a side lets no one into its rooms until midnight UTC; past the limit
+ * SIDE_SHARES), each once a day. Past its share a side lets no one into its rooms until midnight UTC; past the limit
  * itself every Durable Object of the account fails, and nothing said so before it did (ticket 84: 2026-11-16, no room
  * let anyone in from 18:42 UTC; 2026-11-17, from 20:44, the previews' runs).
  *
@@ -18,7 +18,7 @@
  * GH_TOKEN and GITHUB_REPOSITORY. `--dry-run` asks Cloudflare and says what it would do. RUN_URL is linked.
  */
 import { appendFileSync } from 'node:fs';
-import { DAILY_LIMITS, FREE_PLAN, SIDE_SHARE, alertStep, dayEnds, elapsedOf, freePlanRequest, fullestOf, monthSoFar, parseFreePlan, sideOf } from '../src/core/relayusage.ts';
+import { DAILY_LIMITS, FREE_PLAN, SIDE_SHARES, alertStep, dayEnds, elapsedOf, freePlanRequest, fullestOf, monthSoFar, parseFreePlan, sideOf } from '../src/core/relayusage.ts';
 
 const dry = process.argv.includes('--dry-run');
 const now = Date.now();
@@ -51,16 +51,16 @@ const at = new Date(now).toISOString().slice(11, 16);
 const live = sideOf(today, 'live');
 const previews = sideOf(today, 'preview');
 const count = (n) => Math.round(n).toLocaleString('en');
-const part = (figures, k) => `${count(figures[k])} (${percent(figures[k] / (FREE_PLAN[k] * SIDE_SHARE))})`;
+const part = (figures, side, k) => `${count(figures[k])} (${percent(figures[k] / (FREE_PLAN[k] * SIDE_SHARES[side]))})`;
 const table = [
   `| Daily limit | Live site (of its share) | Previews (of theirs) | Account | Of | Share |`,
   '|---|---|---|---|---|---|',
-  ...DAILY_LIMITS.map((k) => `| ${NAMES[k]} | ${part(live, k)} | ${part(previews, k)} | ${count(today[k])} | ${FREE_PLAN[k].toLocaleString('en')} | ${percent(today[k] / FREE_PLAN[k])} |`),
+  ...DAILY_LIMITS.map((k) => `| ${NAMES[k]} | ${part(live, 'live', k)} | ${part(previews, 'preview', k)} | ${count(today[k])} | ${FREE_PLAN[k].toLocaleString('en')} | ${percent(today[k] / FREE_PLAN[k])} |`),
 ].join('\n');
 const news = Object.entries(SIDES).map(([side, who]) => {
   const { limit, share } = fullestOf(today, side);
   const step = alertStep(share);
-  const of = `${side === 'live' ? 'its' : 'their'} ${percent(SIDE_SHARE)} share of`;
+  const of = `${side === 'live' ? 'its' : 'their'} ${percent(SIDE_SHARES[side])} share of`;
   say(`${day} ${at} UTC: ${who} used ${percent(share)} of ${of} the day's ${NAMES[limit]}, ${percent(elapsed)} of the day gone.`);
   // The step first, then the side, as TOLD reads them.
   const title = `Free plan ${day}: told at ${step} % (${who}, ${NAMES[limit]})`;
@@ -70,7 +70,7 @@ const news = Object.entries(SIDES).map(([side, who]) => {
   const body = [
     `**${who[0].toUpperCase()}${who.slice(1)} used ${percent(share)} of ${of} the day's ${NAMES[limit]}, at ${at} UTC** (${percent(elapsed)} of the day gone).${pace}`,
     '',
-    `The live site and the previews each get ${percent(SIDE_SHARE)} of every daily limit (\`SIDE_SHARE\`, src/core/relayusage.ts; \`FREE_PLAN_SHARES\`, wrangler.jsonc): past its share, a side's Worker lets no new socket into a room until 00:00 UTC, and the other side goes on. For the live site that is the friends locked out; for the previews, no pull request's preview can run its tests. Past a limit itself every Durable Object of the account fails, both sides'.`,
+    `The live site gets ${percent(SIDE_SHARES.live)} of every daily limit and the previews ${percent(SIDE_SHARES.preview)} (\`SIDE_SHARES\`, src/core/relayusage.ts; \`FREE_PLAN_SHARES\`, wrangler.jsonc): past its share, a side's Worker lets no new socket into a room until 00:00 UTC, and the other side goes on. For the live site that is the friends locked out; for the previews, no pull request's preview can run its tests. Past a limit itself every Durable Object of the account fails, both sides'.`,
     '',
     table,
     '',

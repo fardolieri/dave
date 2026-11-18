@@ -1,7 +1,7 @@
 // What the server keeps of the rooms' chat (ADR 0009): every text and file announcement as the Room broadcast it, sealed,
 // in one window for all rooms together, the oldest dropped first once it holds HISTORY_BUDGET_BYTES or is older than
 // HISTORY_KEEP_MS. A browser asks for what it missed after every welcome (`sync`), so a friend who was away still gets it.
-import { SIDE_SHARE, formatShare } from './relayusage';
+import { SIDE_SHARES, formatShare } from './relayusage';
 import type { KeptEntry } from './protocol';
 
 /**
@@ -36,8 +36,8 @@ export const entryBytes = (json: string): number => new TextEncoder().encode(jso
 
 /**
  * The free plan's rows and requests are the account's, 100,000 rows written, 5 million read and 100,000 requests a day,
- * and each side, the live site and the previews, may use SIDE_SHARE of them (core/relayusage.ts): the figures below are
- * of the whole account, scaled to that share (`ofSide`). The Rooms need theirs: a room's verifier is read on every
+ * and each side, the live site and the previews, may use its share of them (SIDE_SHARES, core/relayusage.ts): the
+ * figures below are of the whole account, scaled to that share (`historyShares`). The Rooms need theirs: a room's verifier is read on every
  * challenge, every socket is a request. So the history takes a share of each and no more, whoever asks: past it, until
  * 00:00 UTC, texts go out live but are not kept, a sync is answered `unavailable`, and a file's pieces are neither kept
  * nor given. Writes are counted as SQLite counts them, what a keep drops from the tail of the window included (one
@@ -46,12 +46,15 @@ export const entryBytes = (json: string): number => new TextEncoder().encode(jso
  * once the window is full. A sync is one request to the Store, asked on every welcome: a browser opens a socket per
  * room and one per friend (ADR 0011), and the browser suite against a preview a few thousand a run. What is left for
  * the Rooms, of the whole account's figures: 11,000 rows written (the syncs' own writes, below, go past the share), a
- * million read, and 60,000 requests less what keeps take; of a side's, SIDE_SHARE of each.
+ * million read, and 60,000 requests less what keeps take; of a side's, its share of each.
  */
-const ofSide = (n: number): number => Math.round(n * SIDE_SHARE);
-export const WRITES_PER_DAY = ofSide(85_000);
-export const SYNCS_PER_DAY = ofSide(40_000);
-export const SYNC_ROWS_PER_DAY = ofSide(4_000_000);
+export const historyShares = (share: number): Omit<HistoryToday, 'day'> =>
+  ({ syncs: Math.round(40_000 * share), written: Math.round(85_000 * share), read: Math.round(4_000_000 * share) });
+/** The live site's (worker/store.ts takes its side's): what the names below stand for. */
+export const HISTORY_SHARES = historyShares(SIDE_SHARES.live);
+export const WRITES_PER_DAY = HISTORY_SHARES.written;
+export const SYNCS_PER_DAY = HISTORY_SHARES.syncs;
+export const SYNC_ROWS_PER_DAY = HISTORY_SHARES.read;
 /**
  * Syncs, and the rows they and fetches that found nothing read, are counted in memory and written with the totals every
  * this many syncs, or sooner with a keep: a row written per sync would be as many rows as syncs. These writes go on
@@ -141,7 +144,6 @@ export function historyFrames(entries: readonly KeptEntry[] | null, upTo: number
 /** What the Worker's `/history-usage` answers, for the About dialog: the window's fill, and the oldest entry it still has. */
 /** What today (UTC) used of the history's daily shares, as the Store counts them, and the shares. */
 export type HistoryToday = { day: string; syncs: number; written: number; read: number };
-export const HISTORY_SHARES: Omit<HistoryToday, 'day'> = { syncs: SYNCS_PER_DAY, written: WRITES_PER_DAY, read: SYNC_ROWS_PER_DAY };
 
 export type HistoryUsage = { bytes: number; budget: number; entries: number; oldest: number | null; asOf: number; today?: HistoryToday; shares?: Omit<HistoryToday, 'day'> };
 
