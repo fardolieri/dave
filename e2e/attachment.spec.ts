@@ -1131,6 +1131,25 @@ test('ADR 0009: a picture whose sender is online but cannot be reached comes fro
   expect(bob.wire.frames('up', 'fetch').length, 'from the server, after Alice could not be reached').toBeGreaterThan(0);
 });
 
+test('ADR 0009: pictures whose sender is online but cannot be reached all come from the server after one wait for her, not one wait each', async ({ crowd }) => {
+  test.slow();
+  // Report of 2026-11-17: alone in a room with a few YouTube cards, a friend waited about a minute for their pictures.
+  // Each waited the 20 s of a link to their sender that never opened, two at a time, then came from the server at once.
+  const alice = await crowd.open('Alice');
+  alice.wire.down = (frame) => (frame.includes('"t":"link"') ? null : frame);
+  const pictures = [0, 1, 2, 3, 4, 5].map((i) => png(320 + i, 180));
+  for (const [i, picture] of pictures.entries()) await alice.attach({ name: `card-${i}.png`, mimeType: 'image/png', buffer: picture });
+  await expect.poll(() => alice.wire.frames<{ ok: boolean }>('down', 'kept').filter((k) => k.ok).length).toBe(pictures.length);
+  const bob = await crowd.open('Bob');
+  const started = Date.now();
+  const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
+  await expect(shown).toHaveCount(pictures.length, { timeout: 90_000 });
+  const waited = Date.now() - started;
+  expect(await bob.online()).toContain('Alice');
+  // One link to Alice gives up after 20 s; once it has, she is no better for the next picture than for the first.
+  expect(waited, `all ${pictures.length} pictures shown ${Math.round(waited / 1000)} s after Bob came in`).toBeLessThan(32_000);
+});
+
 /**
  * The Room's clock as Cloudflare runs it: time stands still between a Worker's I/O, so frames that come in together get the
  * same millisecond. A text sent with a file comes back with the file's time then (seen on PR #142's preview, report of
