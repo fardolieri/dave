@@ -68,7 +68,7 @@ on:
         type: string
         default: ''
 concurrency:
-  # When called, the caller's event and ref apply: preview.yml's concurrency already cancels a superseded preview run.
+  # When called, the caller's event and ref apply: preview.yml's job-level group already cancels a superseded gate.
   # Started by hand, that ref is master's for every pull request: the commit tested keeps one PR's gate from cancelling
   # another's. The weekly run on Solid's development build has its own, so a run by hand on master does not cancel it.
   group: e2e-${{ github.event_name == 'schedule' && 'solid-dev' || inputs.ref && format('gate-{0}', inputs.ref) || github.ref }}

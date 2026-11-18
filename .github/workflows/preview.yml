@@ -18,9 +18,11 @@ name: preview
 #     cannot run (@local) against a local build of the PR;
 #   - none: the whole suite against a local build of the PR on GitHub's runners, both engines, which uses none of the
 #     share. Its status says so: what only real Cloudflare shows is then first seen on the live site (rollback.yml).
-# `-f mode=preview` or `-f mode=local` overrides the choice. A push to the PR cancels a run under way: it tested a head
-# that is no longer the PR's. Marking it ready does not (its own group): the head is the same, and its run dispatches the
-# branch checks, which a gate started right after must not cancel.
+# `-f mode=preview` or `-f mode=local` overrides the choice. A newer push to the PR, or closing it, cancels a gate under
+# way: it tested a head that is no longer the PR's. The PR's concurrency group is its deploy's, its suite's and its
+# cleanup's, not the run's: a gate started right after a push was cancelled by that push's own run, which GitHub started
+# three seconds later (2026-11-18, #162, run 44273199951). So a gate's first job, outside the group, waits until the
+# push's run for the head it tests has finished, and checks that the head is still the PR's.
 # Every push deploys the preview, for the link, ready or draft. A draft PR's branch pushes skip ci and red-green
 # (draft-gate.yml); marking it ready dispatches those two on its head. The night shift's draft "Repro:" PRs
 # (night-shift/*) need no preview and get none until marked ready, which keeps the account far from its 100 Workers. PRs
@@ -41,9 +43,6 @@ on:
 permissions:
   contents: read
   pull-requests: write
-concurrency:
-  group: preview-${{ github.event.pull_request.number || inputs.pr }}${{ github.event.action == 'ready_for_review' && '-ready' || '' }}
-  cancel-in-progress: true
 env:
   WORKER: dave-pr-${{ github.event.pull_request.number || inputs.pr }}
 jobs:
@@ -86,9 +85,26 @@ jobs:
           echo "number=$(jq -r .number <<<"$pr")" >> "$GITHUB_OUTPUT"
           echo "sha=$(jq -r .head.sha <<<"$pr")" >> "$GITHUB_OUTPUT"
           # A fork's gets no preview: its code would run with the secrets. A night-shift draft needs none. Marking a PR ready
-          # deploys nothing new, its head deployed by its last push, but for a night-shift branch, whose drafts got none:
-          # a deploy of its own would race a gate's started meanwhile, in another concurrency group (above).
+          # deploys nothing new, its head deployed by its last push, but for a night-shift branch, whose drafts got none.
           echo "deploy=$(jq -r --arg repo "$GITHUB_REPOSITORY" --arg action "${{ github.event.action }}" '.head.repo.full_name == $repo and ((.draft and (.head.ref | startswith("night-shift/"))) | not) and ($action != "ready_for_review" or (.head.ref | startswith("night-shift/")))' <<<"$pr")" >> "$GITHUB_OUTPUT"
+      # Started by hand: the push's own run for this head first (see the top), and the head still the PR's after it.
+      - if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.pr.outputs.number }}
+          SHA: ${{ steps.pr.outputs.sha }}
+        shell: bash
+        run: |
+          for i in $(seq 1 60); do
+            runs=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow preview.yml --event pull_request --commit "$SHA" --json status \
+              --jq 'if length == 0 then "none" elif all(.[]; .status == "completed") then "done" else "under way" end')
+            [ "$runs" = done ] && break
+            # A head pushed before this workflow, or whose run is long gone from the list: none is coming after a minute.
+            [ "$runs" = none ] && [ "$i" -gt 6 ] && break
+            echo "the push's run for $SHA: $runs"; sleep 10
+          done
+          now=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .head.sha)
+          [ "$now" = "$SHA" ] || { echo "::error::PR $PR moved on to $now meanwhile: start the gate again for it"; exit 1; }
       - if: github.event_name == 'workflow_dispatch'
         uses: actions/checkout@v5
         with:
@@ -108,9 +124,15 @@ jobs:
           RELAY_USAGE_API_TOKEN: ${{ secrets.RELAY_USAGE_API_TOKEN }}
   deploy:
     needs: pr
-    # On every push, and started by hand: the suite against the preview then tests the head it deployed, and the link stays
-    # that head's should the run have cancelled a push's deploy under way.
-    if: needs.pr.outputs.deploy == 'true'
+    # On every push, and started by hand for the suite against the preview, which then tests the head it deployed. Not for
+    # one against a local build: the push's run, which the gate waited for, deployed the head already, and a deploy beside
+    # the local suite, in the same group, would cancel it.
+    if: needs.pr.outputs.deploy == 'true' && (github.event_name != 'workflow_dispatch' || needs.pr.outputs.mode == 'preview')
+    # The PR's preview and suite, one at a time (no run-wide group, see the top): a newer push's deploy, a gate's, or the
+    # PR's closing cancels what is under way here.
+    concurrency:
+      group: preview-${{ github.event.pull_request.number || inputs.pr }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     outputs:
       url: ${{ steps.deploy.outputs.deployment-url }}
@@ -189,6 +211,11 @@ jobs:
   e2e:
     needs: [pr, deploy]
     if: github.event_name == 'workflow_dispatch' && needs.pr.outputs.mode == 'preview'
+    # The PR's preview and suite, one at a time (no run-wide group, see the top): a newer push's deploy, a gate's, or the
+    # PR's closing cancels what is under way here.
+    concurrency:
+      group: preview-${{ github.event.pull_request.number || inputs.pr }}
+      cancel-in-progress: true
     uses: ./.github/workflows/e2e.yml
     # The called workflow's last job writes the gate's commit status, and a called job gets no more permissions than its
     # caller grants.
@@ -201,6 +228,11 @@ jobs:
   e2e-local:
     needs: pr
     if: github.event_name == 'workflow_dispatch' && needs.pr.outputs.mode == 'local'
+    # The PR's preview and suite, one at a time (no run-wide group, see the top): a newer push's deploy, a gate's, or the
+    # PR's closing cancels what is under way here.
+    concurrency:
+      group: preview-${{ github.event.pull_request.number || inputs.pr }}
+      cancel-in-progress: true
     uses: ./.github/workflows/e2e.yml
     permissions:
       contents: read
@@ -223,10 +255,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REF: ${{ github.event.pull_request.head.ref }}
         run: for w in ci.yml red-green.yml; do gh workflow run "$w" --repo "$GITHUB_REPOSITORY" --ref "$REF"; done
-  # Closing ends this run's suite, should one be under way (the concurrency group). The Worker stays until the day ends:
+  # Closing ends a gate's suite, should one be under way (the concurrency group). The Worker stays until the day ends:
   # preview-sweep.yml deletes it after midnight UTC.
   cleanup:
     if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    # The PR's preview and suite, one at a time (no run-wide group, see the top): a newer push's deploy, a gate's, or the
+    # PR's closing cancels what is under way here.
+    concurrency:
+      group: preview-${{ github.event.pull_request.number || inputs.pr }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
       # The room marker stays, so a reopened PR gets its old room link back.
