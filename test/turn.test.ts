@@ -161,24 +161,26 @@ describe('a friend who goes without leaving keeps her TURN users: only her Leave
   it('swept from a call that goes on (a phone in a pocket): nothing is revoked while she is away, however long', async () => {
     const secret = 'turn-pocket-room';
     const b = await attach(secret, 'Bob');
+    const c = await attach(secret, 'Carol'); // with the other, keeps the sweeps coming (SWEEP_FROM)
     const bobs = await join(b);
     const a = await attach(secret, 'Alice');
     await join(a);
     await silence(secret, a);
     expect(await runDurableObjectAlarm(await roomOf(secret))).toBe(true);
     expect(await a.closed).toBe(CLOSE_SILENT);
-    await sweepAfterKeeping(secret, ICE_TTL_SECONDS * 500, [b]); // half the TTL away
+    await sweepAfterKeeping(secret, ICE_TTL_SECONDS * 500, [b, c]); // half the TTL away
     expect(revoked()).toEqual([]);
     await leave(b); // nobody is left in the call that the Room can see, yet her phone may still be talking to his
     await vi.waitFor(() => expect(revoked()).toEqual([bobs]));
-    await sweepAfterKeeping(secret, ICE_TTL_SECONDS * 500, [b]);
+    await sweepAfterKeeping(secret, ICE_TTL_SECONDS * 500, [b, c]);
     expect(revoked()).toEqual([bobs]);
-    b.ws.close(1000);
+    b.ws.close(1000); c.ws.close(1000);
   });
 
   it('both friends swept (two phones talking with their screens off): the sweeps never revoke, and forget the users once they have run out', async () => {
     const secret = 'turn-both-swept-room';
-    const c = await attach(secret, 'Carol'); // keeps the sweeps coming
+    const c = await attach(secret, 'Carol'); // with Dave, keeps the sweeps coming (SWEEP_FROM)
+    const d = await attach(secret, 'Dave');
     const a = await attach(secret, 'Alice');
     await join(a);
     const b = await attach(secret, 'Bob');
@@ -189,12 +191,12 @@ describe('a friend who goes without leaving keeps her TURN users: only her Leave
     expect(await a.closed).toBe(CLOSE_SILENT);
     expect(await b.closed).toBe(CLOSE_SILENT);
     expect((await awayEntries(secret)).sort()).toEqual([`away:${a.you.publicKey}`, `away:${b.you.publicKey}`].sort());
-    await sweepAfterKeeping(secret, SILENT_TIMEOUT_MS, [c]);
+    await sweepAfterKeeping(secret, SILENT_TIMEOUT_MS, [c, d]);
     expect(revoked()).toEqual([]);
-    await sweepAfterKeeping(secret, PAST_THE_TTL_MS, [c]);
+    await sweepAfterKeeping(secret, PAST_THE_TTL_MS, [c, d]);
     expect(revoked()).toEqual([]);
     expect(await awayEntries(secret)).toEqual([]);
-    c.ws.close(1000);
+    c.ws.close(1000); d.ws.close(1000);
   });
 
   it('an entry of a shape the Room does not know (stored by an earlier build) is no entry, and the sweep forgets it', async () => {
@@ -208,6 +210,44 @@ describe('a friend who goes without leaving keeps her TURN users: only her Leave
     expect(revoked()).toEqual([]);
     expect(await awayEntries(secret)).toEqual([]);
     c.ws.close(1000);
+  });
+
+  it('a ghost dropped as the next friend comes in leaves her users dated from her last sign of life, not from the drop', async () => {
+    const secret = 'turn-ghost-alone-room';
+    const keys = await generateIdentityKeyPair();
+    const a = await attach(secret, 'Alice', keys);
+    await join(a);
+    await settled(a);
+    // Her line died long ago, alone in the room, and no sweep looked (SWEEP_FROM).
+    await runInDurableObject(await roomOf(secret), (_i, state) => {
+      for (const ws of state.getWebSockets()) {
+        const s = ws.deserializeAttachment() as SocketState | null;
+        if (s?.stage === 'attached' && s.person.publicKey === a.you.publicKey) ws.serializeAttachment({ ...s, attachedAt: Date.now() - PAST_THE_TTL_MS });
+      }
+    });
+    const b = await attach(secret, 'Bob');
+    expect(await a.closed).toBe(CLOSE_SILENT);
+    const back = await attach(secret, 'Alice', keys);
+    const second = await join(back);
+    await settled(back);
+    await leave(back);
+    await vi.waitFor(() => expect(revoked(), 'her first ran out hours ago: not taken over, not revoked').toEqual([second]));
+    back.ws.close(1000); b.ws.close(1000);
+  });
+
+  it('users that ran out while she was alone in the room, and no sweep forgot them, are not taken over by her next join', async () => {
+    const secret = 'turn-run-out-alone-room';
+    const keys = await generateIdentityKeyPair();
+    const a = await attach(secret, 'Alice', keys);
+    await runInDurableObject(await roomOf(secret), (_i, state) => {
+      state.storage.kv.put(`away:${a.you.publicKey}`, { users: ['turn-user-run-out'], since: Date.now() - PAST_THE_TTL_MS });
+    });
+    const mine = await join(a);
+    await settled(a);
+    await leave(a);
+    await vi.waitFor(() => expect(revoked()).toEqual([mine]));
+    expect(await awayEntries(secret), 'forgotten').toEqual([]);
+    a.ws.close(1000);
   });
 
   it('superseded by her own new socket (a reconnect the Room had not noticed): nothing is revoked until she leaves', async () => {
@@ -263,6 +303,7 @@ describe('a friend who goes without leaving keeps her TURN users: only her Leave
   it('a socket that errored counts as gone: its TURN user waits for her too, and no sweep revokes it', async () => {
     const secret = 'turn-error-room';
     const b = await attach(secret, 'Bob');
+    const c = await attach(secret, 'Carol'); // with the other, keeps the sweeps coming (SWEEP_FROM)
     const bobs = await join(b);
     const a = await attach(secret, 'Alice');
     await join(a);
@@ -271,12 +312,12 @@ describe('a friend who goes without leaving keeps her TURN users: only her Leave
       if (!ws) throw new Error("Alice's socket is not in the room");
       await instance.webSocketError(ws);
     });
-    await sweepAfterKeeping(secret, 0, [b]);
+    await sweepAfterKeeping(secret, 0, [b, c]);
     expect(revoked()).toEqual([]);
     await leave(b);
-    await sweepAfterKeeping(secret, 0, [b]);
+    await sweepAfterKeeping(secret, 0, [b, c]);
     expect(revoked()).toEqual([bobs]);
-    a.ws.close(1000); b.ws.close(1000);
+    a.ws.close(1000); b.ws.close(1000); c.ws.close(1000);
   });
 });
 

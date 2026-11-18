@@ -72,24 +72,27 @@ describe('the Room closes a socket once', () => {
     const back = await attach(secret, 'Alice', { keys: gone.keys }); // her app reconnected; the Room saw no close of the first
     expect(await gone.closed).toBe(CLOSE_SUPERSEDED);
     expect(closedTimes(old!.ws)).toBe(1);
+    const carol = await attach(secret, 'Carol'); // with Alice, keeps the sweeps coming (SWEEP_FROM)
 
     for (let i = 0; i < 3; i++) await sweep(secret);
-    expect((await roomSockets(secret)).map((s) => s.state?.stage).sort(), 'it is still there, closing: nobody answered').toEqual(['attached', 'closing']);
+    expect((await roomSockets(secret)).map((s) => s.state?.stage).sort(), 'it is still there, closing: nobody answered').toEqual(['attached', 'attached', 'closing']);
     expect(closedTimes(old!.ws), 'three sweeps later').toBe(1);
 
     // Her old connection ends at last, and the Room hears of its close: nothing to answer, it closed first.
     gone.ws.close(1000);
-    await vi.waitFor(async () => expect((await roomSockets(secret)).map((s) => s.state?.stage)).toEqual(['attached']));
+    await vi.waitFor(async () => expect((await roomSockets(secret)).map((s) => s.state?.stage)).toEqual(['attached', 'attached']));
     expect(closedTimes(old!.ws), 'after its close came').toBe(1);
-    back.ws.close(1000);
+    back.ws.close(1000); carol.ws.close(1000);
   });
 
   it('a socket dropped as silent is not closed again by the sweeps after', async () => {
     const secret = freshSecret();
     const silent = await attach(secret, 'Alice', { cutOff: true });
     const here = await attach(secret, 'Bob');
+    const carol = await attach(secret, 'Carol');
     const old = (await roomSockets(secret)).find((s) => s.state?.stage === 'attached' && s.state.person.publicKey === silent.you.publicKey)!;
-    // Alice has shown no sign of life for too long; Bob's socket is as new as it is, so the sweeps go on for him.
+    // Alice has shown no sign of life for too long; Bob's and Carol's sockets are as new as they are, so the sweeps go on
+    // for the two of them (SWEEP_FROM).
     old.ws.serializeAttachment({ ...(old.state as Extract<SocketState, { stage: 'attached' }>), attachedAt: Date.now() - SILENT_TIMEOUT_MS - 1000 });
     await sweep(secret);
     expect(await silent.closed).toBe(CLOSE_SILENT);
@@ -97,12 +100,13 @@ describe('the Room closes a socket once', () => {
 
     for (let i = 0; i < 3; i++) await sweep(secret);
     expect(closedTimes(old.ws), 'three sweeps later').toBe(1);
-    here.ws.close(1000);
+    here.ws.close(1000); carol.ws.close(1000);
   });
 
   it('a socket that never answered its challenge is closed by one sweep, not by every one after', async () => {
     const secret = freshSecret();
     const here = await attach(secret, 'Bob');
+    const carol = await attach(secret, 'Carol'); // with Bob, keeps the sweeps coming (SWEEP_FROM)
     const stranger = await open(secret, true);
     const old = (await roomSockets(secret)).find((s) => s.state?.stage === 'challenge')!;
     await sweep(secret, CHALLENGE_TIMEOUT_MS + 1);
@@ -111,12 +115,13 @@ describe('the Room closes a socket once', () => {
 
     for (let i = 0; i < 3; i++) await sweep(secret, CHALLENGE_TIMEOUT_MS + 1);
     expect(closedTimes(old.ws), 'three sweeps later').toBe(1);
-    here.ws.close(1000);
+    here.ws.close(1000); carol.ws.close(1000);
   });
 
   it('a socket closed for its wrong answers is not closed again by a sweep', async () => {
     const secret = freshSecret();
     const here = await attach(secret, 'Bob');
+    const carol = await attach(secret, 'Carol'); // with Bob, keeps the sweeps coming (SWEEP_FROM)
     const stranger = await open(secret, true);
     const old = (await roomSockets(secret)).find((s) => s.state?.stage === 'challenge')!;
     for (let i = 0; i < 3; i++) stranger.ws.send('garbage');
@@ -125,7 +130,7 @@ describe('the Room closes a socket once', () => {
 
     for (let i = 0; i < 3; i++) await sweep(secret, CHALLENGE_TIMEOUT_MS + 1);
     expect(closedTimes(old.ws), 'three sweeps later').toBe(1);
-    here.ws.close(1000);
+    here.ws.close(1000); carol.ws.close(1000);
   });
 
   it('a socket whose TURN users cannot be kept is closed all the same: one marked closing is one that was closed', async () => {
@@ -143,7 +148,10 @@ describe('the Room closes a socket once', () => {
       const put = kv.put;
       kv.put = () => { kv.put = put; throw new Error('Exceeded allowed rows written in Durable Objects free tier.'); };
     });
-    await expect(runDurableObjectAlarm(await stubOf(secret)), 'the write was tried, and failed').rejects.toThrow('rows written');
+    const logged = vi.spyOn(console, 'log');
+    expect(await runDurableObjectAlarm(await stubOf(secret)), 'a sweep was due').toBe(true);
+    expect(logged, 'the write was tried, and failed').toHaveBeenCalledWith('silent dropped, its TURN users not kept', expect.stringContaining('rows written'));
+    logged.mockRestore();
     expect(await silent.closed).toBe(CLOSE_SILENT);
     here.ws.close(1000);
   });

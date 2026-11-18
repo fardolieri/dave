@@ -147,7 +147,7 @@ describe('sweep', () => {
     const a = await attach('Alice');
     await a.next((m) => m.t === 'presence');
     const stub = env.ROOM.get(env.ROOM.idFromName(await roomIdOf(SECRET)));
-    expect(await runDurableObjectAlarm(stub)).toBe(true); // an alarm is always pending while sockets exist
+    expect(await runDurableObjectAlarm(stub)).toBe(true); // the challenge's, set as the socket opened
     a.ws.send('{"t":"ping"}');
     expect((await a.next((m) => m.t === 'pong')).t).toBe('pong'); // still open
     a.ws.close(1000);

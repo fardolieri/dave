@@ -10,7 +10,16 @@ import { fromBase64Url, toBase64Url } from '../core/identity';
 
 /** A socket whose last sign of life is older than this is dropped by the sweep (spec §4). */
 export const SILENT_TIMEOUT_MS = 90_000;
+/** How often the sweep looks for silent sockets, while at least SWEEP_FROM friends are in the room (`alarm`). */
 export const SWEEP_INTERVAL_MS = 60_000;
+/**
+ * The sweep runs while this many sockets are attached, not fewer: a socket gone silent is dropped so that the friends
+ * still there see it go, and a friend alone has nobody to tell. Every sweep is a request to the Room, and a friend with
+ * the app open sits alone in most rooms of two (ADR 0011): on 2026-11-17 the sweep was 10,600 of the live site's 13,000
+ * requests to Durable Objects, 200 to 560 a day in rooms that saw 13 to 80 frames (ticket 89). A ghost left alone is
+ * dropped as the next friend comes in, before she is told who is there (`webSocketMessage`).
+ */
+export const SWEEP_FROM = 2;
 export const CLOSE_SILENT = 4003;
 /** An attached socket the runtime reported an error on is closed with this, should it still reach the client (it reconnects). */
 export const CLOSE_ERRORED = 4005;
@@ -30,6 +39,8 @@ const AWAY_PREFIX = 'away:';
  */
 const ROOM_ID = 'roomId';
 type Away = { users: string[]; since: number };
+/** Whether the TURN users of an entry have run out by `now`: ICE_TTL_SECONDS after the friend's last sign of life. */
+const runOut = (away: Away, now: number): boolean => now - away.since >= ICE_TTL_SECONDS * 1000;
 /** An entry as stored, or null for one of a shape this build does not know (an earlier build's): no entry. */
 const awayOf = (v: unknown): Away | null => {
   const a = v as Partial<Away> | null | undefined;
@@ -77,6 +88,15 @@ export class Room extends DurableObject<Env> {
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const state = ws.deserializeAttachment() as SocketState;
+    // An answer to the challenge may let a friend in: whoever went silent meanwhile goes first, so that she is not told
+    // of a ghost. In a room nobody else was in, no sweep looked (SWEEP_FROM); with the sweep running, it finds one gone
+    // silent since the last sweep, if any. Never at the cost of her answer: a write that fails here (letGo, the free
+    // plan's rows used up) loses the ghost's TURN users, which then run out unrevoked; she is closed all the same.
+    if (state.stage === 'challenge') {
+      const { dropped, failed } = this.dropSilent(Date.now());
+      if (dropped) this.broadcastPresence();
+      if (failed) console.log('silent dropped, its TURN users not kept', JSON.stringify({ reason: String(failed) }));
+    }
     const others = this.ctx.getWebSockets().filter((s) => s !== ws).map((s) => s.deserializeAttachment() as SocketState | null);
     // The verifier is only needed to check an answer; attached sockets never touch storage.
     const authKey = state.stage === 'challenge' ? (await this.ctx.storage.get<string>(AUTH_KEY)) ?? null : null;
@@ -137,39 +157,61 @@ export class Room extends DurableObject<Env> {
   }
 
   /**
-   * Sweep: close unanswered challenges after their window and attached sockets that
-   * have shown no sign of life for SILENT_TIMEOUT_MS. Runs while any socket exists,
-   * so ghost visitors clear within about 90 s (spec §4, amended 2026-09-06).
+   * Sweep: close unanswered challenges after their window and attached sockets that have shown no sign of life for
+   * SILENT_TIMEOUT_MS. Runs while a challenge is open, and while SWEEP_FROM friends are in the room, so a ghost clears
+   * within about 90 s for those who see it (spec §4, amended 2026-09-06), and before a friend who comes in later sees it.
    */
   async alarm(): Promise<void> {
     const now = Date.now();
-    let dropped = false;
-    let attachedLeft = 0;
     let challengesLeft = 0;
     for (const ws of this.ctx.getWebSockets()) {
       const state = ws.deserializeAttachment() as SocketState | null;
-      if (!state) continue;
-      if (state.stage === 'challenge') {
-        if (challengeExpired(state, now)) this.end(ws, CLOSE_AUTH_FAILED, 'challenge timed out');
-        else challengesLeft++;
-        continue;
-      }
-      if (state.stage === 'closing') continue; // closed already, and never twice (`end`): it goes when its client answers, or its connection ends
-      const lastPing = this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? state.attachedAt;
-      if (now - lastPing >= SILENT_TIMEOUT_MS) {
-        this.end(ws, CLOSE_SILENT, 'no sign of life'); // out of presence now, whenever the runtime lets go
-        dropped = true;
-      } else attachedLeft++;
+      if (state?.stage !== 'challenge') continue;
+      if (challengeExpired(state, now)) this.end(ws, CLOSE_AUTH_FAILED, 'challenge timed out');
+      else challengesLeft++;
     }
+    const { dropped, attachedLeft, failed } = this.dropSilent(now);
     if (dropped) this.broadcastPresence();
+    // Not thrown: a retry of the alarm finds her closing already and cannot keep her TURN users either.
+    if (failed) console.log('silent dropped, its TURN users not kept', JSON.stringify({ reason: String(failed) }));
     // TURN users left behind that have run out are forgotten, not revoked; so is an entry this build cannot read.
     for (const [key, value] of [...this.ctx.storage.kv.list({ prefix: AWAY_PREFIX })]) {
       const away = awayOf(value);
-      if (!away || now - away.since >= ICE_TTL_SECONDS * 1000) this.ctx.storage.kv.delete(key);
+      if (!away || runOut(away, now)) this.ctx.storage.kv.delete(key);
     }
-    // Pending challenges need the short interval; attached sockets only the long one.
+    // Pending challenges need the short interval; friends together only the long one; a friend alone none.
     if (challengesLeft > 0) await this.scheduleSweep(CHALLENGE_TIMEOUT_MS);
-    else if (attachedLeft > 0) await this.scheduleSweep(SWEEP_INTERVAL_MS);
+    else if (attachedLeft >= SWEEP_FROM) await this.scheduleSweep(SWEEP_INTERVAL_MS);
+  }
+
+  /** How many sockets are in presence. */
+  private attachedCount(): number {
+    return this.ctx.getWebSockets().filter((ws) => this.personOf(ws)).length;
+  }
+
+  /**
+   * Closes the attached sockets silent for SILENT_TIMEOUT_MS, and says whether it closed any and how many are left. A
+   * socket whose TURN users could not be kept (letGo's write failing, the free plan's rows used up) is closed all the
+   * same, and so are the others: the failure is handed back, not thrown, so that the friends still there are told.
+   */
+  private dropSilent(now: number): { dropped: boolean; attachedLeft: number; failed?: unknown } {
+    let dropped = false;
+    let attachedLeft = 0;
+    let failed: unknown;
+    for (const ws of this.ctx.getWebSockets()) {
+      const state = ws.deserializeAttachment() as SocketState | null;
+      // A challenge is the alarm's; a socket closing is closed already, and never twice (`end`): it goes when its client
+      // answers, or its connection ends.
+      if (state?.stage !== 'attached') continue;
+      const lastPing = this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? state.attachedAt;
+      if (now - lastPing >= SILENT_TIMEOUT_MS) {
+        // Out of presence now, whenever the runtime lets go. Her TURN users wait from her last sign of life: a friend
+        // alone was swept by no one, and is dropped only as the next comes in, maybe hours on.
+        try { this.end(ws, CLOSE_SILENT, 'no sign of life', lastPing); } catch (e) { failed ??= e; }
+        dropped = true;
+      } else attachedLeft++;
+    }
+    return { dropped, attachedLeft, failed };
   }
 
   private async scheduleSweep(inMs: number): Promise<void> {
@@ -187,6 +229,9 @@ export class Room extends DurableObject<Env> {
     const superseded = outcome.supersede ? this.supersede(ws, outcome.supersede) : [];
     if (outcome.takeOverTurn) this.takeOverTurn(ws, outcome.takeOverTurn);
     if (outcome.presenceChanged) this.broadcastPresence(...superseded);
+    // A friend let in (an attach supersedes her older sockets, if any): friends together from now on start the sweep,
+    // whatever alarm happens to be pending (SWEEP_FROM).
+    if (outcome.supersede && this.attachedCount() >= SWEEP_FROM) await this.scheduleSweep(SWEEP_INTERVAL_MS);
     for (const user of outcome.revokeTurn ?? []) this.ctx.waitUntil(revokeIce(this.env, user));
     if (outcome.close) this.end(ws, outcome.close.code, outcome.close.reason);
     if (outcome.rejected) logRejected(this.env, this.ctx, outcome.rejected);
@@ -235,25 +280,25 @@ export class Room extends DurableObject<Env> {
    * again kept the Rooms awake until the account's day of Durable Object time was used up (the Workers Free plan,
    * core/relayusage.ts), and no room let anyone in until midnight UTC.
    */
-  private end(ws: WebSocket, code: number, reason: string): void {
+  private end(ws: WebSocket, code: number, reason: string, lastSeen = Date.now()): void {
     const state = ws.deserializeAttachment() as SocketState | null;
     if (state?.stage === 'closing') return;
     // The mark before the close, while the attachment is surely writable; the close before anything that can fail
     // (`letGo` writes to storage), so that a socket marked closing is one that was closed.
     ws.serializeAttachment({ stage: 'closing', ...(state?.stage === 'attached' ? { attachedAt: state.attachedAt } : state?.stage === 'challenge' ? { since: state.since } : {}) } satisfies SocketState);
     try { ws.close(code, reason); } catch { /* already gone */ }
-    if (state?.stage === 'attached') this.letGo(state);
+    if (state?.stage === 'attached') this.letGo(state, lastSeen);
   }
 
   /**
    * A socket out of presence for good (`end`): its TURN users wait for this friend's next join (AWAY_PREFIX), since her
    * peer connections may outlive it.
    */
-  private letGo(state: Extract<SocketState, { stage: 'attached' }>): void {
+  private letGo(state: Extract<SocketState, { stage: 'attached' }>, since: number): void {
     if (!state.turnUsers?.length) return;
     const key = AWAY_PREFIX + state.person.publicKey;
     const users = [...(awayOf(this.ctx.storage.kv.get(key))?.users ?? []), ...state.turnUsers].slice(-MAX_TURN_USERS);
-    this.ctx.storage.kv.put<Away>(key, { users, since: Date.now() });
+    this.ctx.storage.kv.put<Away>(key, { users, since });
   }
 
   /**
@@ -266,6 +311,8 @@ export class Room extends DurableObject<Env> {
     const away = awayOf(this.ctx.storage.kv.get(key));
     if (state?.stage !== 'attached' || !away) return;
     this.ctx.storage.kv.delete(key);
+    // Run out, and not yet forgotten: no sweep looks while a friend is alone in the room (SWEEP_FROM).
+    if (runOut(away, Date.now())) return;
     ws.serializeAttachment({ ...state, turnUsers: [...away.users, ...(state.turnUsers ?? [])].slice(-MAX_TURN_USERS) });
   }
 
