@@ -22,6 +22,7 @@ import { windowFocused } from './focus';
 import { contactOf, isKnown, markKnown, setNickname } from './contacts';
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, identityOf, normaliseName, type Identity, type Person } from '../core/protocol';
 import { displayName, formatAgo, knownAgo } from '../core/names';
+import { SHARE_BUDGET_MAX_MBPS, SHARE_CEILING_MAX_MBPS } from '../core/mesh';
 import { DEFAULT_VOICE_THRESHOLD, LOW_LATENCY_MS, MAX_VOICE_THRESHOLD, MAX_VOLUME, mbpsToBps, processingIsDefault, type AudioSettings, type Degradation, type FrameRate, type MaxHeight } from '../core/settings';
 import { formatBitrate, formatStream } from '../core/format';
 import { FREE_PLAN, RELAY_SAVE_FROM, SIDE_SHARES, elapsedOf, fillOf, formatBytes, formatCount, formatPercent, monthSoFar, sideOf, type Fill, type FreePlanToday, type RelayUsage, type Side } from '../core/relayusage';
@@ -1453,7 +1454,8 @@ type Call = ReturnType<typeof createCall>;
 
 function SharePanel(props: { call: Call }) {
   const s = () => props.call.shareSettings();
-  const mbps = (bps: number) => (bps / 1_000_000).toFixed(1);
+  // "200", not "200.0": the most the budget takes still fits the field, in the themes with wide digits too
+  const mbps = (bps: number) => String(Math.round(bps / 100_000) / 10);
   return (
     <div class="panel">
       <label>Frame rate <select class="picker" value={String(s().frameRate)} onChange={(e) => props.call.changeShare({ frameRate: Number(e.currentTarget.value) as FrameRate })}>
@@ -1462,8 +1464,8 @@ function SharePanel(props: { call: Call }) {
         <option value="0">native</option><option value="1080">up to 1080p</option><option value="720">up to 720p</option></select></label>
       <label>Under pressure keep <select class="picker" value={s().degradation} onChange={(e) => props.call.changeShare({ degradation: e.currentTarget.value as Degradation })}>
         <option value="maintain-resolution">resolution</option><option value="maintain-framerate">frame rate</option><option value="balanced">a balance</option></select></label>
-      <label>Upload budget <input type="number" min="1" max="50" step="0.5" value={mbps(s().budgetBps)} onChange={(e) => props.call.changeShare({ budgetBps: mbpsToBps(e.currentTarget.value, s().budgetBps, 1, 50) })} /> Mbps total</label>
-      <label>Per viewer up to <input type="number" min="0.5" max="20" step="0.5" value={mbps(s().ceilingBps)} onChange={(e) => props.call.changeShare({ ceilingBps: mbpsToBps(e.currentTarget.value, s().ceilingBps, 0.5, 20) })} /> Mbps</label>
+      <label>Upload budget <input type="number" min="1" max={SHARE_BUDGET_MAX_MBPS} step="0.5" value={mbps(s().budgetBps)} onChange={(e) => props.call.changeShare({ budgetBps: mbpsToBps(e.currentTarget.value, s().budgetBps, 1, SHARE_BUDGET_MAX_MBPS) })} /> Mbps total</label>
+      <label>Per viewer up to <input type="number" min="0.5" max={SHARE_CEILING_MAX_MBPS} step="0.5" value={mbps(s().ceilingBps)} onChange={(e) => props.call.changeShare({ ceilingBps: mbpsToBps(e.currentTarget.value, s().ceilingBps, 0.5, SHARE_CEILING_MAX_MBPS) })} /> Mbps</label>
     </div>
   );
 }

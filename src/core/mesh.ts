@@ -47,6 +47,13 @@ export const restartBackoff = (n: number): number => ICE_RESTART_BACKOFF_MS[Math
 export const SHARE_BUDGET_BPS = 20_000_000;
 export const SHARE_CEILING_BPS = 6_000_000;
 export const SHARE_FLOOR_BPS = 1_000_000;
+/**
+ * The most the share panel lets a sharer type in, in megabits per second: a fast fibre line's upload in total, and about
+ * what one copy of a 4K screen at 60 fps can use. They are ceilings for maxBitrate; congestion control sends less on a
+ * line that cannot carry it.
+ */
+export const SHARE_BUDGET_MAX_MBPS = 200;
+export const SHARE_CEILING_MAX_MBPS = 100;
 
 export function perViewerBitrate(activeViewers: number, budget = SHARE_BUDGET_BPS, ceiling = SHARE_CEILING_BPS, floor = SHARE_FLOOR_BPS): number {
   if (activeViewers <= 0) return ceiling;

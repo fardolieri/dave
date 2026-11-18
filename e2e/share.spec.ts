@@ -350,6 +350,16 @@ test('share settings reach the capture and the encoder live', async ({ crowd, br
   await expect.poll(async () => (await alice.hook<{ settings: { frameRate: number; maxHeight: number } }>('share')).settings).toMatchObject({ frameRate: 15, maxHeight: 720 });
   await expect.poll(async () => (await alice.hook<{ senders: Array<{ name: string; active: boolean; maxFramerate?: number }> }>('share')).senders.find((s) => s.name === 'Bob')).toMatchObject({ active: true, maxFramerate: 15 });
   await expect.poll(async () => (await alice.hook<{ track: { height?: number } | null }>('share')).track?.height ?? 9999).toBeLessThanOrEqual(720);
+  // The highest the panel takes: one viewer gets the whole per-viewer ceiling, shown without a trailing ".0".
+  const budget = alice.page.locator('.panel label', { hasText: /^Upload budget/ }).locator('input');
+  const ceiling = alice.page.locator('.panel label', { hasText: /^Per viewer up to/ }).locator('input');
+  await budget.fill('200');
+  await budget.press('Tab');
+  await ceiling.fill('100');
+  await ceiling.press('Tab');
+  await expect.poll(async () => (await alice.hook<{ senders: Array<{ name: string; maxBitrate?: number }> }>('share')).senders.find((s) => s.name === 'Bob')?.maxBitrate).toBe(100_000_000);
+  await expect(budget).toHaveValue('200');
+  await expect(ceiling).toHaveValue('100');
 });
 
 test('past 80 % of the relay this month a share keeps off it, voice does not, and it goes again once that is over', async ({ crowd }) => {
