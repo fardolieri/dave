@@ -61,6 +61,34 @@ test('a picture reaches a friend who is not in the call, inline, with the same b
   await expect(bob.page.locator('dialog.viewer')).not.toBeVisible();
 });
 
+test('the arrow keys step through the pictures of the log in the viewer, and stop at either end', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  await alice.attach({ name: 'one.png', mimeType: 'image/png', buffer: png(100, 80) });
+  await alice.say('between them');
+  await alice.attach({ name: 'two.png', mimeType: 'image/png', buffer: png(200, 80) });
+  await alice.attach({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('not a picture') });
+  await alice.attach({ name: 'three.png', mimeType: 'image/png', buffer: png(300, 80) });
+  const inLog = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
+  await expect(inLog).toHaveCount(3, { timeout: 30_000 });
+
+  const shown = bob.page.locator('dialog.viewer img');
+  await inLog.nth(1).click();
+  await expect(shown).toHaveAttribute('alt', 'two.png');
+  await bob.page.keyboard.press('ArrowRight');
+  await expect(shown).toHaveAttribute('alt', 'three.png');
+  await expect.poll(() => shown.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(300);
+  await bob.page.keyboard.press('ArrowRight');
+  await expect(shown).toHaveAttribute('alt', 'three.png');
+  for (const name of ['two.png', 'one.png', 'one.png']) {
+    await bob.page.keyboard.press('ArrowLeft');
+    await expect(shown).toHaveAttribute('alt', name);
+  }
+  await expect(shown).toHaveCount(1);
+  await bob.page.keyboard.press('Escape');
+  await expect(bob.page.locator('dialog.viewer')).not.toBeVisible();
+});
+
 test('a video goes big over the page on its button and back, playing on, the same video, the chat where it was', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');

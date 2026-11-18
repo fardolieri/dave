@@ -2732,12 +2732,34 @@ function ChatLog(props: {
 }) {
   let log: HTMLDivElement | undefined;
   let viewer: HTMLDialogElement | undefined;
-  const [viewing, setViewing] = createSignal<{ url: string; name: string; type: string } | null>(null);
-  const view = (url: string, name: string, type: string) => { setViewing({ url, name, type }); if (viewer && !viewer.open) viewer.showModal(); };
+  const [viewing, setViewing] = createSignal<Viewed | null>(null);
+  const view = (v: Viewed) => { setViewing(v); if (viewer && !viewer.open) viewer.showModal(); };
+  // The arrow keys step from the picture in the viewer to the one before or after it in the log, among those whose bytes
+  // are here. Found by its line: a picture of mine viewed while not sent yet (`pending:<id>`) is the line that came back
+  // for it (`<key>:<id>`), not by its bytes, which an earlier copy of the same file shares.
+  const step = (by: -1 | 1) => {
+    const now = viewing();
+    if (!now) return;
+    const shown = lines().flatMap((l) => {
+      if (l.kind !== 'file' || l.file.youtube || inlineKind(l.file.type) !== 'image') return [];
+      const a = props.attachment(l.file.hash);
+      return a?.status === 'ready' ? [{ id: l.id, url: a.url, name: l.file.name, type: l.file.type }] : [];
+    });
+    const sent = now.id.startsWith('pending:') ? `:${now.id.slice('pending:'.length)}` : null;
+    const at = shown.findIndex((p) => p.id === now.id || (sent !== null && p.id.endsWith(sent)));
+    const next = at < 0 ? undefined : shown[at + by];
+    if (next) setViewing(next);
+  };
+  const onViewerKey = (e: KeyboardEvent) => {
+    const by = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+    if (!by || e.altKey || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    step(by);
+  };
   // The tooltip (the time, or that it is not sent yet) is on the text or the attachment, not on the whole row.
   const file = (m: Extract<ChatLine, { kind: 'file' }>, title: string | undefined) => (
     <FileView file={m.file} title={title} attachment={props.attachment(m.file.hash)} holder={props.holder ? props.holder(m.from) : props.label(m.from).shown}
-              onPull={() => props.onPull(m.file.hash)} onCancel={() => props.onCancel(m.file.hash)} onView={view}
+              onPull={() => props.onPull(m.file.hash)} onCancel={() => props.onCancel(m.file.hash)} onView={(url, name, type) => view({ id: m.id, url, name, type })}
               party={m.file.youtube ? props.party : undefined} />
   );
   // How many older lines the reader unfolded, and in which opening of the room: OLDER_STEP more each time, so four weeks
@@ -2867,12 +2889,15 @@ function ChatLog(props: {
         </For>
       </div>
       <Show when={unseen()}><button class="chat-new" onClick={jump} title="Scroll to the newest message">new messages ↓</button></Show>
-      <dialog class="viewer" ref={viewer} onClick={() => viewer?.close()} onClose={() => setViewing(null)}>
+      <dialog class="viewer" ref={viewer} onClick={() => viewer?.close()} onClose={() => setViewing(null)} onKeyDown={onViewerKey}>
         <Show when={viewing()} keyed>{(v) => <Picture src={v.url} type={v.type} alt={v.name} />}</Show>
       </dialog>
     </div>
   );
 }
+
+/** The picture in a log's viewer: its line, and what shows it. */
+type Viewed = { id: string; url: string; name: string; type: string };
 
 /** The longest side of a picture or a video in the chat, in CSS pixels; a portrait one is as tall, and narrower. */
 const MEDIA_SIDE = 320;
