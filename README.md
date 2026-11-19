@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-19T00:30 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-19T07:47 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 25, branch 185, preview 191.
+Runs recorded: nightly 25, branch 186, preview 191.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -84,4 +84,3 @@ Runs recorded: nightly 25, branch 185, preview 191.
 | 1 | 1 | preview 1 | resilience.spec.ts › an offer stuck for a friend who then reloads leaves their new connection alone (the impolite side reloads, the first to join) | console warnings, errors or exceptions nobody expected: Alice: error: WebSocket connection to 'wss://dave-pr-89.danielmittereder.workers.dev/ws/HHCfZdKJkVdotnnh | [10-21](https://github.com/fardolieri/dave/actions/runs/39621925492/attempts/1) | [10-21](https://github.com/fardolieri/dave/actions/runs/39621925492/attempts/1) | 60 |
 | 1 | 1 | preview 1 | attachment.spec.ts › a file that does not show inline waits for a click, then saves under its own name | console warnings, errors or exceptions nobody expected: Alice: error: Failed to load resource: the server responded with a status of 502 () | [10-21](https://github.com/fardolieri/dave/actions/runs/39592655843/attempts/1) | [10-21](https://github.com/fardolieri/dave/actions/runs/39592655843/attempts/1) |  |
 | 1 | 1 | preview 1 | text.spec.ts › regression: a text not yet back from the Room survives a reload, shows once as waiting, and goes out with its id | console warnings, errors or exceptions nobody expected: Bob: warning: [JavaScript Warning: "“danielmittereder.workers.dev” has been classified as a bounce track | [10-21](https://github.com/fardolieri/dave/actions/runs/39564621634/attempts/1) | [10-21](https://github.com/fardolieri/dave/actions/runs/39564621634/attempts/1) | 80 |
-| 1 | 1 | preview 1 | resilience.spec.ts › a friend whose server socket drops and comes back while the voice stays up plays no leave or join cue | expect(locator).toBeVisible() failed | [10-20](https://github.com/fardolieri/dave/actions/runs/39351641633/attempts/1) | [10-20](https://github.com/fardolieri/dave/actions/runs/39351641633/attempts/1) |  |
