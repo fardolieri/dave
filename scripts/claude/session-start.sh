@@ -4,6 +4,18 @@
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "${CLAUDE_PROJECT_DIR:-$here/../..}" 2>/dev/null || exit 0
 
+# A new worktree has no node_modules, and one that sat through a dependency change has old ones: the first typecheck then
+# died of "tsc: not found" (9 sessions in the week to 2026-11-19). Installed here, beside the questions below: 10 s from
+# pnpm's store, 2 s with nothing to do (measured 2026-11-19). The briefing says how it went. A node_modules that is a
+# link is another checkout's (the night shift's worktree has the main checkout's, scripts/night-shift/run.sh): not ours
+# to install into.
+deps=
+if [ -f pnpm-lock.yaml ] && [ ! -L node_modules ] && { [ ! -e node_modules/.modules.yaml ] || [ pnpm-lock.yaml -nt node_modules/.modules.yaml ]; }; then
+  deps=$(mktemp)
+  # Its own verdict in a file: the `wait` below, for the questions asked of GitHub, takes this one's exit status with it.
+  { timeout 40 pnpm install --frozen-lockfile --prefer-offline > /dev/null 2>&1; echo $? > "$deps"; } &
+fi
+
 timeout 10 git fetch -q origin master 2>/dev/null
 branch=$(git branch --show-current 2>/dev/null)
 behind=$(git rev-list --count HEAD..origin/master 2>/dev/null)
@@ -93,6 +105,14 @@ if [ -n "$token" ]; then
       *) echo "- Deploy of $live: ${deploy:-unknown}." ;;
     esac
   fi
+fi
+if [ -n "$deps" ]; then
+  wait
+  # Not what pnpm said: its last line is as often a hint for another case as the reason.
+  if [ "$(cat "$deps")" = 0 ]; then echo "- Dependencies installed: node_modules was missing, or older than pnpm-lock.yaml."
+  else echo "- WARNING: dependencies are missing or old, and 'pnpm install --frozen-lockfile' failed (exit $(cat "$deps"); 124: not done in 40 s). Run it to see why, before a typecheck or a test."
+  fi
+  rm -f "$deps"
 fi
 # Texts a friend's app refused (ADR 0005): a server that tampers, or an app that seals wrong. Urgent either way, so it is
 # asked of PostHog here and not left to a dashboard nobody opens. The live site, the last 7 days, test browsers left out.
