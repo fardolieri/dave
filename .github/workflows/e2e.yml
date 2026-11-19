@@ -30,7 +30,7 @@ name: e2e
 # for that exact commit, and the @local tests against a local build of it, with no flaky test (playwright.config.ts fails
 # flakes there). A ruleset on master requires it, so
 # GitHub refuses to move master to a commit that has not passed (AGENTS.md). A flake turns it red on purpose; the failed
-# jobs may be re-run once after clearing the change (AGENTS.md, Flakes), and the re-run's verdict replaces the first. Each
+# jobs may be re-run once after clearing the change (docs/agents/flakes.md), and the re-run's verdict replaces the first. Each
 # attempt keeps its artifacts.
 on:
   push:

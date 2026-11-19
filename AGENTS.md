@@ -9,10 +9,14 @@ read on a small screen by someone who did not watch you work: lead with the outc
 
 ## Before any work
 
-1. `git checkout master && git pull --ff-only`. The owner lands work from other machines; the clone here is often behind.
-2. Work on a branch (`<topic>/<slug>`), never on master directly: master takes only commits whose PR's gate passed.
-3. Another agent session may be running in this repo at the same time (the session-start hook says so). Stay on your branch,
-   and fetch before every push: master moves under you.
+1. Read the session briefing (`scripts/claude/session-start.sh`): a warning there comes before new work. What stands
+   behind most of them: `docs/agents/watchers.md`.
+2. `git fetch origin` and start from `origin/master`: a new branch (`git switch -c <topic>/<slug> origin/master`), or the
+   one your harness made, rebased onto it. Compare, diff and review against `origin/master` too: the local `master` is
+   often behind, and in a worktree it is another checkout's.
+3. Work on that branch, never on master directly: master takes only commits whose PR's gate passed.
+4. Another agent session may be running in this repo at the same time (the briefing says so). Stay on your branch, and
+   fetch before every push: master moves under you.
 
 ## Testing: GitHub Actions is the receipt
 
@@ -28,18 +32,13 @@ workflows, not master's). Push a branch, open the PR and read its results.
   writes the gate's status, and either lets the PR land. Never set that status by hand. A gate whose shards fail with
   "Today's server time is used up" (4007) ran out of the previews' share under way: start it again rather than
   re-running its failed jobs, which would go to the preview again.
-
-- To reproduce a bug: write the failing test, commit it ("Regression test: …"), commit the fix ("Problem report: …"), and
-  push both together. `red-green.yml` runs the test against the app from before the fix and must see it fail (the "red,
-  then green" receipt); the rest of CI must be green. Do not push the test alone just to watch it go red: every red run
-  emails the owner, and these were 38 of the last 100 failed runs.
-- Push the test alone first only when `red-green.yml` cannot show the bug: it runs browser tests in Chromium only, against
-  a local build, once. A bug that needs Firefox or real Cloudflare goes red alone first, through the gate started on its
-  PR with `-f mode=preview` (for Firefox alone, `gh workflow run e2e.yml --ref <branch>` also does); say why in the
-  report. Same-ref pushes cancel each other, so wait for the red run to finish first.
-- Watch CI with one waiting loop, not several background watchers.
-- Leave nothing running at the end of a turn (vite, workerd, chrome, firefox, playwright). The stop hook checks this
-  session's, and leftovers no session runs any more; another session's are its own (`scripts/claude/heavy.sh`).
+- **A draft PR gets no verdict.** Its pushes end green with `ci.yml` and `red-green.yml` skipped (`draft-gate.yml`);
+  marking it ready runs both on its head. `night-shift/*` branches always run them.
+- **Wait for CI the way your harness says.** With no word from it, one waiting loop, never several watchers.
+- **A flaky test is a bug in the app or in the test, never noise.** A test that went red where the change explains
+  nothing (the 4007 above is explained): read `docs/agents/flakes.md` before any re-run. It allows one, and says when.
+- Leave nothing running at the end of a turn (vite, workerd, chrome, firefox, playwright). The stop hook holds a Claude
+  session to it; another session's are its own.
 - Prefer one branch worked on in sequence over many in parallel: CI's 20 runners are the shared bottleneck.
 
 ## Definition of done: the verification ladder
@@ -58,15 +57,19 @@ Rules:
 - **Say what you did not verify.** "Verified: rung 2. Not verified: on a phone." is a good report. A check on a copy, a
   mock, a modeled timeline or a test page is not the real thing: name it as what it is.
 - **"Verify it works" from the owner means rung 2 at least, and rung 4 for anything visual.**
-- **Bug fixes start red.** A problem report gets a regression test that fails without the fix (in CI) before the fix lands.
-  Commit the test first ("Regression test: …"), then the fix ("Problem report: …"). The `red-green` job (`red-green.yml`)
-  checks this on every branch: it runs the tests of those two commits against the app from before the branch and fails a
-  "Problem report:" commit with no test that fails there, unless the commit's body has a line "No regression test: <reason>"
-  (for bugs no test can reach). Put any hook or helper the test needs (`src/client/hooks.ts`, `e2e/fixtures.ts`) in the
-  "Regression test:" commit, so the test fails on the bug and not on a missing hook: the job calls that inconclusive.
-- **Review before the first push to master**, not after: an independent review subagent (or `/code-review`) on the diff.
-  Past reviews found real bugs every time they ran. A real finding is a concrete sequence that breaks something; a nit
-  is not one.
+- **Bug fixes start red.** A problem report gets a regression test that fails without the fix, in CI. Commit the test
+  ("Regression test: …") with any hook or helper it needs (`src/client/hooks.ts`, `e2e/fixtures.ts`), then the fix
+  ("Problem report: …"), and push both together: a test pushed alone goes red, and every red run emails the owner.
+  `red-green.yml` runs the tests of those two commits against the app from before the branch, and the rest of CI must
+  be green. It fails a "Problem report:" commit with no test that fails there, unless the commit's body has a line "No
+  regression test: <reason>" (for bugs no test can reach), and calls a test that fails on a missing hook inconclusive.
+  Push the test alone first only when `red-green.yml` cannot show the bug: it runs browser tests in Chromium only,
+  against a local build, once. A bug that needs Firefox or real Cloudflare goes red alone first, through the gate
+  started on its PR with `-f mode=preview` (for Firefox alone, `gh workflow run e2e.yml --ref <branch>` also does). Wait
+  for that red run to finish before the next push, which would cancel it, and say why in the report.
+- **Review before the first push to master**, not after: an independent review subagent (or `/code-review`) on the
+  diff, `origin/master...HEAD`. Past reviews found real bugs every time they ran. Reviewer and author both read
+  `docs/agents/review.md` first: what a finding is, where the bugs were, and what is settled.
 - **Saved state needs a migration story.** Anything in `localStorage`, IndexedDB or a Room's storage outlives a deploy:
   changing a default or a stored shape does not reach existing data by itself, and no preview meets old data (they start
   empty), so the live site is the first place a migration runs. Either migrate, or say plainly in the report who will not
@@ -84,56 +87,6 @@ then check that `deploy` passed (it waits until the site serves the commit; a co
 tests has no run to check, `deploy.yml`'s `paths`, and the site stays on the last commit that changed the app). A full
 send ends there; a full stop ends with the PR ready and rung 3 reached. A bad deploy: `rollback.yml` from the Actions
 tab, then a fix. Prefer small PRs, squashed into one commit per idea.
-
-## What watches the app
-
-- **CI on every branch:** typecheck and unit tests (`ci.yml`), the red-then-green check of regression tests
-  (`red-green.yml`). Not while the branch's PR is a draft (`draft-gate.yml`): a draft is still being iterated on, and its
-  pushes end green with the jobs skipped, which is no verdict. Marking it ready runs both on its head. `night-shift/*`
-  branches always run them, and the browser suite against a local build too (`e2e.yml`): their drafts get no preview.
-  Other branches get the browser suite from their PR's gate only (below); a run against a local build is by hand.
-- **On every open PR**, drafts too: a preview Worker of its own, `dave-pr-<n>` (`preview.yml`), the live build plus the
-  inspection hooks, deployed on every push. The gate to master, started by hand (Testing, above): the whole e2e suite
-  against the preview, and the tests a deployed copy cannot run (tagged `@local`: a deploy or an outage staged at the
-  preview server) against a local build of the PR; or, with the previews' share of the day used up, the whole suite
-  against a local build. One comment on the PR links it and a room of the PR's own, so the owner can try a
-  change from the phone before it goes live. It starts with empty storage. The night shift's drafts get none. A nightly
-  sweep (`preview-sweep.yml`) deletes previews whose PR closed, once the day it closed on has ended.
-- **Inside every e2e test:** unexpected console warnings and runtime invariants (`src/client/invariants.ts`: UI that
-  contradicts the call) fail the test.
-- **Every night:** the chaos soak (`soak.yml`, 01:00 UTC, a local build of master) opens `soak` issues with a minimal
-  sequence; the night shift (`scripts/night-shift/`, on the dev box, 02:30 UTC) turns new problem reports into
-  draft "Repro:" PRs.
-- **Every quarter of an hour:** the Workers Free plan's daily limits (`quota-watch.yml`, asked of Cloudflare itself). At
-  70 % and at 90 % of the live site's or the previews' share of one, each once a day: an issue labelled `quota` and a
-  red run, which mails the owner. Past a limit every Durable Object of the account fails until midnight UTC, the
-  previews' with the live site's. The live site lets no new socket into a room once it has used 25 % of any daily limit
-  (`FREE_PLAN_SHARES`, `wrangler.jsonc`), and tells the friends when the rooms are back; the previews, together, stop at
-  65 %, so neither can use up the other's share (`SIDE_SHARES`, `src/core/relayusage.ts`). A preview Worker is kept
-  until the day its PR closed has ended: deleted, its rooms' use leaves Cloudflare's analytics while Cloudflare still
-  counts it against the day (`preview-sweep.yml`).
-- **Every session's briefing** (`scripts/claude/session-start.sh`) says how the unattended parts did: the night shift's last
-  run, open soak and `quota` issues, waiting reproductions, whether master's head reached the live site. A warning there comes before
-  new work.
-- **In the field:** `invariant_violation`, `$exception` and `bug_report` in PostHog (read recipe in the auto memory).
-
-## Flakes
-
-A flaky test is a bug in the app or in the test, never noise (`.scratch/p2p-friends-chat-build/issues/35-*`): find the cause,
-then fix the app, fix the test, or drop the claim. A longer timeout or another retry does not count unless the cause is known.
-
-Every failed try of every e2e and preview run goes into the flake ledger by itself (`flakes.yml`): `README.md` on the branch
-`flake-ledger` counts them by test and error over 30 days, and the session briefing names the top three. Tickets are per
-cause, not per sighting: a ticket lists the rows it explains in `causes.json` on that branch (a regex over test and error;
-commit with `[skip ci]`), and "fixed" means its rows stop growing after the fix landed.
-
-A flake does not hold up a PR, though: explain before landing, fix after. The preview gate goes red on a flake so that
-whoever lands the PR sees it. Suspect the PR's own change first: was the same test or error seen before on commits without
-it (the ledger, a flake ticket), and does the change touch the test's path or the app code its failing step runs through?
-Only when the evidence clears the change, re-run the failed jobs once (`gh run rerun <id> --failed`; the gate job runs
-again with them) and name the flake and the evidence in the report. That re-run is the one retry allowed without a known
-cause, because the cause is still looked for after. Red again on the re-run stops the landing. Either way, add the
-sighting to the ticket its ledger row links, or open one.
 
 ## Code
 
