@@ -7,8 +7,8 @@ cd "${CLAUDE_PROJECT_DIR:-$here/../..}" 2>/dev/null || exit 0
 # A new worktree has no node_modules, and one that sat through a dependency change has old ones: the first typecheck then
 # died of "tsc: not found" (9 sessions in the week to 2026-11-19). Installed here, beside the questions below: 10 s from
 # pnpm's store, 2 s with nothing to do (measured 2026-11-19). The briefing says how it went. A node_modules that is a
-# link is another checkout's (the night shift's worktree has the main checkout's, scripts/night-shift/run.sh): not ours
-# to install into.
+# link is another checkout's (as the night shift's worktree had the main checkout's until 2026-11-19): not ours to
+# install into.
 deps=
 if [ -f pnpm-lock.yaml ] && [ ! -L node_modules ] && { [ ! -e node_modules/.modules.yaml ] || [ pnpm-lock.yaml -nt node_modules/.modules.yaml ]; }; then
   deps=$(mktemp)

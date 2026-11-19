@@ -67,7 +67,7 @@ test('an install that fails is a warning with its exit code, and the briefing go
   assert.match(said, /MB memory available/);
 });
 
-// The night shift's worktree: its node_modules is the main checkout's, and an install through the link would be into that.
+// As the night shift's worktree had the main checkout's until 2026-11-19: an install through the link would be into that.
 test('a node_modules that is a link to another checkout is left alone, however old', () => {
   const p = project('pnpm-lock.yaml');
   const other = join(project(), 'node_modules');

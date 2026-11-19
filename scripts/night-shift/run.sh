@@ -34,7 +34,12 @@ if [ "$busy" -gt 0 ] && [ -z "${NIGHT_SHIFT_FORCE:-}" ]; then result skipped "an
 git -C "$REPO" fetch -q origin || { result failed "git fetch failed"; exit 1; }
 [ -d "$WT" ] || git -C "$REPO" worktree add -q --detach "$WT" origin/master || { result failed "no worktree"; exit 1; }
 cd "$WT" && git checkout -q --detach origin/master && git reset -q --hard && git clean -qfdx -e node_modules || { result failed "could not reset the worktree"; exit 1; }
-[ -e node_modules ] || ln -s "$REPO/node_modules" node_modules
+# Dependencies of its own, as master's lockfile has them: 2 s with nothing to do, 10 s from pnpm's store. Until 2026-11-19
+# node_modules was a link to the main checkout's, which are as old as that checkout: that day 71 commits behind, and the
+# night's typecheck ran on Solid 2.0.0-rc.20 where master and CI had 2.0.1. CI=true: with no terminal to ask at, pnpm
+# refuses to replace a node_modules it finds unfit.
+[ -L node_modules ] && rm node_modules
+CI=true timeout 5m pnpm install --frozen-lockfile --prefer-offline 2>&1 | tail -3 || { result failed "could not install the dependencies (pnpm install --frozen-lockfile)"; exit 1; }
 
 since=$(cat "$STATE/last-success" 2>/dev/null || date -u -d '7 days ago' +%FT%TZ)
 prompt=$(sed -e "s|{{SINCE}}|$since|g" -e "s|{{TODAY}}|$today|g" -e "s|{{STATE}}|$STATE|g" "$WT/scripts/night-shift/prompt.md")
