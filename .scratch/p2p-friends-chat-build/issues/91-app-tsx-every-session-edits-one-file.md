@@ -1,6 +1,6 @@
 # 91 · `src/client/App.tsx` is the file every session reads and edits at once
 
-Status: open; not started
+Status: open; move 1 done (the report and About dialogs, `src/client/Dialogs.tsx`, PR #176): `App.tsx` is down to 2,826 lines
 Type: task (from the retrospective of 2026-11-19 over the week's 45 agent sessions)
 
 `src/client/App.tsx` holds 71 components in 3,147 lines: `Workspace` alone is 741, `Composer` 260, `ChatLog` 187,
@@ -27,3 +27,31 @@ share and party tiles, the dialogs (version, report, profile, themes). `Workspac
   they turn out to cost the same.
 
 ## Comments
+
+2026-11-20, move 1: `ReportDialog` and `VersionDialog` (the About dialog) with its usage meters, 329 lines, went to
+`src/client/Dialogs.tsx`. Chosen first because nothing ties them to `Workspace` but `ReportDialog`'s `collect`: none of
+the block's 18 top-level names is used elsewhere in `App.tsx`, and it needs nothing that stays there. How the next moves
+go, so each reads the same:
+
+- Before starting, and again before the first push: `gh pr list`, then `gh pr diff <n> --name-only` for each open PR.
+  One that touches `App.tsx` means wait.
+- Find a group whose helpers nothing else uses: `grep -nw <name> src/client/App.tsx` for each top-level name in the
+  block. Take whole lines, one contiguous range where the file allows, with the comments above each component.
+- The new file sits beside `App.tsx`, named for its feature in the components' case (`Dialogs.tsx`, like
+  `EmojiPicker.tsx`). Its imports come first; then the lines as they were. Only what `App.tsx` renders gets `export`;
+  the helpers stay private. No rename, no reorder, no fix on the way, however tempting: a pure move is one the gate
+  proves.
+- `App.tsx` drops the imports it no longer uses. `npx tsc --noEmit -p . --noUnusedLocals` names them (its two in
+  `room.ts` are older and not this ticket's).
+- Prove the move byte for byte, both sides, and put both commands in the PR. What moved, which prints nothing:
+  `git show origin/master:src/client/App.tsx | sed -n <from>,<to>p | diff - <(tail -n +<first line after the imports> src/client/<New>.tsx | sed 's/^export function/function/')`.
+  What stayed, which prints only import lines (`<to>` here takes the blank line after the block too):
+  `diff <(git show origin/master:src/client/App.tsx | sed '<from>,<to>d') src/client/App.tsx`.
+  The first alone would miss a line lost just outside the range, which neither the typecheck nor `--noUnusedLocals`
+  would catch.
+- Grep the repo for each moved name: a comment that says where it lives (`styles.css` had "client/App.tsx,
+  UsageMeter") is changed to the new file in the same PR.
+- A group that needs something staying in `App.tsx`: a type comes over with `import type` from `./App` (erased, so no
+  cycle at run time); a value both sides use moves out with the group, or to a small module of its own, never imported
+  back from `./App`.
+- `pnpm typecheck`, `pnpm test`, a review of the diff against this list, then the gate (rung 3).
