@@ -160,6 +160,7 @@ export function createGameLinks(opts: { identity: LocalIdentity; send: (m: Clien
       // A player who leaves the game closes their side; here only the links of another game close.
       for (const link of [...links.values()]) if (link.game !== want?.game) close(link);
       for (const [peer, t] of retries) if (!want?.peers.has(peer)) { clearTimeout(t); retries.delete(peer); }
+      for (const peer of backoff.keys()) if (!want?.peers.has(peer)) backoff.delete(peer);
       if (want) for (const peer of want.peers) if (me < peer) offer(peer);
     },
     /** Sends to every player whose link is open. */
@@ -181,6 +182,7 @@ export function createGameLinks(opts: { identity: LocalIdentity; send: (m: Clien
       want = null;
       for (const t of retries.values()) clearTimeout(t);
       retries.clear();
+      backoff.clear();
       for (const link of [...links.values()]) close(link);
     },
   };

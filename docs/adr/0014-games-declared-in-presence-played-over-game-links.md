@@ -17,8 +17,8 @@ The server learns that a friend plays, not what; a game it does not know is a fi
 no change to the Room. Leaving the call, or the socket, ends the declaration with the friend's place in the call. The
 call's game is the one most players declare, then the one started first, then the smaller id, and whoever is in another
 moves over: two friends who start one at the same moment end up in the same game, and a friend whose socket was away a
-while, back with a game that ended meanwhile, moves over to the one the others started since, instead of pulling them
-back into theirs. The game ends when nobody declares it.
+while, back with a game that ended meanwhile, moves over to the one the others started since (unless as many play it),
+instead of pulling them back into theirs. The game ends when nobody declares it.
 
 **Everything that moves** goes over **game links** (`src/client/gamelinks.ts`): a data-only RTCPeerConnection between
 every two players, opened by the one with the smaller key, signaled through the Room as a file link's `link` frames are,

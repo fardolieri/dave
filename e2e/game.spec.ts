@@ -56,8 +56,8 @@ test('a game: started from the call in one click, joined from its tile, rounds c
   const bobWho = (await view(alice))!.others[0]!.key.slice(0, 11);
 
   // Alice rolls into Bob, who stands still: the bonk sends him off the floe, and Alice wins the round, on both screens.
-  // Either app may work the bonk out (core/bonk.ts, `bonk`, `HitFrame`); that only one of them does, and the knock is
-  // what reaches Bob, is test/game.test.ts's: here it is the timing of the two apps that decides.
+  // Either app may work the bonk out (core/bonk.ts, `bonk`, `HitFrame`), as the timing of the two apps decides; the
+  // knock's sums are test/game.test.ts's.
   await tile(alice).locator('.bonk').click();
   const bobFrom = (await view(bob))!.me;
   const toward = bobFrom.z > (await view(alice))!.me.z ? 'ArrowDown' : 'ArrowUp';

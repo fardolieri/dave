@@ -42,7 +42,7 @@ export const sameGame = (a: Game | null, b: Game | null): boolean => (a === null
  * The call's game, of all its players declare: the one most of them play, then the one started first, then the smaller
  * id, the same for everyone. Whoever is in another moves over to it (client/game.ts): two friends who start one at the
  * same moment end up in the first, and a friend whose socket was away a while, back with a game that ended meanwhile,
- * moves over to the one the others started since, rather than pull them all back into theirs.
+ * moves over to the one the others started since, unless as many play it, rather than pull them all back into theirs.
  */
 export function current(declared: Iterable<Game>): Game | null {
   const all = [...declared];
