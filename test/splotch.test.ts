@@ -102,15 +102,20 @@ describe('Splotch, the rounds (core/splotch.ts)', () => {
     expect(advance(r, 1000, here({ who: A, n: 3, known: 3 }), () => board)).toMatchObject({ phase: 'over' });
   });
 
-  it('is led, while a round plays, by one who plays it: a friend who came in later has a board that missed the start', () => {
-    const r: Round = { ...firstRound(0), n: 3, phase: 'play', players: [B, C] };
-    // Alice has the smallest key and knows round 3, but only watches it.
-    const all = [{ key: 'A', known: 3, playing: 0 }, { key: 'B', known: 3, playing: 3 }, { key: 'C', known: 3, playing: 3 }];
-    expect(roundLeader(r, all)).toBe('B');
-    // Between rounds, and should no player of it be left, anyone.
-    expect(roundLeader({ ...r, phase: 'over' }, all)).toBe('A');
-    expect(roundLeader(r, [all[0]!])).toBe('A');
-    expect(roundLeader({ ...r, phase: 'wait' }, all)).toBe('A');
+  it('is led by one who plays the round, through to its end: a friend who came in later has a board that missed the start', () => {
+    // Alice has the smallest key and knows round 3, but only watches it: Bob leads it, its end too, on every app alike
+    // (only what the players say of themselves counts, never the phase an app is in).
+    const watching = [{ key: 'A', known: 3, playing: 0 }, { key: 'B', known: 3, playing: 3 }, { key: 'C', known: 3, playing: 3 }];
+    expect(roundLeader(watching)).toBe('B');
+    expect(roundLeader([...watching].reverse())).toBe('B');
+    // Should no player of it be left, the watcher.
+    expect(roundLeader([watching[0]!])).toBe('A');
+    // The next round, as Bob counts it down with Alice in it: he leads until her frames show she took it, then she does.
+    expect(roundLeader([{ key: 'A', known: 3, playing: 0 }, { key: 'B', known: 4, playing: 4 }])).toBe('B');
+    expect(roundLeader([{ key: 'A', known: 4, playing: 4 }, { key: 'B', known: 4, playing: 4 }])).toBe('A');
+    // Between rounds, nobody plays: the smallest key of those who know the newest.
+    expect(roundLeader([{ key: 'A', known: 4, playing: 0 }, { key: 'B', known: 4, playing: 0 }])).toBe('A');
+    expect(roundLeader([])).toBeNull();
   });
 
   it('counts down the seconds of the play', () => {

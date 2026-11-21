@@ -5,9 +5,9 @@
 // Every app moves its own blob and sends where it is, and when it last splatted, to every other player many times a
 // second (`PaintFrame`); every app paints the board from what it hears, its own blob's path and the others'. So two
 // boards may differ by a tile where two blobs crossed at once: the leader's board counts (core/rounds.ts), and its count
-// goes out with the round's end. While a round plays, only a player who played it from its countdown leads it
-// (`roundLeader`): anyone else's board misses what was painted before they came. Runtime-neutral: plain data only.
-import { frameFields, leaderOf, num, parseRoundFrame, round2, type Phase, type Round, type RoundFrame } from './rounds';
+// goes out with the round's end. A player of the round leads it before anyone who only watches (`roundLeader`): a
+// watcher's board misses what was painted before they came. Runtime-neutral: plain data only.
+import { frameFields, num, parseRoundFrame, round2, type Phase, type Round, type RoundFrame } from './rounds';
 
 /** Tiles along each side of the board; the board is that many units wide, its middle at 0. */
 export const BOARD = 24;
@@ -137,12 +137,21 @@ export function advance(r: Round, now: number, here: readonly Counted[], board: 
 
 /**
  * Who leads, of the players this app hears from and itself: `known` the newest round each knows, `playing` the round
- * each plays (0 for none). While a round plays, only those who play it, from its countdown, with a board cleared then;
- * else, and should none of them be left, anyone (core/rounds.ts, `leaderOf`).
+ * each plays (0 for none), as each one's own frames say. Who knows the newest round, then who plays it (from its
+ * countdown, on a board cleared then, through to its end), then the smallest key (core/rounds.ts, `leaderOf`). Only what
+ * the players say of themselves counts, never the phase this app is in: every app names the same leader while a phase
+ * changes under them, and the leader goes on sending until another one's frames show it holds the round.
  */
-export function roundLeader(r: Round, players: readonly { key: string; known: number; playing: number }[]): string | null {
-  const inIt = r.phase === 'play' && r.n > 0 ? players.filter((p) => p.playing === r.n) : [];
-  return leaderOf((inIt.length > 0 ? inIt : players).map((p) => ({ key: p.key, n: p.known })));
+export function roundLeader(players: readonly { key: string; known: number; playing: number }[]): string | null {
+  let best: (typeof players)[number] | null = null;
+  const plays = (p: (typeof players)[number]) => p.playing > 0 && p.playing === p.known;
+  for (const p of players) {
+    if (best === null || p.known > best.known) { best = p; continue; }
+    if (p.known < best.known) continue;
+    if (plays(p) !== plays(best)) { if (plays(p)) best = p; continue; }
+    if (p.key < best.key) best = p;
+  }
+  return best?.key ?? null;
 }
 
 /** The seconds left of a round's play, shown counting down. */

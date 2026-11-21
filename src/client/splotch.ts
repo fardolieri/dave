@@ -130,7 +130,7 @@ export function mountSplotch(host: HTMLElement, opts: { me: string; links: GameL
     let dt = (now - last) / 1000;
     last = now;
     const around = heard(now);
-    leader = roundLeader(round, [{ key: me, known: round.n, playing }, ...around.map((o) => ({ key: o.key, known: o.frame.n, playing: o.frame.r }))]);
+    leader = roundLeader([{ key: me, known: round.n, playing }, ...around.map((o) => ({ key: o.key, known: o.frame.n, playing: o.frame.r }))]);
     if (leader === me) {
       const counted: Counted[] = [{ who: myWho, n: playing, known: round.n }, ...around.map((o) => ({ who: whoOf(o.key), n: o.frame.r, known: o.frame.n }))];
       const next = advance(round, now, counted, () => board);
