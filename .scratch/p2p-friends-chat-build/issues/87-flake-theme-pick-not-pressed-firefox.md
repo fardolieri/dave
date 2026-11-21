@@ -21,3 +21,7 @@ test picks every theme in turn with the invite panel open, so this was one click
 ## Next
 The run's trace (artifacts of shard 5): did the click land on the button, or on something over it (the invite panel,
 the card closing), and did the theme apply but `aria-pressed` not follow, or not apply at all.
+
+## Comments
+2026-11-21: imp-freibad, the theme of the only sighting, is gone (the first cut of the theme bake-off, PR #177). The tour
+picks the other themes the same way, so a quiet ledger from here on is not a fix: the cause was never looked for.

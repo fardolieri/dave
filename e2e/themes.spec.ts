@@ -281,7 +281,7 @@ test('a stored theme whose file a later deploy dropped reads as the default look
 
 test('the look picked before rooms had their own stays its room\'s, and a room joined later starts in the default look', async ({ crowd }) => {
   const alice = await crowd.open('Alice', { connect: false });
-  const old = 'fd-walkie'; // picked in the ⚙ menu of before
+  const old = 'fd-nightbus'; // picked in the ⚙ menu of before
   await alice.context.addInitScript((name) => {
     if (localStorage.getItem('dave.e2e-theme-seeded')) return;
     localStorage.setItem('dave.e2e-theme-seeded', '1');

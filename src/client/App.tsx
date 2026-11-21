@@ -2291,7 +2291,7 @@ function Composer(props: {
     const dark = matchMedia('(prefers-color-scheme: dark)');
     dark.addEventListener('change', fit);
     document.fonts.addEventListener('loadingdone', fit);
-    // A look that eases its colours in (ds-ma) is read again once they have arrived.
+    // A look that eases its text colour in (as ds-ma did) is read again once it has arrived.
     const eased = (e: TransitionEvent) => { if (e.propertyName === 'color') fit(); };
     input.addEventListener('transitionend', eased);
     return () => {

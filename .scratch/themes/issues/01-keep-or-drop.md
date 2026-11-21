@@ -1,6 +1,6 @@
 # 01 · Which themes friends keep, and which to drop
 
-Status: measuring since the release of the theme analytics (2026-10-15); read the numbers on or after 2026-11-05
+Status: first cut made 2026-11-21 (below); the analytics stay on for now
 Type: research
 
 ## Why
@@ -46,10 +46,13 @@ Common filter `F`: `timestamp > toDateTime('2026-10-15 00:00:00') AND coalesce(p
           round(median(toFloat(properties.previous_ms)) / 60000, 1) AS median_minutes
    FROM events WHERE event = 'theme_picked' AND F GROUP BY theme ORDER BY left_it DESC
    ```
-3. On now: friends per theme they have at the moment.
+3. On now: friends per theme they had on their latest event. (Until 2026-11-21 this read the `persons` table, which
+   also holds the people of previews and tests: 354 on ds-brutalist that day.)
    ```sql
-   SELECT properties.theme AS theme, count() AS people FROM persons
-   WHERE properties.theme IS NOT NULL AND properties.$internal_or_test_user IS NULL GROUP BY theme ORDER BY people DESC
+   SELECT theme, count() AS people
+   FROM (SELECT person_id, argMax(properties.theme, timestamp) AS theme FROM events
+         WHERE F AND properties.theme IS NOT NULL GROUP BY person_id)
+   GROUP BY theme ORDER BY people DESC
    ```
 
 ## Proposed rule (the owner decides)
@@ -61,3 +64,15 @@ scripts/check-theme-fonts.mjs). Friends who had it picked fall back to the defau
 checks. Removing the analytics afterwards: the `posthog.register` and `theme_picked` lines in theme.ts and `theme` in the
 identify of App.tsx, **and** an `unregister('theme')` on the SDK for a while: posthog-js keeps super properties in its
 own stored state, so without it every opted-in browser goes on sending its last theme until it says no.
+
+## Comments
+2026-11-21, the first cut. Read that day: 15 live people since 2026-10-15, 6 of whom ever opened the menu, and each of those tried nearly
+every theme. Only 7 themes were on screen at a page load at all: ds-brutalist (2 people, 34 and 19 days), imp-kino (3:
+22, 9, 7), tf-campfire (2: 13, 9), tf-midnight-galaxy (2: 10, 3), fd-lounge (1: 3), tf-tech-innovation (1: 2),
+fd-nightbus (2: a day each). Query 3 now reads events, not `persons` (see there).
+
+The owner dropped the ten never used but three: ds-ma, ds-memphis, ds-scandi, fd-notebook, fd-walkie, imp-freibad,
+imp-heft, imp-olympia, imp-videotext, tf-radio-log, with the fonts only they used. Kept though never used: ds-rams,
+tf-botanical-garden, fd-riso. Ten themes remain. A friend whose room had a dropped theme picked sees the default look
+there; the room's stored name stays, so a rollback brings it back (an old `dave.theme` from before rooms had their own
+looks is adopted as the default look and removed, but nobody's has been left since 2026-10-24 who loaded the app).

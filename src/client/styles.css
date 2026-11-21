@@ -133,7 +133,7 @@ button.room-name:focus-visible { outline: 2px solid var(--acc); outline-offset: 
 :where(.room button.room-name:active) { translate: none; } /* pressed, the box brightens; its name does not move */
 /* The room of my call, folded (another room or a conversation on screen, or folded by a click): in the call's green, so
    it is found at a glance. After the shades above, which it follows in order (all at zero weight, so a theme's own
-   rooms win: imp-olympia's green field, imp-freibad's lanes). */
+   rooms win). */
 :where(.room.in-call.folded) { --room-shade: color-mix(in srgb, var(--ok) 9%, transparent); }
 :where(.room.in-call.folded:has(> .room-head:hover):not(:has(.room-leave:hover, .room-hear:hover, .room-unmute:hover))) { --room-shade: color-mix(in srgb, var(--ok) 14%, transparent); }
 :where(.room.in-call.folded:has(> .room-head:active):not(:has(.room-leave:active, .room-hear:active, .room-unmute:active))) { --room-shade: color-mix(in srgb, var(--ok) 19%, transparent); } /* pressed, brighter, as any room */
