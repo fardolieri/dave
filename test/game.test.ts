@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MAX_GAME_BODY_BYTES, current, gameLinkId, gameOfLink, gameText, parseGame, sameGame, type Game } from '../src/core/game';
 import {
   BALL_RADIUS, COUNT_MS, DASH_COOLDOWN_MS, DASH_SPEED, FLOE_MID, FLOE_START, MAX_ROLL, OVER_MS, SHRINK_END_MS, SHRINK_MID_MS, SUNK_Y,
-  advance, ahead, ballAt, ballFrame, bonk, dash, hitFrame, knocked, firstRound, floeRadius, leaderOf, parseFrame, roll, roundFrame, roundOf, spawnAt, steer, whoOf,
+  advance, ahead, ballAt, ballFrame, bonk, dash, hitFrame, knocked, toward, firstRound, floeRadius, leaderOf, parseFrame, roll, roundFrame, roundOf, spawnAt, steer, whoOf,
   type Ball, type Counted, type Round,
 } from '../src/core/bonk';
 
@@ -62,6 +62,21 @@ describe('Bonk, a ball on the floe (core/bonk.ts)', () => {
     expect(let_go.vx).toBeGreaterThan(b.vx * 0.95);
     expect(steer(1, 1).x).toBeCloseTo(Math.SQRT1_2);
     expect(steer(0.3, 0)).toEqual({ x: 0.3, z: 0 });
+  });
+
+  it('rolls toward a spot held, full on from afar, and brakes to stop on it', () => {
+    expect(toward(ballAt(0, 0), { x: 0, z: -8 })).toEqual({ x: 0, z: -1 });
+    const far = toward(ballAt(1, 1), { x: 7, z: 9 });
+    expect(Math.hypot(far.x, far.z)).toBeCloseTo(1);
+    expect(far.x / far.z).toBeCloseTo(6 / 8);
+    expect(toward(ballAt(2, 2), { x: 2, z: 2 })).toEqual({ x: 0, z: 0 });
+    // Going fast at the spot, close to it: it brakes.
+    expect(toward({ ...ballAt(0, 0), vx: 7 }, { x: 0.5, z: 0 }).x).toBeLessThan(-0.9);
+    // Held there, a ball sliding the other way comes back to it, and stays.
+    let b: Ball = { ...ballAt(-4, 0), vz: 5 };
+    for (let i = 0; i < 60 * 4; i++) b = roll(b, toward(b, { x: 3, z: 2 }), 1 / 60, FLOE_START);
+    expect(Math.hypot(b.x - 3, b.z - 2)).toBeLessThan(0.3);
+    expect(Math.hypot(b.vx, b.vz)).toBeLessThan(0.5);
   });
 
   it('falls off past the edge, out of the round, and sinks', () => {

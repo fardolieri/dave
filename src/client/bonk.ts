@@ -1,10 +1,10 @@
 // Bonk on screen (core/bonk.ts): my ball, everyone else's as their apps say, the floe and the sea, in three.js; the keys,
-// a stick on a touch screen, the sounds; the round, run by its leader. Loaded only once a friend plays (client/Game.tsx):
-// three.js is most of a megabyte.
+// the mouse or a finger held where to roll, the sounds; the round, run by its leader. Loaded only once a friend plays
+// (client/Game.tsx): three.js is most of a megabyte.
 import * as THREE from 'three';
 import {
   BALL_RADIUS, FLOE_START, RESPAWN_MS, SUNK_Y, BONK_AGAIN_MS, advance, ahead, ballAt, ballFrame, bonk, dash, firstRound, floeRadius, hitFrame, knocked, leaderOf, parseFrame,
-  roll, roundFrame, roundOf, spawnAt, steer, whoOf, COUNT_MS, type Ball, type BallFrame, type Counted, type GameView, type Round,
+  roll, roundFrame, roundOf, spawnAt, steer, toward, whoOf, COUNT_MS, type Ball, type BallFrame, type Counted, type GameView, type Round,
 } from '../core/bonk';
 import type { GameLinks } from './gamelinks';
 import { exposeHooks } from './hooks';
@@ -161,6 +161,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   let leader: string | null = me;
   let fellAt: number | null = null;
   let lastFloe = FLOE_START;
+  /** How the keys steer, and how the game steers in the end: toward the spot held, if one is (`held`), else as the keys do. */
+  let keyed = { x: 0, z: 0 };
   let input = { x: 0, z: 0 };
   let dashAsked = false;
   let dashed = false;
@@ -222,6 +224,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   function step(now: number): void {
     let dt = (now - last) / 1000;
     last = now;
+    aimAt = held && aim(held.x, held.y);
+    input = aimAt ? toward(ball, aimAt) : keyed;
     const around = heard(now);
     leader = leaderOf([{ key: me, n: round.n }, ...around.map((o) => ({ key: o.key, n: o.frame.n }))]);
     if (leader === me) {
@@ -269,12 +273,12 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     }
   }
 
-  // Keys while the game has the focus; a stick on a touch screen.
+  // Keys while the game has the focus.
   const keys = new Set<string>();
   const fromKeys = () => {
     const x = (keys.has('ArrowRight') || keys.has('KeyD') ? 1 : 0) - (keys.has('ArrowLeft') || keys.has('KeyA') ? 1 : 0);
     const z = (keys.has('ArrowDown') || keys.has('KeyS') ? 1 : 0) - (keys.has('ArrowUp') || keys.has('KeyW') ? 1 : 0);
-    input = steer(x, z);
+    keyed = steer(x, z);
   };
   const MOVE_KEYS = new Set(['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown', 'KeyW', 'KeyA', 'KeyS', 'KeyD']);
   const onKeyDown = (e: KeyboardEvent) => {
@@ -299,41 +303,33 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   board.setAttribute('aria-label', 'Rounds won');
   const help = document.createElement('div');
   help.className = 'bonk-help';
-  help.textContent = 'Arrows or WASD to roll · Space to dash · bonk everyone into the sea';
+  help.textContent = 'Hold the mouse where to roll, or arrows / WASD · Space to dash · bonk everyone into the sea';
   const dashButton = document.createElement('button');
   dashButton.type = 'button';
   dashButton.className = 'bonk-dash';
   dashButton.textContent = 'Dash';
   dashButton.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); dashAsked = true; });
-  const stick = document.createElement('div');
-  stick.className = 'bonk-stick';
-  hud.append(banner, board, help, dashButton, stick);
+  hud.append(banner, board, help, dashButton);
   host.append(hud);
 
-  let touch: { id: number; x: number; y: number } | null = null;
+  // The mouse held, or a finger: the ball rolls toward the spot under it on the floe, and on as it moves. Where that is
+  // is worked out each step, from the camera as it is: the ball moves, and the camera a little with it.
+  let held: { id: number; x: number; y: number } | null = null;
   const onPointerDown = (e: PointerEvent) => {
     host.focus({ preventScroll: true });
-    if (e.pointerType === 'mouse') return;
-    host.classList.add('bonk-touch');
-    touch = { id: e.pointerId, x: e.clientX, y: e.clientY };
-    stick.style.left = `${e.clientX - host.getBoundingClientRect().left}px`;
-    stick.style.top = `${e.clientY - host.getBoundingClientRect().top}px`;
-    stick.classList.add('on');
+    if (e.pointerType !== 'mouse') host.classList.add('bonk-touch');
+    if (held || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    held = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    try { host.setPointerCapture(e.pointerId); } catch { /* gone already */ }
+    e.preventDefault();
   };
-  const onPointerMove = (e: PointerEvent) => {
-    if (!touch || e.pointerId !== touch.id) return;
-    input = steer((e.clientX - touch.x) / 45, (e.clientY - touch.y) / 45);
-  };
-  const onPointerUp = (e: PointerEvent) => {
-    if (!touch || e.pointerId !== touch.id) return;
-    touch = null;
-    input = { x: 0, z: 0 };
-    stick.classList.remove('on');
-  };
+  const onPointerMove = (e: PointerEvent) => { if (held?.id === e.pointerId) held = { ...held, x: e.clientX, y: e.clientY }; };
+  const onPointerUp = (e: PointerEvent) => { if (held?.id === e.pointerId) held = null; };
   host.addEventListener('pointerdown', onPointerDown);
-  window.addEventListener('pointermove', onPointerMove);
-  window.addEventListener('pointerup', onPointerUp);
-  window.addEventListener('pointercancel', onPointerUp);
+  host.addEventListener('pointermove', onPointerMove);
+  host.addEventListener('pointerup', onPointerUp);
+  host.addEventListener('pointercancel', onPointerUp);
+  host.addEventListener('lostpointercapture', onPointerUp);
 
   // The scene, in WebGL 2, which three.js needs. A browser without it plays all the same, blind, and the HUD says so;
   // asked here first, so three.js does not fail at it out loud.
@@ -387,6 +383,22 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   snowGeometry.setAttribute('position', new THREE.BufferAttribute(snowAt, 3));
   const snow = new THREE.Points(snowGeometry, new THREE.PointsMaterial({ color: '#ffffff', size: 0.12, transparent: true, opacity: 0.85 }));
   scene.add(snow);
+
+  // Where the mouse or the finger is held, on the floe.
+  let aimAt: { x: number; z: number } | null = null;
+  const raycaster = new THREE.Raycaster();
+  const floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const hit = new THREE.Vector3();
+  function aim(clientX: number, clientY: number): { x: number; z: number } | null {
+    const r = host.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return null;
+    raycaster.setFromCamera(new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1), camera);
+    return raycaster.ray.intersectPlane(floor, hit) ? { x: hit.x, z: hit.z } : null;
+  }
+  const aimRing = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.42, 32), new THREE.MeshBasicMaterial({ color: '#ffc400', transparent: true, opacity: 0.7, depthTest: false }));
+  aimRing.rotation.x = -Math.PI / 2;
+  aimRing.renderOrder = 9;
+  scene.add(aimRing);
 
   const marker = new THREE.Mesh(new THREE.RingGeometry(BALL_RADIUS * 1.15, BALL_RADIUS * 1.4, 40), new THREE.MeshBasicMaterial({ color: '#ffc400', transparent: true, opacity: 0.85 }));
   marker.rotation.x = -Math.PI / 2;
@@ -502,6 +514,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     }
     for (const [key, s] of shown) if (!keysShown.has(key)) s.group.visible = false;
     marker.visible = !watching && ball.alive;
+    aimRing.visible = aimAt !== null && marker.visible;
+    if (aimAt) aimRing.position.set(aimAt.x, 0.03 + bob, aimAt.z);
     marker.position.set(shown.get(me)?.x ?? ball.x, 0.02 + bob, shown.get(me)?.z ?? ball.z);
     (marker.material as THREE.MeshBasicMaterial).opacity = 0.55 + Math.sin(now / 200) * 0.3;
 
@@ -617,9 +631,10 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     host.removeEventListener('keyup', onKeyUp);
     host.removeEventListener('blur', onBlur);
     host.removeEventListener('pointerdown', onPointerDown);
-    window.removeEventListener('pointermove', onPointerMove);
-    window.removeEventListener('pointerup', onPointerUp);
-    window.removeEventListener('pointercancel', onPointerUp);
+    host.removeEventListener('pointermove', onPointerMove);
+    host.removeEventListener('pointerup', onPointerUp);
+    host.removeEventListener('pointercancel', onPointerUp);
+    host.removeEventListener('lostpointercapture', onPointerUp);
     dispose(scene);
     sphere.dispose();
     // Given back now, not when it is collected: a browser keeps only so many at once, and each Leave and Join makes one.

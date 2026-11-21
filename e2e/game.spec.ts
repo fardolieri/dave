@@ -69,14 +69,17 @@ test('a game: started from the call in one click, joined from its tile, rounds c
   await expect(tile(alice).locator('.bonk-board')).toHaveText('You 🏆');
   await expect(tile(bob).locator('.bonk-board')).toHaveText('Alice 🏆');
 
-  // The next round: Alice rolls right, and Bob sees her ball go.
+  // The next round: Alice holds the mouse at the right of the game, over the sea, and her ball rolls there; Bob sees it
+  // go.
   for (const f of [alice, bob]) await expect.poll(async () => { const v = await view(f); return v?.phase === 'play' && v.round === 2; }, { timeout: 20_000 }).toBe(true);
   const before = (await view(bob))!.others[0]!.x;
-  await alice.page.keyboard.down('ArrowRight');
+  const box = (await tile(alice).locator('.bonk').boundingBox())!;
+  await alice.page.mouse.move(box.x + box.width - 10, box.y + box.height / 2);
+  await alice.page.mouse.down();
   await expect.poll(async () => (await view(bob))!.others[0]!.x, { timeout: 5000 }).toBeGreaterThan(before + 1);
   // On off the floe: Bob wins this one.
   await expect.poll(async () => (await view(alice))!.me.alive, { timeout: 10_000 }).toBe(false);
-  await alice.page.keyboard.up('ArrowRight');
+  await alice.page.mouse.up();
   for (const f of [alice, bob]) await expect.poll(async () => (await view(f))!.wins, { timeout: 15_000 }).toEqual({ [aliceWho]: 1, [bobWho]: 1 });
   await expect(tile(bob).locator('.bonk-board li')).toHaveText(['Alice 🏆', 'You 🏆']);
 

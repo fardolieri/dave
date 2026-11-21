@@ -77,6 +77,18 @@ export function steer(x: number, z: number): { x: number; z: number } {
   return l > 1 ? { x: x / l, z: z / l } : { x, z };
 }
 
+/**
+ * Steering toward a spot on the floe a friend holds the mouse or a finger on: for the speed that gets there, full on
+ * from afar and slower the nearer it is, so the ball brakes and stops there instead of sliding past and swinging round
+ * it, as it would on ice. `ball` is where it is and how fast it goes.
+ */
+export function toward(ball: { x: number; z: number; vx: number; vz: number }, to: { x: number; z: number }): { x: number; z: number } {
+  const dx = to.x - ball.x, dz = to.z - ball.z;
+  const d = Math.hypot(dx, dz);
+  const want = d < 1e-6 ? 0 : Math.min(MAX_ROLL, d * 2.5) / d;
+  return steer((dx * want - ball.vx) / 3, (dz * want - ball.vz) / 3);
+}
+
 /** Whether a ball can dash at `now`. */
 export const canDash = (b: Ball, now: number): boolean => b.alive && now - b.dashAt >= DASH_COOLDOWN_MS;
 
