@@ -22,6 +22,7 @@ import { createParty, syncPlayer, type PartyHandle } from './party';
 import { MAX_QUEUE } from '../core/party';
 import { createGame, type GameHandle } from './game';
 import { GameButtons, GameTile } from './Game';
+import { exitFullscreenSafely, fullscreenElement, requestFullscreenSafely } from './fullscreen';
 import { windowFocused } from './focus';
 import { contactOf, isKnown, markKnown, setNickname } from './contacts';
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, identityOf, normaliseName, type Identity, type Person } from '../core/protocol';
@@ -1710,21 +1711,6 @@ function ParticipantRow(props: { p: Person; isMe: boolean; label: Label; view?: 
     </li>
   );
 }
-
-type FullscreenDoc = Document & { webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => Promise<void> | void };
-type FullscreenEl = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
-const fullscreenElement = (): Element | null => { const d = document as FullscreenDoc; return d.fullscreenElement ?? d.webkitFullscreenElement ?? null; };
-const exitFullscreenSafely = (): void => {
-  const d = document as FullscreenDoc;
-  try { void Promise.resolve(d.exitFullscreen ? d.exitFullscreen() : d.webkitExitFullscreen?.()).catch(() => {}); } catch { /* not in fullscreen anymore */ }
-};
-const requestFullscreenSafely = (el: FullscreenEl, video?: HTMLVideoElement & { webkitEnterFullscreen?: () => void }): void => {
-  try {
-    if (el.requestFullscreen) void el.requestFullscreen().catch(() => {});
-    else if (el.webkitRequestFullscreen) void Promise.resolve(el.webkitRequestFullscreen()).catch(() => {});
-    else video?.webkitEnterFullscreen?.(); // iPhone Safari has no element fullscreen, only the native video player
-  } catch { /* not allowed here */ }
-};
 
 type ShareTileProps = {
   /** The sharer as this browser names them. */

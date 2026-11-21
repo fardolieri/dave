@@ -107,8 +107,11 @@ _Avoid_: Data channel (its transport, fine in code), game connection
 **Bonk**:
 The first game: every player is a ball with their face on it, on an ice floe in the sea. Roll, dash, bonk the others into the water; the floe shrinks while a round plays, and the last one on it wins the round.
 
-**Round** (of Bonk):
-From the countdown to the winner: who was there at the countdown plays it, whoever comes in later watches until the next. Run by one player's app, the leader, whom the others follow.
+**Splotch**:
+The second game: every player is a blob of paint on a square board, leaving their colour wherever they go, over anyone else's, and now and then a splat. When the time is up, who has the most of the board wins the round.
+
+**Round** (of a game):
+From the countdown to the winner: who was there at the countdown plays it, whoever comes in later watches until the next. Run by one player's app, the leader, whom the others follow; in Bonk it ends when one is left on the floe, in Splotch when the time is up, the leader's board counted.
 _Avoid_: Match, game (the whole of it), level
 
 **Signaling**:

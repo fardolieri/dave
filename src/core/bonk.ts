@@ -2,9 +2,12 @@
 // dash, bonk the others off; the floe shrinks while a round goes on, and the last one on it wins the round.
 //
 // Every app moves its own ball and nobody else's, and sends where it is to every other player many times a second
-// (`BallFrame`); a bonk is worked out on both sides, each for its own ball, from where it sees the other. The rounds are
-// the leader's: the player with the smallest key of those this app hears from, who sends the round as it stands
-// (`RoundFrame`); another takes over where it was when the leader leaves. Runtime-neutral: plain data only.
+// (`BallFrame`); the app whose ball runs into another works the bonk out and gives the other ball its knock (`HitFrame`).
+// The rounds are the leader's, as in every game (core/rounds.ts); what ends one here is the floe. Runtime-neutral: plain
+// data only.
+import { firstRound, frameFields, isWho, leaderOf, num, parseRoundFrame, round2, roundFrame, roundOf, whoOf, MAX_PLAYERS, WHO_LENGTH, type Phase, type Round, type RoundFrame } from './rounds';
+// The rounds are every game's (core/rounds.ts); Bonk's are said here too, as they were before there were two games.
+export { firstRound, leaderOf, roundFrame, roundOf, whoOf, MAX_PLAYERS, WHO_LENGTH, type Phase, type Round, type RoundFrame };
 
 /** A ball's radius, and the floe's at the start of a round and where it stops shrinking, in the game's units. */
 export const BALL_RADIUS = 0.85;
@@ -33,12 +36,6 @@ export const OVER_MS = 4000;
 export const SHRINK_FROM_MS = 5000;
 export const SHRINK_MID_MS = 45_000;
 export const SHRINK_END_MS = 65_000;
-
-/**
- * What the game is doing: waiting for a second player (anyone rolls around, and comes back after a fall), counting down
- * to a round, playing one, or showing who won it.
- */
-export type Phase = 'wait' | 'count' | 'play' | 'over';
 
 /** The floe's radius, `ms` into a phase; after a round, as it was when the round ended (`ended`). */
 export function floeRadius(phase: Phase, ms: number, ended = FLOE_START): number {
@@ -172,30 +169,11 @@ export const ahead = (s: Seen, ageMs: number): Seen => {
  */
 export type Counted = { who: string; n: number; known: number; alive: boolean };
 
-/** How much of a player's key the game's frames carry: enough to tell friends apart (core/party.ts does the same). */
-export const WHO_LENGTH = 11;
-export const whoOf = (key: string): string => key.slice(0, WHO_LENGTH);
-
 /** What the inspection hooks show of the game (`window.__daveGame`, client/bonk.ts). */
 export type GameView = {
   phase: Phase; round: number; leader: string | null; playing: boolean; spectating: boolean; webgl: boolean;
   me: { x: number; z: number; alive: boolean }; others: { key: string; x: number; z: number; alive: boolean }[]; wins: Record<string, number>; connected: number;
 };
-
-/** The round as the leader runs it. `since` is when its phase began, by this app's clock. */
-export type Round = {
-  n: number;
-  phase: Phase;
-  since: number;
-  /** Who plays round `n`, in the order the floe puts them round its ring. */
-  players: string[];
-  /** Who won the round just over; null for nobody (the last two fell together). */
-  winner: string | null;
-  /** Rounds each player has won in this game. */
-  wins: Record<string, number>;
-};
-
-export const firstRound = (now: number): Round => ({ n: 0, phase: 'wait', since: now, players: [], winner: null, wins: {} });
 
 /**
  * The round at `now`, with `here` the players the leader hears from (the leader too). A second player starts a round;
@@ -227,41 +205,16 @@ export function advance(r: Round, now: number, here: readonly Counted[]): Round 
   }
 }
 
-/**
- * The leader, of those this app hears from, itself included, each with the newest round they know (`n`): who knows the
- * newest, then the smallest key. A player who just came in knows none, and leads nobody until the leader's round
- * reaches them: then they may take over, from where it is.
- */
-export const leaderOf = (players: Iterable<{ key: string; n: number }>): string | null => {
-  let best: { key: string; n: number } | null = null;
-  for (const p of players) if (best === null || p.n > best.n || (p.n === best.n && p.key < best.key)) best = p;
-  return best?.key ?? null;
-};
-
-// On the wire, between players (client/gamelinks.ts): JSON, small, many times a second, on a channel that may drop or
-// reorder any of them. Every field is checked: a friend's app may be another version, or broken.
+// On the wire: as core/rounds.ts says.
 
 /**
  * Where a player's ball is, from that player: `r` the round they play (0 for none: they watch), `n` the newest round
  * they know (core `leaderOf`). `a`: on the floe; `d`: dashed just now.
  */
 export type BallFrame = { k: 'b'; r: number; n: number; x: number; z: number; vx: number; vz: number; y: number; a: boolean; d: boolean };
-/**
- * The round as the leader has it: `t` ms into its phase, its players, its winner, everyone's wins. `q` orders the
- * leader's frames, by its clock: one that comes after a later one (the channel keeps no order) is dropped.
- */
-export type RoundFrame = { k: 'r'; q: number; n: number; ph: Phase; t: number; ps: string[]; w: string | null; wins: [string, number][] };
 /** A bonk my app worked out, for the ball of `to` (the start of its key): the change in its speed (`bonk`, `knock`). */
 export type HitFrame = { k: 'h'; to: string; vx: number; vz: number; hit: number };
 export type Frame = BallFrame | RoundFrame | HitFrame;
-
-const PHASES: readonly Phase[] = ['wait', 'count', 'play', 'over'];
-const WHO = new RegExp(`^[A-Za-z0-9_-]{${WHO_LENGTH}}$`);
-/** Players a round takes at most, as a call does (ADR 0001 tolerates eight), with room to spare. */
-export const MAX_PLAYERS = 16;
-const BOUND = 1000;
-const num = (v: unknown, bound = BOUND): v is number => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= bound;
-const round2 = (v: number): number => Math.round(v * 100) / 100;
 
 export const ballFrame = (b: Ball, r: number, n: number, dashed: boolean): BallFrame =>
   ({ k: 'b', r, n, x: round2(b.x), z: round2(b.z), vx: round2(b.vx), vz: round2(b.vz), y: round2(b.y), a: b.alive, d: dashed });
@@ -269,16 +222,10 @@ export const ballFrame = (b: Ball, r: number, n: number, dashed: boolean): BallF
 export const hitFrame = (to: string, knock: { vx: number; vz: number }, hit: number): HitFrame =>
   ({ k: 'h', to: whoOf(to), vx: round2(knock.vx), vz: round2(knock.vz), hit: round2(hit) });
 
-export const roundFrame = (r: Round, now: number, q: number): RoundFrame =>
-  ({ k: 'r', q, n: r.n, ph: r.phase, t: Math.max(0, Math.round(now - r.since)), ps: r.players, w: r.winner, wins: Object.entries(r.wins) });
-
 /** A frame from another player, or null for anything off. */
 export function parseFrame(text: unknown): Frame | null {
-  if (typeof text !== 'string' || text.length > 4096) return null;
-  let v: unknown;
-  try { v = JSON.parse(text); } catch { return null; }
-  const f = v as Record<string, unknown> | null;
-  if (!f || typeof f !== 'object') return null;
+  const f = frameFields(text);
+  if (!f) return null;
   if (f['k'] === 'b') {
     const { r, n, x, z, vx, vz, y, a, d } = f;
     if (!Number.isSafeInteger(r) || (r as number) < 0 || !Number.isSafeInteger(n) || (n as number) < 0 || !num(x) || !num(z) || !num(vx) || !num(vz) || !num(y) || typeof a !== 'boolean' || typeof d !== 'boolean') return null;
@@ -286,21 +233,9 @@ export function parseFrame(text: unknown): Frame | null {
   }
   if (f['k'] === 'h') {
     const { to, vx, vz, hit } = f;
-    if (typeof to !== 'string' || !WHO.test(to) || !num(vx, 100) || !num(vz, 100) || !num(hit, 100) || (hit as number) < 0) return null;
+    if (!isWho(to) || !num(vx, 100) || !num(vz, 100) || !num(hit, 100) || (hit as number) < 0) return null;
     return { k: 'h', to, vx, vz, hit: hit as number };
   }
-  if (f['k'] === 'r') {
-    const { q, n, ph, t, ps, w, wins } = f;
-    if (!Number.isSafeInteger(q) || !Number.isSafeInteger(n) || (n as number) < 0 || !PHASES.includes(ph as Phase) || !Number.isSafeInteger(t) || (t as number) < 0) return null;
-    if (!Array.isArray(ps) || ps.length > MAX_PLAYERS || !ps.every((p) => typeof p === 'string' && WHO.test(p))) return null;
-    if (w !== null && (typeof w !== 'string' || !WHO.test(w))) return null;
-    if (!Array.isArray(wins) || wins.length > 64) return null;
-    for (const e of wins as unknown[]) if (!Array.isArray(e) || e.length !== 2 || typeof e[0] !== 'string' || !WHO.test(e[0]) || !Number.isSafeInteger(e[1]) || e[1] < 0) return null;
-    return { k: 'r', q: q as number, n: n as number, ph: ph as Phase, t: t as number, ps: ps as string[], w: w as string | null, wins: wins as [string, number][] };
-  }
+  if (f['k'] === 'r') return parseRoundFrame(f);
   return null;
 }
-
-/** The round a follower takes from the leader's frame, heard at `now` by its own clock. */
-export const roundOf = (f: RoundFrame, now: number): Round =>
-  ({ n: f.n, phase: f.ph, since: now - f.t, players: f.ps, winner: f.w, wins: Object.fromEntries(f.wins) });

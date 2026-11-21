@@ -48,7 +48,11 @@ worker keeps it with the rest of the build, so a tab left open across a deploy s
 - A browser without WebGL 2 plays all the same, blind, and the game says so. Headless Firefox without a GPU gives none
   (this dev box, 2026-11-21): the browser suite plays there blind, and draws in Chromium.
 - More games add a name to `GAME_NAMES`, a module like client/bonk.ts, and an entry in client/Game.tsx; the declaration,
-  the links and the Room stay as they are. An app that does not know a game does not show it.
+  the links and the Room stay as they are. An app that does not know a game does not show it. **Splotch** came second
+  (2026-11-21): the rounds and their leader moved to `src/core/rounds.ts`, and what games draw alike to
+  `src/client/gamekit.ts`. Every app paints its board from what it hears, so two boards may differ by a tile where two
+  blobs crossed at once; the leader's board counts, and its count goes out with the round's end (`RoundFrame.sc`). A
+  friend whose app knew only Bonk saw no Splotch, until it updated.
 
 ## Considered options
 
