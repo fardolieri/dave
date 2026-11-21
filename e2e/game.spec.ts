@@ -55,14 +55,15 @@ test('a game: started from the call in one click, joined from its tile, rounds c
   const aliceWho = (await view(bob))!.others[0]!.key.slice(0, 11); // as the game's frames carry a player (core/bonk.ts, `whoOf`)
   const bobWho = (await view(alice))!.others[0]!.key.slice(0, 11);
 
-  // Alice dashes into Bob, who stands still: the bonk sends him flying off the floe, and Alice wins the round, on both
-  // screens. Her app works out the bonk and gives his ball its knock: from where his app sees her, the two only touch.
+  // Alice rolls into Bob, who stands still: the bonk sends him off the floe, and Alice wins the round, on both screens.
+  // Either app may work the bonk out (core/bonk.ts, `bonk`, `HitFrame`); that only one of them does, and the knock is
+  // what reaches Bob, is test/game.test.ts's: here it is the timing of the two apps that decides.
   await tile(alice).locator('.bonk').click();
-  const toward = (await view(bob))!.me.z > (await view(alice))!.me.z ? 'ArrowDown' : 'ArrowUp';
+  const bobFrom = (await view(bob))!.me;
+  const toward = bobFrom.z > (await view(alice))!.me.z ? 'ArrowDown' : 'ArrowUp';
   await alice.page.keyboard.down(toward);
-  await alice.page.waitForTimeout(200);
+  await expect.poll(async () => { const me = (await view(bob))!.me; return !me.alive || Math.abs(me.z - bobFrom.z) > 0.5; }, { timeout: 10_000, intervals: [50], message: 'Bob is pushed' }).toBe(true);
   await alice.page.keyboard.up(toward);
-  await alice.page.keyboard.press('Space');
   for (const f of [alice, bob]) await expect.poll(async () => (await view(f))!.wins, { timeout: 15_000, message: `${f.name} sees Alice win` }).toEqual({ [aliceWho]: 1 });
   // The winner is said for a few seconds, and the wins stay up.
   await expect(tile(alice).locator('.bonk-board')).toHaveText('You 🏆');

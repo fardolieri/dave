@@ -11,8 +11,12 @@ import type { LocalIdentity } from './identity';
 
 /** A link that has not opened within this long is closed, and the offering side tries again. */
 const CONNECT_TIMEOUT_MS = 15_000;
-/** How long the offering side waits before it tries a link again that failed or closed. */
+/**
+ * How long the offering side waits before it tries a link again that failed or closed: twice as long each time it
+ * fails again, up to a minute, so a pair that cannot reach each other does not signal through the Room all game.
+ */
 const RETRY_MS = 2_000;
+const MAX_RETRY_MS = 60_000;
 
 type Link = {
   peer: string;
@@ -32,6 +36,8 @@ export function createGameLinks(opts: { identity: LocalIdentity; send: (m: Clien
   /** The game I play and who else plays it; none while I play none. */
   let want: { game: string; peers: Set<string> } | null = null;
   const retries = new Map<string, ReturnType<typeof setTimeout>>();
+  /** How long the next try to each player waits; back to RETRY_MS once their link opens. */
+  const backoff = new Map<string, number>();
   const listeners = new Set<(from: string, data: unknown) => void>();
   const changes = new Set<() => void>();
   const chain = keyedChain((e) => { if (e !== CLOSED) console.error('game link signal failed', e); });
@@ -53,7 +59,7 @@ export function createGameLinks(opts: { identity: LocalIdentity; send: (m: Clien
       else opts.send({ t: 'link', to: peer, data: { link: gameLinkId({ id: game }), candidates: [e.candidate.toJSON()] } });
     };
     pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') close(link); };
-    channel.onopen = changed;
+    channel.onopen = () => { backoff.delete(peer); changed(); };
     channel.onclose = () => close(link);
     channel.onmessage = (e) => { for (const f of listeners) f(peer, e.data); };
     return link;
@@ -74,7 +80,9 @@ export function createGameLinks(opts: { identity: LocalIdentity; send: (m: Clien
 
   function retry(peer: string): void {
     if (retries.has(peer)) return;
-    retries.set(peer, setTimeout(() => { retries.delete(peer); offer(peer); }, RETRY_MS));
+    const wait = backoff.get(peer) ?? RETRY_MS;
+    backoff.set(peer, Math.min(wait * 2, MAX_RETRY_MS));
+    retries.set(peer, setTimeout(() => { retries.delete(peer); offer(peer); }, wait));
   }
 
   async function describe(link: Link, description: RTCSessionDescription | null): Promise<boolean> {
@@ -117,7 +125,9 @@ export function createGameLinks(opts: { identity: LocalIdentity; send: (m: Clien
         // Only from the side that offers, and for the game I play, though presence may not list the friend in it yet (they
         // just came in). One again (the friend reloaded) takes the old one's place.
         if (from > me || want?.game !== game) return;
-        link = open(from, game, await opts.iceServers());
+        const servers = await opts.iceServers();
+        if (want?.game !== game) return; // left it meanwhile
+        link = open(from, game, servers);
         await remote(link, description);
         await unlessClosed(link.latch.closed, link.pc.setLocalDescription());
         if (!(await describe(link, link.pc.localDescription))) close(link);

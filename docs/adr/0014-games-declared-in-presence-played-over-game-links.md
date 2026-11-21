@@ -15,8 +15,10 @@ awake. So a game has two halves, as a watch party (ADR 0012) and a file (ADR 000
 text key under the domain `dave game v1` (`sealGame`), as a `game` field of their presence entry (`{ t: 'game', sealed }`).
 The server learns that a friend plays, not what; a game it does not know is a field like any other, so a new game needs
 no change to the Room. Leaving the call, or the socket, ends the declaration with the friend's place in the call. The
-call's game is the one started first (then the smaller id), so two friends who start one at the same moment end up in
-the same game: whoever is in the other moves over. The game ends when nobody declares it.
+call's game is the one most players declare, then the one started first, then the smaller id, and whoever is in another
+moves over: two friends who start one at the same moment end up in the same game, and a friend whose socket was away a
+while, back with a game that ended meanwhile, moves over to the one the others started since, instead of pulling them
+back into theirs. The game ends when nobody declares it.
 
 **Everything that moves** goes over **game links** (`src/client/gamelinks.ts`): a data-only RTCPeerConnection between
 every two players, opened by the one with the smaller key, signaled through the Room as a file link's `link` frames are,
@@ -31,7 +33,9 @@ other, and sends where it is twenty times a second. A bonk is worked out by the 
 bounces its own ball off and sends the other ball its knock (`HitFrame`), which that ball's app adds to it. Both apps may
 work out the same bonk, from where each sees the other; the first taken counts, and another between the same two is not
 taken for a quarter of a second. The rounds are run by a leader, the player who knows the newest round, then the
-smallest key: one who just came in leads nobody until the round reaches them, so they cannot start it over. A player not
+smallest key: one who just came in leads nobody until the round reaches them, so they cannot start it over. The leader's
+frames are ordered by its clock, so a leader who reloads is followed again at once; a player who comes back during a
+round watches it, and counts as fallen in it. A player not
 heard from for 2.5 s is out of the leader's count (a hidden tab, a link gone), and the floe shrinks to nothing at last,
 so every round ends.
 

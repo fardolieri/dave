@@ -152,9 +152,12 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   /** The round I play; 0 while I watch one or none is on. */
   let playing = 0;
   let round: Round = firstRound(performance.now());
-  /** Whose round frames I take, and how far their count had got. */
+  /**
+   * Whose round frames I take, and the newest of each: by its sender's clock (ms), so a leader who reloads, and counts
+   * again, still counts on from where they were.
+   */
   const roundSeq = new Map<string, number>();
-  let sentRounds = 0;
+  let sentRound = 0;
   let leader: string | null = me;
   let fellAt: number | null = null;
   let lastFloe = FLOE_START;
@@ -222,10 +225,10 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     const around = heard(now);
     leader = leaderOf([{ key: me, n: round.n }, ...around.map((o) => ({ key: o.key, n: o.frame.n }))]);
     if (leader === me) {
-      const counted: Counted[] = [{ who: myWho, n: playing, alive: ball.alive }, ...around.map((o) => ({ who: whoOf(o.key), n: o.frame.r, alive: o.frame.a }))];
+      const counted: Counted[] = [{ who: myWho, n: playing, known: round.n, alive: ball.alive }, ...around.map((o) => ({ who: whoOf(o.key), n: o.frame.r, known: o.frame.n, alive: o.frame.a }))];
       const next = advance(round, now, counted);
       if (next !== round) { took(next, now); lastRoundSent = 0; }
-      if (now - lastRoundSent >= ROUND_SEND_MS) { links.broadcast(JSON.stringify(roundFrame(round, now, ++sentRounds))); lastRoundSent = now; }
+      if (now - lastRoundSent >= ROUND_SEND_MS) { sentRound = Math.max(Date.now(), sentRound + 1); links.broadcast(JSON.stringify(roundFrame(round, now, sentRound))); lastRoundSent = now; }
     }
     const ms = now - round.since;
     const floe = floeRadius(round.phase, ms, lastFloe);
@@ -619,6 +622,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     window.removeEventListener('pointercancel', onPointerUp);
     dispose(scene);
     sphere.dispose();
+    // Given back now, not when it is collected: a browser keeps only so many at once, and each Leave and Join makes one.
+    renderer?.forceContextLoss();
     renderer?.dispose();
     renderer?.domElement.remove();
     hud.remove();

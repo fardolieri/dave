@@ -18,7 +18,9 @@ the future that can be started from within a call in one click."
 **Found while building it:**
 - A bonk worked out by each app for its own ball alone was felt by the ball that ran in only: it bounced off at once,
   and the other app saw the two touch, never meet. The app that finds a bonk now gives the other ball its knock
-  (`HitFrame`); e2e/game.spec.ts dashes Alice into Bob, who has to go into the sea.
+  (`HitFrame`); test/game.test.ts shows the other app sees only a touch, and that the knock gives what its own app
+  would. e2e/game.spec.ts rolls Alice into Bob, who has to go into the sea, but stays green without the knock too: there
+  the timing decides which app works the bonk out.
 - Headless Chromium notes a GPU stall when it composites the WebGL canvas in software; headless Firefox without a GPU
   gives no WebGL 2 at all, and the game is played blind there. Both are expected in the test, with why.
 

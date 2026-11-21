@@ -39,13 +39,21 @@ export const gameText = (g: Game): string => JSON.stringify({ game: g.game, id: 
 export const sameGame = (a: Game | null, b: Game | null): boolean => (a === null || b === null ? a === b : a.game === b.game && a.id === b.id && a.at === b.at);
 
 /**
- * The call's game, of all its players declare: the one started first, then the smaller id, the same for everyone. Two
- * friends who start one at the same moment end up in the same game: whoever is in the other moves over (client/game.ts).
+ * The call's game, of all its players declare: the one most of them play, then the one started first, then the smaller
+ * id, the same for everyone. Whoever is in another moves over to it (client/game.ts): two friends who start one at the
+ * same moment end up in the first, and a friend whose socket was away a while, back with a game that ended meanwhile,
+ * moves over to the one the others started since, rather than pull them all back into theirs.
  */
 export function current(declared: Iterable<Game>): Game | null {
-  let first: Game | null = null;
-  for (const g of declared) if (first === null || g.at < first.at || (g.at === first.at && g.id < first.id)) first = g;
-  return first;
+  const all = [...declared];
+  const players = (g: Game): number => all.filter((d) => sameGame(d, g)).length;
+  let best: Game | null = null;
+  for (const g of all) {
+    if (best === null) { best = g; continue; }
+    const more = players(g) - players(best);
+    if (more > 0 || (more === 0 && (g.at < best.at || (g.at === best.at && g.id < best.id)))) best = g;
+  }
+  return best;
 }
 
 /**

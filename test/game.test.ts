@@ -18,7 +18,7 @@ describe('a game in the call (core/game.ts)', () => {
     expect(parseGame('null')).toBeNull();
   });
 
-  it('is the one started first, then the smaller id, whatever order the players are listed in', () => {
+  it('is the one most play, then the one started first, then the smaller id, whatever order the players are listed in', () => {
     const first = game({ id: 'zzzzzzzz', at: 5 });
     const second = game({ id: 'aaaaaaaa', at: 6 });
     expect(current([second, first])).toBe(first);
@@ -27,6 +27,10 @@ describe('a game in the call (core/game.ts)', () => {
     expect(current([first, tie])).toBe(tie);
     expect(current([tie, first])).toBe(tie);
     expect(current([])).toBeNull();
+    // A friend back from a while away, with a game that ended meanwhile, does not pull the others into it.
+    const since = game({ id: 'bbbbbbbb', at: 9 });
+    expect(current([first, since, { ...since }])).toEqual(since);
+    expect(current([since, first, { ...since }])).toEqual(since);
     expect(sameGame(first, { ...first })).toBe(true);
     expect(sameGame(first, null)).toBe(false);
     expect(sameGame(null, null)).toBe(true);
@@ -143,36 +147,39 @@ describe('Bonk, a ball on the floe (core/bonk.ts)', () => {
 describe('Bonk, the rounds (core/bonk.ts)', () => {
   it('waits for a second player, counts down, plays until one is left, shows the winner, and goes again', () => {
     let r = firstRound(0);
-    expect(advance(r, 10_000, here({ who: A, n: 0, alive: true }))).toBe(r);
-    r = advance(r, 10_000, here({ who: B, n: 0, alive: true }, { who: A, n: 0, alive: true }));
+    expect(advance(r, 10_000, here({ who: A, n: 0, known: 0, alive: true }))).toBe(r);
+    r = advance(r, 10_000, here({ who: B, n: 0, known: 0, alive: true }, { who: A, n: 0, known: 0, alive: true }));
     expect(r).toMatchObject({ n: 1, phase: 'count', players: [A, B] });
-    expect(advance(r, at(r, COUNT_MS - 1), here({ who: A, n: 1, alive: true }, { who: B, n: 1, alive: true }))).toBe(r);
-    r = advance(r, at(r, COUNT_MS), here({ who: A, n: 1, alive: true }, { who: B, n: 1, alive: true }));
+    expect(advance(r, at(r, COUNT_MS - 1), here({ who: A, n: 1, known: 1, alive: true }, { who: B, n: 1, known: 1, alive: true }))).toBe(r);
+    r = advance(r, at(r, COUNT_MS), here({ who: A, n: 1, known: 1, alive: true }, { who: B, n: 1, known: 1, alive: true }));
     expect(r.phase).toBe('play');
-    expect(advance(r, at(r, 30_000), here({ who: A, n: 1, alive: true }, { who: B, n: 1, alive: true }))).toBe(r);
-    r = advance(r, at(r, 31_000), here({ who: A, n: 1, alive: true }, { who: B, n: 1, alive: false }));
+    expect(advance(r, at(r, 30_000), here({ who: A, n: 1, known: 1, alive: true }, { who: B, n: 1, known: 1, alive: true }))).toBe(r);
+    r = advance(r, at(r, 31_000), here({ who: A, n: 1, known: 1, alive: true }, { who: B, n: 1, known: 1, alive: false }));
     expect(r).toMatchObject({ phase: 'over', winner: A, wins: { [A]: 1 } });
-    expect(advance(r, at(r, OVER_MS - 1), here({ who: A, n: 1, alive: true }, { who: B, n: 1, alive: true }))).toBe(r);
-    r = advance(r, at(r, OVER_MS), here({ who: A, n: 1, alive: true }, { who: B, n: 1, alive: true }, { who: C, n: 0, alive: true }));
+    expect(advance(r, at(r, OVER_MS - 1), here({ who: A, n: 1, known: 1, alive: true }, { who: B, n: 1, known: 1, alive: true }))).toBe(r);
+    r = advance(r, at(r, OVER_MS), here({ who: A, n: 1, known: 1, alive: true }, { who: B, n: 1, known: 1, alive: true }, { who: C, n: 0, known: 0, alive: true }));
     expect(r).toMatchObject({ n: 2, phase: 'count', players: [A, B, C], winner: null, wins: { [A]: 1 } });
   });
 
   it('counts a player gone from the game as fallen, one not yet in the round as standing, and a draw for nobody', () => {
     let r: Round = { ...firstRound(0), n: 3, phase: 'play', players: [A, B, C] };
     // C's app has not taken round 3 yet: still in it.
-    expect(advance(r, 1000, here({ who: A, n: 3, alive: true }, { who: B, n: 3, alive: false }, { who: C, n: 2, alive: false }))).toBe(r);
+    expect(advance(r, 1000, here({ who: A, n: 3, known: 3, alive: true }, { who: B, n: 3, known: 3, alive: false }, { who: C, n: 2, known: 2, alive: false }))).toBe(r);
+    // C reloaded, and watches round 3: out of it, and A wins; with B back too, the round still ends.
+    expect(advance(r, 1000, here({ who: A, n: 3, known: 3, alive: true }, { who: B, n: 3, known: 3, alive: false }, { who: C, n: 0, known: 3, alive: false }))).toMatchObject({ phase: 'over', winner: A });
+    expect(advance(r, 1000, here({ who: A, n: 3, known: 3, alive: false }, { who: B, n: 0, known: 3, alive: false }, { who: C, n: 0, known: 3, alive: false }))).toMatchObject({ phase: 'over', winner: null });
     // C left the game: A stands alone.
-    expect(advance(r, 1000, here({ who: A, n: 3, alive: true }, { who: B, n: 3, alive: false }))).toMatchObject({ phase: 'over', winner: A });
+    expect(advance(r, 1000, here({ who: A, n: 3, known: 3, alive: true }, { who: B, n: 3, known: 3, alive: false }))).toMatchObject({ phase: 'over', winner: A });
     // The last two fell together.
-    r = advance(r, 1000, here({ who: A, n: 3, alive: false }, { who: B, n: 3, alive: false }, { who: C, n: 3, alive: false }));
+    r = advance(r, 1000, here({ who: A, n: 3, known: 3, alive: false }, { who: B, n: 3, known: 3, alive: false }, { who: C, n: 3, known: 3, alive: false }));
     expect(r).toMatchObject({ phase: 'over', winner: null, wins: {} });
     // Alone after it: the wait.
-    expect(advance(r, at(r, OVER_MS), here({ who: A, n: 3, alive: true }))).toMatchObject({ phase: 'wait', players: [] });
+    expect(advance(r, at(r, OVER_MS), here({ who: A, n: 3, known: 3, alive: true }))).toMatchObject({ phase: 'wait', players: [] });
   });
 
   it('goes back to the wait when the second player leaves during the countdown', () => {
-    const r = advance(firstRound(0), 0, here({ who: A, n: 0, alive: true }, { who: B, n: 0, alive: true }));
-    expect(advance(r, 1000, here({ who: A, n: 1, alive: true }))).toMatchObject({ phase: 'wait', n: 1 });
+    const r = advance(firstRound(0), 0, here({ who: A, n: 0, known: 0, alive: true }, { who: B, n: 0, known: 0, alive: true }));
+    expect(advance(r, 1000, here({ who: A, n: 1, known: 1, alive: true }))).toMatchObject({ phase: 'wait', n: 1 });
   });
 
   it('is led by who knows the newest round, then by the smallest key: one just come in leads nobody yet', () => {

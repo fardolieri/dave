@@ -166,8 +166,11 @@ export const ahead = (s: Seen, ageMs: number): Seen => {
 
 // The rounds.
 
-/** A player as the leader counts them: by the start of their key, and whether they are on the floe in round `n`. */
-export type Counted = { who: string; n: number; alive: boolean };
+/**
+ * A player as the leader counts them: by the start of their key, the round they play (`n`, 0 for none: they watch), the
+ * newest round they know (`known`), and whether they are on the floe.
+ */
+export type Counted = { who: string; n: number; known: number; alive: boolean };
 
 /** How much of a player's key the game's frames carry: enough to tell friends apart (core/party.ts does the same). */
 export const WHO_LENGTH = 11;
@@ -211,8 +214,9 @@ export function advance(r: Round, now: number, here: readonly Counted[]): Round 
       return ms >= COUNT_MS ? { ...r, phase: 'play', since: now } : r;
     }
     case 'play': {
-      // Gone from the game counts as fallen; a player whose app has not yet taken the round stands on it still.
-      const standing = r.players.filter((who) => { const p = here.find((h) => h.who === who); return p !== undefined && (p.n !== r.n || p.alive); });
+      // Gone from the game counts as fallen, and so does one who came back and only watches (a reload); one whose app
+      // has not yet taken the round stands on it still.
+      const standing = r.players.filter((who) => { const p = here.find((h) => h.who === who); return p !== undefined && (p.known < r.n || (p.n === r.n && p.alive)); });
       if (standing.length > 1) return r;
       const winner = standing[0] ?? null;
       return { ...r, phase: 'over', since: now, winner, wins: winner ? { ...r.wins, [winner]: (r.wins[winner] ?? 0) + 1 } : r.wins };
@@ -243,8 +247,8 @@ export const leaderOf = (players: Iterable<{ key: string; n: number }>): string 
  */
 export type BallFrame = { k: 'b'; r: number; n: number; x: number; z: number; vx: number; vz: number; y: number; a: boolean; d: boolean };
 /**
- * The round as the leader has it: `t` ms into its phase, its players, its winner, everyone's wins. `q` counts the
- * leader's frames: one that comes after a later one (the channel keeps no order) is dropped.
+ * The round as the leader has it: `t` ms into its phase, its players, its winner, everyone's wins. `q` orders the
+ * leader's frames, by its clock: one that comes after a later one (the channel keeps no order) is dropped.
  */
 export type RoundFrame = { k: 'r'; q: number; n: number; ph: Phase; t: number; ps: string[]; w: string | null; wins: [string, number][] };
 /** A bonk my app worked out, for the ball of `to` (the start of its key): the change in its speed (`bonk`, `knock`). */
