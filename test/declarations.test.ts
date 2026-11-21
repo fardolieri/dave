@@ -75,6 +75,18 @@ describe('declarations (quality ticket 10)', () => {
     expect(afterJoin(d, [])).toEqual([]);
   });
 
+  it('after the join, the game I play goes again, beside the watch party; leaving the call ends both', () => {
+    const d = declared('Alice', null, false);
+    declare(d, { t: 'party', sealed: 'cGFydHk' });
+    declare(d, { t: 'game', sealed: 'Z2FtZQ' });
+    expect(afterJoin(d, [])).toEqual([{ t: 'party', sealed: 'cGFydHk' }, { t: 'game', sealed: 'Z2FtZQ' }]);
+    declare(d, { t: 'game' });
+    expect(afterJoin(d, [])).toEqual([{ t: 'party', sealed: 'cGFydHk' }]);
+    declare(d, { t: 'game', sealed: 'Z2FtZQ' });
+    leaveCall(d);
+    expect(afterJoin(d, [])).toEqual([]);
+  });
+
   it('a share that ended, or a friend who left, takes the ask to watch along; a friend only reconnecting does not', () => {
     const d = declared('Alice', null, false);
     for (const to of ['bob', 'carol', 'dan', 'erin']) declare(d, { t: 'subscribe', to, on: true });

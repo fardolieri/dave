@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_PARTY_BODY_BYTES, MAX_QUEUE, MAX_QUEUED_TITLE_BYTES, QUEUED_BY_LENGTH, asIs, change, current, putOn, driftAllowed, enqueue, fromSeeking, jumped, later, moveQueued, next, parseParty, partyText, positionAt, queuedTitle, sameChange, seekMore, type Party, type Queued } from '../src/core/party';
-import { MAX_SEALED_PARTY_LENGTH, MAX_SEALED_PROFILE_LENGTH, MAX_VIEWERS } from '../src/core/protocol';
+import { MAX_SEALED_GAME_LENGTH, MAX_SEALED_PARTY_LENGTH, MAX_SEALED_PROFILE_LENGTH, MAX_VIEWERS } from '../src/core/protocol';
 import { MAX_TURN_USERS, type SocketState } from '../src/core/room';
 
 const ALICE = 'a'.repeat(87);
@@ -135,7 +135,7 @@ describe('a watch party (core/party.ts)', () => {
     for (const t of ['x'.repeat(200), '日本'.repeat(40), '🎉'.repeat(40), 'a\u0007b']) expect(queuedTitle(queuedTitle(t))).toBe(queuedTitle(t));
   });
 
-  it('seals a full queue of the longest entries within its bound, and the longest sealed party fits a socket\'s attachment with the rest', () => {
+  it('seals a full queue of the longest entries within its bound, and the longest sealed party fits a socket\'s attachment with the rest, a game too', () => {
     const longTitles = ['x', '日', '"', '🎉'].map((c) => queuedTitle(c.repeat(MAX_QUEUED_TITLE_BYTES))!);
     for (const title of longTitles) {
       const full = party({ n: Number.MAX_SAFE_INTEGER, pos: 99999.999, at: Number.MAX_SAFE_INTEGER, rate: 0.25, title: '\u0001'.repeat(100), queue: Array.from({ length: MAX_QUEUE }, (_, i) => queued(`q${i}`, { title })) });
@@ -149,7 +149,7 @@ describe('a watch party (core/party.ts)', () => {
     const bucket = { tokens: 39.999999, at: Number.MAX_SAFE_INTEGER };
     const worst: SocketState = {
       stage: 'attached',
-      person: { publicKey: key, fingerprint: 'ABCDEF', profile: 'p'.repeat(MAX_SEALED_PROFILE_LENGTH), role: 'participant', joinSeq: Number.MAX_SAFE_INTEGER, sharing: true, viewers: Array.from({ length: MAX_VIEWERS }, () => key), muted: true, party: 'P'.repeat(MAX_SEALED_PARTY_LENGTH), privateTexts: { key, sig: 's'.repeat(86) } },
+      person: { publicKey: key, fingerprint: 'ABCDEF', profile: 'p'.repeat(MAX_SEALED_PROFILE_LENGTH), role: 'participant', joinSeq: Number.MAX_SAFE_INTEGER, sharing: true, viewers: Array.from({ length: MAX_VIEWERS }, () => key), muted: true, party: 'P'.repeat(MAX_SEALED_PARTY_LENGTH), game: 'G'.repeat(MAX_SEALED_GAME_LENGTH), privateTexts: { key, sig: 's'.repeat(86) } },
       bucket, signalBucket: bucket, linkBucket: bucket, pieceBucket: bucket, fetchBucket: bucket,
       linkIceAt: Number.MAX_SAFE_INTEGER, syncAt: Number.MAX_SAFE_INTEGER, forgetAt: Number.MAX_SAFE_INTEGER, attachedAt: Number.MAX_SAFE_INTEGER,
       turnUsers: Array.from({ length: MAX_TURN_USERS }, () => 'f'.repeat(128)), joins: Number.MAX_SAFE_INTEGER, telemetry: true,

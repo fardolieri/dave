@@ -20,7 +20,8 @@
     "@solidjs/signals": "2.0.1",
     "@solidjs/web": "2.0.1",
     "posthog-js": "^1.442.1",
-    "solid-js": "2.0.1"
+    "solid-js": "2.0.1",
+    "three": "0.187.0"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.66.0",
@@ -29,6 +30,7 @@
     "@solidjs/diagnostics": "2.0.1",
     "@solidjs/vite-plugin": "3.0.1",
     "@types/node": "^24.19.2",
+    "@types/three": "0.187.0",
     "typescript": "7.0.2",
     "vite": "8.3.5",
     "vitest": "5.0.5",

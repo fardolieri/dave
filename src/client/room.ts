@@ -5,6 +5,7 @@ import { openFile, openPiece, openProfile, openText, sealFile, sealPiece, sealPr
 import { MAX_FILE_BYTES, MAX_FILE_NAME, PIECED_FROM, PIECE_BYTES, PULLS_AT_ONCE, formatSize, inlineKind, pullsByItself, type FileMeta } from '../core/attachment';
 import type { VideoCard } from '../core/youtube';
 import { createLinks, PullFailed, type PullError } from './links';
+import { createGameLinks } from './gamelinks';
 import { createFileWatchdog } from './invariants';
 import { exposeHooks } from './hooks';
 import { big, hashOf, holdSent, holdSentList, keepFile, keptFile, makePreview, noRoom, piecesOf, sweepFiles } from './files';
@@ -680,6 +681,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     await historyLoaded;
     return announced.has(hash);
   } });
+  /** Links to the other players of the call's game (client/gamelinks.ts): their ICE servers come as a file link's. */
+  const gameLinks = createGameLinks({ identity: opts.identity, send: (m) => send(m), iceServers: links.iceServers });
   /** Who announced each file, by hash, oldest first: any of them has it (ticket 02: anyone who pulled it, too). */
   const holders = new Map<string, { file: FileMeta; from: string[] }>();
   const online = (key: string): boolean => people().some((p) => p.publicKey === key);
@@ -1265,6 +1268,9 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
           return;
         }
         case 'link':
+          if (gameLinks.owns(m.data.link)) gameLinks.onLink(m.from, m.data);
+          else links.onMessage(m);
+          return;
         case 'linkice':
           links.onMessage(m);
           return;
@@ -1276,6 +1282,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
             posthog.capture('frame_dropped', { ref: m.ref ?? 'unknown', reason: m.reason });
             if (m.ref === 'link' || m.ref === 'linkice') return; // the pull that sent it times out and says so
             if (m.ref === 'party') return; // a Room from before refuses a longer party (ADR 0013): the declaration stays as it was
+            if (m.ref === 'game') return; // a game declared as the call was left: it ends with it
             if (m.ref === 'piece' && socket === welcomed) pieceAnswered();
             if (m.ref === 'piece' || m.ref === 'fetch') return; // a fetch says so by its answer not coming; a piece not kept goes again
             if (m.ref === 'sync') {
@@ -1422,6 +1429,7 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     watchdog.stop();
     delete (window as unknown as { __daveFiles?: Record<string, unknown> }).__daveFiles?.[opts.roomId];
     links.close();
+    gameLinks.close();
     for (const url of urls) URL.revokeObjectURL(url);
     clearTimeout(reconnectTimer);
     clearTimeout(unavailableTimer);
@@ -1479,6 +1487,8 @@ export function createRoom(opts: { identity: LocalIdentity; roomId: string; auth
     readFrom,
     /** Sends an event (a text, a signal, a request for ICE servers) on the socket let in, if there is one. */
     send,
+    /** Links to the other players of the call's game (client/game.ts). */
+    gameLinks,
     declare: declareLatest,
     /**
      * Enters the call on this socket. The join is an event (client/call.ts waits for its answer); what it declares, muted

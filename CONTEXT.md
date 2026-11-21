@@ -96,6 +96,21 @@ _Avoid_: Watch together (the button's words, fine in UI copy), stream, share (a 
 What plays next in a watch party, in order: cards of the chat its friends lined up with Add to queue. When the video ends, the first plays. Part of the party's state, and gone with it.
 _Avoid_: Playlist (YouTube's, made elsewhere)
 
+**Game**:
+A little game the participants of a call play together, started from the call in one click, beside the shares while anyone plays it; one at a time per call. Who plays it travels sealed in presence; everything that moves in it goes from player to player over game links, never through the server (ADR 0014). Bonk is the first.
+_Avoid_: Match, session, lobby, minigame (in UI copy)
+
+**Game link**:
+A data-only connection between two players of a call's game, open while both play it. Like a file link, not part of the call.
+_Avoid_: Data channel (its transport, fine in code), game connection
+
+**Bonk**:
+The first game: every player is a ball with their face on it, on an ice floe in the sea. Roll, dash, bonk the others into the water; the floe shrinks while a round plays, and the last one on it wins the round.
+
+**Round** (of Bonk):
+From the countdown to the winner: who was there at the countdown plays it, whoever comes in later watches until the next. Run by one player's app, the leader, whom the others follow.
+_Avoid_: Match, game (the whole of it), level
+
 **Signaling**:
 The exchange, through the server, of the offers, answers, and candidates two participants need to connect directly. Never carries media.
 _Avoid_: Handshake, negotiation (reserve for the WebRTC offer/answer state machine)

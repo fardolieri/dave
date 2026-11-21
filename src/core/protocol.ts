@@ -2,6 +2,7 @@
 // Binary values (nonces, keys, MACs, signatures) travel as base64url strings.
 import { MAX_FILE_BODY_BYTES } from './attachment';
 import { KEPT_PIECE_BYTES, KEPT_PIECES_MAX } from './kept';
+import { MAX_GAME_BODY_BYTES } from './game';
 import { MAX_PARTY_BODY_BYTES } from './party';
 
 export type Identity = {
@@ -59,6 +60,11 @@ export type PresenceState = {
    * (core/sealed.ts, `sealParty`); absent while in none.
    */
   party?: string;
+  /**
+   * The game this participant plays (core/game.ts), sealed with the room's text key (core/sealed.ts, `sealGame`); absent
+   * while in none.
+   */
+  game?: string;
   /** Where private texts to this friend are sealed to; none from an app before ADR 0007, which cannot get one. */
   privateTexts?: PrivateTextKey;
 };
@@ -166,7 +172,9 @@ export type ClientMessage =
   /** Ask a sharer to start or stop sending me their share; `scale` asks for a downscaled encoding (small screens). */
   | { t: 'subscribe'; to: string; on: boolean; scale?: number }
   /** The watch party I am in, sealed (core/party.ts), which everyone learns through presence; without it, I am in none. */
-  | { t: 'party'; sealed?: string };
+  | { t: 'party'; sealed?: string }
+  /** The game I play, sealed (core/game.ts), which everyone learns through presence; without it, I play none. */
+  | { t: 'game'; sealed?: string };
 
 /** A text or a file's announcement as the Room broadcast it, and as the server keeps it for those who were away (ADR 0009). */
 export type KeptEntry = { t: 'sealed' | 'file'; from: WireIdentity; sealed: string; at: number; id: TextId };
@@ -259,6 +267,8 @@ export const APP_OUT_OF_DATE = 'this app is out of date, reload the page';
 export const MAX_SEALED_PROFILE_LENGTH = Math.ceil(((12 + Math.ceil((64 + 6 * (MAX_NAME_LENGTH + MAX_PICTURE_LENGTH) + 32 + 1) / 256) * 256 + 16) * 4) / 3);
 /** The longest sealed watch party a client writes, as MAX_SEALED_LENGTH: its body is JSON of MAX_PARTY_BODY_BYTES at most. */
 export const MAX_SEALED_PARTY_LENGTH = Math.ceil(((12 + Math.ceil((64 + MAX_PARTY_BODY_BYTES + 1) / 256) * 256 + 16) * 4) / 3);
+/** The longest sealed game a client writes, as MAX_SEALED_LENGTH: its body is JSON of MAX_GAME_BODY_BYTES at most. */
+export const MAX_SEALED_GAME_LENGTH = Math.ceil(((12 + Math.ceil((64 + MAX_GAME_BODY_BYTES + 1) / 256) * 256 + 16) * 4) / 3);
 
 /** Close codes the server uses. 4000 to 4999 are application-defined. */
 export const CLOSE_AUTH_FAILED = 4001;
@@ -311,7 +321,7 @@ export type RefType = ClientMessage['t'] | 'name' | 'picture' | 'private';
 export type Invalid = { t: 'invalid'; reason: string; ref?: RefType; id?: TextId };
 const invalid = (reason: string): Invalid => ({ t: 'invalid', reason });
 
-const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'sealed', 'file', 'link', 'linkice', 'text', 'join', 'leave', 'mute', 'profile', 'signal', 'ice', 'share', 'subscribe', 'telemetry', 'sync', 'piece', 'fetch', 'forget', 'party']);
+const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMessage['t']>(['auth', 'ping', 'sealed', 'file', 'link', 'linkice', 'text', 'join', 'leave', 'mute', 'profile', 'signal', 'ice', 'share', 'subscribe', 'telemetry', 'sync', 'piece', 'fetch', 'forget', 'party', 'game']);
 /** A file's tag, its hash keyed with the room's secret (core/rooms.ts, `pieceTagOf`): an HMAC-SHA256, base64url. */
 const isFileTag = (v: unknown): v is string => typeof v === 'string' && v.length === 43 && B64URL.test(v);
 const isPieceIndex = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0 && (v as number) < KEPT_PIECES_MAX;
@@ -400,6 +410,10 @@ function parseFrame(raw: unknown): ClientMessage | Invalid {
       if (m.sealed === undefined) return { t: 'party' };
       if (typeof m.sealed !== 'string' || m.sealed.length === 0 || m.sealed.length > MAX_SEALED_PARTY_LENGTH || !B64URL.test(m.sealed)) return invalid('unrecognised message');
       return { t: 'party', sealed: m.sealed };
+    case 'game':
+      if (m.sealed === undefined) return { t: 'game' };
+      if (typeof m.sealed !== 'string' || m.sealed.length === 0 || m.sealed.length > MAX_SEALED_GAME_LENGTH || !B64URL.test(m.sealed)) return invalid('unrecognised message');
+      return { t: 'game', sealed: m.sealed };
     case 'subscribe': {
       if (!b64(m.to) || typeof m.on !== 'boolean') return invalid('unrecognised message');
       const scale = typeof m.scale === 'number' && m.scale >= 1 && m.scale <= 4 ? m.scale : undefined;

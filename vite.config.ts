@@ -177,7 +177,8 @@ export default defineConfig({
   define: { __BUILD__: JSON.stringify(build), __SOLID_DEV__: JSON.stringify(solidDev) },
   // Source maps ship to production on purpose: this is a friends app and a readable stack in a friend's console is worth more than hiding code.
   // Solid's development build keeps its names, so the stack of each of its diagnostics reads (e2e/fixtures.ts).
-  build: { target: 'esnext', sourcemap: true, ...(solidDev ? { minify: false } : {}) },
+  // The game's chunk (client/bonk.ts) is three.js, most of 600 kB, loaded only once a friend plays: not worth a warning.
+  build: { target: 'esnext', sourcemap: true, chunkSizeWarningLimit: 600, ...(solidDev ? { minify: false } : {}) },
   // The voice worklet (client/voice.worklet.ts) is bundled like a worker; a worklet loads ES modules only.
   worker: { format: 'es' },
 });

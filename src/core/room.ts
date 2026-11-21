@@ -335,7 +335,7 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
     }
     case 'leave': {
       if (state.person.role !== 'participant') return { state: next, replies: [] };
-      const { party: _party, ...was } = state.person; // the watch party is the call's: it ends with my place in it
+      const { party: _party, game: _game, ...was } = state.person; // the watch party and the game are the call's: they end with my place in it
       const person: Person = withViewers({ ...was, role: 'visitor', joinSeq: null, sharing: false, muted: false }, undefined);
       const { turnUsers, ...rest } = next;
       return { state: { ...rest, person }, replies: [], broadcast: [{ t: 'left', publicKey: person.publicKey }], presenceChanged: true, ...(turnUsers?.length ? { revokeTurn: turnUsers } : {}) };
@@ -370,6 +370,12 @@ export async function onMessage(state: SocketState, raw: unknown, ctx: RoomConte
       if (state.person.party === msg.sealed) return { state: next, replies: [] };
       const { party: _was, ...rest } = state.person;
       return { state: { ...next, person: msg.sealed ? { ...rest, party: msg.sealed } : rest }, replies: [], presenceChanged: true };
+    }
+    case 'game': {
+      if (state.person.role !== 'participant') return notInCall('game');
+      if (state.person.game === msg.sealed) return { state: next, replies: [] };
+      const { game: _was, ...rest } = state.person;
+      return { state: { ...next, person: msg.sealed ? { ...rest, game: msg.sealed } : rest }, replies: [], presenceChanged: true };
     }
     case 'subscribe': {
       if (state.person.role !== 'participant') return notInCall('subscribe');

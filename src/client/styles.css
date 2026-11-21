@@ -485,6 +485,26 @@ button.unblock { background: #4a3a12; color: var(--warn); border-color: transpar
 .party .party-queue .queued-move[aria-disabled="true"] { opacity: .35; cursor: default; }
 .party .share-head .skip { margin-left: auto; }
 .party .share-head .skip + .stop { margin-left: 0; }
+/* the call's game (client/Game.tsx): its own colours whatever the theme, the sky and the sea of the game itself */
+button.play { flex: 1; font-weight: 600; }
+.game .game-title { font-weight: 600; }
+.game .share-head .stop { margin-left: auto; }
+.game > .share-note { padding: 0 16px; text-align: center; line-height: 1.5; color: #0b2033; background: radial-gradient(ellipse 38% 22% at 50% 62%, #f4fbff 96%, #6fb6dd 97%, #6fb6dd 100%, transparent 101%), linear-gradient(#bfe6ff 0 34%, #1f7fb8 34% 100%); }
+.game > .share-note > span { padding: 8px 16px; border-radius: 12px; background: rgba(255,255,255,.85); }
+.game .bonk { position: relative; flex: 1; min-height: 0; overflow: hidden; outline: none; touch-action: none; user-select: none; -webkit-user-select: none; background: #bfe6ff; cursor: default; }
+.bonk .bonk-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.bonk-hud { position: absolute; inset: 0; pointer-events: none; color: #0b2033; font-family: system-ui, sans-serif; }
+.bonk-banner { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); max-width: 90%; padding: 4px 14px; border-radius: 999px; background: rgba(255,255,255,.8); font-size: 14px; font-weight: 700; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bonk-banner:empty { display: none; }
+.bonk-banner.big { top: 30%; padding: 8px 26px; font-size: clamp(28px, 7vw, 64px); font-weight: 900; color: #fff; background: rgba(11,32,51,.55); text-shadow: 0 3px 0 #0b2033; }
+.bonk-board { position: absolute; top: 10px; left: 10px; margin: 0; padding: 0; list-style: none; font-size: 13px; font-weight: 600; }
+.bonk-board li { margin-bottom: 3px; padding: 1px 8px; border-radius: 6px; background: rgba(255,255,255,.75); }
+.bonk-help { position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; font-size: 12px; color: #0b2033cc; }
+.bonk-dash { display: none; position: absolute; right: 16px; bottom: 24px; width: 72px; height: 72px; border-radius: 50%; pointer-events: auto; font-weight: 800; background: #ffc400; color: #1a1300; border: 3px solid #fff; }
+.bonk-stick { display: none; position: absolute; width: 90px; height: 90px; margin: -45px 0 0 -45px; border-radius: 50%; border: 3px solid rgba(255,255,255,.8); background: rgba(255,255,255,.25); }
+.bonk.bonk-touch .bonk-dash, .bonk-stick.on { display: block; }
+.bonk.bonk-touch .bonk-help { display: none; }
+@media (pointer: coarse) { .bonk-dash { display: block; } .bonk-help { display: none; } }
 .share-note { flex: 1; display: grid; place-items: center; color: var(--dim); font-size: 13px; }
 /* the browser refused to start the video without a gesture: the note sits over the black picture, clicks fall through to the tile */
 .share-play { position: absolute; inset: 0; z-index: 1; pointer-events: none; color: #fff; font-size: 14px; background: rgba(0,0,0,.45); }
@@ -741,6 +761,7 @@ dialog.clear .check input { margin: 0 6px 0 0; vertical-align: -1px; }
   .shares .share { min-height: 180px; }
   .shares .party .party-player { flex: none; height: auto; aspect-ratio: 16 / 9; }
   .shares .party .party-queue { max-height: 40vh; }
+  .shares .game .bonk { flex: none; height: 62vh; }
   .party .party-queue .queued-move { width: 32px; height: 30px; } /* a finger's */
   .chat { grid-column: 1; grid-row: 3; min-height: 180px; padding-bottom: 8px; } /* breathing room between the newest line and the composer's top border */
   /* A private conversation is brought into view whole: its head and room for its lines below it, the composer under that */

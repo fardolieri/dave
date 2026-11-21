@@ -427,6 +427,8 @@ export function createLinks(opts: { identity: LocalIdentity; send: (m: ClientMes
 
   return {
     pull,
+    /** ICE servers for a link, as the Room mints them: game links (client/gamelinks.ts) ask through here too. */
+    iceServers,
     /** `link` and `linkice` frames from the Room. */
     onMessage(m: ServerMessage): void {
       if (m.t === 'link') void chain(m.from, () => onLink(m.from, m.data));

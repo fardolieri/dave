@@ -20,6 +20,8 @@ import { MIC_TEST_RECORD_MS, createCall, type ConnState, type OutgoingShare, typ
 import { createAttention, type RoomLink } from './attention';
 import { createParty, syncPlayer, type PartyHandle } from './party';
 import { MAX_QUEUE } from '../core/party';
+import { createGame, type GameHandle } from './game';
+import { GameButtons, GameTile } from './Game';
 import { windowFocused } from './focus';
 import { contactOf, isKnown, markKnown, setNickname } from './contacts';
 import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH, identityOf, normaliseName, type Identity, type Person } from '../core/protocol';
@@ -239,7 +241,7 @@ function JoinLinkForm(props: { onJoin: (link: InviteLink) => void; onCancel?: ()
 }
 
 /** One room this browser is in: what was saved about it, its socket, and its call. */
-type Link = RoomLink & { saved: SavedRoom; party: PartyHandle };
+type Link = RoomLink & { saved: SavedRoom; party: PartyHandle; game: GameHandle };
 
 type WorkspaceProps = {
   rooms: SavedRoom[]; selected: string | null; created: string | null; name: string; identity: LocalIdentity;
@@ -274,9 +276,10 @@ function Workspace(props: WorkspaceProps) {
     const room: ReturnType<typeof createRoom> = createRoom({ identity, roomId: last.id, authKey: last.authKey, textKey: last.textKey, pieceKey: last.pieceKey, name: untrack(() => props.name), picture: getPicture(), hold: holding, shown: () => current()?.room === room && privates.openWith() === null });
     const call = createCall(room, identity, { mayRejoin: untrack(() => props.mayRejoin) });
     const party = createParty(room, identity, last.textKey, call.inCall);
+    const game = createGame(room, identity, last.textKey, call.inCall);
     posthog.capture('room_entered');
     // The latest saved entry; the last one seen while the room is being forgotten and its link disposed.
-    return { get saved() { return (last = props.rooms.find((r) => r.secret === secret) ?? last); }, room, call, party };
+    return { get saved() { return (last = props.rooms.find((r) => r.secret === secret) ?? last); }, room, call, party, game };
   });
   onSettled(() => props.onStepBack(() => { for (const l of untrack(links)) l.call.leave(); })); // a join under way too
   /** The room on screen. Null only for the moment between leaving the last room and the workspace going away. */
@@ -679,7 +682,7 @@ function Workspace(props: WorkspaceProps) {
 
   return (
     <Show when={current()}>{(cur) => (
-      <div class={['app', { split: sharers().length > 0 || !!stage()?.party.now(), dropping: dragging() }]}
+      <div class={['app', { split: sharers().length > 0 || !!stage()?.party.now() || !!stage()?.game.now(), dropping: dragging() }]}
            onDragEnter={(e) => { if (hasFiles(e)) { depth++; if (!onTop(e.target)) overPage(); } }}
            onDragOver={(e) => {
              if (!hasFiles(e)) return;
@@ -862,7 +865,7 @@ function Workspace(props: WorkspaceProps) {
                   </Show>
                   <Show when={expanded()}>
                     <div class="actions">
-                      <Show when={!inThis()} fallback={<CallControls call={l.call} panel={panel()} onPanel={setPanel} canShare={canShare} />}>
+                      <Show when={!inThis()} fallback={<CallControls call={l.call} game={l.game} panel={panel()} onPanel={setPanel} canShare={canShare} />}>
                         <button class="join" disabled={l.room.status().kind !== 'connected'} title={holding() ? 'A new version of dave is loading' : elsewhere() ? `Leaves the call in ${elsewhere()!.saved.name}` : undefined} onClick={() => joinCall(l)}>Join</button>
                       </Show>
                       <Show when={l.call.joinError()}>{(e) => <div class="warn">{e()}</div>}</Show>
@@ -935,8 +938,13 @@ function Workspace(props: WorkspaceProps) {
           {/* The state of the room on screen; with a private conversation on screen, of the room that carries it, as its
               composer goes by: a room down behind it is not the conversation's */}
           <Banner status={bannerStatus((() => { const k = privates.openWith(); return (k ? privates.via(k) : null) ?? cur().room; })())} onTakeOver={() => { for (const l of links()) l.room.takeOver(); privates.takeOver(); }} />
-          <Show when={(sharers().length > 0 || stage()?.party.now()) && stage()}>{(s) => (
-            <section class="shares" style={`grid-template-columns: repeat(${sharers().length + (s().party.now() ? 1 : 0)}, 1fr)`}>
+          <Show when={(sharers().length > 0 || stage()?.party.now() || stage()?.game.now()) && stage()}>{(s) => (
+            <section class="shares" style={`grid-template-columns: repeat(${sharers().length + (s().party.now() ? 1 : 0) + (s().game.now() ? 1 : 0)}, 1fr)`}>
+              <Show when={s().game.now()}>
+                <GameTile game={s().game} inCall={s().call.inCall()}
+                          faceOf={(k) => { const f = k === me ? undefined : present(k); const l = f && labelOf(f); return { name: l?.shown ?? 'A friend', picture: l?.picture ?? (k === me ? getPicture() : null) }; }}
+                          faces={<ShareFaces keys={s().game.members()} label={(k) => { const p = present(k); return p && labelOf(p); }} />} />
+              </Show>
               <Show when={s().party.now()}>{(p) => (
                 <PartyTile party={s().party} title={p().card?.youtube?.title ?? p().title} video={p().video} inCall={s().call.inCall()}
                            thumb={(() => { const card = p().card; if (!card) return undefined; const a = s().room.attachment(card.hash); return a?.status === 'ready' ? a.url : card.preview; })()}
@@ -1030,7 +1038,7 @@ function ClearDialog(props: { ask: ClearAsk; onClose: () => void }) {
 }
 
 /** The controls while in a call: mute and audio settings, share and share settings, leave. */
-function CallControls(props: { call: Call; panel: 'audio' | 'share' | null; onPanel: (p: 'audio' | 'share' | null) => void; canShare: boolean }) {
+function CallControls(props: { call: Call; game: GameHandle; panel: 'audio' | 'share' | null; onPanel: (p: 'audio' | 'share' | null) => void; canShare: boolean }) {
   const toggle = (p: 'audio' | 'share') => props.onPanel(props.panel === p ? null : p);
   return (
     <>
@@ -1050,6 +1058,7 @@ function CallControls(props: { call: Call; panel: 'audio' | 'share' | null; onPa
         </div>
       </Show>
       <Show when={props.panel === 'share'}><SharePanel call={props.call} /></Show>
+      <GameButtons game={props.game} />
       <button class="leave" onClick={props.call.leave}>Leave</button>
     </>
   );

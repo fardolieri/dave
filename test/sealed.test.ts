@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { exportPublicKey, fromBase64Url, generateIdentityKeyPair, toBase64Url } from '../src/core/identity';
-import { MAX_NAME_LENGTH, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_SEALED_PARTY_LENGTH, MAX_SEALED_PIECE_LENGTH, MAX_SEALED_PROFILE_LENGTH, MAX_TEXT_LENGTH } from '../src/core/protocol';
+import { MAX_NAME_LENGTH, MAX_SEALED_FILE_LENGTH, MAX_SEALED_LENGTH, MAX_SEALED_PARTY_LENGTH, MAX_SEALED_GAME_LENGTH, MAX_SEALED_PIECE_LENGTH, MAX_SEALED_PROFILE_LENGTH, MAX_TEXT_LENGTH } from '../src/core/protocol';
 import { KEPT_PIECE_BYTES } from '../src/core/kept';
 import { MAX_FILE_NAME, MAX_PREVIEW_LENGTH, type FileMeta } from '../src/core/attachment';
 import { roomIdOf, textKeyOf } from '../src/core/rooms';
-import { generatePrivateTextKeyPair, openFile, openParty, openPiece, openProfile, openText, pairSecret, sealFile, sealParty, sealPiece, sealProfile, sealText, signPrivateTextKey, verifyPrivateTextKey } from '../src/core/sealed';
+import { generatePrivateTextKeyPair, openFile, openGame, openParty, openPiece, openProfile, openText, pairSecret, sealFile, sealGame, sealParty, sealPiece, sealProfile, sealText, signPrivateTextKey, verifyPrivateTextKey } from '../src/core/sealed';
 import type { Party } from '../src/core/party';
+import type { Game } from '../src/core/game';
 
 async function writer() {
   const keys = await generateIdentityKeyPair();
@@ -255,5 +256,28 @@ describe('sealed watch parties', async () => {
     expect(await openProfile({ key, roomId, from: alice.from, sealed })).toBeNull();
     expect(await openText({ key, roomId, id: 'party', from: alice.from, sealed })).toMatchObject({ ok: false });
     expect(await openParty({ key, roomId, from: alice.from, sealed: await sealProfile({ key, roomId, ...alice, profile: { name: 'Alice' } }) })).toBeNull();
+  });
+});
+
+describe('sealed games', async () => {
+  const key = await textKeyOf('a secret');
+  const roomId = await roomIdOf('a secret');
+  const alice = await writer();
+  const bob = await writer();
+  const game: Game = { game: 'bonk', id: 'abcdEFGH', at: Number.MAX_SAFE_INTEGER };
+
+  it('round-trips the game a friend plays, within what the Room takes, and does not show which', async () => {
+    const sealed = await sealGame({ key, roomId, ...alice, game });
+    expect(await openGame({ key, roomId, from: alice.from, sealed })).toEqual(game);
+    expect(sealed.length).toBeLessThanOrEqual(MAX_SEALED_GAME_LENGTH);
+    expect(new TextDecoder().decode(fromBase64Url(sealed)!)).not.toContain('bonk');
+  });
+
+  it('opens only in its room, under its writer, and not as a watch party', async () => {
+    const sealed = await sealGame({ key, roomId, ...alice, game });
+    expect(await openGame({ key, roomId: await roomIdOf('another'), from: alice.from, sealed })).toBeNull();
+    expect(await openGame({ key, roomId, from: bob.from, sealed })).toBeNull();
+    expect(await openParty({ key, roomId, from: alice.from, sealed })).toBeNull();
+    expect(await openText({ key, roomId, id: 'game', from: alice.from, sealed })).toMatchObject({ ok: false });
   });
 });

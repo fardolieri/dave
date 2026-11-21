@@ -17,13 +17,15 @@
 // A friend's profile (ADR 0010), the name and picture friends see, is sealed the same way under `dave profile v1`, with the
 // room's text key, under the id `profile`: the server passes on and lists what it cannot read, and a friend opens it
 // and checks that the identity it is listed under wrote it. The watch party a friend is in (core/party.ts) goes the same
-// way under `dave watch party v1`, under the id `party`.
+// way under `dave watch party v1`, under the id `party`, and the game a friend plays (core/game.ts) under `dave game v1`,
+// under the id `game`.
 //
 // WebCrypto only; runs unchanged in browsers, workerd and Node.
 import { fromBase64Url, importPublicKey, signBytes, toBase64Url, verifyBytes } from './identity';
 import { MAX_TEXT_LENGTH, normaliseName, normalisePicture } from './protocol';
 import { MAX_FILE_BODY_BYTES, parseFileMeta, type FileMeta } from './attachment';
 import { parseParty, partyText, type Party } from './party';
+import { gameText, parseGame, type Game } from './game';
 
 const DOMAIN = 'dave text v1';
 const FILE_DOMAIN = 'dave file v1';
@@ -34,6 +36,8 @@ const PIECE_DOMAIN = 'dave file piece v1';
 const PARTY_DOMAIN = 'dave watch party v1';
 const PROFILE_ID = 'profile';
 const PARTY_ID = 'party';
+const GAME_DOMAIN = 'dave game v1';
+const GAME_ID = 'game';
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 const SIGNATURE_BYTES = 64; // ECDSA P-256 as WebCrypto writes it: r || s
@@ -209,6 +213,17 @@ export function sealParty(input: { key: CryptoKey; privateKey: CryptoKey; roomId
 export async function openParty(input: { key: CryptoKey; roomId: string; from: string; sealed: string }): Promise<Party | null> {
   const opened = await open({ ...input, id: PARTY_ID }, PARTY_DOMAIN);
   return opened.ok ? parseParty(opened.text) : null;
+}
+
+/** Writer side: the game I play (core/game.ts), sealed as my watch party is: the server learns that I play, not what. */
+export function sealGame(input: { key: CryptoKey; privateKey: CryptoKey; roomId: string; from: string; game: Game }): Promise<string> {
+  return seal({ ...input, id: GAME_ID, text: gameText(input.game) }, GAME_DOMAIN);
+}
+
+/** Reader side: a friend's game, if it was sealed with this room's key and signed by `from`; null for anything else, a game this app does not know too. */
+export async function openGame(input: { key: CryptoKey; roomId: string; from: string; sealed: string }): Promise<Game | null> {
+  const opened = await open({ ...input, id: GAME_ID }, GAME_DOMAIN);
+  return opened.ok ? parseGame(opened.text) : null;
 }
 
 const ECDH = { name: 'ECDH', namedCurve: 'P-256' } as const;
