@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-21T15:15 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-21T22:11 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 25, branch 168, preview 177.
+Runs recorded: nightly 24, branch 155, preview 165.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -78,5 +78,3 @@ Runs recorded: nightly 25, branch 168, preview 177.
 | 1 | 1 | preview 1 | call.spec.ts › a friend without a microphone joins to listen, shown muted; Unmute takes one plugged in later | expect(locator).toHaveCount(expected) failed | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | 61 |
 | 1 | 1 | preview 1 | attachment.spec.ts › a pull outlives a blip of the puller's socket, and the picture still shows by itself | expect(locator).toHaveCount(expected) failed | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | 61 |
 | 1 | 1 | preview 1 | themes.spec.ts › a stored theme whose file a later deploy dropped reads as the default look, and a theme picked then is kept | expect(locator).toHaveCount(expected) failed | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | [10-24](https://github.com/fardolieri/dave/actions/runs/40046536450/attempts/1) | 61 |
-| 1 | 1 | preview 1 | share.spec.ts › regression: a Watch click while the socket is down is asked for again after the reconnect | expect(locator).toHaveText(expected) failed | [10-22](https://github.com/fardolieri/dave/actions/runs/39816642728/attempts/1) | [10-22](https://github.com/fardolieri/dave/actions/runs/39816642728/attempts/1) | 51 |
-| 1 | 1 | preview 1 | text.spec.ts › regression: the chat keeps its place when the share strip comes and goes | expect(locator).toBeVisible() failed | [10-22](https://github.com/fardolieri/dave/actions/runs/39804779460/attempts/1) | [10-22](https://github.com/fardolieri/dave/actions/runs/39804779460/attempts/1) | 51 |
