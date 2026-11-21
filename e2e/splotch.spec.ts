@@ -26,13 +26,20 @@ test('splotch: a round painted by two, one of them fullscreen, each trail and sp
 
   await alice.page.getByRole('button', { name: 'Play Splotch' }).click();
   await expect.poll(async () => (await view(alice))?.phase, { timeout: 30_000 }).toBe('wait');
+  // Alone, Alice paints around while she waits.
+  await tile(alice).locator('.bonk').click();
+  await alice.page.keyboard.down('ArrowRight');
+  await expect.poll(async () => Object.values((await view(alice))!.tiles).reduce((n, t) => n + t, 0), { timeout: 5000 }).toBeGreaterThan(20);
+  await alice.page.keyboard.up('ArrowRight');
   await expect(tile(bob)).toContainText('Splotch');
   await expect(tile(bob)).toContainText('1 friend plays. Click to play');
   await expect(bob.page.getByRole('button', { name: /Join Splotch/ })).toBeVisible();
   await tile(bob).click();
   for (const f of [alice, bob]) await expect.poll(async () => (await view(f))?.connected, { timeout: 30_000, message: `${f.name}'s game link opens` }).toBe(1);
   for (const f of [alice, bob]) await expect.poll(async () => { const v = await view(f); return v?.phase === 'play' && v.playing; }, { timeout: 15_000 }).toBe(true);
-  // The countdown cleared both boards.
+  // The countdown cleared both boards: what Alice painted while she waited is not in the round, only the spot each blob
+  // stands on (4 tiles).
+  for (const f of [alice, bob]) expect(Object.values((await view(f))!.tiles).reduce((n, t) => n + t, 0), `${f.name}'s board at the start`).toBeLessThanOrEqual(8);
   const aliceWho = (await view(bob))!.others[0]!.key.slice(0, 11);
   const bobWho = (await view(alice))!.others[0]!.key.slice(0, 11);
 

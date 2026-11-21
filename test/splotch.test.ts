@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BLOB_RADIUS, BOARD, COUNT_MS, HALF, OVER_MS, PLAY_MS, SPEED, SPLAT_COOLDOWN_MS, SPLAT_RADIUS,
-  advance, blobAt, emptyBoard, move, paintDisc, paintFrame, paintPath, parseFrame, secondsLeft, splat, startAt, tally, winnerOf, type Counted,
+  advance, blobAt, emptyBoard, move, paintDisc, paintFrame, paintPath, parseFrame, roundLeader, secondsLeft, splat, startAt, tally, winnerOf, type Counted,
 } from '../src/core/splotch';
 import { firstRound, roundFrame, roundOf, whoOf, type Round } from '../src/core/rounds';
 
@@ -22,11 +22,13 @@ describe('Splotch, a blob on the board (core/splotch.ts)', () => {
     expect(b.vx).toBe(0);
   });
 
-  it('splats now and then, counting each', () => {
-    const b = splat(blobAt(0, 0), 10_000);
-    expect(b.splats).toBe(1);
-    expect(splat(b, 10_000 + SPLAT_COOLDOWN_MS - 1)).toBe(b);
-    expect(splat(b, 10_000 + SPLAT_COOLDOWN_MS).splats).toBe(2);
+  it('splats now and then, each named later than the one before, even by a clock that went back', () => {
+    const wall = 1_763_700_000_000;
+    const b = splat(blobAt(0, 0), 10_000, wall);
+    expect(b.splat).toBe(wall);
+    expect(splat(b, 10_000 + SPLAT_COOLDOWN_MS - 1, wall + 5000)).toBe(b);
+    expect(splat(b, 10_000 + SPLAT_COOLDOWN_MS, wall + 5000).splat).toBe(wall + 5000);
+    expect(splat(b, 10_000 + SPLAT_COOLDOWN_MS, wall - 60_000).splat).toBe(wall + 1);
   });
 
   it('starts every player round a ring on the board, apart', () => {
@@ -100,6 +102,17 @@ describe('Splotch, the rounds (core/splotch.ts)', () => {
     expect(advance(r, 1000, here({ who: A, n: 3, known: 3 }), () => board)).toMatchObject({ phase: 'over' });
   });
 
+  it('is led, while a round plays, by one who plays it: a friend who came in later has a board that missed the start', () => {
+    const r: Round = { ...firstRound(0), n: 3, phase: 'play', players: [B, C] };
+    // Alice has the smallest key and knows round 3, but only watches it.
+    const all = [{ key: 'A', known: 3, playing: 0 }, { key: 'B', known: 3, playing: 3 }, { key: 'C', known: 3, playing: 3 }];
+    expect(roundLeader(r, all)).toBe('B');
+    // Between rounds, and should no player of it be left, anyone.
+    expect(roundLeader({ ...r, phase: 'over' }, all)).toBe('A');
+    expect(roundLeader(r, [all[0]!])).toBe('A');
+    expect(roundLeader({ ...r, phase: 'wait' }, all)).toBe('A');
+  });
+
   it('counts down the seconds of the play', () => {
     expect(secondsLeft('play', 0)).toBe(PLAY_MS / 1000);
     expect(secondsLeft('play', PLAY_MS - 1)).toBe(1);
@@ -110,8 +123,8 @@ describe('Splotch, the rounds (core/splotch.ts)', () => {
 
 describe('Splotch, on the wire (core/splotch.ts)', () => {
   it('reads back a blob and a round with its score, and drops anything off', () => {
-    const f = paintFrame({ ...blobAt(1.234, -2), vx: 3.333, splats: 4 }, 2, 3);
-    expect(parseFrame(JSON.stringify(f))).toEqual({ k: 'p', r: 2, n: 3, x: 1.23, z: -2, vx: 3.33, vz: 0, s: 4 });
+    const f = paintFrame({ ...blobAt(1.234, -2), vx: 3.333, splat: 1_763_700_000_000 }, 2, 3);
+    expect(parseFrame(JSON.stringify(f))).toEqual({ k: 'p', r: 2, n: 3, x: 1.23, z: -2, vx: 3.33, vz: 0, s: 1_763_700_000_000 });
     for (const off of [{ x: 100 }, { s: -1 }, { s: 1.5 }, { n: 'x' }, { k: 'q' }]) expect(parseFrame(JSON.stringify({ ...f, ...off }))).toBeNull();
     const r: Round = { n: 2, phase: 'over', since: 1000, players: [A, B], winner: A, wins: { [A]: 1 }, scores: { [A]: 40, [B]: 12 } };
     const rf = roundFrame(r, 1500, 9);

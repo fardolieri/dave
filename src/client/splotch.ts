@@ -3,10 +3,10 @@
 // friend plays it (client/Game.tsx).
 import * as THREE from 'three';
 import {
-  BLOB_RADIUS, BOARD, COUNT_MS, HALF, SPLAT_RADIUS, advance, blobAt, emptyBoard, move, paintDisc, paintFrame, paintPath, parseFrame, secondsLeft, splat,
+  BLOB_RADIUS, BOARD, COUNT_MS, HALF, SPLAT_RADIUS, advance, blobAt, emptyBoard, move, paintDisc, paintFrame, paintPath, parseFrame, roundLeader, secondsLeft, splat,
   startAt, tally, type Blob, type Counted, type PaintFrame, type SplotchView,
 } from '../core/splotch';
-import { firstRound, leaderOf, roundFrame, roundOf, whoOf, type Round } from '../core/rounds';
+import { firstRound, roundFrame, roundOf, whoOf, type Round } from '../core/rounds';
 import type { GameLinks } from './gamelinks';
 import { exposeHooks } from './hooks';
 import { colourOf, isTyping, nameTag, skin, threeColourOf, thump, type Face } from './gamekit';
@@ -18,7 +18,8 @@ const ROUND_SEND_MS = 250;
 const HEARD_MS = 2500;
 const MAX_STEP_S = 0.05;
 
-type Other = { key: string; frame: PaintFrame; at: number; painted: { x: number; z: number } | null; splats: number };
+/** Another player as this app last heard of them: where their trail was last painted to, and their last splat painted. */
+type Other = { key: string; frame: PaintFrame; at: number; painted: { x: number; z: number } | null; splat: number };
 
 /** A wet splat, for a splat of paint. */
 function splatSound(): void {
@@ -87,7 +88,7 @@ export function mountSplotch(host: HTMLElement, opts: { me: string; links: GameL
       for (const o of others.values()) o.painted = null;
       const i = next.players.indexOf(myWho);
       playing = i >= 0 ? next.n : 0;
-      blob = { ...blobAt(0, 0), ...(i >= 0 ? startAt(i, next.players.length) : {}), splats: blob.splats };
+      blob = { ...blobAt(0, 0), ...(i >= 0 ? startAt(i, next.players.length) : {}), splat: blob.splat };
       painted = null;
     } else if (next.phase === 'play' && playing !== next.n) {
       playing = 0; // came in after the countdown: this round is watched
@@ -105,16 +106,18 @@ export function mountSplotch(host: HTMLElement, opts: { me: string; links: GameL
     if (!f) return;
     const now = performance.now();
     if (f.k === 'p') {
-      const o = others.get(from) ?? { key: from, frame: f, at: now, painted: null, splats: f.s };
+      // A splat from before I heard of them is not painted: it was on a board from before.
+      const o = others.get(from) ?? { key: from, frame: f, at: now, painted: null, splat: f.s };
       // Their trail since their last frame, and a splat for every one made since (a lost frame's too).
       if (paints(f.r)) {
         if (o.painted) for (const i of paintPath(board, whoOf(from), o.painted, f)) fresh.add(i);
-        if (f.s > o.splats) { for (const i of paintDisc(board, whoOf(from), f.x, f.z, SPLAT_RADIUS)) fresh.add(i); splats.push({ x: f.x, z: f.z, key: from }); }
+        if (f.s > o.splat) { for (const i of paintDisc(board, whoOf(from), f.x, f.z, SPLAT_RADIUS)) fresh.add(i); splats.push({ x: f.x, z: f.z, key: from }); }
         o.painted = { x: f.x, z: f.z };
       } else {
         o.painted = null;
       }
-      others.set(from, { ...o, frame: f, at: now, splats: f.s });
+      // A frame that comes after a later one (the channel keeps no order) does not take the last splat back.
+      others.set(from, { ...o, frame: f, at: now, splat: Math.max(o.splat, f.s) });
       return;
     }
     if (from !== leader || f.q <= (roundSeq.get(from) ?? -1)) return;
@@ -127,7 +130,7 @@ export function mountSplotch(host: HTMLElement, opts: { me: string; links: GameL
     let dt = (now - last) / 1000;
     last = now;
     const around = heard(now);
-    leader = leaderOf([{ key: me, n: round.n }, ...around.map((o) => ({ key: o.key, n: o.frame.n }))]);
+    leader = roundLeader(round, [{ key: me, known: round.n, playing }, ...around.map((o) => ({ key: o.key, known: o.frame.n, playing: o.frame.r }))]);
     if (leader === me) {
       const counted: Counted[] = [{ who: myWho, n: playing, known: round.n }, ...around.map((o) => ({ who: whoOf(o.key), n: o.frame.r, known: o.frame.n }))];
       const next = advance(round, now, counted, () => board);
@@ -145,7 +148,7 @@ export function mountSplotch(host: HTMLElement, opts: { me: string; links: GameL
       if (painted) paintMine(paintPath(board, myWho, painted, blob));
       painted = { x: blob.x, z: blob.z };
       if (splatAsked) {
-        const s = splat(blob, now);
+        const s = splat(blob, now, Date.now());
         if (s !== blob) { blob = s; paintMine(paintDisc(board, myWho, blob.x, blob.z, SPLAT_RADIUS)); splats.push({ x: blob.x, z: blob.z, key: me }); }
       }
     }

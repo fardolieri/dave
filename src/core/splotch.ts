@@ -2,11 +2,12 @@
 // leaves its colour, over anyone else's; a splat paints a round patch at once, now and then. When the time is up, who has
 // the most of the board wins the round.
 //
-// Every app moves its own blob and sends where it is, and how many splats it has made, to every other player many times
-// a second (`PaintFrame`); every app paints the board from what it hears, its own blob's path and the others'. So two
+// Every app moves its own blob and sends where it is, and when it last splatted, to every other player many times a
+// second (`PaintFrame`); every app paints the board from what it hears, its own blob's path and the others'. So two
 // boards may differ by a tile where two blobs crossed at once: the leader's board counts (core/rounds.ts), and its count
-// goes out with the round's end. Runtime-neutral: plain data only.
-import { frameFields, num, parseRoundFrame, round2, type Phase, type Round, type RoundFrame } from './rounds';
+// goes out with the round's end. While a round plays, only a player who played it from its countdown leads it
+// (`roundLeader`): anyone else's board misses what was painted before they came. Runtime-neutral: plain data only.
+import { frameFields, leaderOf, num, parseRoundFrame, round2, type Phase, type Round, type RoundFrame } from './rounds';
 
 /** Tiles along each side of the board; the board is that many units wide, its middle at 0. */
 export const BOARD = 24;
@@ -24,8 +25,13 @@ export const COUNT_MS = 3000;
 export const PLAY_MS = 45_000;
 export const OVER_MS = 5000;
 
-export type Blob = { x: number; z: number; vx: number; vz: number; splats: number; splatAt: number };
-export const blobAt = (x: number, z: number): Blob => ({ x, z, vx: 0, vz: 0, splats: 0, splatAt: -Infinity });
+/**
+ * A blob. `splat` names its last splat, by when it was made by its player's clock (ms since 1970; 0 for none): a later
+ * splat, from this app or a reloaded one, always names a greater one, so another app paints each splat once, whatever
+ * order the frames come in. `splatAt` is when, by this app's clock, for the wait before the next.
+ */
+export type Blob = { x: number; z: number; vx: number; vz: number; splat: number; splatAt: number };
+export const blobAt = (x: number, z: number): Blob => ({ x, z, vx: 0, vz: 0, splat: 0, splatAt: -Infinity });
 
 /** Where a round puts the `i`th of `count` players: evenly round a ring, a little in from the edge. */
 export function startAt(i: number, count: number): { x: number; z: number } {
@@ -48,8 +54,8 @@ export function move(b: Blob, dir: { x: number; z: number }, dt: number): Blob {
 }
 
 export const canSplat = (b: Blob, now: number): boolean => now - b.splatAt >= SPLAT_COOLDOWN_MS;
-/** A splat at `now`, counted, unless the last was too recent. */
-export const splat = (b: Blob, now: number): Blob => (canSplat(b, now) ? { ...b, splats: b.splats + 1, splatAt: now } : b);
+/** A splat at `now` (this app's clock) and `wall` (ms since 1970), unless the last was too recent. */
+export const splat = (b: Blob, now: number, wall: number): Blob => (canSplat(b, now) ? { ...b, splat: Math.max(Math.round(wall), b.splat + 1), splatAt: now } : b);
 
 // The board: who painted each tile last, by the start of their key (core/rounds.ts, `whoOf`); null for nobody yet.
 export type Board = (string | null)[];
@@ -129,6 +135,16 @@ export function advance(r: Round, now: number, here: readonly Counted[], board: 
   }
 }
 
+/**
+ * Who leads, of the players this app hears from and itself: `known` the newest round each knows, `playing` the round
+ * each plays (0 for none). While a round plays, only those who play it, from its countdown, with a board cleared then;
+ * else, and should none of them be left, anyone (core/rounds.ts, `leaderOf`).
+ */
+export function roundLeader(r: Round, players: readonly { key: string; known: number; playing: number }[]): string | null {
+  const inIt = r.phase === 'play' && r.n > 0 ? players.filter((p) => p.playing === r.n) : [];
+  return leaderOf((inIt.length > 0 ? inIt : players).map((p) => ({ key: p.key, n: p.known })));
+}
+
 /** The seconds left of a round's play, shown counting down. */
 export const secondsLeft = (phase: Phase, ms: number): number => (phase === 'play' ? Math.max(0, Math.ceil((PLAY_MS - ms) / 1000)) : 0);
 
@@ -136,13 +152,14 @@ export const secondsLeft = (phase: Phase, ms: number): number => (phase === 'pla
 
 /**
  * Where a player's blob is, from that player: `r` the round they play (0 for none: they watch), `n` the newest round they
- * know, `s` how many splats they have made, so a splat whose frame was lost is painted with the next.
+ * know, `s` their last splat (`Blob.splat`), so a splat whose frame was lost is painted with the next, and an old one
+ * that comes late is not painted again.
  */
 export type PaintFrame = { k: 'p'; r: number; n: number; x: number; z: number; vx: number; vz: number; s: number };
 export type Frame = PaintFrame | RoundFrame;
 
 export const paintFrame = (b: Blob, r: number, n: number): PaintFrame =>
-  ({ k: 'p', r, n, x: round2(b.x), z: round2(b.z), vx: round2(b.vx), vz: round2(b.vz), s: b.splats });
+  ({ k: 'p', r, n, x: round2(b.x), z: round2(b.z), vx: round2(b.vx), vz: round2(b.vz), s: b.splat });
 
 /** A frame from another player, or null for anything off. */
 export function parseFrame(text: unknown): Frame | null {
