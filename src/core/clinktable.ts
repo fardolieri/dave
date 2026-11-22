@@ -1,11 +1,12 @@
 // Clink at one app's table (core/clink.ts): what it hears from the other players and sends them, who leads, the round
-// and the climb it follows or runs, its own seat, and what happened, for client/clink.ts to draw and sound. No screen
-// here, and no clock of its own: the time comes in with every call, so tests run many tables against each other
+// it follows or runs, the climbs it works out from the round's seed, its own seat, and what happened, for
+// client/clink.ts to draw and sound. No screen here, and no clock of its own: tests run many tables against each other
 // (test/clinktable.test.ts). Runtime-neutral: plain data and the links' three calls.
 import {
-  advance, buy, canFlip, climbFrame, climbOf, clinkMs, earn, flip, flipStake, follow, grab, newSeat, parseFrame, seatFrame,
+  advance, buy, canFlip, climbAt, climbsTo, earn, flip, flipStake, follow, grab, matchFrame, newSeat, newSeed, parseFrame, phaseOrder, rankOf,
+  rollsOf, seatFrame,
   CLIMBS, COUNT_MS, PAUSE_MS, RIDING, TOP,
-  type Climb, type Counted, type Seat, type SeatFrame, type Share, type Upgrade,
+  type Climb, type Counted, type Roll, type Script, type Seat, type SeatFrame, type Share, type Upgrade,
 } from './clink';
 import { firstRound, leaderOf, roundFrame, roundOf, whoOf, type Round } from './rounds';
 
@@ -14,28 +15,23 @@ export type Wire = { broadcast(data: string): void; listen(f: (from: string, dat
 
 export const SEND_MS = 100;
 export const ROUND_SEND_MS = 250;
-export const CLIMB_SEND_MS = 150;
-/** Heard from this lately: in the running to lead. */
+/** Heard from this lately: here. */
 export const HEARD_MS = 2500;
 /**
  * Not heard from for longer, but their link still open: away a while (a phone put down, a tab in the background), still
- * in the match, their stake riding as it was. A friend who leaves the game closes their links (client/gamelinks.ts).
+ * in the match. A friend who leaves the game closes their links (client/gamelinks.ts).
  */
 export const AWAY_MS = 20_000;
-/** Back after a gap (a tab come back, a phone woken): this long hearing the others before leading again. */
-export const HOLD_MS = 800;
-const GAP_MS = 1000;
 /** What happened longer ago than this, nobody saw happen: not drawn or sounded when the screen comes back. */
 export const STALE_MS = 1000;
-
 /**
- * Who leads, as a number to rank by (core/rounds.ts, `leaderOf`): who knows the newest round, then the newest climb of
- * it, then one who may lead (a visible tab, not just back) over one who may not; then the smaller key. A friend who just
- * came in, or came back, knows no climb of the round yet, and takes over nobody's tower with one of their own.
+ * Back after a gap (a tab come back, a phone woken): this long following whoever leads before leading, so as not to
+ * end a match the others already ended, with chips heard before the gap.
  */
-export const rankOf = (n: number, climb: number, may: boolean): number => n * 512 + Math.min(climb, 255) * 2 + (may ? 1 : 0);
+export const HOLD_MS = 800;
+const GAP_MS = 1000;
 
-/** What happened, for the screen: when, and in which climb (`climbIdOf`). */
+/** What happened, for the screen: when, and in which climb (`climbId`). */
 export type Happening = { at: number; climb: string } & (
   | { kind: 'land'; h: number; gold: boolean } | { kind: 'fell' } | { kind: 'top' } | { kind: 'grab'; who: string; won: number; h: number }
   | { kind: 'gilded'; who: string; amount: number } | { kind: 'flip'; who: string; win: boolean; amount: number } | { kind: 'interest'; amount: number }
@@ -46,28 +42,48 @@ export type Other = { key: string; frame: SeatFrame; at: number };
 
 export type Table = ReturnType<typeof createTable>;
 
-/** One app's table: me (`me`, my key), over `wire`, the leader's chance from `rand`, the time from `clock` (ms). */
+/**
+ * For tests: the dice rolled as `value` from after a coin on (`from`: climb, coin, of the climbs of `epoch`; every coin
+ * of a later round's), whatever the seed says; NaN, the seed's again.
+ */
+type Rig = { epoch: number; from: [number, number]; value: number };
+
+/** One app's table: me (`me`, my key), over `wire`, chance (seeds) from `rand`, the time from `clock` (ms). */
 export function createTable(me: string, wire: Wire, rand: () => number, clock: () => number) {
-  const now = clock();
   const myWho = whoOf(me);
   const others = new Map<string, Other>();
-  let round: Round = firstRound(now);
-  let climb: Climb | null = null;
+  let round: Round = firstRound(clock());
+  let seed = newSeed(rand);
   let seat: Seat = newSeat();
   /** The match I play; 0 while I watch one, or none is on (waiting, I practise). */
   let playing = 0;
   let leader: string | null = me;
-  let wasLeader = false;
   const roundSeq = new Map<string, number>();
-  const climbSeq = new Map<string, number>();
   let sentQ = 0;
-  let last = now;
+  let last = clock();
   let holdUntil = 0;
-  let lastSeatSent = -Infinity, lastRoundSent = -Infinity, lastClimbSent = -Infinity;
+  let lastSeatSent = -Infinity, lastRoundSent = -Infinity;
   let lastBeep = -1;
   let happened: Happening[] = [];
+  let rigs: Rig[] = [];
+  /** Counts the rounds' climbs: another start or seed, another count. */
+  let epoch = 0;
+  /** The climbs worked out so far, of this round's seed and start; and the climb as it stood when last looked at. */
+  let known: Script[] = [];
+  let climb: Climb | null = null;
 
-  const climbIdOf = (cl: Climb | null): string => (cl ? `${round.n}:${round.phase === 'wait' ? 'practice' : 'match'}:${cl.c}` : '');
+  const rolls: Roll = (c, k, what) => {
+    const rig = rigs.find((r) => r.epoch < epoch || c > r.from[0] || (c === r.from[0] && k > r.from[1]));
+    return rig && !Number.isNaN(rig.value) ? rig.value : rollsOf(seed)(c, k, what);
+  };
+  /** The climb going on at `at`: practice's while waiting, the match's while playing, none counting down or after. */
+  const climbNow = (at: number): Climb | null => {
+    if (round.phase !== 'wait' && round.phase !== 'play') return null;
+    const s = climbsTo(known, rolls, round.since, at, round.phase === 'play' ? CLIMBS : Infinity);
+    return s ? climbAt(s, at - s.t0) : null;
+  };
+  const matchOver = (at: number) => round.phase === 'play' && climbsTo(known, rolls, round.since, at, CLIMBS) === null;
+  const climbIdOf = (cl: Climb | null): string => (cl ? `${round.n}:${round.phase}:${seed}:${cl.c}` : '');
   const tell = (h: Record<string, unknown> & { kind: Happening['kind'] }, at: number) => happened.push({ ...h, at, climb: climbIdOf(climb) } as Happening);
   const watching = () => playing === 0 && (round.phase === 'count' || round.phase === 'play');
   /** Whether my seat is in the climb going on: while waiting, every climb is practice for whoever is there. */
@@ -77,7 +93,6 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
     const open = new Set(wire.connected());
     return [...others.values()].filter((o) => at - o.at < HEARD_MS || (at - o.at < AWAY_MS && open.has(o.key)));
   };
-  const worth = (s: { chips: number; stake: number; at: number }) => s.chips + (s.at === RIDING ? s.stake : 0);
   /**
    * The match's last climb is over: my chips are what they are, for the leader to count once it ends (no allowance
    * now; a double or nothing only early in the pause, while there is time for the leader to hear how it went).
@@ -85,12 +100,12 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
   const settled = () => round.phase === 'play' && climb !== null && climb.c >= CLIMBS && climb.fell >= 0;
   const lateForDouble = (at: number) => settled() && climb !== null && at - climb.t0 > climb.fell + PAUSE_MS - 1000;
 
-  /** A new round, or a new phase of it: a climb belongs to the one it was of, never carried into another. */
-  const took = (next: Round, at: number) => {
+  /** The round as it now is, and its seed: another start or seed, other climbs; another round or phase, a new seat. */
+  const took = (next: Round, nextSeed: number, at: number) => {
     const was = round;
+    if (next.since !== was.since || nextSeed !== seed) { seed = nextSeed; known = []; climb = null; epoch++; }
     round = next;
     if (next.n === was.n && next.phase === was.phase) return;
-    climb = null;
     if (next.phase === 'count') {
       playing = next.players.includes(myWho) ? next.n : 0;
       seat = { ...newSeat(), share: seat.share };
@@ -101,15 +116,6 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
       playing = 0;
       seat = { ...newSeat(), share: seat.share };
     } else if (next.phase === 'over' && next.winner === myWho && playing === next.n) tell({ kind: 'won' }, at);
-  };
-
-  /** The climb as it now stands, from my run of it or the leader's frames; what changed, told. */
-  const tookClimb = (next: Climb | null, at: number) => {
-    const was = climb;
-    climb = next;
-    if (!next || !was || next.c !== was.c) return;
-    for (let k = was.h + 1; k <= next.h; k++) tell({ kind: 'land', h: k, gold: next.gold.some(([g]) => g === k) }, at);
-    if (next.fell >= 0 && was.fell < 0) tell({ kind: next.h >= TOP ? 'top' : 'fell' }, at);
   };
 
   const off = wire.listen((from, data) => {
@@ -126,55 +132,47 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
       }
       return;
     }
-    // Only the leader's, and never an older round's: a leader's rounds only go on (an app reloaded under the leader's
-    // key starts again from none, and is not followed back there).
-    if (from !== leader || f.n < round.n) return;
-    if (f.k === 'r') {
-      if (f.q <= (roundSeq.get(from) ?? -1)) return;
-      roundSeq.set(from, f.q);
-      const next = roundOf(f, at);
-      took(next.n === round.n && next.phase === round.phase && Math.abs(next.since - round.since) < 150 ? { ...next, since: round.since } : next, at);
-      return;
-    }
-    if (f.q <= (climbSeq.get(from) ?? -1) || f.n !== round.n || round.phase === 'count' || round.phase === 'over') return;
-    climbSeq.set(from, f.q);
-    const next = climbOf(f, at);
-    // The same climb keeps its start, unless the leader's says otherwise by more than a frame's wander.
-    tookClimb(climb && climb.c === next.c && Math.abs(next.t0 - climb.t0) < 150 ? { ...next, t0: climb.t0 } : next, at);
+    // Only the leader's, and never a round, or a phase of it, older than mine: a leader's rounds only go on (an app
+    // reloaded under the leader's key starts again from none, and is not followed back there).
+    if (from !== leader || rankOf(f.n, f.ph) < rankOf(round.n, round.phase) || f.q <= (roundSeq.get(from) ?? -1)) return;
+    roundSeq.set(from, f.q);
+    const next = roundOf(f, at);
+    // The same round keeps its start, unless the leader's says otherwise by more than a frame's wander.
+    const same = next.n === round.n && next.phase === round.phase && f.s === seed && Math.abs(next.since - round.since) < 150;
+    took(same ? { ...next, since: round.since } : next, f.s, at);
   });
 
-  /** The table at `now`: what was heard taken in, the leader's work if mine, my seat followed, my frames sent. */
-  function step(at: number, visible: boolean): void {
+  /** The table at `at`: what was heard taken in, the round led if mine, the climb worked out, my seat followed, my frames sent. */
+  function step(at: number): void {
     const dt = at - last;
     if (dt > GAP_MS) holdUntil = at + HOLD_MS;
     last = at;
-    const may = visible && at >= holdUntil;
     const around = heard(at);
-    leader = leaderOf([{ key: me, n: rankOf(round.n, climb?.c ?? 0, may) }, ...around.map((o) => ({ key: o.key, n: rankOf(o.frame.n, o.frame.kc, o.frame.v) }))]);
-    const leading = leader === me && may;
-    if (leading) {
-      // Just taken over, the next coin due or overdue: those on the tower get the time to grab first.
-      if (!wasLeader && climb && climb.fell < 0 && at - climb.t0 >= climb.bet && at - climb.t0 > climb.next - 300) climb = { ...climb, next: Math.round(at - climb.t0) + clinkMs(climb.h) };
-      const counted: Counted[] = [
-        { who: myWho, n: playing, known: round.n, chips: worth(seat), riding: seated() && seat.at === RIDING },
-        ...present(at).map((o) => ({ who: whoOf(o.key), n: o.frame.r, known: o.frame.n, chips: o.frame.ch + (o.frame.a === RIDING ? o.frame.st : 0), riding: o.frame.a === RIDING && o.frame.c === climb?.c })),
-      ];
-      const next = advance({ round, climb }, at, counted, rand);
-      if (next.round !== round) { took(next.round, at); lastRoundSent = -Infinity; }
-      if (next.climb !== climb) { tookClimb(next.climb, at); lastClimbSent = -Infinity; }
-      if (at - lastRoundSent >= ROUND_SEND_MS) { sentQ = Math.max(Date.now(), sentQ + 1); wire.broadcast(JSON.stringify(roundFrame(round, at, sentQ))); lastRoundSent = at; }
-      if (climb && at - lastClimbSent >= CLIMB_SEND_MS) { sentQ = Math.max(Date.now(), sentQ + 1); wire.broadcast(JSON.stringify(climbFrame(climb, round.n, at, sentQ))); lastClimbSent = at; }
+    const holding = at < holdUntil;
+    leader = leaderOf([...(holding ? [] : [{ key: me, n: rankOf(round.n, round.phase) }]), ...around.map((o) => ({ key: o.key, n: o.frame.n * 4 + o.frame.po }))]);
+    if (leader === me) {
+      const counted = (o: Other): Counted => ({ who: whoOf(o.key), n: o.frame.r, known: o.frame.n, chips: o.frame.ch });
+      const mine: Counted = { who: myWho, n: playing, known: round.n, chips: seat.chips };
+      const next = advance({ round, seed }, at, [mine, ...around.map(counted)], [mine, ...present(at).map(counted)], rand, matchOver(at));
+      if (next.round !== round || next.seed !== seed) { took(next.round, next.seed, at); lastRoundSent = -Infinity; }
+      if (at - lastRoundSent >= ROUND_SEND_MS) { sentQ = Math.max(Date.now(), sentQ + 1); wire.broadcast(JSON.stringify(matchFrame(roundFrame(round, at, sentQ), seed))); lastRoundSent = at; }
     }
-    wasLeader = leading;
+    // The climb, and what changed in it since the last step.
+    const was = climb;
+    climb = climbNow(at);
+    if (climb && was && climb.c === was.c) {
+      for (let k = was.h + 1; k <= climb.h; k++) tell({ kind: 'land', h: k, gold: climb.gold.some(([g]) => g === k) }, at);
+      if (climb.fell >= 0 && was.fell < 0) tell({ kind: climb.h >= TOP ? 'top' : 'fell' }, at);
+    }
     // My seat, as the climb goes.
     if (seated()) {
       if (!settled()) seat = earn(seat, dt);
       if (climb) {
-        const was = seat;
+        const before = seat;
         seat = follow(seat, climb, at - climb.t0);
-        if (seat.gilded > was.gilded && seat.c === was.c) tell({ kind: 'gilded', who: me, amount: seat.gilded - was.gilded }, at);
-        if (seat.interest > 0 && was.interest < 0 && seat.c === was.c) tell({ kind: 'interest', amount: seat.interest }, at);
-        if (was.at === RIDING && seat.at >= 0) tell({ kind: 'grab', who: me, won: seat.won, h: seat.at }, at);
+        if (seat.gilded > before.gilded && seat.c === before.c) tell({ kind: 'gilded', who: me, amount: seat.gilded - before.gilded }, at);
+        if (seat.interest > 0 && before.interest < 0 && seat.c === before.c) tell({ kind: 'interest', amount: seat.interest }, at);
+        if (before.at === RIDING && seat.at >= 0) tell({ kind: 'grab', who: me, won: seat.won, h: seat.at }, at);
         const left = Math.ceil((climb.bet - (at - climb.t0)) / 1000);
         if (left !== lastBeep && left >= 1 && left <= 3) { lastBeep = left; tell({ kind: 'beep' }, at); }
       }
@@ -184,17 +182,18 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
       if (left !== lastBeep && left >= 1 && left <= 3) { lastBeep = left; tell({ kind: 'beep' }, at); }
     }
     if (at - lastSeatSent >= SEND_MS) {
-      wire.broadcast(JSON.stringify(seatFrame(seat, watching() ? 0 : playing, round.n, climb?.c ?? 0, may)));
+      wire.broadcast(JSON.stringify(seatFrame(seat, watching() ? 0 : playing, round.n, phaseOrder(round.phase))));
       lastSeatSent = at;
     }
     happened = happened.filter((h) => at - h.at <= STALE_MS);
   }
 
-  /** Whether a grab now is one: on the tower, the stakes closed, and the next coin not yet due, by my clock. */
+  /** Whether a grab now is one: on the tower, the stakes closed, and the next coin not yet due. */
   const canGrab = (at: number): boolean => {
-    if (!seated() || !climb || seat.at !== RIDING || seat.c !== climb.c || climb.fell >= 0) return false;
-    const ms = at - climb.t0;
-    return ms >= climb.bet && ms < climb.next;
+    const cl = climbNow(at);
+    if (!seated() || !cl || seat.at !== RIDING || seat.c !== cl.c || cl.fell >= 0) return false;
+    const ms = at - cl.t0;
+    return ms >= cl.bet && ms < cl.next;
   };
 
   return {
@@ -202,7 +201,7 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
     canGrab,
     /** Whether a double or nothing now is one. */
     canFlip: (at: number): boolean => seated() && canFlip(seat) && !lateForDouble(at),
-    grab(at: number): void { if (canGrab(at)) { seat = grab(seat, climb!.h); tell({ kind: 'grab', who: me, won: seat.won, h: seat.at }, at); lastSeatSent = -Infinity; } },
+    grab(at: number): void { if (canGrab(at)) { seat = grab(seat, climbNow(at)!.h); tell({ kind: 'grab', who: me, won: seat.won, h: seat.at }, at); lastSeatSent = -Infinity; } },
     flip(roll: number, at: number): void {
       if (!seated() || !canFlip(seat) || lateForDouble(at)) return;
       const amount = flipStake(seat);
@@ -212,6 +211,13 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
     },
     share(s: Share): void { seat = { ...seat, share: s }; },
     buy(u: Upgrade): boolean { if (!seated()) return false; const next = buy(seat, u); if (next === seat) return false; seat = next; lastSeatSent = -Infinity; return true; },
+    /** For tests: every roll `value` from the next coin not yet seen on (null: the seed's again); after a fall, the next climb's. */
+    rig(value: number | null, at: number): void {
+      const cl = climbNow(at);
+      const from: [number, number] = !cl ? [0, 0] : cl.fell >= 0 ? [cl.c + 1, 0] : [cl.c, cl.h];
+      rigs = [{ epoch, from, value: value ?? NaN }, ...rigs].slice(0, 16);
+      known = known.filter((s) => s.c < from[0]);
+    },
     /** What happened since the last call, but what is too old to show. */
     drain(at: number): Happening[] { const out = happened.filter((h) => at - h.at <= STALE_MS); happened = []; return out; },
     get round(): Round { return round; },

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CLIMBS, CHARM, GOLD_CHANCE, INTEREST, MAGNET, NET, PAUSE_MS, POT_RATE, RIDING, START_CHIPS, TOP, UPGRADES,
-  buy, climbAt, raiseOf, costOf, earn, flip, follow, grab, newClimb, newSeat, nextOdds, payout,
+  CLIMBS, CHARM, GOLD_CHANCE, INTEREST, MAGNET, NET, PAUSE_MS, RIDING, START_CHIPS, TOP, UPGRADES,
+  buy, climbAt, raiseOf, costOf, earn, flip, follow, grab, newSeat, newSeed, nextOdds, payout, potCoin, rollsOf, scriptOf,
   type Climb, type Seat, type Share, type Upgrade,
 } from '../src/core/clink';
 import { measure, report, seeded, winRates, within, type Check, type Match } from './fun';
@@ -117,9 +117,11 @@ function play(bots: Bot[], rand: () => number, stats: Stats): Match {
   const scores: number[][] = [], times: number[] = [];
   const moments: number[][] = bots.map(() => []);
   let clock = 0, pot = 0;
+  const rolls = rollsOf(newSeed(rand));
   for (let c = 1; c <= CLIMBS; c++) {
-    let cl = newClimb(c, 0, pot, rand(), c === 1);
-    const ctx = (i: number): Ctx => ({ i, seats, climb: cl, left: CLIMBS - c + 1, potPerCoin: POT_RATE * seats.reduce((a, s) => a + s.chips, 0) / seats.length, rand });
+    const script = scriptOf(rolls, c, 0, pot, c === 1);
+    let cl = climbAt(script, 0);
+    const ctx = (i: number): Ctx => ({ i, seats, climb: cl, left: CLIMBS - c + 1, potPerCoin: potCoin(c), rand });
     const shopping = () => {
       for (let i = 0; i < bots.length; i++) {
         for (let n = 0; n < 8; n++) {
@@ -137,6 +139,7 @@ function play(bots: Bot[], rand: () => number, stats: Stats): Match {
     let at = 0;
     const pass = (to: number) => { seats = seats.map((s) => earn(s, to - at)); at = to; };
     pass(cl.bet);
+    cl = climbAt(script, cl.bet);
     seats = seats.map((s) => follow(s, cl, cl.bet));
     while (cl.fell < 0) {
       // Before the next coin: who gets off.
@@ -151,12 +154,10 @@ function play(bots: Bot[], rand: () => number, stats: Stats): Match {
           if (seats[i]!.flip === 1) moments[i]!.push(clock + at);
         }
       }
-      const riders = seats.filter((s) => s.at === RIDING).length;
       const goldBefore = cl.gold.length;
-      const potPerCoin = POT_RATE * seats.reduce((a, s) => a + worth(s), 0) / seats.length;
       const next = cl.next;
-      cl = climbAt(cl, next, rand, riders, potPerCoin);
-      pass(cl.fell >= 0 ? cl.fell : next);
+      cl = climbAt(script, next);
+      pass(next);
       const before = seats;
       seats = seats.map((s) => follow(s, cl, at));
       if (cl.gold.length > goldBefore) {
@@ -169,10 +170,10 @@ function play(bots: Bot[], rand: () => number, stats: Stats): Match {
         else seats.forEach((s) => { if (s.at === cl.h && s.at > 0) stats.nearMisses++; });
       }
     }
-    pass(cl.fell + PAUSE_MS);
+    pass(script.end + PAUSE_MS);
     shopping();
     clock += at;
-    pot = cl.pot;
+    pot = script.potOut;
     stats.climbs++;
     scores.push(seats.map((s) => s.chips));
     times.push(clock);

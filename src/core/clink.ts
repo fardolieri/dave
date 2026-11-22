@@ -4,11 +4,13 @@
 // it is gone. Now and then a coin lands golden, and pays the pot to everyone still on. Between climbs, what you won
 // buys things that make the next ones pay more (`SHOP`); after the last climb, most chips wins.
 //
-// The tower is the leader's (`Climb`, `climbAt`): it lands every coin, rolls whether it topples, and sends the climb as
-// it stands to the others, who follow it. Everything else is each player's own (`Seat`, `follow`): their chips, their
-// stake, when they grabbed, what they bought, worked out by their own app and sent to the others (`SeatFrame`). A grab
-// is judged by the coins its app had seen land: it pays what they made, never one that had not landed yet. The rounds
-// (here a match of CLIMBS climbs) are the leader's too, as in every game (core/rounds.ts). Runtime-neutral: plain data.
+// The towers are every app's own, all the same: a match's seed, chosen by the leader and sent with the round, says from
+// its start which coin of each climb topples it, which are golden, how each sits, and when each lands (`scriptOf`), so
+// every app works the climbs out for itself (`climbsTo`, `climbAt`); nothing about a tower goes over the wire, and no
+// change of leader, lost frame or hidden tab can take back a coin. Everything else is each player's own (`Seat`,
+// `follow`): their chips, their stake, when they grabbed, what they bought, sent to the others (`SeatFrame`). A grab is
+// judged by the coins its app has seen land. The rounds (here a match of CLIMBS climbs) are the leader's, as in every
+// game (core/rounds.ts). Runtime-neutral: plain data only.
 import { frameFields, parseRoundFrame, type Phase, type Round, type RoundFrame } from './rounds';
 
 /** Climbs to a match, and what everyone starts it with. */
@@ -33,15 +35,13 @@ export const moodOf = (roll: number): Mood => (roll < 0.35 ? 0 : roll < 0.75 ? 1
 export const odds = (k: number, mood: Mood): number => Math.min(90, Math.max(1, Math.round((6 + 1.3 * k) * MOOD_FACTOR[mood])));
 /** A golden coin, the chance any coin that lands is one: it pays the pot to everyone on the tower. */
 export const GOLD_CHANCE = 0.06;
-/** What each coin that lands adds to the pot, as a share of the table's chips, on average. */
-export const POT_RATE = 0.02;
+/** What each coin that lands adds to the pot, more each climb, as the table's chips grow. */
+export const potCoin = (c: number): number => Math.round(20 * 1.22 ** (Math.max(1, Math.min(CLIMBS, c)) - 1));
 
 /** How long the stakes are open before a climb (the first longer, to look around), and how often a coin lands. */
 export const BET_MS = 4000;
 export const FIRST_BET_MS = 7000;
 export const clinkMs = (h: number): number => Math.max(550, 1100 - 30 * h);
-/** Once nobody is on the tower, the coins come down quickly: everyone sees where it would have gone, not for long. */
-export const FAST_MS = 280;
 /** After a climb ends, before the next opens. */
 export const PAUSE_MS = 2600;
 export const COUNT_MS = 3500;
@@ -74,9 +74,57 @@ const level = (levels: Levels, u: Upgrade): number => levels[UPGRADES.indexOf(u)
 /** What the next level of `u` costs; null once it has them all. */
 export const costOf = (levels: Levels, u: Upgrade): number | null => SHOP[u].costs[level(levels, u)] ?? null;
 
-// The climb: the leader's.
+// The climbs: from the match's seed, the same on every screen.
 
-/** A climb as the leader runs it. Times are ms after `t0`, when its stakes opened, by this app's clock. */
+/**
+ * A roll of the match's dice, 0 to 1: for climb `c`, coin `k`, and what it decides (`what`: 1 the coin's mood, 2 whether
+ * it topples the tower, 3 whether it is golden). From the seed alone, so the same on every screen.
+ */
+export type Roll = (c: number, k: number, what: number) => number;
+export const rollsOf = (seed: number): Roll => (c, k, what) => {
+  let h = (seed ^ Math.imul(c, 0x9e3779b1) ^ Math.imul(k, 0x85ebca6b) ^ Math.imul(what + 1, 0xc2b2ae35)) >>> 0;
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+};
+export const newSeed = (rand: () => number): number => Math.floor(rand() * 4294967296) >>> 0;
+
+/** A climb as its seed has it from the start. Times are ms after `t0`, when its stakes opened, by this app's clock. */
+export type Script = {
+  c: number;
+  t0: number;
+  bet: number;
+  /** Each coin's mood, and when it lands, the first's first, up to the one that topples it or the top. */
+  moods: Mood[];
+  at: number[];
+  /** The coin that topples it; TOP + 1 for none, the tower getting to the top. */
+  falls: number;
+  /** The golden coins that land, and what each pays everyone on. */
+  gold: [number, number][];
+  /** The pot when it opens, and what is left of it when it is over. */
+  potIn: number;
+  potOut: number;
+  /** When it is over: the toppling coin's landing, or the top's. */
+  end: number;
+};
+
+/** Climb `c`, opening at `t0`, the pot at `potIn`, from the match's dice; the first of a match gives longer to stake. */
+export function scriptOf(rolls: Roll, c: number, t0: number, potIn: number, first: boolean): Script {
+  const bet = first ? FIRST_BET_MS : BET_MS;
+  const moods: Mood[] = [], at: number[] = [], gold: [number, number][] = [];
+  let t = bet, pot = potIn, falls = TOP + 1;
+  for (let k = 1; k <= TOP; k++) {
+    t += clinkMs(k - 1);
+    const mood = moodOf(rolls(c, k, 1));
+    moods.push(mood);
+    at.push(t);
+    if (rolls(c, k, 2) * 100 < odds(k, mood)) { falls = k; break; }
+    pot += potCoin(c);
+    if (rolls(c, k, 3) < GOLD_CHANCE) { gold.push([k, Math.floor(pot)]); pot = 0; }
+  }
+  return { c, t0, bet, moods, at, falls, gold, potIn, potOut: pot, end: at[at.length - 1]! };
+}
+
+/** A climb as it stands at some moment. Times are ms after `t0`, when its stakes opened. */
 export type Climb = {
   /** Which climb of the match, 1 the first (practice climbs while waiting count on). */
   c: number;
@@ -91,46 +139,41 @@ export type Climb = {
   next: number;
   /** When the climb ended: the tower fell, or got to the top (`h === TOP`); -1 while it stands. */
   fell: number;
-  /** The golden coins: which coin, and what it paid everyone on. */
+  /** The golden coins landed: which coin, and what it paid everyone on. */
   gold: [number, number][];
   pot: number;
 };
 
-export const newClimb = (c: number, t0: number, pot: number, roll: number, first = false): Climb => {
-  const bet = first ? FIRST_BET_MS : BET_MS;
-  return { c, t0, bet, h: 0, moods: [moodOf(roll)], next: bet + clinkMs(0), fell: -1, gold: [], pot };
-};
+/** The climb `ms` after it opened: the coins whose time has come landed, the toppling one's fall once its time has. */
+export function climbAt(s: Script, ms: number): Climb {
+  let h = 0, pot = s.potIn;
+  while (h < s.at.length && h + 1 < s.falls && s.at[h]! <= ms) {
+    h++;
+    pot = s.gold.some(([k]) => k === h) ? 0 : pot + potCoin(s.c);
+  }
+  const over = ms >= s.end && (s.falls <= TOP || h >= TOP);
+  return { c: s.c, t0: s.t0, bet: s.bet, h, moods: s.moods.slice(0, h + 1), next: s.at[h] ?? s.end, fell: over ? s.end : -1, gold: s.gold.filter(([k]) => k <= h), pot };
+}
+
+/**
+ * The climb going on at `now`, of the climbs from `since` (a match's, or practice's while waiting): `known`, the
+ * climbs worked out so far, carried on as far as `now` needs, each opening a pause after the last is over. Null once
+ * the last of `limit` is over and its pause gone by: the match is over.
+ */
+export function climbsTo(known: Script[], rolls: Roll, since: number, now: number, limit = Infinity): Script | null {
+  if (!known.length) known.push(scriptOf(rolls, 1, since, 0, true));
+  // A moment before the last one worked out opened: the climb going on then.
+  if (now < known[known.length - 1]!.t0) return known.findLast((s) => now >= s.t0) ?? known[0]!;
+  for (;;) {
+    const s = known[known.length - 1]!;
+    if (now < s.t0 + s.end + PAUSE_MS) return s;
+    if (s.c >= limit) return null;
+    known.push(scriptOf(rolls, s.c + 1, s.t0 + s.end + PAUSE_MS, s.potOut, false));
+  }
+}
 
 /** The chance the next coin topples it, in percent; null once it is over. */
 export const nextOdds = (cl: Climb): number | null => (cl.fell >= 0 ? null : odds(cl.h + 1, cl.moods[cl.h] ?? 1));
-
-/** A coin landed later than this after it was due (a leader's hidden tab, a leader just taken over) counts from then. */
-export const LATE_MS = 250;
-
-/**
- * The climb `ms` after it opened, as the leader lands its coins: each in turn, on time, may topple it; one that lands
- * may be golden, while anyone is on (`riders`), and pays them the pot, which every coin landed with someone on adds to
- * (`potPerCoin`). With nobody on, the coins come down quickly to where it falls. A coin that lands late puts the next
- * a whole interval after it, never several down at once: whoever is on gets the time to grab between any two.
- */
-export function climbAt(cl: Climb, ms: number, rand: () => number, riders: number, potPerCoin: number): Climb {
-  if (cl.fell >= 0 || ms < cl.next) return cl;
-  let { h, next, pot, fell } = cl;
-  const moods = [...cl.moods], gold = [...cl.gold];
-  while (fell < 0 && ms >= next) {
-    const at = ms - next > LATE_MS ? ms : next;
-    if (rand() * 100 < odds(h + 1, moods[h] ?? 1)) { fell = at; break; }
-    h++;
-    if (riders > 0) {
-      pot += potPerCoin;
-      if (rand() < GOLD_CHANCE) { gold.push([h, Math.floor(pot)]); pot = 0; }
-    }
-    if (h >= TOP) { fell = at; break; }
-    moods.push(moodOf(rand()));
-    next = at + (riders > 0 ? clinkMs(h) : FAST_MS);
-  }
-  return { ...cl, h, moods, next, fell, gold, pot };
-}
 
 // A seat at the table: each player's own.
 
@@ -228,109 +271,91 @@ export const earn = (s: Seat, ms: number): Seat => ({ ...s, chips: cap(s.chips +
 
 // The match: the leader's, as every game's rounds are (core/rounds.ts).
 
-/** A player as the leader counts them: the match they play (`n`, 0 for none), the newest they know, chips, on or not. */
-export type Counted = { who: string; n: number; known: number; chips: number; riding: boolean };
+/** A player as the leader counts them: the match they play (`n`, 0 for none), the newest they know, and their chips. */
+export type Counted = { who: string; n: number; known: number; chips: number };
 
-/** The table as the leader runs it: the round (a match), and the climb going on, if any. */
-export type Table = { round: Round; climb: Climb | null };
+/** The round as the leader runs it, and the seed of its climbs (practice's while waiting, the match's while playing). */
+export type Lead = { round: Round; seed: number };
 
-const mean = (xs: number[]): number => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : START_CHIPS);
+/** The order of a round's phases, as one round goes: count, play, over, then waiting (or the next round's count). */
+const PHASE_ORDER: Record<Phase, number> = { count: 0, play: 1, over: 2, wait: 3 };
+/**
+ * Who leads, as a number to rank by (core/rounds.ts, `leaderOf`): who knows the newest round, then the furthest phase of
+ * it. A friend back from a while away, who missed a match's end, leads nobody back into it.
+ */
+export const rankOf = (n: number, phase: Phase): number => n * 4 + PHASE_ORDER[phase];
+export const phaseOrder = (phase: Phase): number => PHASE_ORDER[phase];
 
 /**
- * The table at `now`, with `here` the players the leader hears from (the leader too). While waiting for a second
- * player, climbs go on for practice. A second starts a match: the countdown, then CLIMBS climbs, the next opening a
- * while after each ends; after the last, most chips wins. A match left with one player in it is theirs.
+ * The round at `now`. `heard`: the players the leader hears from (itself too), who start a match; `present`: those and
+ * any not heard from lately whose link is still open (away a while), who keep one going. While waiting for a second
+ * player, climbs go on for practice. A second starts a match: the countdown, then CLIMBS climbs (`over`, once the last
+ * is done: the climbs are the seed's, `climbsTo`); then most chips wins. A match left with one player in it is theirs.
  */
-export function advance(t: Table, now: number, here: readonly Counted[], rand: () => number): Table {
+export function advance(t: Lead, now: number, heard: readonly Counted[], present: readonly Counted[], rand: () => number, over: boolean): Lead {
   const r = t.round;
   const ms = now - r.since;
-  const enough = here.length >= 2;
-  const count = (n: number): Table => ({ round: { n, phase: 'count', since: now, players: here.map((p) => p.who).sort(), winner: null, wins: r.wins }, climb: null });
-  // The climb, of these players: its coins, and the next once it has been over a while.
-  const climbing = (players: readonly Counted[], practice: boolean): Climb | 'done' => {
-    let cl = t.climb ?? newClimb(1, now, 0, rand(), true);
-    const potPerCoin = POT_RATE * mean(players.map((p) => p.chips));
-    cl = climbAt(cl, now - cl.t0, rand, players.filter((p) => p.riding).length, potPerCoin);
-    if (cl.fell >= 0 && now - cl.t0 >= cl.fell + PAUSE_MS) {
-      if (!practice && cl.c >= CLIMBS) return 'done';
-      return newClimb(cl.c + 1, now, cl.pot, rand());
-    }
-    return cl;
-  };
+  const enough = heard.length >= 2;
+  const count = (n: number): Lead => ({ round: { n, phase: 'count', since: now, players: heard.map((p) => p.who).sort(), winner: null, wins: r.wins }, seed: t.seed });
   switch (r.phase) {
-    case 'wait': {
-      if (enough) return count(r.n + 1);
-      const cl = climbing(here, true);
-      return { round: r, climb: cl === 'done' ? null : cl };
-    }
+    case 'wait':
+      return enough ? count(r.n + 1) : t;
     case 'count':
-      if (!enough) return { round: { ...r, phase: 'wait', since: now, players: [] }, climb: null };
-      return ms >= COUNT_MS ? { round: { ...r, phase: 'play', since: now }, climb: newClimb(1, now, 0, rand(), true) } : t;
+      if (!enough) return { round: { ...r, phase: 'wait', since: now, players: [] }, seed: newSeed(rand) };
+      return ms >= COUNT_MS ? { round: { ...r, phase: 'play', since: now }, seed: newSeed(rand) } : t;
     case 'play': {
       // In it: those who play this match, or have not yet taken it. Gone, or back and watching, is out of it.
-      const playing = r.players.map((who) => here.find((h) => h.who === who)).filter((p): p is Counted => p !== undefined && (p.known < r.n || p.n === r.n));
-      const cl = playing.length >= 2 || r.players.length < 2 ? climbing(playing, false) : 'done';
-      if (cl !== 'done') return { round: r, climb: cl };
+      const playing = r.players.map((who) => present.find((h) => h.who === who)).filter((p): p is Counted => p !== undefined && (p.known < r.n || p.n === r.n));
+      if (!over && (playing.length >= 2 || r.players.length < 2)) return t;
       const scores = Object.fromEntries(playing.map((p) => [p.who, Math.floor(p.chips)]));
       const winner = playing.reduce<Counted | null>((a, b) => (a === null || b.chips > a.chips ? b : a), null)?.who ?? null;
-      return { round: { ...r, phase: 'over', since: now, winner, scores, wins: winner ? { ...r.wins, [winner]: (r.wins[winner] ?? 0) + 1 } : r.wins }, climb: null };
+      return { round: { ...r, phase: 'over', since: now, winner, scores, wins: winner ? { ...r.wins, [winner]: (r.wins[winner] ?? 0) + 1 } : r.wins }, seed: t.seed };
     }
     case 'over':
       if (ms < OVER_MS) return t;
-      return enough ? count(r.n + 1) : { round: { n: r.n, phase: 'wait', since: now, players: [], winner: null, wins: r.wins }, climb: null };
+      return enough ? count(r.n + 1) : { round: { n: r.n, phase: 'wait', since: now, players: [], winner: null, wins: r.wins }, seed: newSeed(rand) };
   }
 }
 
 // On the wire: as core/rounds.ts says.
 
 /**
- * My seat, from me: `r` the match I play (0 for none), `n` the newest I know; `kc` the climb of it I know (0 for none),
- * and `v` whether I may lead (core/clinktable.ts, `rankOf`); `c` the climb the rest is of; my chips, share, stake, where
- * I am on the tower (`a`, as `Seat.at`), what my grab paid, how my double or nothing went, what golden coins paid me,
- * and my levels in the shop.
+ * My seat, from me: `r` the match I play (0 for none), `n` the newest round I know and `po` how far into it
+ * (`phaseOrder`); `c` the climb the rest is of; my chips (off the tower), share, stake, where I am on the tower (`a`,
+ * as `Seat.at`), what my grab paid, how my double or nothing went, what golden coins paid me, and my levels in the shop.
  */
 export type SeatFrame = {
-  k: 's'; r: number; n: number; kc: number; v: boolean; c: number; ch: number; sh: Share; st: number; a: number; w: number; f: 0 | 1 | -1; g: number; lv: number[];
+  k: 's'; r: number; n: number; po: number; c: number; ch: number; sh: Share; st: number; a: number; w: number; f: 0 | 1 | -1; g: number; lv: number[];
 };
-/** The climb, from the leader: as `Climb`, `t` ms after it opened; `q` orders the leader's frames (core/rounds.ts). */
-export type ClimbFrame = { k: 'c'; q: number; n: number; c: number; t: number; b: number; h: number; m: Mood[]; nx: number; fl: number; gd: [number, number][]; pot: number };
-export type Frame = SeatFrame | ClimbFrame | RoundFrame;
+/** The round, from the leader, with its climbs' seed (`s`). */
+export type MatchFrame = RoundFrame & { s: number };
+export type Frame = SeatFrame | MatchFrame;
 
-export const seatFrame = (s: Seat, r: number, n: number, kc: number, v: boolean): SeatFrame => ({
-  k: 's', r, n, kc, v, c: s.c, ch: Math.floor(s.chips), sh: s.share, st: Math.floor(s.stake), a: s.at, w: Math.floor(s.won), f: s.flip, g: Math.floor(s.gilded), lv: [...s.levels],
+export const seatFrame = (s: Seat, r: number, n: number, po: number): SeatFrame => ({
+  k: 's', r, n, po, c: s.c, ch: Math.floor(s.chips), sh: s.share, st: Math.floor(s.stake), a: s.at, w: Math.floor(s.won), f: s.flip, g: Math.floor(s.gilded), lv: [...s.levels],
 });
-export const climbFrame = (cl: Climb, n: number, now: number, q: number): ClimbFrame => ({
-  k: 'c', q, n, c: cl.c, t: Math.max(0, Math.round(now - cl.t0)), b: cl.bet, h: cl.h, m: [...cl.moods], nx: cl.next, fl: cl.fell, gd: cl.gold.map(([k, p]) => [k, p]), pot: Math.floor(cl.pot),
-});
-/** The climb a follower takes from the leader's frame, heard at `now` by its own clock. */
-export const climbOf = (f: ClimbFrame, now: number): Climb => ({ c: f.c, t0: now - f.t, bet: f.b, h: f.h, moods: f.m, next: f.nx, fell: f.fl, gold: f.gd, pot: f.pot });
+export const matchFrame = (f: RoundFrame, seed: number): MatchFrame => ({ ...f, s: seed });
 
 const int = (v: unknown, lo: number, hi: number): v is number => Number.isSafeInteger(v) && (v as number) >= lo && (v as number) <= hi;
 const BIG = Number.MAX_SAFE_INTEGER;
-const LONG_MS = 3_600_000;
 
 /** A frame from another player, or null for anything off. */
 export function parseFrame(text: unknown): Frame | null {
   const f = frameFields(text);
   if (!f) return null;
   if (f['k'] === 's') {
-    const { r, n, kc, v, c, ch, sh, st, a, w, g, lv } = f;
+    const { r, n, po, c, ch, sh, st, a, w, g, lv } = f;
     const fl = f['f'];
-    if (!int(r, 0, BIG) || !int(n, 0, BIG) || !int(kc, 0, BIG) || typeof v !== 'boolean' || !int(c, 0, BIG)) return null;
+    if (!int(r, 0, BIG) || !int(n, 0, BIG) || !int(po, 0, 3) || !int(c, 0, BIG)) return null;
     if (!int(ch, 0, MAX_CHIPS) || (sh !== 1 && sh !== 2 && sh !== 4) || !int(st, 0, MAX_CHIPS)) return null;
     if (!int(a, FELL, TOP) || !int(w, 0, MAX_CHIPS) || (fl !== 0 && fl !== 1 && fl !== -1) || !int(g, 0, MAX_CHIPS)) return null;
     if (!Array.isArray(lv) || lv.length > 16 || !lv.every((l) => int(l, 0, 16))) return null;
-    return { k: 's', r, n, kc, v, c, ch, sh, st, a, w, f: fl, g, lv: lv as number[] };
+    return { k: 's', r, n, po, c, ch, sh, st, a, w, f: fl, g, lv: lv as number[] };
   }
-  if (f['k'] === 'c') {
-    const { q, n, c, t, b, h, m, nx, fl, gd, pot } = f;
-    if (!int(q, 0, BIG) || !int(n, 0, BIG) || !int(c, 0, BIG) || !int(t, 0, LONG_MS) || !int(b, 0, 60_000) || !int(h, 0, TOP)) return null;
-    if (!Array.isArray(m) || m.length < 1 || m.length > TOP + 1 || !m.every((x) => x === 0 || x === 1 || x === 2)) return null;
-    if (!int(nx, 0, LONG_MS) || !int(fl, -1, LONG_MS) || !int(pot, 0, MAX_CHIPS)) return null;
-    if (!Array.isArray(gd) || gd.length > TOP || !gd.every((e: unknown) => Array.isArray(e) && e.length === 2 && int(e[0], 1, TOP) && int(e[1], 0, MAX_CHIPS))) return null;
-    return { k: 'c', q, n, c, t, b, h, m: m as Mood[], nx, fl, gd: gd as [number, number][], pot };
+  if (f['k'] === 'r') {
+    const round = parseRoundFrame(f);
+    return round && int(f['s'], 0, 4294967295) ? { ...round, s: f['s'] } : null;
   }
-  if (f['k'] === 'r') return parseRoundFrame(f);
   return null;
 }
 

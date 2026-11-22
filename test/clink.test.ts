@@ -1,22 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CLIMBS, COUNT_MS, FAST_MS, FELL, FIRST_BET_MS, GOLD_CHANCE, INTEREST, MAGNET, MULTS, NET, OFF, OVER_MS, PAUSE_MS, RIDING, START_CHIPS, TOP,
-  advance, buy, canFlip, climbAt, climbFrame, climbOf, clinkMs, costOf, earn, flip, follow, grab, newClimb, newSeat, nextOdds, odds, parseFrame,
-  payout, raiseOf, seatFrame, SHOP, UPGRADES, type Climb, type Counted, type Seat, type Table,
+  CLIMBS, COUNT_MS, FELL, FIRST_BET_MS, INTEREST, MAGNET, MULTS, NET, OFF, OVER_MS, PAUSE_MS, RIDING, START_CHIPS, TOP,
+  advance, buy, canFlip, climbAt, climbsTo, clinkMs, costOf, earn, flip, follow, grab, matchFrame, newSeat, nextOdds, odds, parseFrame,
+  payout, potCoin, raiseOf, rankOf, rollsOf, scriptOf, seatFrame, SHOP, UPGRADES, type Climb, type Counted, type Lead, type Roll, type Script, type Seat,
 } from '../src/core/clink';
 import { firstRound, roundFrame, whoOf } from '../src/core/rounds';
 
 const [A, B, C] = ['A', 'B', 'C'].map((c) => whoOf(c.repeat(87))) as [string, string, string];
-/** A random that gives these, then the last again and again. */
-const dice = (...rolls: number[]) => { let i = 0; return () => rolls[Math.min(i++, rolls.length - 1)]!; };
-/** Lands: never topples, never golden, a wobbly mood. */
-const steady = () => 0.5;
-
-/** The climb run by the leader to `ms`, coin by coin, as its app would on every frame. */
-function runTo(cl: Climb, ms: number, rand: () => number, riders = 1, potPerCoin = 10): Climb {
-  for (let t = 0; t <= ms; t += 50) cl = climbAt(cl, t, rand, riders, potPerCoin);
-  return climbAt(cl, ms, rand, riders, potPerCoin);
-}
+/** Dice that land every coin, none golden, each wobbly (0.5); but these: [climb, coin, what, roll]. */
+const dice = (...but: [number, number, number, number][]): Roll => (c, k, what) => but.find(([bc, bk, bw]) => bc === c && bk === k && bw === what)?.[3] ?? 0.5;
+const steady = dice();
+const script = (rolls: Roll = steady, c = 1, potIn = 0): Script => scriptOf(rolls, c, 0, potIn, c === 1);
+const open = (c = 1): Climb => climbAt(script(steady, c), 0);
+const TOPPLES = 2, GOLDEN = 3;
 
 describe('Clink, the tower (core/clink.ts)', () => {
   it('pays more the higher it is, and is likelier to fall the higher it is and the more a coin shakes', () => {
@@ -25,76 +21,75 @@ describe('Clink, the tower (core/clink.ts)', () => {
     for (let k = 1; k <= TOP; k++) { expect(odds(k, 0)).toBeLessThan(odds(k, 1)); expect(odds(k, 1)).toBeLessThan(odds(k, 2)); expect(odds(k, 2)).toBeLessThanOrEqual(90); }
   });
 
-  it('lands no coin before the stakes close, then one on time, each with the next one\'s mood known', () => {
-    let cl = newClimb(1, 0, 0, 0.5, true);
-    expect(cl.bet).toBe(FIRST_BET_MS);
-    expect(nextOdds(cl)).toBe(odds(1, 1));
-    expect(climbAt(cl, cl.bet, steady, 1, 10)).toBe(cl);
-    const first = cl.next;
-    expect(first).toBe(FIRST_BET_MS + clinkMs(0));
-    cl = climbAt(cl, first, steady, 1, 10);
-    expect(cl.h).toBe(1);
-    expect(cl.moods).toHaveLength(2);
-    expect(cl.next).toBe(first + clinkMs(1));
-    expect(cl.fell).toBe(-1);
-    expect(cl.pot).toBe(10);
+  it('lands no coin before the stakes close, then each on time, the next one\'s mood known', () => {
+    const sc = script();
+    expect(sc.bet).toBe(FIRST_BET_MS);
+    expect(sc.at[0]).toBe(FIRST_BET_MS + clinkMs(0));
+    expect(sc.at[1]).toBe(sc.at[0]! + clinkMs(1));
+    for (const ms of [0, sc.bet, sc.at[0]! - 1]) expect(climbAt(sc, ms)).toMatchObject({ h: 0, next: sc.at[0], fell: -1, pot: 0 });
+    expect(nextOdds(climbAt(sc, 0))).toBe(odds(1, 1));
+    const one = climbAt(sc, sc.at[0]!);
+    expect(one).toMatchObject({ h: 1, next: sc.at[1], fell: -1, pot: potCoin(1) });
+    expect(one.moods).toHaveLength(2);
   });
 
-  it('falls when a coin topples it, at that coin', () => {
-    // Coin 1 lands (0.5, then a gold roll and a mood), coin 2 topples (0.0).
-    let cl = newClimb(3, 0, 0, 0.5);
-    cl = climbAt(cl, cl.next, dice(0.5, 0.5, 0.5, 0), 1, 0);
-    expect(cl.h).toBe(1);
-    const at = cl.next;
-    cl = climbAt(cl, at, dice(0), 1, 0);
-    expect(cl).toMatchObject({ h: 1, fell: at });
-    expect(nextOdds(cl)).toBeNull();
-    // Over is over.
-    expect(climbAt(cl, at + 99_999, steady, 1, 0)).toBe(cl);
+  it('falls when a coin topples it, at that coin, no sooner', () => {
+    const sc = script(dice([1, 2, TOPPLES, 0]));
+    expect(sc.falls).toBe(2);
+    expect(sc.end).toBe(sc.at[1]);
+    expect(climbAt(sc, sc.at[0]!)).toMatchObject({ h: 1, fell: -1 });
+    const fallen = climbAt(sc, sc.at[1]!);
+    expect(fallen).toMatchObject({ h: 1, fell: sc.at[1] });
+    expect(nextOdds(fallen)).toBeNull();
   });
 
-  it('pays the pot on a golden coin while anyone is on, and starts it again', () => {
-    let cl = newClimb(1, 0, 500, 0.5);
-    // Lands (0.5), golden (0.0), mood (0.5).
-    cl = climbAt(cl, cl.next, dice(0.5, 0, 0.5), 2, 40);
-    expect(cl.gold).toEqual([[1, 540]]);
-    expect(cl.pot).toBe(0);
-    expect(GOLD_CHANCE).toBeGreaterThan(0);
-  });
-
-  it('with nobody on: no golden coin, nothing in the pot, and the coins quickly down to where it falls', () => {
-    let cl = newClimb(1, 0, 500, 0.5);
-    cl = climbAt(cl, cl.next, dice(0.5, 0, 0.5), 0, 40);
-    expect(cl.gold).toEqual([]);
-    expect(cl.pot).toBe(500);
-    const at = cl.next;
-    cl = climbAt(cl, at, steady, 0, 40);
-    expect(cl.next - at).toBe(FAST_MS);
-  });
-
-  it('lands a late coin once, and the next a whole interval after it, never several at once', () => {
-    let cl = newClimb(1, 0, 0, 0.5);
-    const due = cl.next;
-    // Nobody ran the tower for three intervals (a leader gone, or hidden): one coin lands now, the next comes later.
-    cl = climbAt(cl, due + 3000, steady, 1, 0);
-    expect(cl.h).toBe(1);
-    expect(cl.next).toBe(due + 3000 + clinkMs(1));
-    // On time, it keeps to the schedule.
-    const on = climbAt(newClimb(1, 0, 0, 0.5), due + 100, steady, 1, 0);
-    expect(on.next).toBe(due + clinkMs(1));
-    // A late fall counts from when it fell, so the pause after it is whole.
-    expect(climbAt(newClimb(1, 0, 0, 0.5), due + 3000, dice(0), 1, 0).fell).toBe(due + 3000);
+  it('pays the pot on a golden coin, and starts it again', () => {
+    const sc = script(dice([1, 1, GOLDEN, 0]), 1, 500);
+    expect(sc.gold).toEqual([[1, 500 + potCoin(1)]]);
+    expect(climbAt(sc, sc.at[0]! - 1)).toMatchObject({ gold: [], pot: 500 });
+    expect(climbAt(sc, sc.at[0]!)).toMatchObject({ gold: [[1, 500 + potCoin(1)]], pot: 0 });
+    expect(climbAt(sc, sc.at[1]!).pot).toBe(potCoin(1));
+    expect(potCoin(CLIMBS)).toBeGreaterThan(potCoin(1));
   });
 
   it('ends at the top, every coin landed', () => {
-    const cl = runTo(newClimb(1, 0, 0, 0.5), 60_000, steady);
-    expect(cl.h).toBe(TOP);
-    expect(cl.fell).toBeGreaterThan(0);
+    const sc = script();
+    expect(sc.falls).toBe(TOP + 1);
+    expect(climbAt(sc, sc.end - 1).fell).toBe(-1);
+    expect(climbAt(sc, sc.end)).toMatchObject({ h: TOP, fell: sc.end });
+  });
+
+  it('is the same from the same seed, on every screen, and another from another', () => {
+    const a = rollsOf(12345), b = rollsOf(12345), c = rollsOf(54321);
+    const towers = (r: Roll) => Array.from({ length: CLIMBS }, (_, i) => scriptOf(r, i + 1, 0, 0, i === 0)).map((s) => [s.falls, s.gold.length, s.moods.join('')]);
+    expect(towers(a)).toEqual(towers(b));
+    expect(towers(a)).not.toEqual(towers(c));
+    // Its rolls spread from 0 to 1.
+    const r = Array.from({ length: 4000 }, (_, i) => a(1 + (i % 10), 1 + Math.floor(i / 10), 2));
+    expect(Math.min(...r)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...r)).toBeLessThan(1);
+    expect(r.filter((x) => x < 0.5).length / r.length).toBeCloseTo(0.5, 1);
+  });
+
+  it('opens each climb a pause after the last is over, the pot carried on, and ends the match after the last', () => {
+    const known: Script[] = [];
+    const rolls = rollsOf(7);
+    const first = climbsTo(known, rolls, 1000, 1000, CLIMBS)!;
+    expect(first).toMatchObject({ c: 1, t0: 1000, bet: FIRST_BET_MS });
+    const second = climbsTo(known, rolls, 1000, first.t0 + first.end + PAUSE_MS, CLIMBS)!;
+    expect(second).toMatchObject({ c: 2, t0: first.t0 + first.end + PAUSE_MS, potIn: first.potOut });
+    expect(climbsTo(known, rolls, 1000, second.t0 - 1, CLIMBS)).toBe(first);
+    let last = second;
+    for (let c = 3; c <= CLIMBS; c++) last = climbsTo(known, rolls, 1000, last.t0 + last.end + PAUSE_MS, CLIMBS)!;
+    expect(last.c).toBe(CLIMBS);
+    expect(climbsTo(known, rolls, 1000, last.t0 + last.end + PAUSE_MS - 1, CLIMBS)).toBe(last);
+    expect(climbsTo(known, rolls, 1000, last.t0 + last.end + PAUSE_MS, CLIMBS)).toBeNull();
+    // Practice goes on.
+    expect(climbsTo([], rolls, 1000, last.t0 + last.end + PAUSE_MS)!.c).toBe(CLIMBS + 1);
   });
 });
 
 describe('Clink, a seat at the table (core/clink.ts)', () => {
-  const open = (c = 1): Climb => newClimb(c, 0, 0, 0.5);
 
   it('puts my share on the tower when the stakes close, and keeps the rest', () => {
     const cl = open();
@@ -108,15 +103,16 @@ describe('Clink, a seat at the table (core/clink.ts)', () => {
   });
 
   it('sits a climb out that it came to after a coin landed: nothing at stake', () => {
-    const cl = climbAt(open(), open().next, steady, 1, 0);
-    const s = follow(newSeat(), cl, cl.next - 1);
+    const sc = script();
+    const cl = climbAt(sc, sc.at[0]!);
+    const s = follow(newSeat(), cl, sc.at[0]!);
     expect(s).toMatchObject({ placed: true, stake: 0, at: OFF, chips: START_CHIPS });
   });
 
   it('pays a grab what the coins it saw made, more with a lucky charm and in a later climb', () => {
-    let cl = open();
-    let s = follow(newSeat(), cl, cl.bet);
-    cl = runTo(cl, cl.next + clinkMs(1) + clinkMs(2), steady);
+    const sc = script();
+    let s = follow(newSeat(), open(), sc.bet);
+    const cl = climbAt(sc, sc.at[2]!);
     expect(cl.h).toBe(3);
     const g = grab(s, cl.h);
     expect(g.at).toBe(3);
@@ -145,17 +141,17 @@ describe('Clink, a seat at the table (core/clink.ts)', () => {
   });
 
   it('pays a stake still on at the top what the top pays', () => {
-    const cl = runTo(open(), 60_000, steady);
+    const cl = climbAt(script(), 60_000);
     const s = follow(follow(newSeat(), open(), open().bet), cl, 60_000);
     expect(s.at).toBe(TOP);
     expect(s.won).toBe(START_CHIPS / 2 * MULTS[TOP]!);
   });
 
   it('pays the golden coins to who was on when they landed, the magnet more, and not to who got off before', () => {
-    let cl = open();
-    const on = follow(newSeat(), cl, cl.bet);
+    const sc = script();
+    const on = follow(newSeat(), open(), sc.bet);
     // Coin 1 lands golden, paying 300.
-    cl = { ...climbAt(cl, cl.next, dice(0.5, 0, 0.5), 1, 0), gold: [[1, 300]] };
+    const cl: Climb = { ...climbAt(sc, sc.at[0]!), gold: [[1, 300]] };
     const stayed = follow(on, cl, cl.next);
     expect(stayed.chips).toBe(on.chips + 300);
     expect(stayed.gilded).toBe(300);
@@ -164,7 +160,7 @@ describe('Clink, a seat at the table (core/clink.ts)', () => {
     // Got off before it landed.
     expect(follow(grab(on, 0), cl, cl.next).gilded).toBe(0);
     // Not on at all.
-    expect(follow(follow(newSeat(), climbAt(open(), open().next, steady, 1, 0), 1), cl, cl.next).gilded).toBe(0);
+    expect(follow(follow(newSeat(), climbAt(sc, sc.at[0]!), sc.at[0]!), cl, cl.next).gilded).toBe(0);
     // A magnet.
     const magnet = follow(buy({ ...newSeat(), chips: 2000 }, 'magnet'), open(), open().bet);
     expect(follow(magnet, cl, cl.next).gilded).toBe(300 * MAGNET[1]!);
@@ -192,9 +188,9 @@ describe('Clink, a seat at the table (core/clink.ts)', () => {
   });
 
   it('doubles or loses what a grab won, never the stake, once a climb', () => {
-    let cl = open();
-    const on = follow(newSeat(), cl, cl.bet);
-    cl = runTo(cl, cl.next + clinkMs(1), steady);
+    const sc = script();
+    const on = follow(newSeat(), open(), sc.bet);
+    const cl = climbAt(sc, sc.at[1]!);
     const g = grab(on, cl.h);
     const profit = g.won - g.stake;
     expect(profit).toBeGreaterThan(0);
@@ -228,89 +224,73 @@ describe('Clink, a seat at the table (core/clink.ts)', () => {
 });
 
 describe('Clink, the match (core/clink.ts)', () => {
-  const here = (...who: [string, number, number?, boolean?][]): Counted[] => who.map(([w, n, chips = START_CHIPS, riding = false]) => ({ who: w, n, known: n, chips, riding }));
+  const here = (...who: [string, number, number?][]): Counted[] => who.map(([w, n, chips = START_CHIPS]) => ({ who: w, n, known: n, chips }));
+  const rand = () => 0.25;
 
-  it('climbs for practice while one waits, then counts down once a second comes', () => {
-    let t: Table = { round: firstRound(0), climb: null };
-    t = advance(t, 0, here([A, 0]), steady);
-    expect(t.round.phase).toBe('wait');
-    expect(t.climb).toMatchObject({ c: 1, h: 0 });
-    for (let now = 100; now <= 30_000; now += 100) t = advance(t, now, here([A, 0]), steady);
-    expect(t.round.phase).toBe('wait');
-    expect(t.climb!.c).toBeGreaterThan(1);
-    t = advance(t, 30_100, here([A, 0], [B, 0]), steady);
+  it('waits while one is there, then counts down once a second comes, then plays with a seed of its own', () => {
+    let t: Lead = { round: firstRound(0), seed: 1 };
+    expect(advance(t, 100, here([A, 0]), here([A, 0]), rand, false)).toBe(t);
+    t = advance(t, 200, here([A, 0], [B, 0]), here([A, 0], [B, 0]), rand, false);
     expect(t.round).toMatchObject({ phase: 'count', n: 1, players: [A, B].sort() });
-    expect(t.climb).toBeNull();
-    // Back to waiting if the second goes.
-    expect(advance(t, 30_200, here([A, 0]), steady).round.phase).toBe('wait');
+    // Back to waiting if the second goes, practice on another seed.
+    const back = advance(t, 300, here([A, 0]), here([A, 0]), rand, false);
+    expect(back.round.phase).toBe('wait');
+    expect(back.seed).not.toBe(t.seed);
+    t = advance(t, 200 + COUNT_MS, here([A, 1], [B, 1]), here([A, 1], [B, 1]), rand, false);
+    expect(t.round).toMatchObject({ phase: 'play', since: 200 + COUNT_MS });
+    expect(t.seed).not.toBe(1);
   });
 
-  it('plays CLIMBS climbs, each opening a while after the last ended, and then the most chips wins', () => {
-    let t: Table = { round: { ...firstRound(0), n: 1, phase: 'count', players: [A, B] }, climb: null };
-    let now = COUNT_MS;
-    t = advance(t, now, here([A, 1], [B, 1]), steady);
-    expect(t.round.phase).toBe('play');
-    expect(t.climb).toMatchObject({ c: 1, bet: FIRST_BET_MS });
-    // Each climb: up to the top (nobody topples it), then the pause, then the next.
-    const climbs: number[] = [];
-    while (t.round.phase === 'play' && now < 1_000_000) {
-      now += 100;
-      t = advance(t, now, here([A, 1, 5000, true], [B, 1, 7000, true]), steady);
-      if (t.climb && climbs[climbs.length - 1] !== t.climb.c) climbs.push(t.climb.c);
-      if (t.climb?.fell !== undefined && t.climb.fell >= 0) {
-        expect(now - t.climb.t0).toBeLessThan(t.climb.fell + PAUSE_MS + 200);
-      }
-    }
-    expect(climbs).toEqual(Array.from({ length: CLIMBS }, (_, i) => i + 1));
-    expect(t.round).toMatchObject({ phase: 'over', winner: B, scores: { [A]: 5000, [B]: 7000 }, wins: { [B]: 1 } });
-    expect(t.climb).toBeNull();
-    // Then the next match, or the wait.
-    expect(advance(t, now + OVER_MS, here([A, 1], [B, 1]), steady).round).toMatchObject({ phase: 'count', n: 2 });
-    expect(advance(t, now + OVER_MS, here([A, 1]), steady).round.phase).toBe('wait');
+  it('plays until its climbs are over, and then the most chips wins', () => {
+    const t: Lead = { round: { ...firstRound(0), n: 1, phase: 'play', players: [A, B] }, seed: 9 };
+    const both = here([A, 1, 5000], [B, 1, 7000]);
+    expect(advance(t, 60_000, both, both, rand, false)).toBe(t);
+    const over = advance(t, 200_000, both, both, rand, true);
+    expect(over.round).toMatchObject({ phase: 'over', winner: B, scores: { [A]: 5000, [B]: 7000 }, wins: { [B]: 1 } });
+    expect(advance(over, 200_000 + OVER_MS, both, both, rand, false).round).toMatchObject({ phase: 'count', n: 2 });
+    expect(advance(over, 200_000 + OVER_MS, here([A, 1]), here([A, 1]), rand, false).round.phase).toBe('wait');
   });
 
-  it('carries the pot from climb to climb, made of what the table has, and starts it again with a match', () => {
-    let t: Table = { round: { ...firstRound(0), n: 1, phase: 'play', since: 0, players: [A, B] }, climb: newClimb(1, 0, 0, 0.5, true) };
-    t = advance(t, t.climb!.next, here([A, 1, 1000, true], [B, 1, 3000, true]), steady);
-    expect(t.climb!.pot).toBeCloseTo(0.02 * 2000);
-  });
-
-  it('gives the match to the one left in it, and leaves those watching out of it', () => {
-    let t: Table = { round: { ...firstRound(0), n: 3, phase: 'play', since: 0, players: [A, B] }, climb: newClimb(1, 0, 0, 0.5, true) };
-    // C came in later and watches (plays no match, knows this one): out of it. B is gone.
-    t = advance(t, 100, here([A, 3, 4000], [C, 0]).map((p) => (p.who === C ? { ...p, known: 3 } : p)), steady);
-    expect(t.round).toMatchObject({ phase: 'over', winner: A, scores: { [A]: 4000 } });
+  it('keeps a friend away a while in the match; gives it to the one left once they are gone, and leaves watchers out', () => {
+    const t: Lead = { round: { ...firstRound(0), n: 3, phase: 'play', players: [A, B] }, seed: 9 };
+    // B not heard lately, but there (their link open): the match goes on.
+    expect(advance(t, 100, here([A, 3]), here([A, 3], [B, 3]), rand, false)).toBe(t);
+    // B gone; C came in later and watches (plays no match, knows this one): out of it.
+    const watcher: Counted = { who: C, n: 0, known: 3, chips: START_CHIPS };
+    expect(advance(t, 100, [...here([A, 3, 4000]), watcher], [...here([A, 3, 4000]), watcher], rand, false).round).toMatchObject({ phase: 'over', winner: A, scores: { [A]: 4000 } });
   });
 
   it('keeps a match of one, started alone, going', () => {
-    const t: Table = { round: { ...firstRound(0), n: 1, phase: 'play', since: 0, players: [A] }, climb: newClimb(1, 0, 0, 0.5, true) };
-    expect(advance(t, 100, here([A, 1]), steady).round.phase).toBe('play');
+    const t: Lead = { round: { ...firstRound(0), n: 1, phase: 'play', players: [A] }, seed: 9 };
+    expect(advance(t, 100, here([A, 1]), here([A, 1]), rand, false)).toBe(t);
+  });
+
+  it('ranks the newest round first, then how far into it', () => {
+    expect(rankOf(2, 'count')).toBeGreaterThan(rankOf(1, 'wait'));
+    expect(rankOf(1, 'play')).toBeGreaterThan(rankOf(1, 'count'));
+    expect(rankOf(1, 'over')).toBeGreaterThan(rankOf(1, 'play'));
+    expect(rankOf(1, 'wait')).toBeGreaterThan(rankOf(1, 'over'));
   });
 });
 
 describe('Clink, on the wire (core/clink.ts)', () => {
-  it('sends a seat and a climb as they are, and takes them back', () => {
-    const s = { ...follow(newSeat(), newClimb(4, 0, 0, 0.5), 5000), chips: 1234.7 };
-    const sf = seatFrame(s, 2, 2, 4, true);
+  it('sends a seat and a round with its seed as they are, and takes them back', () => {
+    const s = { ...follow(newSeat(), open(4), 5000), chips: 1234.7 };
+    const sf = seatFrame(s, 2, 2, 1);
     expect(parseFrame(JSON.stringify(sf))).toEqual({ ...sf, ch: 1234 });
-    let cl = runTo(newClimb(4, 1000, 77, 0.5), 9000, steady);
-    cl = { ...cl, gold: [[2, 400]] };
-    const cf = climbFrame(cl, 2, 1000 + 9000, 55);
-    expect(parseFrame(JSON.stringify(cf))).toEqual(cf);
-    const back = climbOf(cf, 50_000);
-    expect(back).toEqual({ ...cl, t0: 50_000 - 9000, pot: Math.floor(cl.pot) });
-    const rf = roundFrame(firstRound(0), 10, 3);
-    expect(parseFrame(JSON.stringify(rf))).toEqual(rf);
+    const mf = matchFrame(roundFrame(firstRound(0), 10, 3), 4_000_000_000);
+    expect(parseFrame(JSON.stringify(mf))).toEqual(mf);
   });
 
   it('turns away a frame with anything off', () => {
-    const sf = seatFrame(newSeat(), 1, 1, 0, false);
-    const cf = climbFrame(newClimb(1, 0, 0, 0.5), 1, 0, 1);
+    const sf = seatFrame(newSeat(), 1, 1, 0);
+    const mf = matchFrame(roundFrame(firstRound(0), 10, 3), 5);
     for (const bad of [
-      { ...sf, ch: -1 }, { ...sf, ch: 1.5 }, { ...sf, sh: 3 }, { ...sf, a: 21 }, { ...sf, a: -4 }, { ...sf, f: 2 }, { ...sf, lv: 'x' }, { ...sf, lv: [99] }, { ...sf, kc: -1 }, { ...sf, v: 1 },
-      { ...cf, h: 21 }, { ...cf, m: [3] }, { ...cf, m: [] }, { ...cf, fl: -2 }, { ...cf, gd: [[0, 5]] }, { ...cf, gd: [[1, -5]] }, { ...cf, q: 'x' }, { ...cf, t: -1 },
-      { k: 'z' },
+      { ...sf, ch: -1 }, { ...sf, ch: 1.5 }, { ...sf, sh: 3 }, { ...sf, a: 21 }, { ...sf, a: -4 }, { ...sf, f: 2 }, { ...sf, lv: 'x' }, { ...sf, lv: [99] }, { ...sf, po: 4 },
+      { ...mf, s: -1 }, { ...mf, s: 2 ** 32 }, { ...mf, s: 'x' }, { ...mf, ph: 'nap' }, { k: 'z' },
     ]) expect(parseFrame(JSON.stringify(bad))).toBeNull();
+    const { s: _, ...noSeed } = mf;
+    expect(parseFrame(JSON.stringify(noSeed))).toBeNull();
     expect(parseFrame('nope')).toBeNull();
     expect(parseFrame(JSON.stringify([1]))).toBeNull();
   });

@@ -124,12 +124,10 @@ function seatAngle(i: number, n: number): number {
 export function mountClink(host: HTMLElement, opts: { me: string; links: GameLinks; faceOf: (key: string) => Face }): () => void {
   const { me, links } = opts;
   const myWho = whoOf(me);
-  /** For tests (`window.__daveClinkRig`): what the leader's every roll comes out as; null for chance. */
-  let rig: number | null = null;
-  // Who leads, the round, the climb, my seat and the frames: the table's (core/clinktable.ts). Here: the screen.
-  const table = createTable(me, links, () => rig ?? Math.random(), () => performance.now());
+  // Who leads, the round, the climbs, my seat and the frames: the table's (core/clinktable.ts). Here: the screen.
+  const table = createTable(me, links, Math.random, () => performance.now());
   let last = performance.now();
-  const step = (now: number) => { last = now; table.step(now, document.visibilityState !== 'hidden'); };
+  const step = (now: number) => { last = now; table.step(now); };
   const { watching, seated } = table;
   /** Who is at the table: everyone in it, those away a while too. */
   const atTable = (now: number) => table.present(now);
@@ -674,7 +672,7 @@ export function mountClink(host: HTMLElement, opts: { me: string; links: GameLin
 
   if (exposeHooks) {
     const w = window as unknown as { __daveGame?: () => ClinkView; __daveClinkRig?: (v: number | null) => void };
-    w.__daveClinkRig = (v) => { rig = v; };
+    w.__daveClinkRig = (v) => table.rig(v, performance.now());
     w.__daveGame = (): ClinkView => {
       const now = performance.now();
       const { round, climb: cl, seat, leader, playing } = table;
