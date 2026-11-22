@@ -1,3 +1,3 @@
+2x this week (2x in 30 days) attachment.spec.ts › a video goes big over the page on its button and back, playing on, the: expect(received).toBeGreaterThan(expected) (ticket 82)
 2x this week (2x in 30 days) skid.spec.ts › skid: a race counted down on the grid, each kart seen by the other, pl: Alice held on the grid through the countdown (ticket 93)
 1x this week (2x in 30 days) text.spec.ts › regression: a live text before the first sync is answered does not mov: asked again from where the first asked, not from the live text (ticket 77)
-1x this week (2x in 30 days) attachment.spec.ts › ADR 0009: a picture sent while nobody else was there comes from the se: expect(received).toBe(expected) // Object.is equality (ticket 81)
