@@ -10,6 +10,7 @@ import { newBucket } from '../src/core/ratelimit';
 import type { Store } from '../src/worker/store';
 import { forgetHistoryUsage } from '../src/worker/historyusage';
 import { authFrame, nameOf, openRoomSocket, type Challenge } from './harness';
+import { roomIdOf } from '../src/core/rooms';
 
 // The server's history (ADR 0009): one Store keeps every room's sealed texts and file announcements in one window, and a
 // browser asks after every welcome for what it missed.
@@ -399,6 +400,30 @@ describe('through the Worker', () => {
     expect(entries.map((e) => [e.t, e.id, e.sealed, nameOf(e.from.profile), e.from.publicKey])).toEqual([['sealed', 'one', 'b25l', 'Alice', alice.publicKey], ['file', 'two', 'ZmlsZQ', 'Alice', alice.publicKey]]);
     alice.ws.close();
     other.ws.close();
+  });
+
+  it('a file announcement the Store failed to keep is kept on another try, so a friend away still learns of it (ticket 92)', async () => {
+    const secret = `kept-${Math.random().toString(36).slice(2)}`;
+    const alice = await enter(secret, 'Alice');
+    // The Store's next keep from this room throws, as on a preview on 2026-11-17, and works again after that.
+    await runInDurableObject(env.ROOM.get(env.ROOM.idFromName(await roomIdOf(secret))), (room) => {
+      const r = room as unknown as { store: () => Record<string, unknown> };
+      const store = r.store.bind(r);
+      let failed = false;
+      r.store = () => {
+        const s = store();
+        return new Proxy(s, { get: (t, p) => (p === 'keep' && !failed ? () => { failed = true; return Promise.reject(new Error('the Store failed')); } : t[p as string]) });
+      };
+    });
+    alice.ws.send(JSON.stringify({ t: 'file', sealed: 'ZmlsZQ', id: 'picture' }));
+    await alice.box.until((m) => m.t === 'file');
+    // A sync waits for the room's keeps under way, its tries again among them.
+    const bob = await enter(secret, 'Bob');
+    bob.ws.send(JSON.stringify({ t: 'sync', since: 0 }));
+    const history = (await bob.box.until((m) => m.t === 'history')) as Extract<ServerMessage, { t: 'history' }>;
+    expect(history.entries.map((e) => [e.t, e.id])).toEqual([['file', 'picture']]);
+    bob.ws.close();
+    alice.ws.close();
   });
 
   it('/history-usage says how full the window is, in JSON', async () => {
