@@ -305,7 +305,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   const scene = new THREE.Scene();
   const sky = new THREE.Color('#bfe6ff');
   scene.background = sky;
-  scene.fog = new THREE.Fog(sky, 30, 70);
+  const fog = new THREE.Fog(sky, 30, 70);
+  scene.fog = fog;
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
   scene.add(new THREE.HemisphereLight('#ffffff', '#2d5f80', 1.6));
   const sun = new THREE.DirectionalLight('#fff6e0', 2.2);
@@ -521,11 +522,14 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     }
 
     // The camera: over the floe from the south, a little toward my ball, further back on a tall screen; shaken by a bonk.
-    // Held still while the ball follows a finger, and a little further back to keep the whole floe in sight: moved with
-    // the ball, the spot under a finger held still would move on ahead of it, off the floe.
-    const follow = !watching && controls === 'follow';
-    const far = Math.max(1, 1.25 / camera.aspect) * (follow ? 1.15 : 1);
-    const still = watching || follow;
+    // Held still while the ball follows a finger, watching or not, and a little further back to keep the whole floe in
+    // sight, the fog as far back with it: moved with the ball, the spot under a finger held still would move on ahead of
+    // it, off the floe.
+    const back = controls === 'follow' ? 1.15 : 1;
+    const far = Math.max(1, 1.25 / camera.aspect) * back;
+    fog.near = 30 * back;
+    fog.far = 70 * back;
+    const still = watching || controls === 'follow';
     const fx = still ? 0 : ball.x * 0.2, fz = still ? 0 : ball.z * 0.2;
     shake = Math.max(0, shake - dt * 1.5);
     camera.position.set(fx + (Math.random() - 0.5) * shake, 15 * far + (Math.random() - 0.5) * shake, fz + 13 * far);
