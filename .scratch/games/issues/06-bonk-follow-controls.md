@@ -9,7 +9,7 @@ this feels better. and while we are at it we can add the same for mouse holds an
 before as the only way to steer (PR #179, closed unmerged, 2026-11-21); now beside the stick, to compare.
 
 **What was built:**
-- A button at the bottom left of the game, 🕹️ Stick or 👆 Follow, kept in this browser (`bonkControls`,
+- A button at the top right of the game, 🕹️ Stick or 👆 Follow, kept in this browser (`bonkControls`,
   core/storedstate.ts). Stick, the default, is the game as it was: a drag stick on a touch screen, the mouse does nothing.
 - Follow: while a finger or the left mouse button is held on the game, the ball rolls toward the spot under it on the
   floe, and on as it moves; a small ring shows the spot. It steers for the speed that gets there and brakes near the

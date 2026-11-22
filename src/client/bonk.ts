@@ -197,7 +197,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   board.className = 'bonk-board';
   board.setAttribute('aria-label', 'Rounds won');
   const help = document.createElement('div');
-  help.className = 'bonk-help beside-controls';
+  help.className = 'bonk-help';
   const dashButton = document.createElement('button');
   dashButton.type = 'button';
   dashButton.className = 'bonk-dash';
@@ -245,11 +245,12 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     sticked = { x: 0, z: 0 };
   };
   const onPointerMove = (e: PointerEvent) => {
-    // A mouse button pressed or let go while another is down comes as a move, not a press or a let-go.
+    // A mouse button pressed or let go while another is down comes as a move, not a press or a let-go; and a let-go
+    // somewhere else (another window) may come as nothing at all: a mouse hold lasts only while the left button is down.
+    if (e.pointerType === 'mouse' && held?.id === e.pointerId && !(e.buttons & 1)) held = null;
     if (controls === 'follow' && e.pointerType === 'mouse' && e.target instanceof Node && host.contains(e.target)) {
       if (e.button === 2 && e.buttons & 2) { dashAsked = true; dashAim = { x: e.clientX, y: e.clientY }; }
       if (e.button === 0 && e.buttons & 1 && !held) { held = { id: e.pointerId, x: e.clientX, y: e.clientY }; try { host.setPointerCapture(e.pointerId); } catch { /* gone already */ } }
-      if (e.button === 0 && !(e.buttons & 1) && held?.id === e.pointerId) held = null;
     }
     if (held?.id === e.pointerId) held = { ...held, x: e.clientX, y: e.clientY };
     if (touch?.id === e.pointerId) sticked = steer((e.clientX - touch.x) / 45, (e.clientY - touch.y) / 45);
@@ -260,7 +261,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   };
   // Only the game's own capture: a finger's first capture, on what it went down on, is not the hold.
   const onLostCapture = (e: PointerEvent) => { if (e.target === host) onPointerUp(e); };
-  const onContextMenu = (e: Event) => { if (controls === 'follow') e.preventDefault(); };
+  // No menu for the right button on the game, nor over the page while the game holds the mouse.
+  const onContextMenu = (e: Event) => { if (controls === 'follow' && (held || (e.target instanceof Node && host.contains(e.target)))) e.preventDefault(); };
   const showControls = () => {
     const follow = controls === 'follow';
     controlsButton.textContent = follow ? '👆 Follow' : '🕹️ Stick';
@@ -281,7 +283,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     showControls();
   });
   host.addEventListener('pointerdown', onPointerDown);
-  host.addEventListener('contextmenu', onContextMenu);
+  window.addEventListener('contextmenu', onContextMenu);
   host.addEventListener('lostpointercapture', onLostCapture);
   window.addEventListener('pointermove', onPointerMove);
   window.addEventListener('pointerup', onPointerUp);
@@ -610,7 +612,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     host.removeEventListener('keyup', onKeyUp);
     host.removeEventListener('blur', onBlur);
     host.removeEventListener('pointerdown', onPointerDown);
-    host.removeEventListener('contextmenu', onContextMenu);
+    window.removeEventListener('contextmenu', onContextMenu);
     host.removeEventListener('lostpointercapture', onLostCapture);
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
