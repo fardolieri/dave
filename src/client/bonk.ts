@@ -59,6 +59,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   let input = { x: 0, z: 0 };
   let dashAsked = false;
   let dashed = false;
+  /** My last dash, which way it went, for the test hooks: the ball may be in the sea and back by the time they look. */
+  let lastDash: { vx: number; vz: number } | null = null;
   let last = performance.now();
   let lastSent = 0;
   let lastRoundSent = 0;
@@ -137,7 +139,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       const h = Math.min(dt, MAX_STEP_S / 3);
       dt -= h;
       if (round.phase === 'count') break; // standing at the start, until the go
-      if (dashAsked) { const d = dash(ball, dashTo ? { x: dashTo.x - ball.x, z: dashTo.z - ball.z } : input, now); if (d !== ball) { ball = d; dashed = true; thump(2, true); } dashAsked = false; dashAim = null; }
+      if (dashAsked) { const d = dash(ball, dashTo ? { x: dashTo.x - ball.x, z: dashTo.z - ball.z } : input, now); if (d !== ball) { ball = d; dashed = true; lastDash = { vx: d.vx, vz: d.vz }; thump(2, true); } dashAsked = false; dashAim = null; }
       const wasAlive = ball.alive;
       ball = roll(ball, input, h, floe);
       if (wasAlive && !ball.alive) { fellAt = now; events.push({ kind: 'splash', x: ball.x, z: ball.z, hard: 0 }); }
@@ -601,7 +603,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       const now = performance.now();
       return {
         phase: round.phase, round: round.n, leader, playing: playing !== 0, spectating: playing === 0 && (round.phase === 'count' || round.phase === 'play'), webgl: renderer !== null,
-        me: { x: ball.x, z: ball.z, alive: ball.alive, dashAt: Number.isFinite(ball.dashAt) ? ball.dashAt : null }, controls, aim: aimAt,
+        me: { x: ball.x, z: ball.z, alive: ball.alive, lastDash }, controls, aim: aimAt,
         others: heard(now).map((o) => ({ key: o.key, x: o.frame.x, z: o.frame.z, alive: o.frame.a })),
         wins: { ...round.wins }, connected: links.connected().length,
       };

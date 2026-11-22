@@ -259,11 +259,10 @@ test('Bonk followed: the ball rolls to where the mouse is held, the right button
   expect(Math.hypot(there.me.x - spot.x, there.me.z - spot.z)).toBeLessThan(0.3); // stopped on it, not swinging round it
   await alice.page.mouse.up();
 
-  // The right button, left of the middle: a dash that way.
-  expect((await view(alice))!.me.dashAt).toBeNull();
+  // The right button, left of the middle: a dash that way (and on, off the floe: a dash goes some 15).
+  expect((await view(alice))!.me.lastDash).toBeNull();
   await alice.page.mouse.click(box.x + box.width * 0.3, box.y + box.height / 2, { button: 'right' });
-  await expect.poll(async () => (await view(alice))!.me.dashAt, { timeout: 5000 }).not.toBeNull();
-  await expect.poll(async () => (await view(alice))!.me.x, { timeout: 5000 }).toBeLessThan(there.me.x - 1);
+  await expect.poll(async () => (await view(alice))!.me.lastDash?.vx ?? 0, { timeout: 5000 }).toBeLessThan(-10);
 
   // Kept: a game started again follows still.
   await tile(alice).getByRole('button', { name: 'Leave game' }).click();
