@@ -26,7 +26,7 @@ const MOOD_NAMES = ['steady', 'wobbly', 'shaky'] as const;
 const MOOD_COLOURS = ['#3ddc84', '#ffb020', '#ff4d4d'] as const;
 const SHARE_LABELS: Record<Share, string> = { 4: '¼', 2: '½', 1: 'All' };
 const LITE_MS = 60;
-/** Chip colours told apart at a glance, one each in the table's order (client/skid.ts does the same for karts). */
+/** Chip colours told apart at a glance, one each in the table's order. */
 const PALETTE = ['#e5484d', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#06b6d4', '#ec4899', '#84cc16'];
 
 /** Chips as they are read: in full up to ten thousand, then 12.3K, 4.56M and so on. */
@@ -148,7 +148,7 @@ export function mountClink(host: HTMLElement, opts: { me: string; links: GameLin
   const mult = el('div', 'clink-mult');
   const oddsEl = el('div', 'clink-odds');
   gauge.append(mult, oddsEl, pot);
-  const results = el('ol', 'skid-results clink-results');
+  const results = el('ol', 'clink-results');
   const side = el('div', 'clink-side');
   const panel = el('div', 'clink-panel');
   const chipsLine = el('div', 'clink-chips');

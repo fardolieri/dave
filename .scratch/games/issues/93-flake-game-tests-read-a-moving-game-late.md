@@ -1,6 +1,6 @@
 # 93 · Flake: game tests read a moving game too late on a page drawing in software
 
-Status: Clink's causes found 2026-11-22 and fixed in the test; Skid's still open
+Status: resolved: Clink's causes found 2026-11-22 and fixed in the test; Skid's test went with Skid (ticket 04)
 Type: flake
 
 Seen 2026-11-22, the gate of #184 at 001e568 (run 45047144263, Chromium shard 6), first tries only; both passed on

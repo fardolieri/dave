@@ -512,15 +512,9 @@ button.play { flex: 1; min-width: 0; padding-inline: 4px; font-weight: 600; font
 .bonk.bonk-touch .bonk-help { display: none; }
 @media (pointer: coarse) { .bonk-dash { display: block; } .bonk-help { display: none; } } 
 @media (pointer: coarse) { .bonk-controls { padding: 6px 12px; font-size: 14px; } }
-/* Skid: the lap, place and time; the item held; the map; the results; the touch screen's two buttons */
-.skid-stats { position: absolute; top: 10px; left: 10px; padding: 3px 10px; border-radius: 8px; background: rgba(255,255,255,.8); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.skid-stats:empty, .skid-results:empty { display: none; }
-.skid-item { position: absolute; top: 44px; left: 10px; width: 52px; height: 52px; display: grid; place-items: center; border-radius: 12px; border: 3px solid rgba(255,255,255,.85); background: rgba(11,32,51,.35); font-size: 30px; }
-.skid-item.full { background: rgba(255,210,63,.85); }
-.skid-map { position: absolute; top: 10px; right: 10px; width: 150px; height: 120px; border-radius: 10px; background: rgba(255,255,255,.55); }
-.skid-results { position: absolute; top: 46%; left: 50%; transform: translateX(-50%); margin: 0; padding: 10px 18px; list-style: none; border-radius: 12px; background: rgba(11,32,51,.7); color: #fff; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
-@media (max-width: 700px) { .skid-map { width: 100px; height: 80px; } .skid-item { width: 42px; height: 42px; font-size: 24px; } }
-.bonk-dash.skid-use { right: 100px; background: #7c5cff; color: #fff; }
+/* Clink's results, over the table when a match ends */
+.clink-results { position: absolute; top: 46%; left: 50%; transform: translateX(-50%); margin: 0; padding: 10px 18px; list-style: none; border-radius: 12px; background: rgba(11,32,51,.7); color: #fff; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.clink-results:empty { display: none; }
 /* Clink: the board; what the tower pays, its next coin's odds and the pot; my chips, stake, grab and the shop, at the side
    of a wide tile and under a narrow one (the tile's own size, not the window's: a container) */
 .clink-hud { container-type: size; color: #fff6e0; }

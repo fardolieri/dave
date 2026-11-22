@@ -55,13 +55,14 @@ worker keeps it with the rest of the build, so a tab left open across a deploy s
   friend whose app knew only Bonk saw no Splotch, until it updated. **Skid**, a kart race, came third (2026-11-22): each
   app drives its own kart and counts its own laps and finish, which its frames carry; the leader ends the race once
   everyone in it has finished, or a while after the first did, and sends the times with its end. Item boxes are each
-  app's own; an oil slick goes out in its dropper's frames, and each app spins its own kart on it. **Clink** took
+  app's own; an oil slick goes out in its dropper's frames, and each app spins its own kart on it. Skid was taken out
+  the same day, not ready to play (ticket 04); an app that still knows it can start one that updated apps do not show. **Clink** took
   Splotch's place (2026-11-22). Its towers are no one app's: the leader picks a seed for each match (and for practice
   while waiting) and sends it with the round, and from the seed and the round's start every app works out every climb
   alike, which coin topples it, which are golden, how each sits, when each lands (`scriptOf`, `climbsTo`). Nothing about
   a tower goes over the wire, so no change of leader, lost frame or hidden tab can stall a tower or take back a coin:
   a first design, the leader landing coins and sending them, lost them in two reviews' worth of ways. The leader runs
-  only the rounds, as in Bonk and Skid, and ends a match when its last climb is over; who leads goes by the newest
+  only the rounds, as in Bonk, and ends a match when its last climb is over; who leads goes by the newest
   round, then the furthest phase of it, and an app back from a gap follows a moment before leading, so a friend who
   missed a match's end does not end it again. Every player's chips, stake and grab are their own app's, sent in their
   frames, a grab judged by the coins that app has seen land; a friend not heard from but whose link is still open (a

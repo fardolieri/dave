@@ -45,8 +45,6 @@ describe('a game in the call (core/game.ts)', () => {
     expect(currents([later, clink, bonk])).toEqual([bonk, clink]);
     // More play the later Bonk: it is the call's Bonk, and the Clink goes on beside it.
     expect(currents([bonk, later, { ...later }, clink])).toEqual([later, clink]);
-    const skid = game({ game: 'skid', id: 'aaaaaaaa', at: 9 });
-    expect(currents([clink, skid])).toEqual([skid, clink]);
     expect(currents([])).toEqual([]);
   });
 

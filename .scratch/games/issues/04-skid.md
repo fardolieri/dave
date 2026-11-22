@@ -1,7 +1,10 @@
 # 04 · A third game, Skid: a kart race
 
-Status: in review
+Status: removed 2026-11-22
 Raised by: the owner, 2026-11-22 ("Lets add a third game. How about a mario kart clone")
+
+**Removed:** the owner, 2026-11-22: "Lets remove the Skid game. Its not ready to play". Its code is in git history
+(fad86f4 and the commits after it, up to 5d746da).
 
 **What was decided:** an original kart racer, not a copy of Mario Kart: its own name, track, items and look (the owner
 asked for a clone; the genre is fair, another game's characters, items, tracks and look are not).

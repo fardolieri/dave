@@ -13,7 +13,6 @@ import { canFullscreen, exitFullscreenSafely, fullscreenElement, requestFullscre
 /** The games, as the call offers them. */
 const TITLES: Record<GameName, { title: string; icon: string; blurb: string }> = {
   bonk: { title: 'Bonk', icon: '🧊', blurb: 'Bonk your friends off a shrinking ice floe. Last one on it wins.' },
-  skid: { title: 'Skid', icon: '🏎️', blurb: 'A kart race, three laps. Drift round the bends to boost, grab items, beat your friends to the line.' },
   clink: { title: 'Clink', icon: '🪙', blurb: 'A tower of coins, everyone\'s chips on it. Grab before it falls. Most chips after ten climbs wins.' },
 };
 
@@ -21,7 +20,6 @@ const TITLES: Record<GameName, { title: string; icon: string; blurb: string }> =
 type Mount = (host: HTMLElement, opts: { me: string; links: GameLinks; faceOf: (key: string) => Face }) => () => void;
 const LOAD: Record<GameName, () => Promise<Mount>> = {
   bonk: () => import('./bonk').then((m) => m.mountBonk),
-  skid: () => import('./skid').then((m) => m.mountSkid),
   clink: () => import('./clink').then((m) => m.mountClink),
 };
 

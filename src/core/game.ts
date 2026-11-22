@@ -5,7 +5,7 @@
 // data only.
 
 /** The games there are. A name an app does not know is a game it cannot play: it shows nothing for it. */
-export const GAME_NAMES = ['bonk', 'skid', 'clink'] as const;
+export const GAME_NAMES = ['bonk', 'clink'] as const;
 export type GameName = (typeof GAME_NAMES)[number];
 export const isGameName = (v: unknown): v is GameName => typeof v === 'string' && (GAME_NAMES as readonly string[]).includes(v);
 
