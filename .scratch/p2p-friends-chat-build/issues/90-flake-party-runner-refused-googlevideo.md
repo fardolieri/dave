@@ -26,3 +26,18 @@ one YouTube served.
 does not play still fails the test. Checked locally with a route refusing each browser's first request to
 googlevideo.com and passing the rest: the test failed on the console check alone before, as in CI, and passes after.
 A runner where every such connection is refused would fail on the player not playing; not seen, not handled.
+
+## Comments
+
+### 2026-11-22: another error from the same host, a QUIC timeout
+The gate of #183 at 41ec9a6 (run 45039110999, attempt 1, Chromium shard 2), both tries: `party.spec.ts:228` "a friend
+who joins a paused party finds it paused, …", on its console check alone:
+
+```
+Alice: error: Failed to load resource: net::ERR_QUIC_PROTOCOL_ERROR.QUIC_NETWORK_IDLE_TIMEOUT (https://rr1---sn-uphho-hqae.googlevideo.com/videoplayback?…)
+```
+
+The same host as the refusals above (`rr1---sn-uphho-hqae`), another way of failing: a QUIC connection that went quiet.
+`open` expects only `ERR_CONNECTION_REFUSED` from googlevideo.com. #183 changes `attachment.spec.ts` and tickets only.
+Next: decide whether `open` expects any `net::ERR_*` for a `*.googlevideo.com` resource (the player plays on from
+another host; a player that does not play still fails the test), and look at the trace for whether it played.
