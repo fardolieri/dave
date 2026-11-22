@@ -1,4 +1,4 @@
-import { expect, needHooks, newSecret, test, openRoomMenu } from './fixtures';
+import { expect, needHooks, newSecret, openMenu, test, openRoomMenu } from './fixtures';
 
 test('two friends join the call, connect directly and hear each other', async ({ crowd }) => {
   const alice = await crowd.open('Alice');
@@ -242,4 +242,37 @@ test('in a call, the ⋯ of another room open on screen says it cannot go on top
   await box(crowd.room.name).locator('button.room-more').click();
   await expect(menu.getByRole('button', { name: `Leave ${crowd.room.name}` })).toBeVisible();
   await expect(menu.getByRole('button', { name: 'Put on top' })).toHaveCount(0);
+});
+
+test('regression: a friend\'s voice that stopped playing while it arrives plays again, and a report says how each voice plays', async ({ crowd, browserName }) => {
+  // Reports of 2026-11-22: a friend on Android saw another's ring light up as he spoke and heard nothing, until several
+  // reloads. The ring measures the voice as it arrives, so it reached the tab: what plays it had stopped.
+  const alice = await crowd.open('Alice', { telemetry: 'off', plainUserAgent: true });
+  const bob = await crowd.open('Bob');
+  await alice.join();
+  await bob.join();
+  await alice.connectedTo('Bob');
+  await needHooks(alice);
+  await alice.hearing('Bob');
+  type Playback = { paused: Array<{ name: string; voice: boolean }> };
+  const playing = async () => (await alice.hook<Playback>('playback')).paused.find((p) => p.name === 'Bob')?.voice === false;
+  await expect.poll(playing, { message: "Bob's voice plays for Alice" }).toBe(true);
+  expect(await alice.hook('pauseVoice', 'Bob')).toBe('paused');
+  await expect.poll(playing, { message: "Bob's voice plays again for Alice" }).toBe(true);
+
+  // A report from the one who cannot hear says, friend by friend, whether their voice plays there.
+  await openMenu(alice.page);
+  await alice.page.getByRole('button', { name: 'Report a problem' }).click();
+  const dialog = alice.page.locator('dialog.report');
+  await dialog.locator('select').selectOption('audio');
+  await dialog.getByLabel(/Blocking/).check();
+  await dialog.locator('textarea').fill('automated test report, please ignore');
+  const sent = alice.page.waitForRequest((r) => /\/i\/v0\/e\/$/.test(r.url()) && r.postDataJSON()?.event === 'bug_report');
+  await dialog.getByRole('button', { name: 'Send' }).click();
+  const report = JSON.parse((await sent).postDataJSON().properties.report);
+  expect(report.call.playback).toMatchObject({ blocked: false });
+  const bobs = report.call.peers[0].playback;
+  expect(bobs).toMatchObject({ paused: false, ended: false, restarts: 1 });
+  expect(typeof bobs.stillMs).toBe('number');
+  if (browserName === 'chromium') expect(bobs.stillMs, "Bob's voice moves on").toBeLessThan(3000);
 });

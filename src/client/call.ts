@@ -2051,6 +2051,13 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         return { seconds: buf.duration, peak };
       },
       playback: () => untrack(() => ({ context: audioCtx?.state ?? null, clock: audioCtx?.currentTime ?? null, cues: cueContext()?.state ?? null, blocked: audioBlocked(), paused: [...peers.values()].map((p) => ({ name: p.name, voice: p.audio.paused, keepAlive: p.keepAlive.paused })) })),
+      /** Pauses the element that plays `name`'s voice, as a browser that stops it on its own does (reports of 2026-11-22). */
+      pauseVoice: (name: string) => {
+        const peer = [...peers.values()].find((p) => p.name === name);
+        if (!peer) return 'no such peer';
+        peer.audio.pause();
+        return 'paused';
+      },
       volumes: () => ({ master: untrack(audioSettings).masterVolume, peers: [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, shareView: p.view.shareVolume, shareSoundChecks: p.shareSoundChecks, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })) }),
       dropSocket: () => room.dropSocket(),
       /** Fails the call's AudioContext ('call') or the cues' ('cues') as Chromium does when the audio device errs; `stuck`, as after a start that failed again (hooks.ts). */
