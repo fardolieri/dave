@@ -118,11 +118,12 @@ test('a game link opens though its first offer was answered too late: only the n
   alice.wire.down = bob.wire.down = hold;
   await tile(bob).click();
   await expect.poll(() => offers, { timeout: 40_000, message: 'the offering side offers again' }).toBe(2);
-  const released = Date.now();
-  // Answered once, the newest: the link opens before the offering side's next try, 15 s and 2 s on (a page drawing in
-  // software on a CI runner takes a while to answer, and longer to link). Without this, Firefox failed ICE on the late answer (2026-11-22).
-  for (const f of [alice, bob]) await expect.poll(async () => (await view(f))?.connected, { timeout: 16_000, message: `${f.name}'s game link opens` }).toBe(1);
-  expect(Date.now() - released).toBeLessThan(16_000);
+  // The link opens, and the answering side answered once, the newest offer: an answer to the first would have been taken
+  // for the second's, and the link opened only on another try (Chromium, when the wrong one failed) or not at all (Firefox,
+  // whose ICE then failed).
+  for (const f of [alice, bob]) await expect.poll(async () => (await view(f))?.connected, { timeout: 45_000, message: `${f.name}'s game link opens` }).toBe(1);
+  const answers = [alice, bob].flatMap((f) => f.wire.log.filter((l) => l.dir === 'up' && l.frame.includes('"link":"game-') && l.frame.includes('"type":"answer"')));
+  expect(answers).toHaveLength(1);
 });
 
 test('games of different kinds go on side by side, each linking only its own players, and a click on another moves a friend over', async ({ crowd }) => {

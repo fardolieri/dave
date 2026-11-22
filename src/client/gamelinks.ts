@@ -138,6 +138,8 @@ export function createGameLinks(opts: { identity: LocalIdentity; send: (m: Clien
         link = open(from, game, servers);
         await remote(link, description);
         await unlessClosed(link.latch.closed, link.pc.setLocalDescription());
+        // And one that came while this one was being answered: it is answered instead.
+        if (offered.get(from) !== offer) { close(link); return; }
         if (!(await describe(link, link.pc.localDescription))) close(link);
       } else if (description.type === 'answer' && link && link.game === game && !link.remoteSet) {
         await remote(link, description);
