@@ -519,10 +519,11 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     }
 
     // The camera: over the floe from the south, a little toward my ball, further back on a tall screen; shaken by a bonk.
-    const far = Math.max(1, 1.25 / camera.aspect);
-    // Held still while the ball follows a finger: moved with the ball, the spot under a finger held still would move on
-    // ahead of it, off the floe.
-    const still = watching || controls === 'follow';
+    // Held still while the ball follows a finger, and a little further back to keep the whole floe in sight: moved with
+    // the ball, the spot under a finger held still would move on ahead of it, off the floe.
+    const follow = !watching && controls === 'follow';
+    const far = Math.max(1, 1.25 / camera.aspect) * (follow ? 1.15 : 1);
+    const still = watching || follow;
     const fx = still ? 0 : ball.x * 0.2, fz = still ? 0 : ball.z * 0.2;
     shake = Math.max(0, shake - dt * 1.5);
     camera.position.set(fx + (Math.random() - 0.5) * shake, 15 * far + (Math.random() - 0.5) * shake, fz + 13 * far);
