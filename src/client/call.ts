@@ -68,10 +68,18 @@ export type PeerDiagnostics = {
   inboundVoice: Record<string, unknown> | null;
   outboundVoice: Record<string, unknown> | null;
   pair: { local: string; remote: string; state: string; rttMs: number | null; outgoingKbps: number | null } | null;
+  /**
+   * How their voice plays here (reports of 2026-11-22): the element that plays it, how long its place in the stream has
+   * stood still, how often it was found stopped and played again, its gain and whether a speaker was chosen for it (not which: a device id stays here), and how long since their voice
+   * was last loud as it arrived (what lights their ring).
+   */
+  playback: { paused: boolean; ended: boolean; readyState: number; error: number | null; stillMs: number | null; restarts: number; gain: number | null; speaker: 'default' | 'chosen'; loudMs: number | null };
 };
 export type CallDiagnostics = {
   inCall: boolean; muted: boolean; microphone: boolean; micTest: MicTest | null; joinSeq: number | null; sharing: Record<string, unknown> | null; outgoing: Omit<OutgoingShare, 'each'> | null;
   shareSettings: unknown; viewerSettings: unknown; audioProcessing: unknown; lowBandwidthVoice: boolean; voiceRepair: VoiceRepair; ice: { servers: number; turn: boolean; ageMinutes: number | null };
+  /** The call's AudioContext, and whether the browser held the call's sound back until a click. */
+  playback: { context: AudioContextState | null; blocked: boolean };
   peers: PeerDiagnostics[];
 };
 /** Whether a published view still says what a peer's view says now, field for field. */
@@ -125,6 +133,11 @@ type Peer = {
   audio: HTMLAudioElement;
   /** Chrome only feeds a remote track into WebAudio while some media element plays it, so the raw track stays attached here, muted. */
   keepAlive: HTMLAudioElement;
+  /** Where `audio` was in its stream when last looked at, and when that last moved on (playbackTimer). */
+  voiceTime: number;
+  voiceMovedAt: number;
+  /** How often `audio` was found stopped and played again (playbackTimer). */
+  voiceRestarts: number;
   analyser?: AnalyserNode;
   voiceGain?: GainNode;
   shareGain?: GainNode;
@@ -199,6 +212,10 @@ const VOICE_SEND_EVERY_MS = 30_000;
 
 const SPEAK_THRESHOLD = 0.02;
 const SPEAK_HOLD_MS = 300;
+/** How often each friend's voice element is checked for having stopped (playbackTimer). */
+const PLAYBACK_CHECK_MS = 1_000;
+/** How many of a friend's stops go to PostHog in one connection: enough to tell a few from a loop. */
+const PLAYBACK_RESTARTS_REPORTED = 3;
 
 /** A setting signal that also persists: [read, write]. */
 function persisted<K extends 'shareSettings' | 'volumes' | 'shareVolumes' | 'audioSettings' | 'viewerSettings'>(key: K): [() => LocalValue<K>, (next: LocalValue<K>) => void] {
@@ -900,6 +917,26 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     if (changed) publish();
   }, 100);
 
+  /**
+   * A friend's voice whose element stopped while the call plays (reports of 2026-11-22: a friend on Android saw another's
+   * ring light up and heard nothing, until several reloads; the ring measures the voice as it arrives, so it got that
+   * far). Played again, and each stop is counted for the report and, the first few, sent as `voice_playback_restarted`.
+   * Not while the browser holds the sound back for a click: that has its own button. Also follows how far each element
+   * has played, for the report's `stillMs`.
+   */
+  const playbackTimer = setInterval(() => {
+    if (!joined || untrack(audioBlocked)) return;
+    const now = Date.now();
+    for (const p of peers.values()) {
+      const el = p.audio;
+      if (!el.srcObject) continue;
+      if (el.currentTime !== p.voiceTime || !p.voiceMovedAt) { p.voiceTime = el.currentTime; p.voiceMovedAt = now; }
+      if (!el.paused && !el.ended) continue;
+      if (++p.voiceRestarts <= PLAYBACK_RESTARTS_REPORTED) posthog.capture('voice_playback_restarted', { peer: fingerprintOf(p), restarts: p.voiceRestarts, ended: el.ended, ready_state: el.readyState, speaking: p.view.speaking, visible: document.visibilityState === 'visible' });
+      el.play().catch(refused);
+    }
+  }, PLAYBACK_CHECK_MS);
+
   // ---- peers
   function createPeer(key: string, name: string, initiator: boolean): Peer {
     // After a stalled attempt the rebuild goes relay-only (ticket 22): ICE had found a direct path that never carried
@@ -914,7 +951,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const { closed, close: markClosed } = closeLatch();
     const peer: Peer = {
       key, name, pc, closed, markClosed, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, joinSeq: untrack(room.people).find((p) => p.publicKey === key && p.role === 'participant')?.joinSeq ?? null,
-      returns: 0, id: crypto.randomUUID().replaceAll('-', ''), remoteId: null, offerN: 0, answerN: undefined, offerSent: null, audio, keepAlive, audioNodes: [], relayOnly, generation: ++generation, link: newLink(initiator, countsOf(key)), timers: {}, iceRestarts: 0, iceIssuedAt,
+      returns: 0, id: crypto.randomUUID().replaceAll('-', ''), remoteId: null, offerN: 0, answerN: undefined, offerSent: null, audio, keepAlive, voiceTime: 0, voiceMovedAt: 0, voiceRestarts: 0, audioNodes: [], relayOnly, generation: ++generation, link: newLink(initiator, countsOf(key)), timers: {}, iceRestarts: 0, iceIssuedAt,
       view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1, shareVolume: untrack(shareVolumes)[key] ?? 1, shareSound: false, rttMs: null },
       viewsMyShare: earlyViewers.has(key), shareActive: false, viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, sendsRed: false, sendsFec: true, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, shareSoundBytesIn: 0, shareSoundReadAt: 0, watchedAt: 0, shareSoundChecks: 0, videoBytesAt: 0, framesDecoded: null, framesGrewAt: null, holdOpening: false, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
@@ -1385,6 +1422,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       pc: { connection: peer.pc.connectionState, ice: peer.pc.iceConnectionState, signaling: peer.pc.signalingState, gathering: peer.pc.iceGatheringState, transceivers: peer.pc.getTransceivers().length },
       shareTrack: track ? { readyState: track.readyState, muted: track.muted } : null,
       inboundVideo, outboundVideo, inboundVoice, outboundVoice, pair,
+      playback: {
+        paused: peer.audio.paused, ended: peer.audio.ended, readyState: peer.audio.readyState, error: peer.audio.error?.code ?? null,
+        stillMs: peer.voiceMovedAt ? Date.now() - peer.voiceMovedAt : null, restarts: peer.voiceRestarts, gain: peer.voiceGain?.gain.value ?? null,
+        speaker: (peer.audio as HTMLAudioElement & { sinkId?: string }).sinkId ? 'chosen' : 'default', loudMs: lastLoud.has(peer.key) ? Date.now() - lastLoud.get(peer.key)! : null,
+      },
     };
   }
 
@@ -1438,6 +1480,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       outgoing: untrack(() => { const o = outgoing(); return o && { kbps: o.kbps, formats: o.formats, viewers: o.viewers }; }), // without who watches: a report names friends by fingerprint only
       shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl, noiseRemoval: untrack(noiseRemoval), voiceThreshold, path: voice?.path ?? null, stop: untrack(noiseRemovalStop), load: voiceLoad, micRate: voiceTrack?.getSettings().sampleRate ?? null }, lowBandwidthVoice: lowVoiceOn, voiceRepair,
       ice: { servers: iceServers.length, turn: hasTurn(), ageMinutes: iceIssuedAt ? Math.round((Date.now() - iceIssuedAt) / 60000) : null },
+      playback: { context: audioCtx?.state ?? null, blocked: untrack(audioBlocked) },
       peers: await Promise.all([...peers.values()].map(peerDiag)),
     };
   }
@@ -2013,6 +2056,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     clearInterval(voiceTimer);
     clearInterval(clockTimer);
     clearInterval(speakingTimer);
+    clearInterval(playbackTimer);
     invariants.stop();
     leave();
     silent?.stop();
