@@ -321,18 +321,18 @@ export function advance(t: Lead, now: number, heard: readonly Counted[], present
 
 /**
  * My seat, from me: `r` the match I play (0 for none), `n` the newest round I know and `po` how far into it
- * (`phaseOrder`); `c` the climb the rest is of; my chips (off the tower), share, stake, where I am on the tower (`a`,
+ * (`phaseOrder`), and `hd` whether I hold back from leading (back from a gap); `c` the climb the rest is of; my chips (off the tower), share, stake, where I am on the tower (`a`,
  * as `Seat.at`), what my grab paid, how my double or nothing went, what golden coins paid me, and my levels in the shop.
  */
 export type SeatFrame = {
-  k: 's'; r: number; n: number; po: number; c: number; ch: number; sh: Share; st: number; a: number; w: number; f: 0 | 1 | -1; g: number; lv: number[];
+  k: 's'; r: number; n: number; po: number; hd: boolean; c: number; ch: number; sh: Share; st: number; a: number; w: number; f: 0 | 1 | -1; g: number; lv: number[];
 };
 /** The round, from the leader, with its climbs' seed (`s`). */
 export type MatchFrame = RoundFrame & { s: number };
 export type Frame = SeatFrame | MatchFrame;
 
-export const seatFrame = (s: Seat, r: number, n: number, po: number): SeatFrame => ({
-  k: 's', r, n, po, c: s.c, ch: Math.floor(s.chips), sh: s.share, st: Math.floor(s.stake), a: s.at, w: Math.floor(s.won), f: s.flip, g: Math.floor(s.gilded), lv: [...s.levels],
+export const seatFrame = (s: Seat, r: number, n: number, po: number, hd = false): SeatFrame => ({
+  k: 's', r, n, po, hd, c: s.c, ch: Math.floor(s.chips), sh: s.share, st: Math.floor(s.stake), a: s.at, w: Math.floor(s.won), f: s.flip, g: Math.floor(s.gilded), lv: [...s.levels],
 });
 export const matchFrame = (f: RoundFrame, seed: number): MatchFrame => ({ ...f, s: seed });
 
@@ -344,13 +344,13 @@ export function parseFrame(text: unknown): Frame | null {
   const f = frameFields(text);
   if (!f) return null;
   if (f['k'] === 's') {
-    const { r, n, po, c, ch, sh, st, a, w, g, lv } = f;
+    const { r, n, po, hd, c, ch, sh, st, a, w, g, lv } = f;
     const fl = f['f'];
-    if (!int(r, 0, BIG) || !int(n, 0, BIG) || !int(po, 0, 3) || !int(c, 0, BIG)) return null;
+    if (!int(r, 0, BIG) || !int(n, 0, BIG) || !int(po, 0, 3) || typeof hd !== 'boolean' || !int(c, 0, BIG)) return null;
     if (!int(ch, 0, MAX_CHIPS) || (sh !== 1 && sh !== 2 && sh !== 4) || !int(st, 0, MAX_CHIPS)) return null;
     if (!int(a, FELL, TOP) || !int(w, 0, MAX_CHIPS) || (fl !== 0 && fl !== 1 && fl !== -1) || !int(g, 0, MAX_CHIPS)) return null;
     if (!Array.isArray(lv) || lv.length > 16 || !lv.every((l) => int(l, 0, 16))) return null;
-    return { k: 's', r, n, po, c, ch, sh, st, a, w, f: fl, g, lv: lv as number[] };
+    return { k: 's', r, n, po, hd, c, ch, sh, st, a, w, f: fl, g, lv: lv as number[] };
   }
   if (f['k'] === 'r') {
     const round = parseRoundFrame(f);

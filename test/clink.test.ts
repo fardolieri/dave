@@ -276,7 +276,7 @@ describe('Clink, the match (core/clink.ts)', () => {
 describe('Clink, on the wire (core/clink.ts)', () => {
   it('sends a seat and a round with its seed as they are, and takes them back', () => {
     const s = { ...follow(newSeat(), open(4), 5000), chips: 1234.7 };
-    const sf = seatFrame(s, 2, 2, 1);
+    const sf = seatFrame(s, 2, 2, 1, true);
     expect(parseFrame(JSON.stringify(sf))).toEqual({ ...sf, ch: 1234 });
     const mf = matchFrame(roundFrame(firstRound(0), 10, 3), 4_000_000_000);
     expect(parseFrame(JSON.stringify(mf))).toEqual(mf);
@@ -286,7 +286,7 @@ describe('Clink, on the wire (core/clink.ts)', () => {
     const sf = seatFrame(newSeat(), 1, 1, 0);
     const mf = matchFrame(roundFrame(firstRound(0), 10, 3), 5);
     for (const bad of [
-      { ...sf, ch: -1 }, { ...sf, ch: 1.5 }, { ...sf, sh: 3 }, { ...sf, a: 21 }, { ...sf, a: -4 }, { ...sf, f: 2 }, { ...sf, lv: 'x' }, { ...sf, lv: [99] }, { ...sf, po: 4 },
+      { ...sf, ch: -1 }, { ...sf, ch: 1.5 }, { ...sf, sh: 3 }, { ...sf, a: 21 }, { ...sf, a: -4 }, { ...sf, f: 2 }, { ...sf, lv: 'x' }, { ...sf, lv: [99] }, { ...sf, po: 4 }, { ...sf, hd: 1 },
       { ...mf, s: -1 }, { ...mf, s: 2 ** 32 }, { ...mf, s: 'x' }, { ...mf, ph: 'nap' }, { k: 'z' },
     ]) expect(parseFrame(JSON.stringify(bad))).toBeNull();
     const { s: _, ...noSeed } = mf;

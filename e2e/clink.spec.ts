@@ -9,7 +9,8 @@ import { ALLOWANCE, type ClinkView } from '../src/core/clink';
 
 const tile = (f: Friend) => f.page.locator('.shares .game');
 const view = (f: Friend) => f.page.evaluate(() => (window as unknown as { __daveGame?: () => ClinkView }).__daveGame?.() ?? null);
-const rig = (f: Friend, v: number | null) => f.page.evaluate((x) => (window as unknown as { __daveClinkRig?: (v: number | null) => void }).__daveClinkRig?.(x), v);
+/** Every roll the leader's dice make comes out `v` (core/clinktable.ts, `rig`): after this coin of this round's climbs (default: the next not seen yet), and every one of later rounds'. */
+const rig = (f: Friend, v: number | null, from?: [number, number]) => f.page.evaluate(([x, at]) => (window as unknown as { __daveClinkRig?: (v: number | null, from?: [number, number]) => void }).__daveClinkRig?.(x, at), [v, from] as const);
 const shots = process.env['E2E_SHOTS'];
 const shot = async (f: Friend, name: string) => { if (shots) await f.page.screenshot({ path: `${shots}/${f.name}-${name}.png` }); };
 const FELL = -3;
@@ -61,8 +62,11 @@ test('clink: practice alone, a match with a friend, a grab and a double seen by 
   await tile(alice).getByRole('button', { name: /^Grab/ }).click();
   const riding = (await view(bob))!.me;
   const ridingAt = Date.now();
-  await rig(alice, 0);
-  await rig(bob, 0);
+  // The coin after next topples it: the same coin on both screens, which neither has seen land.
+  const tower = (await view(alice))!.climb!;
+  const topples: [number, number] = [tower.c, tower.h + 1];
+  await rig(alice, 0, topples);
+  await rig(bob, 0, topples);
   expect(riding.at).toBe(-1);
   const grabbed = (await view(alice))!.me;
   expect(grabbed.at).toBeGreaterThanOrEqual(1);
@@ -70,6 +74,7 @@ test('clink: practice alone, a match with a friend, a grab and a double seen by 
   expect(grabbed.chips).toBeGreaterThanOrEqual(grabbed.won);
   await expect.poll(async () => (await view(bob))!.me.at, { timeout: 15_000 }).toBe(FELL);
   const fallen = (await view(bob))!.me;
+  const fell = (await view(bob))!.climb!.c;
   expect(fallen.chips).toBeGreaterThanOrEqual(riding.chips);
   expect(fallen.chips).toBeLessThanOrEqual(riding.chips + ALLOWANCE * ((Date.now() - ridingAt) / 1000 + 1));
 
@@ -78,8 +83,9 @@ test('clink: practice alone, a match with a friend, a grab and a double seen by 
   await expect.poll(async () => (await view(alice))!.me.levels[1]).toBe(1);
   // Half from the next climb on: chips kept back.
   await tile(alice).getByRole('button', { name: '½', exact: true }).click();
-  await rig(alice, 0.5);
-  await rig(bob, 0.5);
+  // From the next climb on, every coin lands again.
+  await rig(alice, 0.5, [fell + 1, 0]);
+  await rig(bob, 0.5, [fell + 1, 0]);
   await shot(alice, '3-grabbed');
   await shot(bob, '3-fell');
 

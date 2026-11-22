@@ -20,7 +20,7 @@ afterEach(() => { vi.restoreAllMocks(); });
 class Net {
   clock = 1000;
   private queue: { at: number; to: string; from: string; data: string }[] = [];
-  private seats = new Map<string, { table: Table; listeners: Set<(from: string, data: unknown) => void>; awake: boolean }>();
+  private seats = new Map<string, { table: Table; listeners: Set<(from: string, data: unknown) => void>; awake: boolean; every: number; last: number }>();
   /** Not yet in the call's game with the others: playing alone, no link to anyone. */
   private apart = new Set<string>();
   /** Frames lost on the way: from, to, the frame. */
@@ -36,13 +36,15 @@ class Net {
       connected: () => [...this.seats.keys()].filter((k) => linked(key, k)),
     };
     const table = createTable(key, wire, rand, () => this.clock);
-    this.seats.set(key, { table, listeners, awake: true });
+    this.seats.set(key, { table, listeners, awake: true, every: 0, last: this.clock });
     return table;
   }
   /** Joins the others: the links open. */
   join(key: string): void { this.apart.delete(key); }
   /** Leaves the game: the table stops, its links close. */
   remove(key: string): void { this.seats.get(key)?.table.close(); this.seats.delete(key); }
+  /** A tab in the background: its timer comes every `ms` (0: in front again). */
+  background(key: string, ms: number): void { this.seats.get(key)!.every = ms; }
   /** A phone put down: sends and hears nothing, its link still open. */
   sleep(key: string, asleep = true): void { this.seats.get(key)!.awake = !asleep; }
   table(key: string): Table { return this.seats.get(key)!.table; }
@@ -55,7 +57,7 @@ class Net {
       const due = this.queue.filter((m) => m.at <= this.clock);
       this.queue = this.queue.filter((m) => m.at > this.clock);
       for (const m of due) { const s = this.seats.get(m.to); if (s?.awake && !this.lose(m.from, m.to, m.data)) for (const f of s.listeners) f(m.from, m.data); }
-      for (const s of this.seats.values()) if (s.awake) s.table.step(this.clock);
+      for (const s of this.seats.values()) if (s.awake && this.clock - s.last >= s.every) { s.last = this.clock; s.table.step(this.clock); }
       each?.();
     }
   }
@@ -151,14 +153,31 @@ describe('Clink, tables at once (core/clinktable.ts)', () => {
 
   it('keeps the tower going for all while the leader is away, and the lead passes on', () => {
     const net = matchOf(ALICE, BOB);
-    const b = net.table(BOB);
-    net.until(() => (b.climb?.h ?? 0) >= 1);
+    const a = net.table(ALICE), b = net.table(BOB);
+    net.until(() => (b.climb?.h ?? 0) >= 1 && b.climb!.fell < 0);
+    // Every coin lands from the next on, on both tables.
+    const from: [number, number] = [b.climb!.c, b.climb!.h + 1];
+    for (const t of [a, b]) t.rig(0.5, net.clock, from);
     net.sleep(ALICE);
-    const c = b.climb!.c, from = b.climb!.h;
+    const c = b.climb!.c, h = b.climb!.h;
     net.run(1500);
-    if (b.climb!.c === c && b.climb!.fell < 0) expect(b.climb!.h).toBeGreaterThan(from);
+    expect(b.climb).toMatchObject({ c, fell: -1 });
+    expect(b.climb!.h).toBeGreaterThan(h);
     net.run(HEARD_MS);
     expect(b.leader).toBe(BOB);
+  });
+
+  it('ends a match on time while the leader\'s tab is in the background, its timer once a second, and starts the next', () => {
+    const net = matchOf(ALICE, BOB);
+    const a = net.table(ALICE), b = net.table(BOB);
+    net.until(() => a.climb?.c === CLIMBS - 1, 600_000);
+    // Firefox's background timer: a little over a second apart.
+    net.background(ALICE, 1004);
+    const n = b.round.n;
+    net.until(() => b.round.n === n && b.round.phase === 'over', 120_000);
+    expect(b.leader).toBe(BOB);
+    net.until(() => b.round.n === n + 1 && b.round.phase === 'count', 20_000);
+    expect(a.round.n).toBeGreaterThanOrEqual(n);
   });
 
   it('keeps a friend away a while in the match, link open; ends it once they have left', () => {
@@ -236,14 +255,16 @@ describe('Clink, tables at once (core/clinktable.ts)', () => {
   it('takes the stake of one who rode the tower down, and leaves one who got off with what they won', () => {
     const net = matchOf(ALICE, BOB);
     const a = net.table(ALICE), b = net.table(BOB);
-    // Every coin lands from now on, on both tables; Alice gets off at the first.
-    for (const t of [a, b]) t.rig(0.5, net.clock);
+    // Every coin lands from the next on, on both tables; Alice gets off at the first.
+    net.until(() => a.climb !== null && a.climb.fell < 0 && a.climb.h === 0 && b.climb?.h === 0);
+    for (const t of [a, b]) t.rig(0.5, net.clock, [a.climb!.c, 0]);
     net.until(() => (a.climb?.h ?? 0) >= 1);
     a.grab(net.clock);
     const won = a.seat.won;
     expect(won).toBeGreaterThan(a.seat.stake);
-    // Then the next coin topples it.
-    for (const t of [a, b]) t.rig(0, net.clock);
+    // Then the coin after next topples it, the same one on both.
+    const topples: [number, number] = [a.climb!.c, a.climb!.h + 1];
+    for (const t of [a, b]) t.rig(0, net.clock, topples);
     net.until(() => b.seat.at === FELL, 10_000);
     expect(a.seat).toMatchObject({ won });
     expect(a.seat.at).toBeGreaterThanOrEqual(1);

@@ -671,8 +671,8 @@ export function mountClink(host: HTMLElement, opts: { me: string; links: GameLin
   host.focus({ preventScroll: true });
 
   if (exposeHooks) {
-    const w = window as unknown as { __daveGame?: () => ClinkView; __daveClinkRig?: (v: number | null) => void };
-    w.__daveClinkRig = (v) => table.rig(v, performance.now());
+    const w = window as unknown as { __daveGame?: () => ClinkView; __daveClinkRig?: (v: number | null, from?: [number, number]) => void };
+    w.__daveClinkRig = (v, from) => table.rig(v, performance.now(), from);
     w.__daveGame = (): ClinkView => {
       const now = performance.now();
       const { round, climb: cl, seat, leader, playing } = table;

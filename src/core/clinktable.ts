@@ -26,7 +26,9 @@ export const AWAY_MS = 20_000;
 export const STALE_MS = 1000;
 /**
  * Back after a gap (a tab come back, a phone woken): this long following whoever leads before leading, so as not to
- * end a match the others already ended, with chips heard before the gap.
+ * end a match the others already ended, with chips heard before the gap. Its frames say so, and the others pass it
+ * over too: a tab in the background, whose timer comes about once a second, is back from a gap at every step, and
+ * leads nobody.
  */
 export const HOLD_MS = 800;
 const GAP_MS = 1000;
@@ -149,7 +151,7 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
     last = at;
     const around = heard(at);
     const holding = at < holdUntil;
-    leader = leaderOf([...(holding ? [] : [{ key: me, n: rankOf(round.n, round.phase) }]), ...around.map((o) => ({ key: o.key, n: o.frame.n * 4 + o.frame.po }))]);
+    leader = leaderOf([...(holding ? [] : [{ key: me, n: rankOf(round.n, round.phase) }]), ...around.filter((o) => !o.frame.hd).map((o) => ({ key: o.key, n: o.frame.n * 4 + o.frame.po }))]);
     if (leader === me) {
       const counted = (o: Other): Counted => ({ who: whoOf(o.key), n: o.frame.r, known: o.frame.n, chips: o.frame.ch });
       const mine: Counted = { who: myWho, n: playing, known: round.n, chips: seat.chips };
@@ -182,7 +184,7 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
       if (left !== lastBeep && left >= 1 && left <= 3) { lastBeep = left; tell({ kind: 'beep' }, at); }
     }
     if (at - lastSeatSent >= SEND_MS) {
-      wire.broadcast(JSON.stringify(seatFrame(seat, watching() ? 0 : playing, round.n, phaseOrder(round.phase))));
+      wire.broadcast(JSON.stringify(seatFrame(seat, watching() ? 0 : playing, round.n, phaseOrder(round.phase), holding)));
       lastSeatSent = at;
     }
     happened = happened.filter((h) => at - h.at <= STALE_MS);
@@ -211,10 +213,14 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
     },
     share(s: Share): void { seat = { ...seat, share: s }; },
     buy(u: Upgrade): boolean { if (!seated()) return false; const next = buy(seat, u); if (next === seat) return false; seat = next; lastSeatSent = -Infinity; return true; },
-    /** For tests: every roll `value` from the next coin not yet seen on (null: the seed's again); after a fall, the next climb's. */
-    rig(value: number | null, at: number): void {
+    /**
+     * For tests: every roll `value` (null: the seed's again) after coin `from` (climb, coin) of this round's climbs, and
+     * all of later rounds'; by default from the next coin not seen yet here, after a fall the next climb's. Tables rigged
+     * alike from the same coin work out the same towers.
+     */
+    rig(value: number | null, at: number, from?: [number, number]): void {
       const cl = climbNow(at);
-      const from: [number, number] = !cl ? [0, 0] : cl.fell >= 0 ? [cl.c + 1, 0] : [cl.c, cl.h];
+      from ??= !cl ? [0, 0] : cl.fell >= 0 ? [cl.c + 1, 0] : [cl.c, cl.h];
       rigs = [{ epoch, from, value: value ?? NaN }, ...rigs].slice(0, 16);
       known = known.filter((s) => s.c < from[0]);
     },
