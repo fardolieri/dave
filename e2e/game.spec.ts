@@ -92,6 +92,38 @@ test('a game: started from the call in one click, joined from its tile, rounds c
   await expect(alice.page.getByRole('button', { name: /Play Bonk/ })).toBeVisible();
 });
 
+test('a game link opens though its first offer was answered too late: only the newest offer is answered', async ({ crowd }) => {
+  // CI, 2026-11-22: a page busy drawing (three pages draw their games in software on a runner) answered an offer after
+  // its link's 15 s, when the offering side had offered again. It answered both, and the late answer was taken for the
+  // new offer's, which no link then matched until the next try. Here the answering side gets every game link frame late:
+  // all of them at once, once the second offer is out, as a page that did not run for a while does.
+  test.setTimeout(120_000);
+  const alice = await open(crowd, 'Alice');
+  await needHooks(alice);
+  const bob = await open(crowd, 'Bob');
+  await alice.join();
+  await bob.join();
+  await alice.page.getByRole('button', { name: /Play Bonk/ }).click();
+  await expect.poll(async () => (await view(alice))?.phase, { timeout: 30_000 }).toBe('wait');
+  // Whoever has the greater key answers (client/gamelinks.ts): hold what reaches either until two offers have.
+  let offers = 0;
+  const held: Array<() => void> = [];
+  const hold = (frame: string, pass: (frame: string) => void): string | null => {
+    if (!frame.startsWith('{"t":"link"') || !frame.includes('"link":"game-')) return frame;
+    if (frame.includes('"type":"offer"')) offers++;
+    held.push(() => pass(frame));
+    if (offers === 2) { alice.wire.down = bob.wire.down = null; for (const f of held.splice(0)) f(); }
+    return null;
+  };
+  alice.wire.down = bob.wire.down = hold;
+  await tile(bob).click();
+  await expect.poll(() => offers, { timeout: 40_000, message: 'the offering side offers again' }).toBe(2);
+  const released = Date.now();
+  // Answered once, the newest: the link opens in a few seconds, not after another 15 s try.
+  for (const f of [alice, bob]) await expect.poll(async () => (await view(f))?.connected, { timeout: 12_000, message: `${f.name}'s game link opens` }).toBe(1);
+  expect(Date.now() - released).toBeLessThan(12_000);
+});
+
 test('games of different kinds go on side by side, each linking only its own players, and a click on another moves a friend over', async ({ crowd }) => {
   test.setTimeout(120_000);
   const alice = await open(crowd, 'Alice');
