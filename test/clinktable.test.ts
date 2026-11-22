@@ -19,6 +19,7 @@ afterEach(() => { vi.restoreAllMocks(); });
 
 class Net {
   clock = 1000;
+  latency = LATENCY_MS;
   private queue: { at: number; to: string; from: string; data: string }[] = [];
   private seats = new Map<string, { table: Table; listeners: Set<(from: string, data: unknown) => void>; awake: boolean; every: number; last: number }>();
   /** Not yet in the call's game with the others: playing alone, no link to anyone. */
@@ -31,7 +32,7 @@ class Net {
     if (apart) this.apart.add(key);
     const linked = (a: string, b: string) => a !== b && !this.apart.has(a) && !this.apart.has(b);
     const wire: Wire = {
-      broadcast: (data) => { for (const to of this.seats.keys()) if (linked(key, to)) this.queue.push({ at: this.clock + LATENCY_MS, to, from: key, data }); },
+      broadcast: (data) => { for (const to of this.seats.keys()) if (linked(key, to)) this.queue.push({ at: this.clock + this.latency, to, from: key, data }); },
       listen: (f) => { listeners.add(f); return () => listeners.delete(f); },
       connected: () => [...this.seats.keys()].filter((k) => linked(key, k)),
     };
@@ -171,11 +172,12 @@ describe('Clink, tables at once (core/clinktable.ts)', () => {
     const net = matchOf(ALICE, BOB);
     const a = net.table(ALICE), b = net.table(BOB);
     net.until(() => a.climb?.c === CLIMBS - 1, 600_000);
-    // Firefox's background timer: a little over a second apart.
+    // Firefox's background timer: a little over a second apart. It leads on, a step a second.
     net.background(ALICE, 1004);
     const n = b.round.n;
+    const end = b.climb!.t0 + 600_000;
     net.until(() => b.round.n === n && b.round.phase === 'over', 120_000);
-    expect(b.leader).toBe(BOB);
+    expect(net.clock).toBeLessThan(end);
     net.until(() => b.round.n === n + 1 && b.round.phase === 'count', 20_000);
     expect(a.round.n).toBeGreaterThanOrEqual(n);
   });
@@ -187,9 +189,10 @@ describe('Clink, tables at once (core/clinktable.ts)', () => {
       net.until(() => (b.climb?.c ?? 0) >= 2, 120_000);
       const id = b.climbId(), c = b.climb!.c;
       const seed = id.split(':')[2];
-      // Bob's tab in the background (holding back at every step); Alice reloads, or Dan comes in, knowing round 0.
-      net.background(BOB, 1004);
-      if (comes === 'reload') { net.remove(ALICE); net.add(ALICE); } else { net.add(DAN); net.background(ALICE, 1004); }
+      // Bob's tab long in the background, its timer further apart than the others take to stop hearing him (holding
+      // back at every step); Alice reloads, or Dan comes in, knowing round 0.
+      net.background(BOB, 3000);
+      if (comes === 'reload') { net.remove(ALICE); net.add(ALICE); } else { net.add(DAN); net.background(ALICE, 3000); }
       let lowest = Infinity;
       net.run(6000, () => { if (b.climbId().split(':')[2] === seed) lowest = Math.min(lowest, b.climb?.c ?? Infinity); else lowest = -1; });
       expect(lowest, `${comes}: Bob's match keeps its seed and climbs`).toBeGreaterThanOrEqual(c);
@@ -272,6 +275,33 @@ describe('Clink, tables at once (core/clinktable.ts)', () => {
     net.run(1500);
     expect(b.round).toMatchObject({ n, phase: 'play' });
     expect(b.seat.chips + (b.seat.at === RIDING ? b.seat.stake : 0)).toBeGreaterThanOrEqual(chips);
+  });
+
+  it('keeps its towers when the start is put right a little (a late frame, a new leader), rigs and all', () => {
+    const net = matchOf(ALICE, BOB);
+    const a = net.table(ALICE), b = net.table(BOB);
+    net.until(() => a.climb !== null && a.climb.fell < 0 && a.climb.h === 0 && b.climb?.h === 0);
+    const c = a.climb!.c;
+    for (const t of [a, b]) t.rig(0, net.clock, [c, 1]);
+    net.until(() => (b.climb?.fell ?? -1) >= 0, 10_000);
+    const fell = { h: b.climb!.h, c: b.climb!.c };
+    // The next climb rigged to stand; then a frame of Alice's comes to Bob 400 ms late: he puts her start right.
+    for (const t of [a, b]) t.rig(0.5, net.clock, [c + 1, 0]);
+    const since = b.round.since;
+    let shifted = false, unfell = false, back = false;
+    const watch = () => {
+      if (b.round.since !== since) shifted = true;
+      if (b.climb && b.climb.c === fell.c && (b.climb.h !== fell.h || b.climb.fell < 0)) unfell = true;
+      if (b.climb && b.climb.c < fell.c) back = true;
+    };
+    net.latency = 400;
+    net.run(600, watch);
+    net.latency = LATENCY_MS;
+    net.run(600, watch);
+    expect(shifted, 'Bob put the start right').toBe(true);
+    // The climb that fell stayed as it fell, and no later rig reached back into it.
+    expect(unfell).toBe(false);
+    expect(back).toBe(false);
   });
 
   it('takes the stake of one who rode the tower down, and leaves one who got off with what they won', () => {

@@ -25,13 +25,13 @@ export const AWAY_MS = 20_000;
 /** What happened longer ago than this, nobody saw happen: not drawn or sounded when the screen comes back. */
 export const STALE_MS = 1000;
 /**
- * Back after a gap (a tab come back, a phone woken): this long following whoever leads before leading, so as not to
- * end a match the others already ended, with chips heard before the gap. Its frames say so, and the others pass it
- * over too: a tab in the background, whose timer comes about once a second, is back from a gap at every step, and
- * leads nobody.
+ * Back after a gap longer than the others take to stop hearing an app (a phone woken, a tab long in the background):
+ * this long following whoever leads before leading, so as not to end a match the others already ended, with chips heard
+ * before the gap. Its frames say so (`hd`). A tab in the background whose timer comes once a second, or one that stalls
+ * a moment, is no such gap: it leads on.
  */
 export const HOLD_MS = 800;
-const GAP_MS = 1000;
+const GAP_MS = HEARD_MS;
 
 /** What happened, for the screen: when, and in which climb (`climbId`). */
 export type Happening = { at: number; climb: string } & (
@@ -68,7 +68,7 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
   let lastBeep = -1;
   let happened: Happening[] = [];
   let rigs: Rig[] = [];
-  /** Counts the rounds' climbs: another start or seed, another count. */
+  /** Counts the rounds' climbs: another round, phase or seed, another count (a start put right is the same climbs). */
   let epoch = 0;
   /** The climbs worked out so far, of this round's seed and start; and the climb as it stood when last looked at. */
   let known: Script[] = [];
@@ -105,7 +105,8 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
   /** The round as it now is, and its seed: another start or seed, other climbs; another round or phase, a new seat. */
   const took = (next: Round, nextSeed: number, at: number) => {
     const was = round;
-    if (next.since !== was.since || nextSeed !== seed) { seed = nextSeed; known = []; climb = null; epoch++; }
+    if (next.n !== was.n || next.phase !== was.phase || nextSeed !== seed) epoch++;
+    if (next.since !== was.since || nextSeed !== seed) { seed = nextSeed; known = []; climb = null; }
     round = next;
     if (next.n === was.n && next.phase === was.phase) return;
     if (next.phase === 'count') {
