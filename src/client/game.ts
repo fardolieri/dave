@@ -39,7 +39,7 @@ export function createGame(room: Room, identity: LocalIdentity, textKey: CryptoK
   });
   /** The game I declared last; null for none. */
   const [mine, setMine] = createSignal<Game | null>(null);
-  /** The call's games, one of each kind anyone plays, in the order they were started; mine included before the Room brings it back. */
+  /** The call's games, one of each kind anyone plays (in `GAME_NAMES` order); mine included before the Room brings it back. */
   const all = createMemo((): Game[] => {
     const theirs = [...games().entries()].filter(([key]) => key !== me).map(([, g]) => g);
     const own = mine();
@@ -79,7 +79,7 @@ export function createGame(room: Room, identity: LocalIdentity, textKey: CryptoK
   onCleanup(() => room.gameLinks.play(null, []));
 
   return {
-    /** The call's games, one of each kind anyone plays, in the order they were started. */
+    /** The call's games, one of each kind anyone plays, in `GAME_NAMES` order. */
     games: all,
     /** The kinds of game the call plays, in that order. */
     names: createMemo((): GameName[] => all().map((g) => g.game), { equals: (a, b) => a.length === b.length && a.every((n, i) => n === b[i]) }),

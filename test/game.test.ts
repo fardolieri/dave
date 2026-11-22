@@ -40,13 +40,12 @@ describe('a game in the call (core/game.ts)', () => {
     const bonk = game({ id: 'bbbbbbbb', at: 7 });
     const clink = game({ game: 'clink', id: 'cccccccc', at: 5 });
     const later = game({ id: 'aaaaaaaa', at: 8 });
-    // Each kind as `current` picks it, started first first, whatever order the players are listed in.
-    expect(currents([bonk, later, clink])).toEqual([clink, bonk]);
-    expect(currents([later, clink, bonk])).toEqual([clink, bonk]);
+    // Each kind as `current` picks it, in the order the games are named, whatever order the players are listed in.
+    expect(currents([bonk, later, clink])).toEqual([bonk, clink]);
+    expect(currents([later, clink, bonk])).toEqual([bonk, clink]);
     // More play the later Bonk: it is the call's Bonk, and the Clink goes on beside it.
-    expect(currents([bonk, later, { ...later }, clink])).toEqual([clink, later]);
-    // Started at the same moment: the smaller id first.
-    const skid = game({ game: 'skid', id: 'aaaaaaaa', at: 5 });
+    expect(currents([bonk, later, { ...later }, clink])).toEqual([later, clink]);
+    const skid = game({ game: 'skid', id: 'aaaaaaaa', at: 9 });
     expect(currents([clink, skid])).toEqual([skid, clink]);
     expect(currents([])).toEqual([]);
   });

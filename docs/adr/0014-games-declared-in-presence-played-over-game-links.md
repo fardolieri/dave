@@ -75,8 +75,10 @@ worker keeps it with the rest of the build, so a tab left open across a deploy s
   reflections or shadows, fewer pixels and frames).
 - **Games side by side** (2026-11-22): the owner wanted more than one game going at once. The call has one game of each
   kind (`currents`), each with its tile, and a friend joins any of them, which takes them out of the one they played: a
-  player still declares one game, so presence, the links and the Room stay as they were. Of two Bonks, the friends
-  still end up in one, as above. An app from before this picks one game of all the call's, whatever its kind, so until
+  player still declares one game, so presence, the links and the Room stay as they were. What is said above of moving
+  over holds within a kind: of two Bonks the friends still end up in one, and a friend back from a gap with a Bonk that
+  ended meanwhile moves over only to a Bonk started since; with none, theirs goes on beside the others' games. The tiles
+  keep the order the games are named in, so a tile played in does not move as others come and go. An app from before this picks one game of all the call's, whatever its kind, so until
   it updates it shows only that one, can start none beside it, and a friend whose old app plays a game that another
   overtakes in players is moved over into that one.
 

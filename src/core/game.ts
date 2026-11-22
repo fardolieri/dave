@@ -60,7 +60,7 @@ export function current(declared: Iterable<Game>): Game | null {
 
 /**
  * The call's games: of each game anyone plays, the one `current` picks of that kind, so a Bonk and a Clink go on side by
- * side but two Bonks never do. In the order they were started, then by id, the same for everyone.
+ * side but two Bonks never do. In the order of `GAME_NAMES`, so a game's tile keeps its place while others come and go.
  */
 export function currents(declared: Iterable<Game>): Game[] {
   const all = [...declared];
@@ -69,7 +69,7 @@ export function currents(declared: Iterable<Game>): Game[] {
     const g = current(all.filter((d) => d.game === name));
     if (g) out.push(g);
   }
-  return out.sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return out;
 }
 
 /**

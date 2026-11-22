@@ -99,6 +99,8 @@ test('games of different kinds go on side by side, each linking only its own pla
   const bob = await open(crowd, 'Bob');
   const carol = await open(crowd, 'Carol');
   const of = (f: Friend, name: string) => f.page.locator(`.shares .game[data-game="${name}"]`);
+  /** The game a friend plays, as its view says (Bonk's names none), and how many links it has open. */
+  const links = async (f: Friend) => { const v = await view(f) as { game?: string; connected: number } | null; return v && `${v.game ?? 'bonk'}:${v.connected}`; };
   await alice.join();
   await bob.join();
   await carol.join();
@@ -117,15 +119,16 @@ test('games of different kinds go on side by side, each linking only its own pla
   await of(carol, 'clink').click();
   await expect(of(alice, 'clink').locator('.share-faces .face')).toHaveCount(2);
   await expect(of(alice, 'bonk').locator('.share-faces .face')).toHaveCount(1);
-  for (const f of [bob, carol]) await expect.poll(async () => { const v = await view(f) as { game?: string; connected: number } | null; return v && `${v.game}:${v.connected}`; }, { timeout: 30_000, message: `${f.name}'s Clink link opens` }).toBe('clink:1');
-  await expect.poll(async () => { const v = await view(alice); return v && `${v.phase}:${v.connected}`; }, { timeout: 15_000 }).toBe('wait:0');
+  for (const f of [bob, carol]) await expect.poll(() => links(f), { timeout: 30_000, message: `${f.name}'s Clink link opens` }).toBe('clink:1');
+  await expect.poll(() => links(alice), { timeout: 15_000 }).toBe('bonk:0');
+  await expect.poll(async () => (await view(alice))?.phase, { timeout: 15_000 }).toBe('wait');
 
   // Carol clicks Bonk's tile: out of Clink, into Bonk with Alice. Bob is left in Clink alone.
   await of(carol, 'bonk').click();
   await expect(of(bob, 'bonk').locator('.share-faces .face')).toHaveCount(2);
   await expect(of(bob, 'clink').locator('.share-faces .face')).toHaveCount(1);
-  for (const f of [alice, carol]) await expect.poll(async () => (await view(f))?.connected, { timeout: 30_000, message: `${f.name}'s Bonk link opens` }).toBe(1);
-  await expect.poll(async () => (await view(bob))?.connected, { timeout: 15_000 }).toBe(0);
+  for (const f of [alice, carol]) await expect.poll(() => links(f), { timeout: 30_000, message: `${f.name}'s Bonk link opens` }).toBe('bonk:1');
+  await expect.poll(() => links(bob), { timeout: 15_000 }).toBe('clink:0');
 
   // Bob leaves Clink: it ends, and Bonk goes on.
   await of(bob, 'clink').getByRole('button', { name: 'Leave game' }).click();
