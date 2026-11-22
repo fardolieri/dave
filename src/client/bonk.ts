@@ -8,7 +8,7 @@ import {
 } from '../core/bonk';
 import type { GameLinks } from './gamelinks';
 import { exposeHooks } from './hooks';
-import { colourOf, isTyping, nameTag, popWord, skin, splash, thump, type Face } from './gamekit';
+import { colourOf, isSoftware, isTyping, nameTag, popWord, skin, splash, thump, type Face } from './gamekit';
 
 
 /** How often my ball goes to the others, and the round from its leader. */
@@ -18,6 +18,15 @@ const ROUND_SEND_MS = 250;
 const HEARD_MS = 2500;
 /** The longest step the simulation takes at once; a longer gap (a hidden tab) is cut to it. */
 const MAX_STEP_S = 0.05;
+/**
+ * The most pixels drawn for each CSS pixel: a phone's screen has three, and filling them all, lit and shadowed, is most of
+ * what a phone's GPU does for the game. Lite (`goLite`), one.
+ */
+const PIXEL_RATIO = 2;
+const TOUCH_PIXEL_RATIO = 1.5;
+/** A device whose middle frame of its first FRAMES_JUDGED is slower than this (ms, so 40 a second) goes lite. */
+const LITE_FRAME_MS = 25;
+const FRAMES_JUDGED = 90;
 
 type Other = { frame: BallFrame; at: number; key: string };
 
@@ -240,13 +249,23 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 1, far: 50 });
   scene.add(sun);
 
+  // The sea's waves roll in its vertex shader: worked out here for every point, with its normals, they took a phone
+  // longer than a frame has. Flat shaded, its faces are lit by where its points are, so normals are never needed. The
+  // shadows land on the floe only: on the water, where only a ball going under casts one, every pixel paid for them.
   const seaGeometry = new THREE.PlaneGeometry(160, 160, 80, 80);
   seaGeometry.rotateX(-Math.PI / 2);
-  const sea = new THREE.Mesh(seaGeometry, new THREE.MeshStandardMaterial({ color: '#1f7fb8', roughness: 0.35, metalness: 0.05, flatShading: true }));
+  const seaMaterial = new THREE.MeshStandardMaterial({ color: '#1f7fb8', roughness: 0.35, metalness: 0.05, flatShading: true });
+  /** The waves' clock, in seconds since the game began: a float in the shader, so kept small. */
+  const seaTime = { value: 0 };
+  const began = performance.now();
+  seaMaterial.onBeforeCompile = (shader) => {
+    shader.uniforms['seaTime'] = seaTime;
+    shader.vertexShader = `uniform float seaTime;\n${shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      transformed.y = sin(position.x * 0.35 + seaTime * 1.3) * 0.18 + cos(position.z * 0.3 + seaTime * 0.9) * 0.18;`)}`;
+  };
+  const sea = new THREE.Mesh(seaGeometry, seaMaterial);
   sea.position.y = -0.7;
-  sea.receiveShadow = true;
   scene.add(sea);
-  const seaBase = Float32Array.from(seaGeometry.attributes['position']!.array as Float32Array);
 
   const floe = new THREE.Group();
   const top = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.04, 0.6, 72), new THREE.MeshStandardMaterial({ color: '#f4fbff', roughness: 0.3 }));
@@ -306,8 +325,17 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     });
   }
 
+  // A renderer without a GPU (a headless browser, an old machine) draws lite from the start: no shadows, a pixel for a
+  // pixel. So does a device that turns out slow (`judge`, below).
+  let lite = false;
+  const goLite = () => {
+    lite = true;
+    sun.castShadow = false;
+    if (renderer) { renderer.shadowMap.enabled = false; renderer.setPixelRatio(1); resize(); }
+    scene.traverse((o) => { const m = (o as THREE.Mesh).material; for (const mat of Array.isArray(m) ? m : m ? [m] : []) mat.needsUpdate = true; });
+  };
   if (renderer) {
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(devicePixelRatio, matchMedia('(pointer: coarse)').matches ? TOUCH_PIXEL_RATIO : PIXEL_RATIO));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.domElement.className = 'bonk-canvas';
@@ -324,6 +352,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   const sizer = new ResizeObserver(resize);
   sizer.observe(host);
   resize();
+  if (context && isSoftware(context)) goLite();
 
   const tmp = new THREE.Quaternion();
   const axis = new THREE.Vector3();
@@ -335,15 +364,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     floe.position.y = bob;
     floe.visible = r > 0.01;
 
-    // The sea's waves, rolling by.
-    const pos = seaGeometry.attributes['position'] as THREE.BufferAttribute;
     const t = now / 1000;
-    for (let i = 0; i < pos.count; i++) {
-      const x = seaBase[i * 3]!, z = seaBase[i * 3 + 2]!;
-      pos.setY(i, Math.sin(x * 0.35 + t * 1.3) * 0.18 + Math.cos(z * 0.3 + t * 0.9) * 0.18);
-    }
-    pos.needsUpdate = true;
-    seaGeometry.computeVertexNormals();
+    seaTime.value = (now - began) / 1000;
 
     for (let i = 0; i < snowCount; i++) {
       let y = snowAt[i * 3 + 1]! - dt * 1.2;
@@ -466,9 +488,17 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
 
   let frame = 0;
   let lastDraw = performance.now();
+  /** How long each of the first frames took, until the device is judged (`LITE_FRAME_MS`). */
+  const frameTimes: number[] = [];
+  const judge = (ms: number) => {
+    if (lite || frameTimes.length >= FRAMES_JUDGED) return;
+    frameTimes.push(ms);
+    if (frameTimes.length === FRAMES_JUDGED && [...frameTimes].sort((a, b) => a - b)[FRAMES_JUDGED >> 1]! > LITE_FRAME_MS) goLite();
+  };
   const loop = (now: number) => {
     frame = requestAnimationFrame(loop);
     step(now);
+    judge(now - lastDraw);
     draw(now, Math.min(0.1, (now - lastDraw) / 1000));
     updateHud(now);
     lastDraw = now;

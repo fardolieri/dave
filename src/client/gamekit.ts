@@ -1,5 +1,6 @@
 // What every game draws and sounds alike (client/bonk.ts, client/skid.ts, client/clink.ts): a player's colour, their face on a ball,
-// their name over it, a word that pops up, a thump and a splash, through the cues' audio (client/sound.ts).
+// their name over it, a word that pops up, a thump and a splash, through the cues' audio (client/sound.ts); whether the
+// browser draws without a GPU.
 import * as THREE from 'three';
 import { cueContext } from './sound';
 
@@ -122,6 +123,19 @@ export function splash(): void {
   gain.gain.value = 0.25;
   src.connect(filter).connect(gain).connect(c.destination);
   src.start(t);
+}
+
+/**
+ * Whether WebGL is drawn without a GPU. The renderer's own name where the browser gives it (Firefox), else the debug
+ * extension's (Chromium and Safari mask the plain one; Firefox warns of the extension, so it is asked only there).
+ */
+export function isSoftware(gl: WebGL2RenderingContext): boolean {
+  let name = String(gl.getParameter(gl.RENDERER) ?? '');
+  if (/^WebKit WebGL$/i.test(name)) {
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) ?? '') : '';
+  }
+  return /SwiftShader|llvmpipe|softpipe|Software/i.test(name);
 }
 
 export const isTyping = (t: EventTarget | null): boolean => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));

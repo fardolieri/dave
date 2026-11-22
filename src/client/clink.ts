@@ -14,7 +14,7 @@ import { whoOf } from '../core/rounds';
 import type { GameLinks } from './gamelinks';
 import { exposeHooks } from './hooks';
 import { cueContext } from './sound';
-import { isTyping, nameTag, popWord, skin, threeColourOf, thump, type Face } from './gamekit';
+import { isSoftware, isTyping, nameTag, popWord, skin, threeColourOf, thump, type Face } from './gamekit';
 
 /** The tower: a coin's radius and thickness, where the first sits, how long the next takes to drop onto it. */
 const COIN_R = 1;
@@ -28,19 +28,6 @@ const SHARE_LABELS: Record<Share, string> = { 4: '¼', 2: '½', 1: 'All' };
 const LITE_MS = 60;
 /** Chip colours told apart at a glance, one each in the table's order (client/skid.ts does the same for karts). */
 const PALETTE = ['#e5484d', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#06b6d4', '#ec4899', '#84cc16'];
-
-/**
- * Whether WebGL is drawn without a GPU. The renderer's own name where the browser gives it (Firefox), else the debug
- * extension's (Chromium and Safari mask the plain one; Firefox warns of the extension, so it is asked only there).
- */
-function isSoftware(gl: WebGL2RenderingContext): boolean {
-  let name = String(gl.getParameter(gl.RENDERER) ?? '');
-  if (/^WebKit WebGL$/i.test(name)) {
-    const ext = gl.getExtension('WEBGL_debug_renderer_info');
-    name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) ?? '') : '';
-  }
-  return /SwiftShader|llvmpipe|softpipe|Software/i.test(name);
-}
 
 /** Chips as they are read: in full up to ten thousand, then 12.3K, 4.56M and so on. */
 export function chipsText(n: number): string {
