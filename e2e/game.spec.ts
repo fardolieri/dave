@@ -239,25 +239,30 @@ test('Bonk followed: the ball rolls to where the mouse is held, the right button
   await alice.page.mouse.up();
   expect((await view(alice))!.me.x).toBeCloseTo(from.x, 1);
 
-  // Follow: held right of the middle, on the floe, the ball rolls there and stops.
+  // Follow: held still right of the middle, on the floe, the ball rolls there and stops on the spot. The spot stays
+  // where it went down, though the camera follows the ball a little: worked out again as the ball goes, it would go on
+  // ahead of the ball, off the floe.
   await tile(alice).getByRole('button', { name: 'Controls: stick' }).click();
   await expect(tile(alice).getByRole('button', { name: 'Controls: follow' })).toBeVisible();
   expect((await view(alice))!.controls).toBe('follow');
-  await alice.page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2);
+  await alice.page.mouse.move(box.x + box.width * 0.65, box.y + box.height / 2);
   await alice.page.mouse.down();
-  await expect.poll(async () => (await view(alice))!.me.x, { timeout: 5000 }).toBeGreaterThan(from.x + 1.5);
-  await alice.page.waitForTimeout(1500);
-  const there = (await view(alice))!.me;
-  expect(there.alive).toBe(true);
-  await alice.page.waitForTimeout(300);
-  expect((await view(alice))!.me.x).toBeCloseTo(there.x, 0); // stopped on the spot, not swinging round it
+  await expect.poll(async () => (await view(alice))!.aim).not.toBeNull();
+  const spot = (await view(alice))!.aim!;
+  expect(spot.x).toBeGreaterThan(from.x + 2);
+  await expect.poll(async () => { const v = (await view(alice))!; return Math.hypot(v.me.x - spot.x, v.me.z - spot.z); }, { timeout: 5000 }).toBeLessThan(0.3);
+  await alice.page.waitForTimeout(1000);
+  const there = (await view(alice))!;
+  expect(there.aim).toEqual(spot);
+  expect(there.me.alive).toBe(true);
+  expect(Math.hypot(there.me.x - spot.x, there.me.z - spot.z)).toBeLessThan(0.3); // stopped on it, not swinging round it
   await alice.page.mouse.up();
 
   // The right button, left of the middle: a dash that way.
   expect((await view(alice))!.me.dashAt).toBeNull();
   await alice.page.mouse.click(box.x + box.width * 0.3, box.y + box.height / 2, { button: 'right' });
   await expect.poll(async () => (await view(alice))!.me.dashAt, { timeout: 5000 }).not.toBeNull();
-  await expect.poll(async () => (await view(alice))!.me.x, { timeout: 5000 }).toBeLessThan(there.x - 1);
+  await expect.poll(async () => (await view(alice))!.me.x, { timeout: 5000 }).toBeLessThan(there.me.x - 1);
 
   // Kept: a game started again follows still.
   await tile(alice).getByRole('button', { name: 'Leave game' }).click();

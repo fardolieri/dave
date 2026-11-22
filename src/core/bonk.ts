@@ -192,7 +192,7 @@ export type Counted = { who: string; n: number; known: number; alive: boolean };
 /** What the inspection hooks show of the game (`window.__daveGame`, client/bonk.ts). */
 export type GameView = {
   phase: Phase; round: number; leader: string | null; playing: boolean; spectating: boolean; webgl: boolean;
-  me: { x: number; z: number; alive: boolean; dashAt: number | null }; controls: Controls; others: { key: string; x: number; z: number; alive: boolean }[]; wins: Record<string, number>; connected: number;
+  me: { x: number; z: number; alive: boolean; dashAt: number | null }; controls: Controls; aim: { x: number; z: number } | null; others: { key: string; x: number; z: number; alive: boolean }[]; wins: Record<string, number>; connected: number;
 };
 
 /**

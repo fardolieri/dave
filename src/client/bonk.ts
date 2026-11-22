@@ -117,10 +117,10 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   function step(now: number): void {
     let dt = (now - last) / 1000;
     last = now;
-    aimAt = held && aim(held.x, held.y);
+    aimAt = held?.at ?? null;
     input = aimAt ? toward(ball, aimAt) : sticked ?? keyed;
     // A dash with a spot held, or by the mouse's right button, goes for that spot.
-    const dashTo = aimAt ?? (dashAim && aim(dashAim.x, dashAim.y));
+    const dashTo = aimAt ?? dashAim;
     const around = heard(now);
     leader = leaderOf([{ key: me, n: round.n }, ...around.map((o) => ({ key: o.key, n: o.frame.n }))]);
     if (leader === me) {
@@ -182,7 +182,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     else if (e.code === 'Space') { dashAsked = true; e.preventDefault(); }
   };
   const onKeyUp = (e: KeyboardEvent) => { if (keys.delete(e.code)) fromKeys(); };
-  const onBlur = () => { keys.clear(); fromKeys(); };
+  // A let-go in another window may send nothing back: a hold ends with the focus.
+  const onBlur = () => { keys.clear(); fromKeys(); held = null; };
   host.tabIndex = 0;
   host.addEventListener('keydown', onKeyDown);
   host.addEventListener('keyup', onKeyUp);
@@ -214,11 +215,12 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   host.append(hud);
 
   // A stick where the finger goes down, in `stick`; in `follow`, the finger or the mouse held, which the ball rolls
-  // toward, the spot under it on the floe worked out each step from the camera as it is (the camera follows the ball a
-  // little), and the spot of a dash by the right button.
+  // toward, the spot under it on the floe worked out when it goes down or moves, from the camera as it is then (worked
+  // out again each step, a finger held still would chase the ball off the floe, as the camera follows the ball a
+  // little); and the spot of a dash by the right button.
   let touch: { id: number; x: number; y: number } | null = null;
-  let held: { id: number; x: number; y: number } | null = null;
-  let dashAim: { x: number; y: number } | null = null;
+  let held: { id: number; at: { x: number; z: number } | null } | null = null;
+  let dashAim: { x: number; z: number } | null = null;
   const letGo = () => {
     touch = null;
     held = null;
@@ -230,10 +232,10 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     const mouse = e.pointerType === 'mouse';
     if (!mouse) host.classList.add('bonk-touch');
     if (controls === 'follow') {
-      if (mouse && e.button === 2) { dashAsked = true; dashAim = { x: e.clientX, y: e.clientY }; return; }
+      if (mouse && e.button === 2) { dashAsked = true; dashAim = aim(e.clientX, e.clientY); return; }
       if (mouse && e.button !== 0) return;
       if (held) return;
-      held = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      held = { id: e.pointerId, at: aim(e.clientX, e.clientY) };
       try { host.setPointerCapture(e.pointerId); } catch { /* gone already */ }
       return;
     }
@@ -249,10 +251,10 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     // somewhere else (another window) may come as nothing at all: a mouse hold lasts only while the left button is down.
     if (e.pointerType === 'mouse' && held?.id === e.pointerId && !(e.buttons & 1)) held = null;
     if (controls === 'follow' && e.pointerType === 'mouse' && e.target instanceof Node && host.contains(e.target)) {
-      if (e.button === 2 && e.buttons & 2) { dashAsked = true; dashAim = { x: e.clientX, y: e.clientY }; }
-      if (e.button === 0 && e.buttons & 1 && !held) { held = { id: e.pointerId, x: e.clientX, y: e.clientY }; try { host.setPointerCapture(e.pointerId); } catch { /* gone already */ } }
+      if (e.button === 2 && e.buttons & 2) { dashAsked = true; dashAim = aim(e.clientX, e.clientY); }
+      if (e.button === 0 && e.buttons & 1 && !held) { held = { id: e.pointerId, at: null }; try { host.setPointerCapture(e.pointerId); } catch { /* gone already */ } }
     }
-    if (held?.id === e.pointerId) held = { ...held, x: e.clientX, y: e.clientY };
+    if (held?.id === e.pointerId) held = { ...held, at: aim(e.clientX, e.clientY) };
     if (touch?.id === e.pointerId) sticked = steer((e.clientX - touch.x) / 45, (e.clientY - touch.y) / 45);
   };
   const onPointerUp = (e: PointerEvent) => {
@@ -596,7 +598,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       const now = performance.now();
       return {
         phase: round.phase, round: round.n, leader, playing: playing !== 0, spectating: playing === 0 && (round.phase === 'count' || round.phase === 'play'), webgl: renderer !== null,
-        me: { x: ball.x, z: ball.z, alive: ball.alive, dashAt: Number.isFinite(ball.dashAt) ? ball.dashAt : null }, controls,
+        me: { x: ball.x, z: ball.z, alive: ball.alive, dashAt: Number.isFinite(ball.dashAt) ? ball.dashAt : null }, controls, aim: aimAt,
         others: heard(now).map((o) => ({ key: o.key, x: o.frame.x, z: o.frame.z, alive: o.frame.a })),
         wins: { ...round.wins }, connected: links.connected().length,
       };
