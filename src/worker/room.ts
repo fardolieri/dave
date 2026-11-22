@@ -23,6 +23,12 @@ export const SWEEP_FROM = 2;
 export const CLOSE_SILENT = 4003;
 /** An attached socket the runtime reported an error on is closed with this, should it still reach the client (it reconnects). */
 export const CLOSE_ERRORED = 4005;
+/**
+ * How long a keep the Store threw on waits before each try again (`keep`): a Store that fails for a moment (on a preview
+ * on 2026-11-17, for under 15 s: ticket 92) would otherwise lose a text or a file announcement for friends away, while a
+ * file's pieces go again from the sender's app. On the room's chain of keeps, so later keeps and syncs wait for them.
+ */
+export const KEEP_RETRY_MS = [1_000, 4_000];
 /** Storage key of the room's verifier, set by the first friend to enter (ADR 0004). */
 const AUTH_KEY = 'authKey';
 /**
@@ -318,18 +324,32 @@ export class Room extends DurableObject<Env> {
 
   /**
    * Hands a text or file announcement just broadcast to the server's history (ADR 0009, worker/store.ts). The room is the
-   * name this object was made from, its room id. Should the Store not take it (the free plan's daily writes used up, say),
-   * the room goes on as before: friends online have it, and only those away miss it.
+   * name this object was made from, its room id. Should the Store throw, it is asked again after each of KEEP_RETRY_MS (a
+   * keep is kept once per writer and id, so one that got through all the same is no second entry). Should it still not
+   * take it (the free plan's daily writes used up, say), the room goes on as before: friends online have it, and only
+   * those away miss it.
    */
   private keep(entry: KeptEntry): void {
     const room = this.roomId();
     if (room === undefined) { console.log('history not kept', JSON.stringify({ reason: 'no room id' })); return; }
-    const kept = this.keeping.then(() => this.store().keep(room, entry)).then(
-      (ok) => { if (!ok) console.log('history not kept', JSON.stringify({ reason: 'daily share used up' })); },
-      (e: unknown) => console.log('history not kept', JSON.stringify({ reason: String(e) })),
-    );
+    const kept = this.keeping.then(() => this.keepNow(room, entry));
     this.keeping = kept;
     this.ctx.waitUntil(kept);
+  }
+  private async keepNow(room: string, entry: KeptEntry): Promise<void> {
+    for (let tried = 0; ; tried++) {
+      try {
+        // A stub of its own each try: one that threw may be broken for good.
+        if (!(await this.store().keep(room, entry))) console.log('history not kept', JSON.stringify({ reason: 'daily share used up' }));
+        else if (tried) console.log('history kept on a try again', JSON.stringify({ tries: tried + 1 }));
+        return;
+      } catch (e) {
+        const wait = KEEP_RETRY_MS[tried];
+        if (wait === undefined) { console.log('history not kept', JSON.stringify({ reason: String(e), tries: tried + 1 })); return; }
+        console.log('history not kept, trying again', JSON.stringify({ reason: String(e), in_ms: wait }));
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
   }
 
   /**

@@ -1,6 +1,6 @@
 # 92 · A file announcement the Store could not keep is lost for friends away, while its pieces go again
 
-Status: open; cause found from the wire logs (Workers Logs expired), not fixed
+Status: fixed 2026-11-22 in the Room (a keep the Store threw on is tried again); done once its ledger row stops growing
 Type: flake, and a gap in the app
 
 Seen 2026-11-17: the preview run of #157 at 6616e80 (run 44168521032, Firefox shard 3), passed on its retry:
@@ -33,3 +33,19 @@ On a preview, 16 shards share one Store, and its first calls in a run may be slo
   on the same chain (`keeping`), so the order of keeps holds. Otherwise the test claims too much for a preview, and
   should wait for something that says the announcement is kept (nothing does today).
 - The next sighting: read the preview's Workers Logs the same day for "history not kept" and "piece not kept".
+
+## Comments
+
+2026-11-22, fixed: the Room's `keep` (`worker/room.ts`) asks the Store again 1 s and then 4 s after a keep it threw on
+(`KEEP_RETRY_MS`), with a stub of its own each try, on the same chain (`keeping`): later keeps wait, so the order of
+keeps holds, and a sync waits for the tries as it waits for any keep under way. The Store keeps an entry once per
+writer and id, so a keep that got through though its call threw is no second entry. The logs say "history not kept,
+trying again" for each try again, and "history kept on a try again" or "history not kept" (with `tries`) at the end.
+
+Regression test: `test/kept.test.ts` "a file announcement the Store failed to keep is kept on another try, so a friend
+away still learns of it (ticket 92)": the Room's next keep throws, and Bob's sync must still bring the announcement.
+It fails on the Room from before (Bob's history empty).
+
+What it does not cover: a Store that fails for longer than the tries (5 s). Then the announcement is lost as before, and
+the sender's app is still not told; that would need an answer to a `file` as a piece has `kept`. Not done: nothing has
+shown a failure that long.
