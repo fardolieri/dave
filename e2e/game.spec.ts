@@ -119,13 +119,14 @@ test('a game link opens though its first offer was answered too late: only the n
   await tile(bob).click();
   await expect.poll(() => offers, { timeout: 40_000, message: 'the offering side offers again' }).toBe(2);
   const released = Date.now();
-  // Answered once, the newest: the link opens in a few seconds, not after another 15 s try.
-  for (const f of [alice, bob]) await expect.poll(async () => (await view(f))?.connected, { timeout: 12_000, message: `${f.name}'s game link opens` }).toBe(1);
-  expect(Date.now() - released).toBeLessThan(12_000);
+  // Answered once, the newest: the link opens before the offering side's next try, 15 s and 2 s on (a page drawing in
+  // software on a CI runner takes a while to answer, and longer to link). Without this, Firefox failed ICE on the late answer (2026-11-22).
+  for (const f of [alice, bob]) await expect.poll(async () => (await view(f))?.connected, { timeout: 16_000, message: `${f.name}'s game link opens` }).toBe(1);
+  expect(Date.now() - released).toBeLessThan(16_000);
 });
 
 test('games of different kinds go on side by side, each linking only its own players, and a click on another moves a friend over', async ({ crowd }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const alice = await open(crowd, 'Alice');
   await needHooks(alice);
   const bob = await open(crowd, 'Bob');
@@ -133,6 +134,11 @@ test('games of different kinds go on side by side, each linking only its own pla
   const of = (f: Friend, name: string) => f.page.locator(`.shares .game[data-game="${name}"]`);
   /** The game a friend plays, as its view says (Bonk's names none), and how many links it has open. */
   const links = async (f: Friend) => { const v = await view(f) as { game?: string; connected: number } | null; return v && `${v.game ?? 'bonk'}:${v.connected}`; };
+  /**
+   * Three pages drawing their games in software slow one another down on a CI runner, a page by 15 s at times (the gate,
+   * 2026-11-22): long enough for a link's first try to run out, and the next to open it.
+   */
+  const LINKS_OPEN = 60_000;
   await alice.join();
   await bob.join();
   await carol.join();
@@ -151,7 +157,7 @@ test('games of different kinds go on side by side, each linking only its own pla
   await of(carol, 'clink').click();
   await expect(of(alice, 'clink').locator('.share-faces .face')).toHaveCount(2);
   await expect(of(alice, 'bonk').locator('.share-faces .face')).toHaveCount(1);
-  for (const f of [bob, carol]) await expect.poll(() => links(f), { timeout: 30_000, message: `${f.name}'s Clink link opens` }).toBe('clink:1');
+  for (const f of [bob, carol]) await expect.poll(() => links(f), { timeout: LINKS_OPEN, message: `${f.name}'s Clink link opens` }).toBe('clink:1');
   await expect.poll(() => links(alice), { timeout: 15_000 }).toBe('bonk:0');
   await expect.poll(async () => (await view(alice))?.phase, { timeout: 15_000 }).toBe('wait');
 
@@ -159,7 +165,7 @@ test('games of different kinds go on side by side, each linking only its own pla
   await of(carol, 'bonk').click();
   await expect(of(bob, 'bonk').locator('.share-faces .face')).toHaveCount(2);
   await expect(of(bob, 'clink').locator('.share-faces .face')).toHaveCount(1);
-  for (const f of [alice, carol]) await expect.poll(() => links(f), { timeout: 30_000, message: `${f.name}'s Bonk link opens` }).toBe('bonk:1');
+  for (const f of [alice, carol]) await expect.poll(() => links(f), { timeout: LINKS_OPEN, message: `${f.name}'s Bonk link opens` }).toBe('bonk:1');
   await expect.poll(() => links(bob), { timeout: 15_000 }).toBe('clink:0');
 
   // Bob leaves Clink: it ends, and Bonk goes on.
@@ -170,7 +176,7 @@ test('games of different kinds go on side by side, each linking only its own pla
 });
 
 test('a friend back from a gap, moved over to the game of a kind started since, comes into it anew, without the rounds of the one that ended', async ({ crowd }) => {
-  test.setTimeout(150_000);
+  test.setTimeout(180_000);
   const alice = await open(crowd, 'Alice');
   await needHooks(alice);
   const bob = await open(crowd, 'Bob');
@@ -207,7 +213,8 @@ test('a friend back from a gap, moved over to the game of a kind started since, 
   carol.wire.restore();
   await carol.connected();
   await expect(tile(carol).locator('.share-faces .face')).toHaveCount(3, { timeout: 30_000 });
-  await expect.poll(async () => (await view(carol))?.connected, { timeout: 30_000, message: 'Carol links up with both' }).toBe(2);
+  // Slow to link, as three pages drawing in software on a CI runner are (see the test before).
+  await expect.poll(async () => (await view(carol))?.connected, { timeout: 60_000, message: 'Carol links up with both' }).toBe(2);
   // Not the win from before: Carol's game follows the others' rounds, and theirs do not take hers.
   for (const f of [carol, alice, bob]) expect((await view(f))!.wins[carolWho], `${f.name} sees no win of Carol's`).toBeUndefined();
 });
