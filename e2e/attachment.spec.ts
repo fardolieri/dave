@@ -1134,14 +1134,64 @@ test('ADR 0009: a picture sent while nobody else was there comes from the server
   await expect.poll(() => new Set(alice.wire.frames<{ n: number; ok: boolean }>('down', 'kept').filter((k) => k.ok).map((k) => k.n)).size).toBe(pieces);
   const plain = picture.subarray(100, 132).toString('base64url');
   expect(alice.wire.log.filter((l) => l.frame.includes(plain))).toEqual([]);
-  await alice.page.close();
+  // Gone as a closed tab goes, and the Room told (ticket 59): one it still lists would be asked first, over a link.
+  await alice.close();
   // Bob was never there with Alice: nobody online has it, so the server gives it, and his app checks it.
   const bob = await crowd.open('Bob');
   const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
   await expect(shown).toHaveCount(1, { timeout: 30_000 });
   const url = (await shown.getAttribute('src'))!;
   expect(await bob.page.evaluate(pageHash(url), url)).toBe(sha256(picture));
-  expect(bob.wire.frames('up', 'fetch').length).toBe(pieces);
+  expectOnePullOf(bob, pieces);
+});
+
+/**
+ * The pieces a friend in one room asked the server for, socket by socket (each socket starts with the Room's `challenge`;
+ * the app has one at a time per room). A pull from the server asks for them in order, one at a time, from the first: two
+ * pulls of the one file would ask for a piece twice on one socket. A socket the network drops under a `fetch` takes its
+ * answer with it, and the pull after asks again on the next socket (ticket 81: four `fetch`es for three pieces, every time
+ * Bob's first socket on a preview ended with 1006 before the answer came, unheard by the Room).
+ */
+function expectOnePullOf(f: Friend, pieces: number): void {
+  const asked: number[][] = [];
+  for (const l of f.wire.log) {
+    if (l.dir === 'down' && l.frame.startsWith('{"t":"challenge"')) asked.push([]);
+    else if (l.dir === 'up' && l.frame.startsWith('{"t":"fetch"')) asked.at(-1)!.push((JSON.parse(l.frame) as { n: number }).n);
+  }
+  const all = [...Array(pieces).keys()];
+  const each = asked.filter((a) => a.length);
+  for (const a of each) expect(a, `pieces asked on one socket: ${JSON.stringify(each)}`).toEqual(all.slice(0, a.length));
+  expect(each.at(-1), `every piece, once, on the socket that brought the file: ${JSON.stringify(each)}`).toEqual(all);
+}
+
+test('ADR 0009: a picture from the server whose socket drops under a fetch is asked again on the next socket, once', async ({ crowd }) => {
+  const alice = await crowd.open('Alice');
+  const picture = heavy(png(640, 480), 2.5 * 1024 * 1024); // three pieces
+  const pieces = Math.ceil(picture.length / KEPT_PIECE_BYTES);
+  await alice.attach({ name: 'stripes.png', mimeType: 'image/png', buffer: picture });
+  await expect.poll(() => new Set(alice.wire.frames<{ n: number; ok: boolean }>('down', 'kept').filter((k) => k.ok).map((k) => k.n)).size).toBe(pieces);
+  await alice.close();
+  // Bob's first socket goes down after his first `fetch` reached the Room and before its answer reached him, as on the
+  // previews (ticket 81). The Room answered: the answer is lost with the socket.
+  const bob = await crowd.open('Bob', { connect: false });
+  let dropped = false;
+  bob.wire.down = (frame) => {
+    if (dropped || !frame.startsWith('{"t":"piece"')) return frame;
+    dropped = true;
+    void bob.wire.cut().then(() => bob.wire.restore());
+    return null;
+  };
+  await bob.open();
+  // Within the 20 s a `fetch` waits for its answer (client/room.ts, FETCH_TIMEOUT_MS): asked again because the socket
+  // went, not because the answer was given up on.
+  const shown = bob.page.locator('.chat-log .att-media img:not(.att-preview)');
+  await expect(shown).toHaveCount(1, { timeout: 15_000 });
+  const url = (await shown.getAttribute('src'))!;
+  expect(await bob.page.evaluate(pageHash(url), url)).toBe(sha256(picture));
+  // Asked on the socket that lost the answer, then all of it on another. Not a count: a drop of the network's own on
+  // top would ask from the first piece once more, and that too is one pull at a time.
+  expect(dropped).toBe(true);
+  expectOnePullOf(bob, pieces);
 });
 
 test('ADR 0009: a picture whose sender is online but cannot be reached comes from the server', async ({ crowd }) => {
