@@ -84,7 +84,16 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
     const s = climbsTo(known, rolls, round.since, at, round.phase === 'play' ? CLIMBS : Infinity);
     return s ? climbAt(s, at - s.t0) : null;
   };
-  const matchOver = (at: number) => round.phase === 'play' && climbsTo(known, rolls, round.since, at, CLIMBS) === null;
+  /**
+   * The match is over: its last climb, and the pause after it, are. Counted only on chips heard since a double or
+   * nothing could last change them (`lateForDouble`): a leader back from a moment away waits for everyone's word.
+   */
+  const matchOver = (at: number, around: readonly Other[]) => {
+    if (round.phase !== 'play' || climbsTo(known, rolls, round.since, at, CLIMBS) !== null) return false;
+    const last = known[known.length - 1]!;
+    const cutoff = last.t0 + last.end + PAUSE_MS - 1000;
+    return around.every((o) => o.at >= cutoff);
+  };
   const climbIdOf = (cl: Climb | null): string => (cl ? `${round.n}:${round.phase}:${seed}:${cl.c}` : '');
   const tell = (h: Record<string, unknown> & { kind: Happening['kind'] }, at: number) => happened.push({ ...h, at, climb: climbIdOf(climb) } as Happening);
   const watching = () => playing === 0 && (round.phase === 'count' || round.phase === 'play');
@@ -160,7 +169,7 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
     if (leader === me) {
       const counted = (o: Other): Counted => ({ who: whoOf(o.key), n: o.frame.r, known: o.frame.n, chips: o.frame.ch });
       const mine: Counted = { who: myWho, n: playing, known: round.n, chips: seat.chips };
-      const next = advance({ round, seed }, at, [mine, ...around.map(counted)], [mine, ...present(at).map(counted)], rand, matchOver(at));
+      const next = advance({ round, seed }, at, [mine, ...around.map(counted)], [mine, ...present(at).map(counted)], rand, matchOver(at, around));
       if (next.round !== round || next.seed !== seed) { took(next.round, next.seed, at); lastRoundSent = -Infinity; }
       if (at - lastRoundSent >= ROUND_SEND_MS) { sentQ = Math.max(Date.now(), sentQ + 1); wire.broadcast(JSON.stringify(matchFrame(roundFrame(round, at, sentQ), seed))); lastRoundSent = at; }
     }

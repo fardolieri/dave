@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CLIMBS, FELL, RIDING } from '../src/core/clink';
+import { CLIMBS, FELL, PAUSE_MS, RIDING } from '../src/core/clink';
 import { AWAY_MS, HEARD_MS, STALE_MS, createTable, type Table, type Wire } from '../src/core/clinktable';
 import { seeded } from './fun';
 
@@ -231,6 +231,27 @@ describe('Clink, tables at once (core/clinktable.ts)', () => {
     net.until(() => a.round.phase === 'over', 60_000);
     expect(a.round.scores![who(BOB)]).toBeGreaterThanOrEqual(Math.floor(kept) - 1);
     expect(a.round.scores![who(BOB)]).toBeLessThan(kept + stake / 2);
+  });
+
+  it('ends a match on everyone\'s last word: a leader back from a moment away does not count chips from before it', () => {
+    const net = matchOf(ALICE, BOB);
+    const a = net.table(ALICE), b = net.table(BOB);
+    // Bob grabs on the last tower; it falls; Alice, who leads, looks away 0.25 s later, hearing nothing, and is back
+    // just after the match's time is up: away 2.4 s, under what would make her hold back.
+    net.until(() => b.climb?.c === CLIMBS && b.climb.h >= 1 && b.climb.fell < 0, 600_000, () => { if (b.climb && b.climb.c < CLIMBS && b.climb.h >= 1) b.grab(net.clock); });
+    b.grab(net.clock);
+    net.until(() => (b.climb?.fell ?? -1) >= 0, 60_000);
+    const fellAt = net.clock;
+    net.run(250);
+    net.sleep(ALICE);
+    // Bob doubles (and wins it) 1.4 s after the fall, in time.
+    net.run(1150);
+    b.flip(0.1, net.clock);
+    expect(b.seat.flip).toBe(1);
+    net.run(fellAt + PAUSE_MS + 50 - net.clock);
+    net.sleep(ALICE, false);
+    net.until(() => a.round.phase === 'over', 10_000);
+    expect(a.round.scores![who(BOB)]).toBe(Math.floor(b.seat.chips));
   });
 
   it('is not led back into a match by a friend who missed its end, the smaller key though theirs is', () => {

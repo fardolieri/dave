@@ -60,8 +60,9 @@ test('clink: practice alone, a match with a friend, a grab and a double seen by 
   // the allowance meanwhile). The tower would stand to the top otherwise, which a slow machine could get to first.
   await expect.poll(async () => (await view(alice))!.climb?.h ?? 0, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
   await tile(alice).getByRole('button', { name: /^Grab/ }).click();
-  const riding = (await view(bob))!.me;
+  // Each moment taken before its read: the allowance after it is counted from no later than it was.
   const ridingAt = Date.now();
+  const riding = (await view(bob))!.me;
   // The coin after next topples it: the same coin on both screens, which neither has seen land.
   const tower = (await view(alice))!.climb!;
   const topples: [number, number] = [tower.c, tower.h + 1];
@@ -95,8 +96,8 @@ test('clink: practice alone, a match with a friend, a grab and a double seen by 
   await expect.poll(async () => (await view(alice))!.climb?.h ?? 0, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
   await tile(alice).getByRole('button', { name: /^Grab/ }).click();
   await expect.poll(async () => (await view(alice))!.me.at).toBeGreaterThanOrEqual(1);
-  const again = (await view(alice))!.me;
   const againAt = Date.now();
+  const again = (await view(alice))!.me;
   await expect.poll(async () => (await view(bob))!.others[0]?.at, { message: "Bob sees Alice's grab" }).toBe(again.at);
   const profit = again.won - again.stake;
   expect(profit).toBeGreaterThan(0);
