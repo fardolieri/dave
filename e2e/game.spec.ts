@@ -136,3 +136,46 @@ test('games of different kinds go on side by side, each linking only its own pla
   await expect(of(bob, 'bonk')).toContainText('2 friends play. Click to play');
   await expect(bob.page.getByRole('button', { name: /Play Clink/ })).toBeVisible();
 });
+
+test('a friend back from a gap, moved over to the game of a kind started since, comes into it anew, without the rounds of the one that ended', async ({ crowd }) => {
+  test.setTimeout(150_000);
+  const alice = await open(crowd, 'Alice');
+  await needHooks(alice);
+  const bob = await open(crowd, 'Bob');
+  const carol = await open(crowd, 'Carol');
+  await alice.join();
+  await bob.join();
+  await carol.join();
+
+  // Carol and Alice play a Bonk; Alice rolls off the floe, and Carol wins its first round.
+  await carol.page.getByRole('button', { name: /Play Bonk/ }).click();
+  await tile(alice).click();
+  for (const f of [alice, carol]) await expect.poll(async () => { const v = await view(f); return v?.phase === 'play' && v.round === 1 && v.connected === 1; }, { timeout: 45_000 }).toBe(true);
+  const carolWho = (await view(alice))!.others[0]!.key.slice(0, 11);
+  await tile(alice).locator('.bonk').click();
+  await alice.page.keyboard.down('ArrowRight');
+  await expect.poll(async () => (await view(alice))!.me.alive, { timeout: 15_000 }).toBe(false);
+  await alice.page.keyboard.up('ArrowRight');
+  await expect.poll(async () => (await view(carol))!.wins, { timeout: 15_000 }).toEqual({ [carolWho]: 1 });
+
+  // Carol's socket goes away; she stays in the call, in her Bonk. Meanwhile Alice leaves it, and with Bob starts another.
+  await carol.wire.cut();
+  await expect(carol.away).toBeVisible();
+  await tile(alice).getByRole('button', { name: 'Leave game' }).click();
+  await expect(tile(alice)).toHaveCount(0, { timeout: 30_000 }); // the Room forgot Carol's with her socket
+  await alice.page.getByRole('button', { name: /Play Bonk/ }).click();
+  await tile(bob).click();
+  for (const f of [alice, bob]) await expect.poll(async () => { const v = await view(f); return v?.round === 1 && v.connected === 1; }, { timeout: 45_000 }).toBe(true);
+
+  // Carol is back: the others' Bonk has more players, so she moves over to it, and her game starts anew in it, as a
+  // newcomer's. Her old round and its win stay behind, and the others' rounds go on under their own leader.
+  carol.wire.restore();
+  await carol.connected();
+  await expect(tile(carol).locator('.share-faces .face')).toHaveCount(3, { timeout: 30_000 });
+  await expect.poll(async () => (await view(carol))?.connected, { timeout: 30_000, message: 'Carol links up with both' }).toBe(2);
+  expect((await view(carol))!.wins).toEqual({});
+  const [a, c] = [(await view(alice))!, (await view(carol))!];
+  expect(a.round).toBeGreaterThanOrEqual(1);
+  expect(a.wins[carolWho]).toBeUndefined();
+  expect(c.leader === null || c.leader === a.leader).toBe(true);
+});

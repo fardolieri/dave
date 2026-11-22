@@ -89,7 +89,9 @@ export function GameTile(props: { name: GameName; game: GameHandle; inCall: bool
           <span>{t.blurb}<br /><b>{count() === 1 ? '1 friend plays' : `${count()} friends play`}. {props.inCall ? (props.game.playing() ? 'Click to play this instead' : 'Click to play') : 'Join the call to play'}</b></span>
         </div>
       }>
-        <GameView name={name} game={props.game} faceOf={props.faceOf} />
+        {/* Made anew for another game of this kind: moved over to one started since (core/game.ts, `current`), I come in
+            as a newcomer to it, never with the round of the one that ended */}
+        <Show when={props.game.mine()?.id} keyed>{(_id) => <GameView name={name} game={props.game} faceOf={props.faceOf} />}</Show>
       </Show>
       <Show when={count() > 0}>
         <div class="share-bar game-bar" onClick={(e) => e.stopPropagation()}>{props.faces(members)}<span class="share-stats">playing</span></div>

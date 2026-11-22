@@ -87,6 +87,8 @@ export function createGame(room: Room, identity: LocalIdentity, textKey: CryptoK
     membersOf,
     /** The kind of game I play; null for none. */
     playing: (): GameName | null => mine()?.game ?? null,
+    /** The game I play, as I declare it; null for none. */
+    mine: (): Game | null => mine(),
     /** Starts `name` for the call, unless one of that kind goes on already: I join that instead. Out of mine, if I play another. */
     start: (name: GameName): void => {
       if (!inCall()) return;
