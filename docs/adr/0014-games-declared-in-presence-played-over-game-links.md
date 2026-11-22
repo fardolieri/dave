@@ -52,7 +52,10 @@ worker keeps it with the rest of the build, so a tab left open across a deploy s
   (2026-11-21): the rounds and their leader moved to `src/core/rounds.ts`, and what games draw alike to
   `src/client/gamekit.ts`. Every app paints its board from what it hears, so two boards may differ by a tile where two
   blobs crossed at once; the leader's board counts, and its count goes out with the round's end (`RoundFrame.sc`). A
-  friend whose app knew only Bonk saw no Splotch, until it updated.
+  friend whose app knew only Bonk saw no Splotch, until it updated. **Skid**, a kart race, came third (2026-11-22): each
+  app drives its own kart and counts its own laps and finish, which its frames carry; the leader ends the race once
+  everyone in it has finished, or a while after the first did, and sends the times with its end. Item boxes are each
+  app's own; an oil slick goes out in its dropper's frames, and each app spins its own kart on it.
 
 ## Considered options
 

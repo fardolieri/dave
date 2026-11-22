@@ -110,8 +110,12 @@ The first game: every player is a ball with their face on it, on an ice floe in 
 **Splotch**:
 The second game: every player is a blob of paint on a square board, leaving their colour wherever they go, over anyone else's, and now and then a splat. When the time is up, who has the most of the board wins the round.
 
+**Skid**:
+The third game: a kart race, three laps of a winding track, every player's face in their kart. Drifting round a bend charges a boost; boost pads and turbos speed you up; an oil slick dropped behind you spins whoever drives over it. First over the line wins the race.
+_Avoid_: Mario Kart, or any other game's names, in UI copy and code
+
 **Round** (of a game):
-From the countdown to the winner: who was there at the countdown plays it, whoever comes in later watches until the next. Run by one player's app, the leader, whom the others follow; in Bonk it ends when one is left on the floe, in Splotch when the time is up, the leader's board counted.
+From the countdown to the winner: who was there at the countdown plays it, whoever comes in later watches until the next. Run by one player's app, the leader, whom the others follow; in Bonk it ends when one is left on the floe, in Splotch when the time is up, the leader's board counted, in Skid (a race) when everyone in it has finished, or a while after the first did.
 _Avoid_: Match, game (the whole of it), level
 
 **Signaling**:

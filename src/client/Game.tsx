@@ -13,6 +13,7 @@ import { canFullscreen, exitFullscreenSafely, fullscreenElement, requestFullscre
 /** The games, as the call offers them. */
 const TITLES: Record<GameName, { title: string; icon: string; blurb: string }> = {
   bonk: { title: 'Bonk', icon: '🧊', blurb: 'Bonk your friends off a shrinking ice floe. Last one on it wins.' },
+  skid: { title: 'Skid', icon: '🏎️', blurb: 'A kart race, three laps. Drift round the bends to boost, grab items, beat your friends to the line.' },
   splotch: { title: 'Splotch', icon: '🎨', blurb: 'Paint the board your colour, over everyone else\'s. Most of it when time is up wins.' },
 };
 
@@ -21,6 +22,7 @@ type Mount = (host: HTMLElement, opts: { me: string; links: GameLinks; faceOf: (
 const LOAD: Record<GameName, () => Promise<Mount>> = {
   bonk: () => import('./bonk').then((m) => m.mountBonk),
   splotch: () => import('./splotch').then((m) => m.mountSplotch),
+  skid: () => import('./skid').then((m) => m.mountSkid),
 };
 
 /** In the call's controls: a game for everyone in the call, in one click; while one goes on, a way into it. */

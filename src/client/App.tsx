@@ -943,7 +943,7 @@ function Workspace(props: WorkspaceProps) {
             <section class="shares" style={`grid-template-columns: repeat(${sharers().length + (s().party.now() ? 1 : 0) + (s().game.now() ? 1 : 0)}, 1fr)`}>
               <Show when={s().game.now()}>
                 <GameTile game={s().game} inCall={s().call.inCall()}
-                          faceOf={(k) => { const f = k === me ? undefined : present(k); const l = f && labelOf(f); return { name: l?.shown ?? 'A friend', picture: l?.picture ?? (k === me ? getPicture() : null) }; }}
+                          faceOf={(k) => { if (k === me) return { name: props.name, picture: getPicture() }; const f = present(k); const l = f && labelOf(f); return { name: l?.shown ?? 'A friend', picture: l?.picture ?? null }; }}
                           faces={<ShareFaces keys={s().game.members()} label={(k) => { const p = present(k); return p && labelOf(p); }} />} />
               </Show>
               <Show when={s().party.now()}>{(p) => (
