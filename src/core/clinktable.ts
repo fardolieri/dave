@@ -31,7 +31,10 @@ export const STALE_MS = 1000;
  * a moment, is no such gap: it leads on.
  */
 export const HOLD_MS = 800;
-const GAP_MS = HEARD_MS;
+/** A gap this long holds back: shorter than the others take to stop hearing an app, so it never counts a friend it missed. */
+const GAP_MS = 2000;
+/** A double or nothing in time on a friend's screen, which may run behind the leader's by a frame's way and more. */
+const DOUBLE_SLACK_MS = 500;
 
 /** What happened, for the screen: when, and in which climb (`climbId`). */
 export type Happening = { at: number; climb: string } & (
@@ -91,7 +94,7 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
   const matchOver = (at: number, around: readonly Other[]) => {
     if (round.phase !== 'play' || climbsTo(known, rolls, round.since, at, CLIMBS) !== null) return false;
     const last = known[known.length - 1]!;
-    const cutoff = last.t0 + last.end + PAUSE_MS - 1000;
+    const cutoff = last.t0 + last.end + PAUSE_MS - 1000 + DOUBLE_SLACK_MS;
     return around.every((o) => o.at >= cutoff);
   };
   const climbIdOf = (cl: Climb | null): string => (cl ? `${round.n}:${round.phase}:${seed}:${cl.c}` : '');
@@ -109,7 +112,8 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
    * now; a double or nothing only early in the pause, while there is time for the leader to hear how it went).
    */
   const settled = () => round.phase === 'play' && climb !== null && climb.c >= CLIMBS && climb.fell >= 0;
-  const lateForDouble = (at: number) => settled() && climb !== null && at - climb.t0 > climb.fell + PAUSE_MS - 1000;
+  /** Too late for a double or nothing: near the end of the last climb's pause, or after it while the match is ending. */
+  const lateForDouble = (at: number) => round.phase === 'play' && (climbNow(at) === null || (settled() && climb !== null && at - climb.t0 > climb.fell + PAUSE_MS - 1000));
 
   /** The round as it now is, and its seed: another start or seed, other climbs; another round or phase, a new seat. */
   const took = (next: Round, nextSeed: number, at: number) => {

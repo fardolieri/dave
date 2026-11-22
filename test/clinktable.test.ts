@@ -234,25 +234,78 @@ describe('Clink, tables at once (core/clinktable.ts)', () => {
   });
 
   it('ends a match on everyone\'s last word: a leader back from a moment away does not count chips from before it', () => {
-    const net = matchOf(ALICE, BOB);
-    const a = net.table(ALICE), b = net.table(BOB);
-    // Bob grabs on the last tower; it falls; Alice, who leads, looks away 0.25 s later, hearing nothing, and is back
-    // just after the match's time is up: away 2.4 s, under what would make her hold back.
+    for (const away of [2400, 2450, 2490, 1900]) lastWord(away);
+  });
+
+  it('waits for the word of a friend whose screen runs behind, who doubled after the leader\'s cutoff but in time on theirs', () => {
+    // Every frame 300 ms on the way: Bob's towers run 300 ms behind Alice's.
+    const net = new Net();
+    net.latency = 300;
+    const a = net.add(ALICE), b = net.add(BOB);
+    net.until(() => [a, b].every((t) => t.round.phase === 'play' && t.seat.at === RIDING));
     net.until(() => b.climb?.c === CLIMBS && b.climb.h >= 1 && b.climb.fell < 0, 600_000, () => { if (b.climb && b.climb.c < CLIMBS && b.climb.h >= 1) b.grab(net.clock); });
     b.grab(net.clock);
-    net.until(() => (b.climb?.fell ?? -1) >= 0, 60_000);
-    const fellAt = net.clock;
-    net.run(250);
+    net.until(() => (a.climb?.fell ?? -1) >= 0 && (b.climb?.fell ?? -1) >= 0, 60_000);
+    const cutoffOf = (t: Table) => t.climb!.t0 + t.climb!.fell + PAUSE_MS - 1000;
+    const aCut = cutoffOf(a), bCut = cutoffOf(b), aEnd = aCut + 1000;
+    expect(bCut - aCut).toBeGreaterThan(200);
+    // Alice hears Bob a moment after her cutoff, then looks away to just after the end; Bob doubles late on hers, in
+    // time on his.
+    net.run(aCut + 100 - net.clock);
     net.sleep(ALICE);
-    // Bob doubles (and wins it) 1.4 s after the fall, in time.
-    net.run(1150);
+    net.run(bCut - 50 - net.clock);
     b.flip(0.1, net.clock);
     expect(b.seat.flip).toBe(1);
-    net.run(fellAt + PAUSE_MS + 50 - net.clock);
+    net.run(aEnd + 50 - net.clock);
     net.sleep(ALICE, false);
     net.until(() => a.round.phase === 'over', 10_000);
     expect(a.round.scores![who(BOB)]).toBe(Math.floor(b.seat.chips));
   });
+
+  it('takes no double or nothing once the last pause is over, while the match is ending', () => {
+    const net = matchOf(ALICE, BOB);
+    const a = net.table(ALICE), b = net.table(BOB);
+    net.until(() => b.climb?.c === CLIMBS && b.climb.h >= 1 && b.climb.fell < 0, 600_000, () => { if (b.climb && b.climb.c < CLIMBS && b.climb.h >= 1) b.grab(net.clock); });
+    b.grab(net.clock);
+    expect(b.canFlip(net.clock)).toBe(true);
+    // Alice, who ends the match, waits for Bob's word since a double could last change his chips; his frames from a
+    // second after the fall are lost on the way, while she still hears him; his pause runs out meanwhile.
+    net.until(() => (b.climb?.fell ?? -1) >= 0, 60_000);
+    const losing = net.clock + 1000;
+    net.lose = (from, to) => from === BOB && to === ALICE && net.clock >= losing;
+    net.until(() => b.climb === null, 60_000);
+    expect(a.round.phase).toBe('play');
+    expect(b.round.phase).toBe('play');
+    expect(b.canFlip(net.clock)).toBe(false);
+    b.flip(0.1, net.clock);
+    expect(b.seat.flip).toBe(0);
+  });
+
+  /** Bob doubles in time on the last climb, while Alice, who leads, is away `away` ms across the end of the match. */
+  function lastWord(away: number): void {
+    const net = matchOf(ALICE, BOB);
+    const a = net.table(ALICE), b = net.table(BOB);
+    // Bob grabs on the last tower; it falls; Alice, who leads, looks away, hearing nothing, and is back just after the
+    // match's time is up.
+    net.until(() => b.climb?.c === CLIMBS && b.climb.h >= 1 && b.climb.fell < 0, 600_000, () => { if (b.climb && b.climb.c < CLIMBS && b.climb.h >= 1) b.grab(net.clock); });
+    b.grab(net.clock);
+    net.until(() => (b.climb?.fell ?? -1) >= 0, 60_000);
+    const fellAt = net.clock;
+    const back = fellAt + PAUSE_MS + 50;
+    net.run(back - away - net.clock);
+    // A while after Bob's last frame came: by the time she is back, it is as old as he takes to be no longer heard.
+    net.until(() => net.clock - a.others().get(BOB)!.at >= 60, 1000);
+    const left = net.clock;
+    net.sleep(ALICE);
+    // Bob doubles (and wins it) in time, 1.4 s after the fall.
+    net.run(fellAt + 1400 - net.clock);
+    b.flip(0.1, net.clock);
+    expect(b.seat.flip, `away ${away}`).toBe(1);
+    net.run(left + away - net.clock);
+    net.sleep(ALICE, false);
+    net.until(() => a.round.phase === 'over', 10_000);
+    expect(a.round.scores![who(BOB)], `away ${away}`).toBe(Math.floor(b.seat.chips));
+  }
 
   it('is not led back into a match by a friend who missed its end, the smaller key though theirs is', () => {
     const net = matchOf(ALICE, BOB);
