@@ -220,3 +220,48 @@ test('a friend back from a gap, moved over to the game of a kind started since, 
   // Not the win from before: Carol's game follows the others' rounds, and theirs do not take hers.
   for (const f of [carol, alice, bob]) expect((await view(f))!.wins[carolWho], `${f.name} sees no win of Carol's`).toBeUndefined();
 });
+
+test('Bonk followed: the ball rolls to where the mouse is held, the right button dashes, and the pick is kept', async ({ crowd }) => {
+  test.setTimeout(90_000);
+  const alice = await open(crowd, 'Alice');
+  await needHooks(alice);
+  await alice.join();
+  await alice.page.getByRole('button', { name: /Play Bonk/ }).click();
+  await expect.poll(async () => (await view(alice))?.phase, { timeout: 30_000 }).toBe('wait');
+
+  // The drag stick to start with; the mouse held does nothing then.
+  const game = tile(alice).locator('.bonk');
+  const box = (await game.boundingBox())!;
+  const from = (await view(alice))!.me;
+  await alice.page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2);
+  await alice.page.mouse.down();
+  await alice.page.waitForTimeout(500);
+  await alice.page.mouse.up();
+  expect((await view(alice))!.me.x).toBeCloseTo(from.x, 1);
+
+  // Follow: held right of the middle, on the floe, the ball rolls there and stops.
+  await tile(alice).getByRole('button', { name: 'Controls: stick' }).click();
+  await expect(tile(alice).getByRole('button', { name: 'Controls: follow' })).toBeVisible();
+  expect((await view(alice))!.controls).toBe('follow');
+  await alice.page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2);
+  await alice.page.mouse.down();
+  await expect.poll(async () => (await view(alice))!.me.x, { timeout: 5000 }).toBeGreaterThan(from.x + 1.5);
+  await alice.page.waitForTimeout(1500);
+  const there = (await view(alice))!.me;
+  expect(there.alive).toBe(true);
+  await alice.page.waitForTimeout(300);
+  expect((await view(alice))!.me.x).toBeCloseTo(there.x, 0); // stopped on the spot, not swinging round it
+  await alice.page.mouse.up();
+
+  // The right button, left of the middle: a dash that way.
+  expect((await view(alice))!.me.dashAt).toBeNull();
+  await alice.page.mouse.click(box.x + box.width * 0.3, box.y + box.height / 2, { button: 'right' });
+  await expect.poll(async () => (await view(alice))!.me.dashAt, { timeout: 5000 }).not.toBeNull();
+  await expect.poll(async () => (await view(alice))!.me.x, { timeout: 5000 }).toBeLessThan(there.x - 1);
+
+  // Kept: a game started again follows still.
+  await tile(alice).getByRole('button', { name: 'Leave game' }).click();
+  await expect(tile(alice)).toHaveCount(0);
+  await alice.page.getByRole('button', { name: /Play Bonk/ }).click();
+  await expect(tile(alice).getByRole('button', { name: 'Controls: follow' })).toBeVisible();
+});

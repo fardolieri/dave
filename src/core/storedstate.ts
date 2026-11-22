@@ -23,6 +23,7 @@ import { parseBigIndex, parseFileIndex, parsePartialPull } from './attachment';
 import { parseUnsent, parseUnsentPrivate } from './unsent';
 import { parseCounts, parseRoomThemes } from './unread';
 import { parsePairKeys } from './pairs';
+import { parseControls } from './bonk';
 import { parseAudioSettings, parseShareSettings, parseViewerSettings, parseVolumes } from './settings';
 
 /** A stored key: what it holds, the parser every read goes through, and stored values from the wild. */
@@ -157,6 +158,11 @@ export const LOCAL = {
     parse: parseRoomThemes,
     map: true,
     fixtures: { '2026-10-24, a look per room': '{"roomA":"fd-walkie","roomB":""}' },
+  },
+  bonkControls: {
+    about: "How Bonk steers with a finger or the mouse, picked in the game: 'follow' rolls the ball to where one is held, anything else is the drag stick (core/bonk.ts, client/bonk.ts).",
+    parse: parseControls,
+    fixtures: { '2026-11-22, follow': 'follow' },
   },
   viewerSettings: { about: 'Low latency for shares I watch (core/settings.ts, client/call.ts).', parse: parseViewerSettings, fixtures: { '2026-09-06, low latency': '{"jitterBufferTargetMs":100}' } },
 } satisfies Record<string, StoredKey<string | null>>;
