@@ -1,5 +1,6 @@
 // Bonk, the first game (core/game.ts): every player is a ball with their face on it, on an ice floe in the sea. Roll,
-// dash, bonk the others off; the floe shrinks while a round goes on, and the last one on it wins the round.
+// dash, bonk the others off; the floe shrinks while a round goes on, and the last one on it wins the round. Now and then
+// a ball goes giga, and its next bonk is many times as hard (`gigaIn`, `gigaPower`).
 //
 // Every app moves its own ball and nobody else's, and sends where it is to every other player many times a second
 // (`BallFrame`); the app whose ball runs into another works the bonk out and gives the other ball its knock (`HitFrame`).
@@ -57,8 +58,8 @@ export type Ball = {
 
 export const ballAt = (x: number, z: number): Ball => ({ x, z, vx: 0, vz: 0, y: 0, vy: 0, alive: true, dashAt: -Infinity });
 
-/** Another player's ball as this app last heard of it. */
-export type Seen = { x: number; z: number; vx: number; vz: number; alive: boolean };
+/** Another player's ball as this app last heard of it; `y`, how high it is, for one up in the air. */
+export type Seen = { x: number; z: number; vx: number; vz: number; alive: boolean; y?: number };
 
 /** Where a round puts the `i`th of `count` players: evenly round a ring, facing in. */
 export function spawnAt(i: number, count: number): { x: number; z: number } {
@@ -86,8 +87,8 @@ export function toward(ball: { x: number; z: number; vx: number; vz: number }, t
   return steer((dx * want - ball.vx) / 3, (dz * want - ball.vz) / 3);
 }
 
-/** Whether a ball can dash at `now`. */
-export const canDash = (b: Ball, now: number): boolean => b.alive && now - b.dashAt >= DASH_COOLDOWN_MS;
+/** Whether a ball can dash at `now`: on the floe, not up in the air. */
+export const canDash = (b: Ball, now: number): boolean => b.alive && b.y <= 0 && b.vy <= 0 && now - b.dashAt >= DASH_COOLDOWN_MS;
 
 /**
  * A dash at `now`: off at DASH_SPEED in the direction steered, or straight on without one; nothing while it cannot. A
@@ -104,13 +105,24 @@ export function dash(b: Ball, dir: { x: number; z: number }, now: number): Ball 
 
 /**
  * The ball `dt` seconds on: rolled the way it is steered (to MAX_ROLL; faster only by a dash or a bonk, which then slow
- * by themselves), slowed by the ice. Off the floe (`floe`, its radius) it falls, and is out.
+ * by themselves), slowed by the ice. Off the floe (`floe`, its radius) it falls, and is out. Thrown up by a giga
+ * (`giga`), it flies, steered by nobody, and comes down on the floe again; out over the sea, it is out.
  */
 export function roll(b: Ball, dir: { x: number; z: number }, dt: number, floe: number): Ball {
   if (!b.alive) {
     if (b.y <= SUNK_Y) return b;
     const vy = b.vy - GRAVITY * dt;
     return { ...b, x: b.x + b.vx * dt, z: b.z + b.vz * dt, vx: b.vx * 0.98, vz: b.vz * 0.98, vy, y: Math.max(SUNK_Y, b.y + vy * dt) };
+  }
+  if (b.y > 0 || b.vy > 0) {
+    const vy = b.vy - GRAVITY * dt;
+    const slow = Math.exp(-AIR_DRAG * dt);
+    const x = b.x + b.vx * dt, z = b.z + b.vz * dt, y = b.y + vy * dt;
+    // Out over the sea it cannot come back, steered by nobody: out at once, not when it comes down, so the one who
+    // threw it does not lose the round to a ball still in the air.
+    if (!(Math.hypot(x, z) <= floe)) return { ...b, x, z, y, vy, alive: false };
+    if (y > 0) return { ...b, x, z, y, vy, vx: b.vx * slow, vz: b.vz * slow };
+    return { ...b, x, z, y: 0, vy: 0 };
   }
   const was = Math.hypot(b.vx, b.vz);
   let vx = b.vx + dir.x * ACCEL * dt;
@@ -126,37 +138,100 @@ export function roll(b: Ball, dir: { x: number; z: number }, dt: number, floe: n
   return { ...b, x, z, vx, vz };
 }
 
+/** A bonk at least this hard (`bonk`, `hit`) is felt: it shows, counts toward giga, and spends it. */
+export const FELT_HIT = 0.5;
+/**
+ * Giga: roughly every GIGA_EVERY felt bonks a ball has, it goes giga, and the next one it has is many times as hard
+ * (`gigaPower`), whichever of the two ran into the other.
+ */
+export const GIGA_EVERY = 100;
+/** The least a giga multiplies a bonk by, and the most a frame may say, which no draw comes near (`gigaPower`). */
+export const GIGA_LOW = 2;
+export const GIGA_MOST = 1e6;
+/**
+ * How rare a harder giga is: the chance of one at least `p` times as hard is (GIGA_LOW / p) ^ GIGA_TAIL. Half are under
+ * 3.2 times, one in 11 is 10 times or more, one in 350 is 100 times or more, and there is no top.
+ */
+export const GIGA_TAIL = 1.5;
+/**
+ * The most a giga bonk changes a ball's speed by along the floe: a hundred times a real bonk would have it out of sight
+ * before anyone saw it go. What it would have been past that goes up into the air instead (`giga`).
+ */
+export const GIGA_TOP = 60;
+/** How hard a giga throws a ball up: LIFT for every time e that it is past LIFT_FROM, to SKY_TOP (units/s). */
+const LIFT = 6;
+const LIFT_FROM = 8;
+export const SKY_TOP = 80;
+/** How quickly a ball in the air slows along the floe, per second: more than on the ice, so it lands in sight. */
+export const AIR_DRAG = 1.5;
+
+/** How many felt bonks until a ball goes giga: 1 to 2 × GIGA_EVERY − 1, all as likely, so GIGA_EVERY on average. `random` in [0, 1). */
+export const gigaIn = (random: number): number => 1 + Math.floor(random * (2 * GIGA_EVERY - 1));
+
+/** How many times as hard a giga bonk is (GIGA_TAIL): GIGA_LOW or more, to two places. `random` in [0, 1). */
+export const gigaPower = (random: number): number => Math.min(GIGA_MOST, Math.round(GIGA_LOW * (1 - random) ** (-1 / GIGA_TAIL) * 100) / 100);
+
+/**
+ * How mighty a giga is, for how it looks: 0 under 3 times, 1 from 3, 2 from 5, 3 from 10, 4 from 25, and 5 from 100,
+ * the rarest; -1 for none.
+ * Of every thousand gigas, some 454 are 0, 292 are 1, 164 are 2, 67 are 3, 20 are 4, and 3 are 5.
+ */
+export const GIGA_TIERS = [GIGA_LOW, 3, 5, 10, 25, 100] as const;
+export const gigaTier = (power: number): number => GIGA_TIERS.findLastIndex((from) => power >= from);
+
+/**
+ * A giga's change in a ball's speed: along the line between the two balls, `power` times as big (0 for none), to
+ * GIGA_TOP; and, past LIFT_FROM, up into the air (`up`), more the harder it is.
+ */
+export function giga(along: number, power: number): { along: number; up: number } {
+  if (power <= 1) return { along, up: 0 };
+  const speed = Math.abs(along) * power;
+  return { along: Math.sign(along) * Math.min(speed, Math.max(Math.abs(along), GIGA_TOP)), up: Math.min(SKY_TOP, Math.max(0, LIFT * Math.log(speed / LIFT_FROM))) };
+}
+
+/** A knock (`bonk`): the change in a ball's speed along the floe, and how fast it goes up (a giga's, else 0). */
+export type Knock = { vx: number; vz: number; up: number };
+
 /**
  * My ball after it met `other`: pushed out of it, and, while the two come at each other, given the other's speed along
  * the line between them, and more (BOUNCE). `knock` is what the other ball gets of the same bonk, the change in its
  * speed, which only its own app can give it (`HitFrame`): by the time the other app hears where my ball is, mine has
  * bounced off already, and it would see the two touch, never meet. Returns how hard they met too (0 for not at all),
- * for the sound and the shake.
+ * for the sound and the shake. A ball up in the air meets none.
+ *
+ * `mine` and `theirs` are the two balls' giga (`gigaPower`, 0 for none): a felt bonk (FELT_HIT) makes my giga's knock
+ * that much harder (`giga`), and theirs my own change, and spends them (`spent`, 0 for a giga not spent). Each app
+ * knows another's giga from its last frame, so in a pile-up, two bonks a moment apart, one giga may land on both.
  */
-export function bonk(me: Ball, other: Seen): { ball: Ball; hit: number; knock: { vx: number; vz: number } } {
-  const none = { vx: 0, vz: 0 };
-  if (!me.alive || !other.alive) return { ball: me, hit: 0, knock: none };
+export function bonk(me: Ball, other: Seen, mine = 0, theirs = 0): { ball: Ball; hit: number; knock: Knock; spent: { mine: number; theirs: number } } {
+  const none = { vx: 0, vz: 0, up: 0 };
+  const unspent = { mine: 0, theirs: 0 };
+  if (!me.alive || !other.alive || me.y > BALL_RADIUS || (other.y ?? 0) > BALL_RADIUS) return { ball: me, hit: 0, knock: none, spent: unspent };
   const dx = other.x - me.x, dz = other.z - me.z;
   const d = Math.hypot(dx, dz);
-  if (d >= 2 * BALL_RADIUS) return { ball: me, hit: 0, knock: none };
+  if (d >= 2 * BALL_RADIUS) return { ball: me, hit: 0, knock: none, spent: unspent };
   // Right on top of each other, which hardly happens: apart along x.
   const nx = d > 1e-6 ? dx / d : 1, nz = d > 1e-6 ? dz / d : 0;
   const push = (2 * BALL_RADIUS - d) / 2;
   const x = me.x - nx * push, z = me.z - nz * push;
-  const mine = me.vx * nx + me.vz * nz;
-  const theirs = other.vx * nx + other.vz * nz;
+  const mineAlong = me.vx * nx + me.vz * nz;
+  const theirsAlong = other.vx * nx + other.vz * nz;
   // Moving apart already: only pushed out.
-  if (mine - theirs <= 0) return { ball: { ...me, x, z }, hit: 0, knock: none };
+  if (mineAlong - theirsAlong <= 0) return { ball: { ...me, x, z }, hit: 0, knock: none, spent: unspent };
   // Of two equal masses, mine along the line becomes theirs and theirs mine, and the difference is given back BOUNCE
   // times: what one loses the other gets.
-  const mid = (mine + theirs) / 2, apart = (BOUNCE * (mine - theirs)) / 2;
-  const change = mid - apart - mine;
-  const knock = mid + apart - theirs;
-  return { ball: { ...me, x, z, vx: me.vx + change * nx, vz: me.vz + change * nz }, hit: mine - theirs, knock: { vx: knock * nx, vz: knock * nz } };
+  const hit = mineAlong - theirsAlong;
+  const mid = (mineAlong + theirsAlong) / 2, apart = (BOUNCE * hit) / 2;
+  const spent = hit >= FELT_HIT ? { mine, theirs } : unspent;
+  const change = giga(mid - apart - mineAlong, spent.theirs);
+  const knock = giga(mid + apart - theirsAlong, spent.mine);
+  const ball = { ...me, x, z, vx: me.vx + change.along * nx, vz: me.vz + change.along * nz, vy: Math.max(me.vy, change.up) };
+  return { ball, hit, knock: { vx: knock.along * nx, vz: knock.along * nz, up: knock.up }, spent };
 }
 
 /** A bonk another player's app worked out, given to my ball: `knock`, the change in its speed (`bonk`). */
-export const knocked = (b: Ball, knock: { vx: number; vz: number }): Ball => (b.alive ? { ...b, vx: b.vx + knock.vx, vz: b.vz + knock.vz } : b);
+export const knocked = (b: Ball, knock: { vx: number; vz: number; up?: number }): Ball =>
+  (b.alive ? { ...b, vx: b.vx + knock.vx, vz: b.vz + knock.vz, vy: Math.max(b.vy, knock.up ?? 0) } : b);
 
 /**
  * How long after a bonk between two balls another between the same two is not taken: both apps may work out the same
@@ -184,7 +259,8 @@ export type Counted = { who: string; n: number; known: number; alive: boolean };
 /** What the inspection hooks show of the game (`window.__daveGame`, client/bonk.ts). */
 export type GameView = {
   phase: Phase; round: number; leader: string | null; playing: boolean; spectating: boolean; webgl: boolean;
-  me: { x: number; z: number; alive: boolean; lastDash: { vx: number; vz: number } | null }; aim: { x: number; z: number } | null; others: { key: string; x: number; z: number; alive: boolean }[]; wins: Record<string, number>; connected: number;
+  me: { x: number; z: number; alive: boolean; lastDash: { vx: number; vz: number } | null; giga: number; gigaIn: number };
+  aim: { x: number; z: number } | null; others: { key: string; x: number; z: number; alive: boolean; giga: number }[]; wins: Record<string, number>; connected: number;
 };
 
 /**
@@ -221,18 +297,31 @@ export function advance(r: Round, now: number, here: readonly Counted[]): Round 
 
 /**
  * Where a player's ball is, from that player: `r` the round they play (0 for none: they watch), `n` the newest round
- * they know (core `leaderOf`). `a`: on the floe; `d`: dashed just now.
+ * they know (core `leaderOf`). `a`: on the floe (or up over it); `d`: dashed just now; `g`: its giga (`gigaPower`), left
+ * out for none, as apps from before giga send it.
  */
-export type BallFrame = { k: 'b'; r: number; n: number; x: number; z: number; vx: number; vz: number; y: number; a: boolean; d: boolean };
-/** A bonk my app worked out, for the ball of `to` (the start of its key): the change in its speed (`bonk`, `knock`). */
-export type HitFrame = { k: 'h'; to: string; vx: number; vz: number; hit: number };
+export type BallFrame = { k: 'b'; r: number; n: number; x: number; z: number; vx: number; vz: number; y: number; a: boolean; d: boolean; g?: number };
+/**
+ * A bonk my app worked out, for the ball of `to` (the start of its key): the change in its speed (`bonk`, `knock`), with
+ * `up` how fast a giga throws it up. `g`: my giga, spent on it; `u`: theirs, spent on my own ball's change, so their app
+ * knows it is gone (`bonk`, `spent`). Each left out for none.
+ */
+export type HitFrame = { k: 'h'; to: string; vx: number; vz: number; hit: number; up?: number; g?: number; u?: number };
 export type Frame = BallFrame | RoundFrame | HitFrame;
 
-export const ballFrame = (b: Ball, r: number, n: number, dashed: boolean): BallFrame =>
-  ({ k: 'b', r, n, x: round2(b.x), z: round2(b.z), vx: round2(b.vx), vz: round2(b.vz), y: round2(b.y), a: b.alive, d: dashed });
+export const ballFrame = (b: Ball, r: number, n: number, dashed: boolean, giga = 0): BallFrame =>
+  ({ k: 'b', r, n, x: round2(b.x), z: round2(b.z), vx: round2(b.vx), vz: round2(b.vz), y: round2(b.y), a: b.alive, d: dashed, ...(giga ? { g: giga } : {}) });
 
-export const hitFrame = (to: string, knock: { vx: number; vz: number }, hit: number): HitFrame =>
-  ({ k: 'h', to: whoOf(to), vx: round2(knock.vx), vz: round2(knock.vz), hit: round2(hit) });
+export const hitFrame = (to: string, knock: Knock, hit: number, spent = { mine: 0, theirs: 0 }): HitFrame => ({
+  k: 'h', to: whoOf(to), vx: round2(knock.vx), vz: round2(knock.vz), hit: round2(hit),
+  ...(knock.up > 0 ? { up: round2(knock.up) } : {}), ...(spent.mine ? { g: spent.mine } : {}), ...(spent.theirs ? { u: spent.theirs } : {}),
+});
+
+/**
+ * A giga as a frame says it, or undefined for none; one out of range is taken as none, not the frame thrown away, so a
+ * later app that gigas otherwise still moves its ball for this one.
+ */
+const gigaOf = (v: unknown): number | undefined => (num(v, GIGA_MOST) && v >= GIGA_LOW ? v : undefined);
 
 /** A frame from another player, or null for anything off. */
 export function parseFrame(text: unknown): Frame | null {
@@ -241,12 +330,15 @@ export function parseFrame(text: unknown): Frame | null {
   if (f['k'] === 'b') {
     const { r, n, x, z, vx, vz, y, a, d } = f;
     if (!Number.isSafeInteger(r) || (r as number) < 0 || !Number.isSafeInteger(n) || (n as number) < 0 || !num(x) || !num(z) || !num(vx) || !num(vz) || !num(y) || typeof a !== 'boolean' || typeof d !== 'boolean') return null;
-    return { k: 'b', r: r as number, n: n as number, x, z, vx, vz, y, a, d };
+    const g = gigaOf(f['g']);
+    return { k: 'b', r: r as number, n: n as number, x, z, vx, vz, y, a, d, ...(g !== undefined ? { g } : {}) };
   }
   if (f['k'] === 'h') {
     const { to, vx, vz, hit } = f;
     if (!isWho(to) || !num(vx, 100) || !num(vz, 100) || !num(hit, 100) || (hit as number) < 0) return null;
-    return { k: 'h', to, vx, vz, hit: hit as number };
+    // The giga's fields, each taken as none when off (`gigaOf`); a throw up as far as SKY_TOP.
+    const g = gigaOf(f['g']), u = gigaOf(f['u']), up = num(f['up'], 1e6) && f['up'] > 0 ? Math.min(SKY_TOP, f['up']) : undefined;
+    return { k: 'h', to, vx, vz, hit: hit as number, ...(up !== undefined ? { up } : {}), ...(g !== undefined ? { g } : {}), ...(u !== undefined ? { u } : {}) };
   }
   if (f['k'] === 'r') return parseRoundFrame(f);
   return null;

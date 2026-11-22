@@ -497,10 +497,22 @@ button.play { flex: 1; min-width: 0; padding-inline: 4px; font-weight: 600; font
 .game > .share-note > span { padding: 8px 16px; border-radius: 12px; background: rgba(255,255,255,.85); }
 .game .bonk { position: relative; flex: 1; min-height: 0; overflow: hidden; outline: none; touch-action: none; user-select: none; -webkit-user-select: none; background: #bfe6ff; cursor: default; }
 .bonk .bonk-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.bonk-hud { position: absolute; inset: 0; pointer-events: none; color: #0b2033; font-family: system-ui, sans-serif; }
+.bonk-hud { position: absolute; inset: 0; container-type: size; pointer-events: none; color: #0b2033; font-family: system-ui, sans-serif; }
 .bonk-banner { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); max-width: 90%; padding: 4px 14px; border-radius: 999px; background: rgba(255,255,255,.8); font-size: 14px; font-weight: 700; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bonk-banner:empty { display: none; }
 .bonk-banner.big { top: 30%; padding: 8px 26px; font-size: clamp(28px, 7vw, 64px); font-weight: 900; color: #fff; background: rgba(11,32,51,.55); text-shadow: 0 3px 0 #0b2033; }
+.bonk-giga { --giga: #c3ccd4; position: absolute; top: 44px; right: 10px; padding: 3px 14px; border-radius: 999px; background: var(--giga); color: #fff; font-size: 14px; font-weight: 900; white-space: nowrap; text-shadow: 0 1px 2px #0b2033; box-shadow: 0 0 14px var(--giga); }
+.bonk-giga:empty { display: none; }
+/* On a narrow tile, above the dash button, clear of the wins */
+@container (max-width: 480px) { .bonk-giga { top: auto; bottom: 104px; right: 50%; transform: translateX(50%); } }
+.bonk-giga[data-tier="5"] { background: linear-gradient(90deg, #ffd23f, #fff6c8, #ffb703, #ffd23f); background-size: 300% 100%; color: #3a2208; text-shadow: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .bonk-giga { animation: bonk-giga-pulse .6s ease-in-out infinite alternate; }
+  .bonk-giga[data-tier="5"] { animation: bonk-giga-pulse .3s ease-in-out infinite alternate, bonk-giga-shine 1.2s linear infinite; }
+}
+@keyframes bonk-giga-pulse { to { box-shadow: 0 0 26px var(--giga); } }
+@keyframes bonk-giga-shine { to { background-position: 300% 0; } }
+.bonk-flash { position: absolute; inset: 0; opacity: 0; }
 .bonk-board { position: absolute; top: 10px; left: 10px; margin: 0; padding: 0; list-style: none; font-size: 13px; font-weight: 600; }
 .bonk-board li { margin-bottom: 3px; padding: 1px 8px; border-radius: 6px; background: rgba(255,255,255,.75); }
 .bonk-help { position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; font-size: 12px; color: #0b2033cc; }

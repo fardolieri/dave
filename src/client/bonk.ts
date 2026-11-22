@@ -3,7 +3,7 @@
 // plays (client/Game.tsx): three.js is most of a megabyte.
 import * as THREE from 'three';
 import {
-  BALL_RADIUS, FLOE_START, RESPAWN_MS, SUNK_Y, BONK_AGAIN_MS, advance, ahead, ballAt, ballFrame, bonk, dash, firstRound, floeRadius, hitFrame, knocked, leaderOf, parseFrame,
+  BALL_RADIUS, FELT_HIT, FLOE_START, RESPAWN_MS, SUNK_Y, BONK_AGAIN_MS, advance, ahead, ballAt, ballFrame, bonk, dash, firstRound, floeRadius, gigaIn, gigaPower, gigaTier, hitFrame, knocked, leaderOf, parseFrame,
   roll, roundFrame, roundOf, spawnAt, steer, toward, whoOf, COUNT_MS, type Ball, type BallFrame, type Counted, type GameView, type Round,
 } from '../core/bonk';
 import type { GameLinks } from './gamelinks';
@@ -29,6 +29,20 @@ const LITE_FRAME_MS = 25;
 const FRAMES_JUDGED = 90;
 
 type Other = { frame: BallFrame; at: number; key: string };
+
+/**
+ * How a giga looks, by how mighty it is (core `gigaTier`): what the HUD calls it, the word its bonk pops, and its colour.
+ * The power itself is never shown: a ball's glow says how bad it is.
+ */
+const GIGA_LOOKS = [
+  { name: 'Giga', word: 'GIGA BONK!', colour: '#c3ccd4' },
+  { name: 'Super giga', word: 'SUPER BONK!', colour: '#3ab0ff' },
+  { name: 'Mega giga', word: 'MEGA BONK!!', colour: '#a259ff' },
+  { name: 'Ultra giga', word: 'ULTRA BONK!!', colour: '#ff4fd8' },
+  { name: 'Hyper giga', word: 'HYPER BONK!!!', colour: '#ff3b3b' },
+  { name: 'LEGENDARY giga', word: 'LEGENDARY!!!', colour: '#ffd23f' },
+] as const;
+const lookOf = (power: number) => GIGA_LOOKS[Math.max(0, gigaTier(power))]!;
 
 
 /**
@@ -66,7 +80,24 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   let shake = 0;
   /** When my ball last bonked each other player's, either app's working out: the same bonk is not taken twice. */
   const bonkedAt = new Map<string, number>();
-  const events: { kind: 'bonk' | 'splash'; x: number; z: number; hard: number }[] = [];
+  /** For a bonk, the giga it spent (0 for none), to say so. */
+  const events: { x: number; z: number; hard: number; giga: number }[] = [];
+  /** My ball's giga (core `gigaPower`, 0 for none), and how many felt bonks it has to go until it goes giga. */
+  let giga = 0;
+  let gigaLeft = gigaIn(Math.random());
+  /** A felt bonk my ball had (core FELT_HIT): its giga spent by it, or one bonk nearer the next. */
+  const felt = (spent: boolean) => {
+    if (spent) { giga = 0; gigaLeft = gigaIn(Math.random()); return; }
+    if (giga === 0 && --gigaLeft <= 0) giga = gigaPower(Math.random());
+  };
+  /** How a bonk sounds and shakes: a giga one as hard as they come, and the mightier, the more (`spent`, its power). */
+  const feel = (hard: number, spent: number) => {
+    if (!spent) { thump(hard); shake = Math.min(0.6, shake + hard * 0.04); return; }
+    const tier = gigaTier(spent);
+    thump(15);
+    if (tier >= 2) thump(15, true);
+    shake = Math.max(shake, calm.matches ? Math.min(0.6, 0.4 + tier * 0.15) : 0.4 + tier * 0.15);
+  };
 
   // The round: who plays it, where they start, and what I do in it.
   const took = (next: Round, now: number) => {
@@ -102,9 +133,11 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       if (f.to !== myWho || now - (bonkedAt.get(from) ?? -Infinity) < BONK_AGAIN_MS || !ball.alive) return;
       bonkedAt.set(from, now);
       ball = knocked(ball, f);
-      events.push({ kind: 'bonk', x: ball.x, z: ball.z, hard: f.hit });
-      thump(f.hit);
-      shake = Math.min(0.6, shake + f.hit * 0.04);
+      // My giga is spent only if their app saw it, and used it: else it waits for the next bonk.
+      if (f.hit >= FELT_HIT) felt((f.u ?? 0) > 0);
+      const spent = Math.max(f.g ?? 0, f.u ?? 0);
+      events.push({ x: ball.x, z: ball.z, hard: f.hit, giga: spent });
+      feel(f.hit, spent);
       return;
     }
     // A round frame: the leader's only, and no older than the last of theirs.
@@ -141,19 +174,24 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       if (dashAsked) { const d = dash(ball, dashTo ? { x: dashTo.x - ball.x, z: dashTo.z - ball.z } : input, now); if (d !== ball) { ball = d; dashed = true; lastDash = { vx: d.vx, vz: d.vz }; thump(2, true); } dashAsked = false; dashAim = null; }
       const wasAlive = ball.alive;
       ball = roll(ball, input, h, floe);
-      if (wasAlive && !ball.alive) { fellAt = now; events.push({ kind: 'splash', x: ball.x, z: ball.z, hard: 0 }); }
+      if (wasAlive && !ball.alive) fellAt = now;
       for (const o of around) {
         const f = o.frame;
         // Between rounds everyone bonks everyone; in a round, only those playing it.
         if (!f.a || (round.phase === 'play' && f.r !== playing)) continue;
-        const met = bonk(ball, ahead({ x: f.x, z: f.z, vx: f.vx, vz: f.vz, alive: true }, now - o.at));
+        const met = bonk(ball, ahead({ x: f.x, z: f.z, vx: f.vx, vz: f.vz, alive: true, y: f.y }, now - o.at), giga, f.g ?? 0);
         if (met.hit === 0) { ball = met.ball; continue; }
         // Taken a moment ago, from either side: only kept apart.
         if (now - (bonkedAt.get(o.key) ?? -Infinity) < BONK_AGAIN_MS) { ball = { ...ball, x: met.ball.x, z: met.ball.z }; continue; }
         ball = met.ball;
         bonkedAt.set(o.key, now);
-        links.sendTo(o.key, JSON.stringify(hitFrame(o.key, met.knock, met.hit)));
-        if (met.hit > 0.5) { events.push({ kind: 'bonk', x: (ball.x + f.x) / 2, z: (ball.z + f.z) / 2, hard: met.hit }); thump(met.hit); shake = Math.min(0.6, shake + met.hit * 0.04); }
+        links.sendTo(o.key, JSON.stringify(hitFrame(o.key, met.knock, met.hit, met.spent)));
+        if (met.hit >= FELT_HIT) {
+          felt(met.spent.mine > 0);
+          const spent = Math.max(met.spent.mine, met.spent.theirs);
+          events.push({ x: (ball.x + f.x) / 2, z: (ball.z + f.z) / 2, hard: met.hit, giga: spent });
+          feel(met.hit, spent);
+        }
       }
     }
     // Fell off between rounds: back in a moment.
@@ -163,7 +201,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       fellAt = null;
     }
     if (now - lastSent >= SEND_MS) {
-      links.broadcast(JSON.stringify(ballFrame(watching ? { ...ball, alive: false, y: SUNK_Y } : ball, playing, round.n, dashed)));
+      links.broadcast(JSON.stringify(ballFrame(watching ? { ...ball, alive: false, y: SUNK_Y } : ball, playing, round.n, dashed, giga)));
       dashed = false;
       lastSent = now;
     }
@@ -198,6 +236,18 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   const board = document.createElement('ol');
   board.className = 'bonk-board';
   board.setAttribute('aria-label', 'Rounds won');
+  const gigaBadge = document.createElement('div');
+  gigaBadge.className = 'bonk-giga';
+  /** The whole game lit up by a giga bonk, the mightier the brighter and longer: unless motion is asked to be kept down. */
+  const gigaFlash = document.createElement('div');
+  gigaFlash.className = 'bonk-flash';
+  const calm = matchMedia('(prefers-reduced-motion: reduce)');
+  const flash = (power: number) => {
+    if (calm.matches || !gigaFlash.animate) return;
+    const tier = gigaTier(power);
+    gigaFlash.style.background = lookOf(power).colour;
+    gigaFlash.animate([{ opacity: 0.15 + tier * 0.1 }, { opacity: 0 }], { duration: 250 + tier * 150, easing: 'ease-out' });
+  };
   const help = document.createElement('div');
   help.className = 'bonk-help';
   help.textContent = 'Arrows, WASD or the mouse held to roll · Space or the right button to dash · bonk everyone into the sea';
@@ -208,7 +258,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   dashButton.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); dashAsked = true; });
   const stick = document.createElement('div');
   stick.className = 'bonk-stick';
-  hud.append(banner, board, help, dashButton, stick);
+  hud.append(gigaFlash, banner, gigaBadge, board, help, dashButton, stick);
   host.append(hud);
 
   // A mouse there (a desktop, or a tablet with one): the camera for it, below. A finger on one still gets the stick.
@@ -346,7 +396,11 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   marker.rotation.x = -Math.PI / 2;
   scene.add(marker);
 
-  type Shown = { group: THREE.Group; body: THREE.Mesh; tag: THREE.Sprite; face: string; x: number; z: number; y: number; splashed: boolean; flash: number };
+  /** A ball on screen; `glow` and `rings`, round it while it is giga (`giga`, its power as last seen). */
+  type Shown = {
+    group: THREE.Group; body: THREE.Mesh; tag: THREE.Sprite; glow: THREE.Mesh; rings: THREE.Mesh[];
+    face: string; x: number; z: number; y: number; splashed: boolean; flash: number; giga: number;
+  };
   const shown = new Map<string, Shown>();
   const sphere = new THREE.SphereGeometry(BALL_RADIUS, 40, 28);
   const show = (key: string): Shown => {
@@ -359,14 +413,23 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     body.castShadow = true;
     const tag = nameTag(key === me ? 'You' : f.name, key === me);
     tag.position.y = BALL_RADIUS + 0.85;
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(BALL_RADIUS * 1.3, 32, 20), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.3, depthWrite: false }));
+    glow.visible = false;
+    const rings = [1.55, 1.75, 1.95].map((r) => {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(BALL_RADIUS * r, 0.07, 8, 56), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9 }));
+      ring.visible = false;
+      return ring;
+    });
     const group = new THREE.Group();
-    group.add(body, tag);
+    group.add(body, tag, glow, ...rings);
     scene.add(group);
-    s = { group, body, tag, face: id, x: 0, z: 0, y: 0, splashed: false, flash: 0 };
+    s = { group, body, tag, glow, rings, face: id, x: 0, z: 0, y: 0, splashed: false, flash: 0, giga: 0 };
     shown.set(key, s);
     return s;
   };
-  const pops: { sprite: THREE.Sprite; born: number }[] = [];
+  const pops: { sprite: THREE.Sprite; born: number; life: number }[] = [];
+  /** A giga bonk's shockwave over the floe, `size` times as wide by its end. */
+  const waves: { mesh: THREE.Mesh; born: number; life: number; size: number }[] = [];
   const drops: { points: THREE.Points; v: Float32Array; born: number }[] = [];
 
   function dispose(o: THREE.Object3D): void {
@@ -408,6 +471,9 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   if (context && isSoftware(context)) goLite();
 
   const tmp = new THREE.Quaternion();
+  const gigaColour = new THREE.Color();
+  const gigaGlow = new THREE.Color();
+  const white = new THREE.Color('#ffffff');
   const axis = new THREE.Vector3();
   function draw(now: number, dt: number): void {
     const ms = now - round.since;
@@ -430,7 +496,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
 
     // The balls: mine where it is, the others' eased toward where their apps last said, carried on.
     const keysShown = new Set<string>();
-    const place = (key: string, x: number, z: number, y: number, vx: number, vz: number, dashing: boolean) => {
+    const place = (key: string, x: number, z: number, y: number, vx: number, vz: number, dashing: boolean, power: number) => {
       const s = show(key);
       keysShown.add(key);
       const ease = key === me ? 1 : 1 - Math.exp(-dt * 18);
@@ -445,17 +511,42 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       if (dashing) s.flash = 1;
       s.flash = Math.max(0, s.flash - dt * 3);
       const speed = Math.hypot(vx, vz);
-      s.body.scale.setScalar(1 + s.flash * 0.15 - Math.min(speed, 15) * 0.004);
-      (s.body.material as THREE.MeshStandardMaterial).emissive.setRGB(s.flash * 0.6, s.flash * 0.5, s.flash * 0.1);
-      if (s.y < -0.4 && !s.splashed) { s.splashed = true; drops.push(burst(s.x, s.z, now)); if (key !== me) splash(); }
+      // Giga: the ball swells and glows in its giga's colour, rings wobbling round it; the mightier, the bigger, brighter
+      // and faster, with more rings, and the legendary one shimmers gold and white.
+      const tier = power > 0 ? gigaTier(power) : -1;
+      if (tier >= 0 && s.giga === 0 && s.group.visible) pop(`${lookOf(power).name.toUpperCase()}!`, lookOf(power).colour, s.x, s.z, now, 0.8 + tier * 0.1);
+      s.giga = power;
+      const pulse = tier >= 0 ? 0.5 + 0.5 * Math.sin(now / (140 - tier * 16)) : 0;
+      s.glow.visible = tier >= 0;
+      s.rings.forEach((r, i) => { r.visible = tier >= 0 && i <= tier / 2; });
+      s.body.scale.setScalar(1 + s.flash * 0.15 - Math.min(speed, 15) * 0.004 + (tier >= 0 ? 0.05 + tier * 0.02 + pulse * 0.05 : 0));
+      const emissive = (s.body.material as THREE.MeshStandardMaterial).emissive.setRGB(s.flash * 0.6, s.flash * 0.5, s.flash * 0.1);
+      if (tier >= 0) {
+        gigaColour.set(lookOf(power).colour);
+        if (tier === GIGA_LOOKS.length - 1) gigaColour.lerp(white, 0.2 + 0.2 * Math.sin(now / 70));
+        emissive.add(gigaGlow.copy(gigaColour).multiplyScalar(0.25 + tier * 0.08 + pulse * 0.3));
+        const glow = s.glow.material as THREE.MeshBasicMaterial;
+        glow.color.copy(gigaColour);
+        glow.opacity = 0.15 + tier * 0.05 + pulse * 0.2;
+        s.glow.scale.setScalar(1 + tier * 0.06 + pulse * 0.05);
+        const spin = t * (2 + tier * 0.6);
+        s.rings.forEach((r, i) => {
+          (r.material as THREE.MeshBasicMaterial).color.copy(gigaColour);
+          const a = spin + (i * 2 * Math.PI) / 3;
+          r.rotation.set(Math.PI / 2 + Math.sin(a) * 0.5, Math.cos(a) * 0.5, 0);
+        });
+      }
+      // In the water: a splash, heard when it goes in, a while after it went off for one thrown far by a giga; mine only
+      // when it fell, not when it was put under to watch a round.
+      if (s.y < -0.4 && !s.splashed) { s.splashed = true; drops.push(burst(s.x, s.z, now)); if (key !== me || fellAt !== null) splash(); }
       if (s.y >= 0) s.splashed = false;
     };
     const watching = playing === 0 && (round.phase === 'count' || round.phase === 'play');
-    if (!watching) place(me, ball.x, ball.z, ball.y, ball.vx, ball.vz, false);
+    if (!watching) place(me, ball.x, ball.z, ball.y, ball.vx, ball.vz, false, giga);
     for (const o of heard(now)) {
       const f = o.frame;
-      const a = ahead({ x: f.x, z: f.z, vx: f.vx, vz: f.vz, alive: f.a }, now - o.at);
-      place(o.key, a.x, a.z, f.y, f.vx, f.vz, f.d);
+      const a = ahead({ x: f.x, z: f.z, vx: f.vx, vz: f.vz, alive: f.a, y: f.y }, now - o.at);
+      place(o.key, a.x, a.z, f.y, f.vx, f.vz, f.d, f.g ?? 0);
     }
     for (const [key, s] of shown) if (!keysShown.has(key)) s.group.visible = false;
     marker.visible = !watching && ball.alive;
@@ -465,14 +556,26 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     (marker.material as THREE.MeshBasicMaterial).opacity = 0.55 + Math.sin(now / 200) * 0.3;
 
     for (const e of events.splice(0)) {
-      if (e.kind === 'splash') { splash(); continue; }
-      const p = popWord(e.hard > 9 ? 'BONK!!' : 'bonk!', e.hard > 9 ? '#ff5d73' : '#ffd23f');
-      p.position.set(e.x, 1.6, e.z);
-      scene.add(p);
-      pops.push({ sprite: p, born: now });
+      if (!e.giga) { pop(e.hard > 9 ? 'BONK!!' : 'bonk!', e.hard > 9 ? '#ff5d73' : '#ffd23f', e.x, e.z, now); continue; }
+      // A giga bonk: its word, a shockwave and sparks in its colour, and the game lit up, all as mighty as it was.
+      const tier = gigaTier(e.giga), look = lookOf(e.giga);
+      pop(look.word, look.colour, e.x, e.z, now, 1 + tier * 0.15, 900 + tier * 250);
+      const wave = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 64), new THREE.MeshBasicMaterial({ color: look.colour, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+      wave.rotation.x = -Math.PI / 2;
+      wave.position.set(e.x, 0.06 + bob, e.z);
+      scene.add(wave);
+      waves.push({ mesh: wave, born: now, life: 500 + tier * 120, size: 3 + tier * 2 });
+      drops.push(burst(e.x, e.z, now, look.colour, 40 + tier * 30, 0.8, 1 + tier * 0.3));
+      flash(e.giga);
+    }
+    for (const w of [...waves]) {
+      const age = (now - w.born) / w.life;
+      w.mesh.scale.setScalar(1 + Math.sqrt(Math.min(1, age)) * w.size);
+      (w.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - age);
+      if (age >= 1) { scene.remove(w.mesh); dispose(w.mesh); waves.splice(waves.indexOf(w), 1); }
     }
     for (const p of [...pops]) {
-      const age = (now - p.born) / 700;
+      const age = (now - p.born) / p.life;
       p.sprite.position.y += dt * 1.6;
       (p.sprite.material as THREE.SpriteMaterial).opacity = 1 - age;
       if (age >= 1) { scene.remove(p.sprite); dispose(p.sprite); pops.splice(pops.indexOf(p), 1); }
@@ -497,25 +600,36 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     fog.near = 30 * back;
     fog.far = 70 * back;
     const still = watching || desk;
-    const fx = still ? 0 : ball.x * 0.2, fz = still ? 0 : ball.z * 0.2;
+    // Toward my ball no further than the floe's edge: one a giga threw far out to sea would take the floe out of sight.
+    const toEdge = Math.min(1, FLOE_START / Math.max(1e-6, Math.hypot(ball.x, ball.z)));
+    const fx = still ? 0 : ball.x * toEdge * 0.2, fz = still ? 0 : ball.z * toEdge * 0.2;
     shake = Math.max(0, shake - dt * 1.5);
     camera.position.set(fx + (Math.random() - 0.5) * shake, 15 * far + (Math.random() - 0.5) * shake, fz + 13 * far);
     camera.lookAt(fx, -0.5, fz + 0.5);
     renderer?.render(scene, camera);
   }
 
-  function burst(x: number, z: number, now: number): (typeof drops)[number] {
-    const n = 60;
+  /** A word popped up at a spot on the floe, `size` times as big as a bonk's, gone in `life` ms. */
+  function pop(text: string, colour: string, x: number, z: number, now: number, size = 1, life = 700): void {
+    const p = popWord(text, colour);
+    p.scale.multiplyScalar(size);
+    p.position.set(x, 1.6, z);
+    scene.add(p);
+    pops.push({ sprite: p, born: now, life });
+  }
+
+  /** Drops flying up from a spot: of water where a ball went in; `spread` times as wide for a giga bonk's sparks. */
+  function burst(x: number, z: number, now: number, colour = '#d9f3ff', n = 60, y = -0.5, spread = 1): (typeof drops)[number] {
     const at = new Float32Array(n * 3);
     const v = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2, s = 1 + Math.random() * 3;
-      at.set([x, -0.5, z], i * 3);
+      const a = Math.random() * Math.PI * 2, s = (1 + Math.random() * 3) * spread;
+      at.set([x, y, z], i * 3);
       v.set([Math.cos(a) * s, 4 + Math.random() * 5, Math.sin(a) * s], i * 3);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(at, 3));
-    const points = new THREE.Points(g, new THREE.PointsMaterial({ color: '#d9f3ff', size: 0.22, transparent: true }));
+    const points = new THREE.Points(g, new THREE.PointsMaterial({ color: colour, size: 0.22, transparent: true }));
     scene.add(points);
     return { points, v, born: now };
   }
@@ -538,10 +652,14 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     else if (round.phase === 'play') text = watching ? 'You are in the next round' : ms < 900 ? 'Bonk!' : !ball.alive ? 'Splash! You are out' : '';
     else { const w = name(round.winner); text = w === null ? 'Splash! Nobody is left' : w === 'You' ? '🏆 You win!' : `🏆 ${w} wins!`; }
     const wins = Object.entries(round.wins).sort((a, b) => b[1] - a[1]);
-    const key = `${text}|${JSON.stringify(wins)}|${round.phase}`;
+    const gigaText = giga > 0 && !watching ? `${lookOf(giga).name}: your next bonk` : '';
+    const key = `${text}|${JSON.stringify(wins)}|${round.phase}|${gigaText}`;
     if (key === hudKey) return;
     hudKey = key;
     banner.textContent = text;
+    gigaBadge.textContent = gigaText;
+    gigaBadge.dataset['tier'] = giga > 0 ? String(gigaTier(giga)) : '';
+    gigaBadge.style.setProperty('--giga', giga > 0 ? lookOf(giga).colour : '');
     banner.dataset['phase'] = round.phase;
     banner.classList.toggle('big', round.phase === 'count' || (round.phase === 'play' && text === 'Bonk!') || round.phase === 'over');
     board.replaceChildren(...wins.map(([who, n]) => { const li = document.createElement('li'); li.textContent = `${name(who) ?? 'Someone'} ${'🏆'.repeat(Math.min(n, 5))}${n > 5 ? ` ${n}` : ''}`; return li; }));
@@ -574,11 +692,13 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       const now = performance.now();
       return {
         phase: round.phase, round: round.n, leader, playing: playing !== 0, spectating: playing === 0 && (round.phase === 'count' || round.phase === 'play'), webgl: renderer !== null,
-        me: { x: ball.x, z: ball.z, alive: ball.alive, lastDash }, aim: aimAt,
-        others: heard(now).map((o) => ({ key: o.key, x: o.frame.x, z: o.frame.z, alive: o.frame.a })),
+        me: { x: ball.x, z: ball.z, alive: ball.alive, lastDash, giga, gigaIn: gigaLeft }, aim: aimAt,
+        others: heard(now).map((o) => ({ key: o.key, x: o.frame.x, z: o.frame.z, alive: o.frame.a, giga: o.frame.g ?? 0 })),
         wins: { ...round.wins }, connected: links.connected().length,
       };
     };
+    // Giga now, for the suite: a hundred bonks would take it minutes.
+    (window as unknown as { __daveGiga?: (power: number) => void }).__daveGiga = (power) => { giga = power; };
   }
 
   return () => {
@@ -602,6 +722,6 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     renderer?.dispose();
     renderer?.domElement.remove();
     hud.remove();
-    if (exposeHooks) delete (window as unknown as { __daveGame?: unknown }).__daveGame;
+    if (exposeHooks) { delete (window as unknown as { __daveGame?: unknown }).__daveGame; delete (window as unknown as { __daveGiga?: unknown }).__daveGiga; }
   };
 }

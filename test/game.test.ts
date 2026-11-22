@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_GAME_BODY_BYTES, current, currents, gameLinkId, gameOfLink, gameText, parseGame, sameGame, type Game } from '../src/core/game';
 import {
-  BALL_RADIUS, COUNT_MS, DASH_COOLDOWN_MS, DASH_SPEED, FLOE_MID, FLOE_START, MAX_ROLL, OVER_MS, SHRINK_END_MS, SHRINK_MID_MS, SUNK_Y,
-  advance, ahead, ballAt, ballFrame, bonk, dash, hitFrame, knocked, toward, firstRound, floeRadius, leaderOf, parseFrame, roll, roundFrame, roundOf, spawnAt, steer, whoOf,
+  BALL_RADIUS, COUNT_MS, DASH_COOLDOWN_MS, DASH_SPEED, FELT_HIT, FLOE_MID, FLOE_START, GIGA_EVERY, GIGA_LOW, GIGA_MOST, GIGA_TOP, SKY_TOP, MAX_ROLL, OVER_MS, SHRINK_END_MS, SHRINK_MID_MS, SUNK_Y,
+  advance, ahead, ballAt, ballFrame, bonk, canDash, dash, giga, gigaIn, gigaPower, gigaTier, hitFrame, knocked, toward, firstRound, floeRadius, leaderOf, parseFrame, roll, roundFrame, roundOf, spawnAt, steer, whoOf,
   type Ball, type Counted, type Round,
 } from '../src/core/bonk';
 
@@ -141,7 +141,86 @@ describe('Bonk, a ball on the floe (core/bonk.ts)', () => {
     expect(given.vx).toBeCloseTo(own.vx);
     expect(given.vz).toBeCloseTo(own.vz);
     expect(knocked({ ...standing, alive: false }, mine.knock).vx).toBe(-0.5);
-    expect(bonk(runner, ballAt(5, 0)).knock).toEqual({ vx: 0, vz: 0 });
+    expect(bonk(runner, ballAt(5, 0)).knock).toEqual({ vx: 0, vz: 0, up: 0 });
+  });
+
+  it('goes giga roughly every hundred bonks, mostly a little harder, now and then far harder, with no top', () => {
+    expect(gigaIn(0)).toBe(1);
+    expect(gigaIn(0.999_999)).toBe(2 * GIGA_EVERY - 1);
+    const waits = Array.from({ length: 1000 }, (_, i) => gigaIn((i + 0.5) / 1000));
+    expect(waits.reduce((a, b) => a + b, 0) / waits.length).toBeCloseTo(GIGA_EVERY, 0);
+    expect(gigaPower(0)).toBe(GIGA_LOW);
+    expect(gigaPower(0.5)).toBeCloseTo(3.17, 2);
+    // A hundred times or more, one giga in some 350; a thousand, one in some 11,000; and on.
+    expect(gigaPower(1 - 1 / 350)).toBeCloseTo(100, -1);
+    expect(gigaPower(1 - 1 / 11_000)).toBeGreaterThan(900);
+    expect(gigaPower(1 - 1e-12)).toBe(GIGA_MOST);
+    // How mighty they look, of 100,000 evenly spread.
+    const tiers = [0, 0, 0, 0, 0, 0];
+    for (let i = 0; i < 100_000; i++) tiers[gigaTier(gigaPower((i + 0.5) / 100_000))]! += 1;
+    expect(tiers.map((n) => Math.round(n / 100))).toEqual([454, 292, 164, 67, 20, 3]);
+    expect(gigaTier(0)).toBe(-1);
+  });
+
+  it('bonks giga: the giga ball\'s bonk is that much harder on the other, whoever ran into whom, and spent', () => {
+    const runner: Ball = { ...ballAt(0, 0), vx: 6 };
+    const standing: Ball = ballAt(2 * BALL_RADIUS - 0.2, 0);
+    const plain = bonk(runner, standing);
+    expect(plain.spent).toEqual({ mine: 0, theirs: 0 });
+    expect(plain.knock.up).toBe(0);
+    // The runner is giga, 3 times: its knock is 3 times as big, and throws a little up; its own bounce is as it was.
+    const giga3 = bonk(runner, standing, 3);
+    expect(giga3.knock.vx).toBeCloseTo(plain.knock.vx * 3);
+    expect(giga3.knock.up).toBeGreaterThan(0);
+    expect(giga3.ball.vx).toBeCloseTo(plain.ball.vx);
+    expect(giga3.ball.vy).toBe(0);
+    expect(giga3.spent).toEqual({ mine: 3, theirs: 0 });
+    // Harder: along the floe it stops at the top, and the rest throws it up the higher, to the sky's top.
+    const giga100 = bonk(runner, standing, 100);
+    expect(giga100.knock.vx).toBeCloseTo(GIGA_TOP);
+    expect(giga100.knock.up).toBeGreaterThan(giga3.knock.up);
+    expect(bonk(runner, standing, GIGA_MOST).knock.up).toBe(SKY_TOP);
+    // The one run into is giga: the runner's own app gives its ball the bounce, that much harder, and says it spent the
+    // other's; the other's app, working it out, gives its own knock to the runner the same.
+    const into = bonk(runner, standing, 0, 4);
+    expect(into.ball.vx - runner.vx).toBeCloseTo((plain.ball.vx - runner.vx) * 4);
+    expect(into.knock).toEqual(plain.knock);
+    expect(into.spent).toEqual({ mine: 0, theirs: 4 });
+    const back = bonk(standing, runner, 4).knock;
+    expect(back.vx).toBeCloseTo(into.ball.vx - runner.vx);
+    expect(back.up).toBeCloseTo(into.ball.vy);
+    // A touch too light to feel spends no giga.
+    const touch = bonk({ ...runner, vx: FELT_HIT / 2 }, standing, 50, 50);
+    expect(touch.spent).toEqual({ mine: 0, theirs: 0 });
+    expect(touch.knock).toEqual(bonk({ ...runner, vx: FELT_HIT / 2 }, standing).knock);
+    expect(bonk(runner, ballAt(5, 0), 50).spent).toEqual({ mine: 0, theirs: 0 });
+    expect(giga(-2, 0)).toEqual({ along: -2, up: 0 });
+  });
+
+  it('throws a ball up with a giga: it flies, meets nobody, cannot dash, and comes down on the floe or in the sea', () => {
+    const thrown = knocked(ballAt(0, 0), { vx: 4, vz: 0, up: 12 });
+    expect(thrown.vy).toBe(12);
+    let b = roll(thrown, { x: -1, z: 0 }, 0.05, FLOE_START);
+    expect(b.y).toBeGreaterThan(0);
+    expect(b.vx).toBeLessThan(4); // slowed by the air, not steered back
+    expect(b.vx).toBeGreaterThan(3.5);
+    expect(canDash(b, 1e9)).toBe(false);
+    // Over a ball's height, it meets nobody.
+    b = roll(roll(b, { x: 0, z: 0 }, 0.05, FLOE_START), { x: 0, z: 0 }, 0.05, FLOE_START);
+    expect(b.y).toBeGreaterThan(BALL_RADIUS);
+    expect(bonk(b, { ...ballAt(b.x + 0.5, 0), vx: -3 }).hit).toBe(0);
+    expect(bonk({ ...ballAt(0, 0), vx: 3 }, { ...ballAt(0.5, 0), y: 3 }).hit).toBe(0);
+    for (let i = 0; i < 40 && b.y > 0; i++) b = roll(b, { x: 0, z: 0 }, 0.05, FLOE_START);
+    expect(b).toMatchObject({ alive: true, y: 0, vy: 0 });
+    expect(b.x).toBeGreaterThan(1);
+    // Out over the sea, still in the air: out already, and on down into it.
+    let far = knocked({ ...ballAt(FLOE_START - 1, 0), vx: 0 }, { vx: 10, vz: 0, up: 8 });
+    for (let i = 0; i < 40 && far.alive; i++) far = roll(far, { x: 0, z: 0 }, 0.05, FLOE_START);
+    expect(far).toMatchObject({ alive: false });
+    expect(far.x).toBeGreaterThan(FLOE_START);
+    expect(far.y).toBeGreaterThan(0);
+    for (let i = 0; i < 80; i++) far = roll(far, { x: 0, z: 0 }, 0.05, FLOE_START);
+    expect(far.y).toBe(SUNK_Y);
   });
 
   it('puts every player round a ring on the floe, the same for everyone, none on another', () => {
@@ -225,8 +304,12 @@ describe('Bonk, on the wire (core/bonk.ts)', () => {
     const f = roundFrame(r, 1500, 7);
     expect(parseFrame(JSON.stringify(f))).toEqual(f);
     expect(roundOf(f, 90_000)).toEqual({ ...r, since: 89_500 });
-    const h = hitFrame(BOB, { vx: 7.0711, vz: -1 }, 6.5);
+    const h = hitFrame(BOB, { vx: 7.0711, vz: -1, up: 0 }, 6.5);
     expect(parseFrame(JSON.stringify(h))).toEqual({ k: 'h', to: B, vx: 7.07, vz: -1, hit: 6.5 });
+    // A giga ball, and a bonk that spent a giga or two.
+    expect(parseFrame(JSON.stringify(ballFrame(ballAt(0, 0), 1, 1, false, 37.5)))).toMatchObject({ g: 37.5 });
+    expect(parseFrame(JSON.stringify(hitFrame(BOB, { vx: 60, vz: 0, up: 21.234 }, 6.5, { mine: 37, theirs: 0 })))).toEqual({ k: 'h', to: B, vx: 60, vz: 0, hit: 6.5, up: 21.23, g: 37 });
+    expect(parseFrame(JSON.stringify(hitFrame(BOB, { vx: 1, vz: 0, up: 0 }, 6.5, { mine: 2, theirs: GIGA_MOST })))).toMatchObject({ g: 2, u: GIGA_MOST });
   });
 
   it('drops anything off', () => {
@@ -236,9 +319,13 @@ describe('Bonk, on the wire (core/bonk.ts)', () => {
     }
     const ball = { k: 'b', r: 0, n: 0, x: 0, z: 0, vx: 0, vz: 0, y: 0, a: true, d: false };
     expect(parseFrame(JSON.stringify(ball))).toEqual(ball);
+    // A giga off is taken as none: the ball still moves.
+    for (const g of [1, 2e6, null, '5']) expect(parseFrame(JSON.stringify({ ...ball, g }))).toEqual(ball);
     for (const off of [{ x: 1e9 }, { x: 'NaN' }, { a: 1 }, { r: 0.5 }, { n: -1 }, { k: 'x' }]) expect(parseFrame(JSON.stringify({ ...ball, ...off }))).toBeNull();
     const hit = { k: 'h', to: A, vx: 1, vz: 1, hit: 2 };
     expect(parseFrame(JSON.stringify(hit))).toEqual(hit);
+    for (const off of [{ g: 0 }, { u: 2e6 }, { u: '5' }, { up: -1 }, { up: 'x' }]) expect(parseFrame(JSON.stringify({ ...hit, ...off }))).toEqual(hit);
+    expect(parseFrame(JSON.stringify({ ...hit, up: 500 }))).toEqual({ ...hit, up: SKY_TOP });
     for (const off of [{ to: 'x' }, { vx: 1000 }, { hit: -1 }, { vz: null }]) expect(parseFrame(JSON.stringify({ ...hit, ...off }))).toBeNull();
     expect(parseFrame('nope')).toBeNull();
     expect(parseFrame(new ArrayBuffer(4))).toBeNull();

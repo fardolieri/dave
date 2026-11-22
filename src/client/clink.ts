@@ -371,7 +371,7 @@ export function mountClink(host: HTMLElement, opts: { me: string; links: GameLin
     const s = shown.get(key);
     if (!s) return;
     const p = popWord(text, colour);
-    p.scale.set(3.4, 1.7, 1);
+    p.scale.set((3.4 * p.scale.x) / 2.4, 1.7, 1); // a longer word wider (popWord)
     s.group.add(p);
     p.position.set(0, 3.2, 0);
     s.pops.push({ s: p, born: now });

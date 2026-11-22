@@ -55,15 +55,25 @@ test('a game: started from the call in one click, joined from its tile, rounds c
   const aliceWho = (await view(bob))!.others[0]!.key.slice(0, 11); // as the game's frames carry a player (core/bonk.ts, `whoOf`)
   const bobWho = (await view(alice))!.others[0]!.key.slice(0, 11);
 
-  // Alice rolls into Bob, who stands still: the bonk sends him off the floe, and Alice wins the round, on both screens.
-  // Either app may work the bonk out (core/bonk.ts, `bonk`, `HitFrame`), as the timing of the two apps decides; the
-  // knock's sums are test/game.test.ts's.
+  // Alice's ball goes giga, 50 times, a hyper giga (as one in some 50 does, after some hundred bonks): she is told how
+  // mighty, never how many times, and Bob sees it.
+  await alice.page.evaluate(() => (window as unknown as { __daveGiga: (power: number) => void }).__daveGiga(50));
+  await expect(tile(alice).locator('.bonk-giga')).toHaveText('Hyper giga: your next bonk');
+  await expect.poll(async () => (await view(bob))!.others[0]!.giga, { message: 'Bob sees Alice giga' }).toBe(50);
+
+  // Alice rolls into Bob, who stands still: the giga bonk sends him far out to sea, and Alice wins the round, on both
+  // screens. Either app may work the bonk out (core/bonk.ts, `bonk`, `HitFrame`), as the timing of the two apps decides;
+  // the knock's sums are test/game.test.ts's.
   await tile(alice).locator('.bonk').click();
   const bobFrom = (await view(bob))!.me;
   const toward = bobFrom.z > (await view(alice))!.me.z ? 'ArrowDown' : 'ArrowUp';
   await alice.page.keyboard.down(toward);
   await expect.poll(async () => { const me = (await view(bob))!.me; return !me.alive || Math.abs(me.z - bobFrom.z) > 0.5; }, { timeout: 10_000, intervals: [50], message: 'Bob is pushed' }).toBe(true);
   await alice.page.keyboard.up(toward);
+  // A plain bonk lands him a few steps past the edge (FLOE_START, 9); a giga one throws him up and beyond 20.
+  await expect.poll(async () => { const me = (await view(bob))!.me; return Math.hypot(me.x, me.z); }, { timeout: 5000, message: 'Bob flies far' }).toBeGreaterThan(20);
+  await expect.poll(async () => (await view(alice))!.me.giga, { message: 'the giga is spent' }).toBe(0);
+  await expect(tile(alice).locator('.bonk-giga')).toBeHidden();
   for (const f of [alice, bob]) await expect.poll(async () => (await view(f))!.wins, { timeout: 15_000, message: `${f.name} sees Alice win` }).toEqual({ [aliceWho]: 1 });
   // The winner is said for a few seconds, and the wins stay up.
   await expect(tile(alice).locator('.bonk-board')).toHaveText('You 🏆');

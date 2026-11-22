@@ -65,23 +65,27 @@ export function nameTag(text: string, mine: boolean): THREE.Sprite {
   return s;
 }
 
-/** A word that pops up where two balls met, rises and fades. */
+/** A word that pops up where two balls met, rises and fades: a longer one wider, its letters as big. */
 export function popWord(text: string, colour: string): THREE.Sprite {
   const c = document.createElement('canvas');
-  c.width = 256; c.height = 128;
+  const font = '900 72px system-ui, sans-serif';
+  const measure = c.getContext('2d')!;
+  measure.font = font;
+  c.width = Math.max(256, Math.ceil(measure.measureText(text).width) + 24); c.height = 128;
+  // A canvas sized anew starts over: its font too.
   const g = c.getContext('2d')!;
-  g.font = '900 72px system-ui, sans-serif';
+  g.font = font;
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.lineWidth = 12;
   g.strokeStyle = '#0b2033';
-  g.strokeText(text, 128, 64);
+  g.strokeText(text, c.width / 2, 64);
   g.fillStyle = colour;
-  g.fillText(text, 128, 64);
+  g.fillText(text, c.width / 2, 64);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true }));
-  s.scale.set(2.4, 1.2, 1);
+  s.scale.set((2.4 * c.width) / 256, 1.2, 1);
   s.renderOrder = 11;
   return s;
 }
