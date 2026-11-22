@@ -118,12 +118,13 @@ test('a game link opens though its first offer was answered too late: only the n
   alice.wire.down = bob.wire.down = hold;
   await tile(bob).click();
   await expect.poll(() => offers, { timeout: 40_000, message: 'the offering side offers again' }).toBe(2);
-  // The link opens, and the answering side answered once, the newest offer: an answer to the first would have been taken
-  // for the second's, and the link opened only on another try (Chromium, when the wrong one failed) or not at all (Firefox,
-  // whose ICE then failed).
+  // The link opens, and the first offer was never answered: an answer to it would have been taken for the second's, and
+  // the link opened only on another try (Chromium, once the wrong one failed) or not at all (Firefox, whose ICE then
+  // failed). Answering every offer, the link opens with as many answers as offers; skipping the first, with fewer, however
+  // many tries a slow link takes.
   for (const f of [alice, bob]) await expect.poll(async () => (await view(f))?.connected, { timeout: 45_000, message: `${f.name}'s game link opens` }).toBe(1);
-  const answers = [alice, bob].flatMap((f) => f.wire.log.filter((l) => l.dir === 'up' && l.frame.includes('"link":"game-') && l.frame.includes('"type":"answer"')));
-  expect(answers).toHaveLength(1);
+  const sent = (type: string) => [alice, bob].flatMap((f) => f.wire.log.filter((l) => l.dir === 'up' && l.frame.includes('"link":"game-') && l.frame.includes(`"type":"${type}"`))).length;
+  expect(sent('answer')).toBeLessThan(sent('offer'));
 });
 
 test('games of different kinds go on side by side, each linking only its own players, and a click on another moves a friend over', async ({ crowd }) => {
