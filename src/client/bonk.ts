@@ -245,17 +245,21 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     sticked = { x: 0, z: 0 };
   };
   const onPointerMove = (e: PointerEvent) => {
-    if (held?.id === e.pointerId) {
-      held = { ...held, x: e.clientX, y: e.clientY };
-      // The right button pressed while the left is held comes as a move, not a press.
-      if (e.button === 2 && e.buttons & 2) dashAsked = true;
+    // A mouse button pressed or let go while another is down comes as a move, not a press or a let-go.
+    if (controls === 'follow' && e.pointerType === 'mouse' && e.target instanceof Node && host.contains(e.target)) {
+      if (e.button === 2 && e.buttons & 2) { dashAsked = true; dashAim = { x: e.clientX, y: e.clientY }; }
+      if (e.button === 0 && e.buttons & 1 && !held) { held = { id: e.pointerId, x: e.clientX, y: e.clientY }; try { host.setPointerCapture(e.pointerId); } catch { /* gone already */ } }
+      if (e.button === 0 && !(e.buttons & 1) && held?.id === e.pointerId) held = null;
     }
+    if (held?.id === e.pointerId) held = { ...held, x: e.clientX, y: e.clientY };
     if (touch?.id === e.pointerId) sticked = steer((e.clientX - touch.x) / 45, (e.clientY - touch.y) / 45);
   };
   const onPointerUp = (e: PointerEvent) => {
     if (held?.id === e.pointerId) held = null;
     if (touch?.id === e.pointerId) letGo();
   };
+  // Only the game's own capture: a finger's first capture, on what it went down on, is not the hold.
+  const onLostCapture = (e: PointerEvent) => { if (e.target === host) onPointerUp(e); };
   const onContextMenu = (e: Event) => { if (controls === 'follow') e.preventDefault(); };
   const showControls = () => {
     const follow = controls === 'follow';
@@ -265,7 +269,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       ? 'The ball rolls to where you hold your finger or the mouse; the right mouse button dashes. Tap for the stick.'
       : 'Drag from where your finger goes down to roll. Tap to have the ball follow your finger or the mouse instead.';
     host.classList.toggle('bonk-follow', follow);
-    if (renderer) help.textContent = follow ? 'Hold the mouse where to roll, or arrows / WASD · right button or Space to dash · bonk everyone into the sea' : 'Arrows or WASD to roll · Space to dash · bonk everyone into the sea';
+    if (renderer) help.textContent = follow ? 'Hold the mouse where to roll · right button or Space to dash' : 'Arrows or WASD to roll · Space to dash · bonk everyone into the sea';
   };
   // Down on it does not take the focus from the game, nor start a stick under it.
   controlsButton.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); });
@@ -278,7 +282,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   });
   host.addEventListener('pointerdown', onPointerDown);
   host.addEventListener('contextmenu', onContextMenu);
-  host.addEventListener('lostpointercapture', onPointerUp);
+  host.addEventListener('lostpointercapture', onLostCapture);
   window.addEventListener('pointermove', onPointerMove);
   window.addEventListener('pointerup', onPointerUp);
   window.addEventListener('pointercancel', onPointerUp);
@@ -607,7 +611,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     host.removeEventListener('blur', onBlur);
     host.removeEventListener('pointerdown', onPointerDown);
     host.removeEventListener('contextmenu', onContextMenu);
-    host.removeEventListener('lostpointercapture', onPointerUp);
+    host.removeEventListener('lostpointercapture', onLostCapture);
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
     window.removeEventListener('pointercancel', onPointerUp);
