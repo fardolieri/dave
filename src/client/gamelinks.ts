@@ -42,6 +42,12 @@ export function createGameLinks(opts: { identity: LocalIdentity; send: (m: Clien
   const changes = new Set<() => void>();
   const chain = keyedChain((e) => { if (e !== CLOSED) console.error('game link signal failed', e); });
   const changed = () => { for (const f of changes) f(); };
+  /**
+   * How many offers each player has sent me, counted as they come in, before their turn in the chain: an offer with a
+   * newer one behind it is not answered. The newer one took its place on their side (`open` closes the link it replaces),
+   * and an answer to it, late, would be taken there for the newer one's.
+   */
+  const offered = new Map<string, number>();
 
   const wanted = (peer: string, game: string): boolean => want !== null && want.game === game && want.peers.has(peer);
 
@@ -115,7 +121,7 @@ export function createGameLinks(opts: { identity: LocalIdentity; send: (m: Clien
     });
   }
 
-  async function onLink(from: string, data: LinkData, game: string): Promise<void> {
+  async function onLink(from: string, data: LinkData, game: string, offer: number): Promise<void> {
     let link = links.get(from);
     if (data.description !== undefined) {
       const description = data.description as RTCSessionDescriptionInit;
@@ -125,6 +131,8 @@ export function createGameLinks(opts: { identity: LocalIdentity; send: (m: Clien
         // Only from the side that offers, and for the game I play, though presence may not list the friend in it yet (they
         // just came in). One again (the friend reloaded) takes the old one's place.
         if (from > me || want?.game !== game) return;
+        // A page that did not run for a while (busy drawing) finds their next offer behind this one: that one is answered.
+        if (offered.get(from) !== offer) return;
         const servers = await opts.iceServers();
         if (want?.game !== game) return; // left it meanwhile
         link = open(from, game, servers);
@@ -149,7 +157,11 @@ export function createGameLinks(opts: { identity: LocalIdentity; send: (m: Clien
     /** A `link` frame of a game link, from the Room. */
     onLink(from: string, data: LinkData): void {
       const game = gameOfLink(data.link);
-      if (game) void chain(from, () => onLink(from, data, game));
+      if (!game) return;
+      const isOffer = (data.description as { type?: unknown } | undefined)?.type === 'offer';
+      const offer = isOffer ? (offered.get(from) ?? 0) + 1 : 0;
+      if (isOffer) offered.set(from, offer);
+      void chain(from, () => onLink(from, data, game, offer));
     },
     /**
      * The game I play (its id) and who else in the call plays it; null for none. Links to players who left it close,
