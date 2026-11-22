@@ -1,23 +1,21 @@
 // Clink on screen (core/clink.ts): the table, the tower of coins in its middle, everyone's chips round it, in three.js;
-// the stakes, the grab, double or nothing and the shop, as buttons and keys; the sounds; the match and its tower, run by
-// the leader (core/rounds.ts), followed by everyone else. Loaded only once a friend plays it (client/Game.tsx).
+// the stakes, the grab, double or nothing and the shop, as buttons and keys; the sounds. What goes on at the table (who
+// leads, the match, the climb, my seat, the frames) is core/clinktable.ts's. Loaded only once a friend plays it
+// (client/Game.tsx).
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {
   CLIMBS, COUNT_MS, FELL, MULTS, OFF, RIDING, SHOP, TOP, UPGRADES,
-  advance, buy, canFlip, climbFrame, climbOf, costOf, earn, flip, flipStake, follow, grab, newSeat, nextOdds, parseFrame, payout, raiseOf, seatFrame,
-  type Climb, type ClinkView, type Counted, type Seat, type SeatFrame, type Share, type Upgrade,
+  costOf, flipStake, nextOdds, payout, raiseOf,
+  type ClinkView, type Share, type Upgrade,
 } from '../core/clink';
-import { firstRound, leaderOf, roundFrame, roundOf, whoOf, type Round } from '../core/rounds';
+import { createTable } from '../core/clinktable';
+import { whoOf } from '../core/rounds';
 import type { GameLinks } from './gamelinks';
 import { exposeHooks } from './hooks';
 import { cueContext } from './sound';
 import { isTyping, nameTag, popWord, skin, threeColourOf, thump, type Face } from './gamekit';
 
-const SEND_MS = 100;
-const ROUND_SEND_MS = 250;
-const CLIMB_SEND_MS = 150;
-const HEARD_MS = 2500;
 /** The tower: a coin's radius and thickness, where the first sits, how long the next takes to drop onto it. */
 const COIN_R = 1;
 const COIN_H = 0.24;
@@ -43,8 +41,6 @@ function isSoftware(gl: WebGL2RenderingContext): boolean {
   }
   return /SwiftShader|llvmpipe|softpipe|Software/i.test(name);
 }
-
-type Other = { key: string; frame: SeatFrame; at: number };
 
 /** Chips as they are read: in full up to ten thousand, then 12.3K, 4.56M and so on. */
 export function chipsText(n: number): string {
@@ -128,155 +124,21 @@ function seatAngle(i: number, n: number): number {
 export function mountClink(host: HTMLElement, opts: { me: string; links: GameLinks; faceOf: (key: string) => Face }): () => void {
   const { me, links } = opts;
   const myWho = whoOf(me);
-  const others = new Map<string, Other>();
-  let round: Round = firstRound(performance.now());
-  let climb: Climb | null = null;
-  let seat: Seat = newSeat();
-  /** The match I play; 0 while I watch one, or none is on (waiting, I practise). */
-  let playing = 0;
-  let leader: string | null = me;
-  const roundSeq = new Map<string, number>();
-  const climbSeq = new Map<string, number>();
-  let sentQ = 0;
-  let last = performance.now();
-  let lastSeatSent = 0, lastRoundSent = 0, lastClimbSent = 0;
   /** For tests (`window.__daveClinkRig`): what the leader's every roll comes out as; null for chance. */
   let rig: number | null = null;
-  const rand = (): number => rig ?? Math.random();
-
-  type Ev =
-    | { kind: 'land'; h: number; gold: boolean } | { kind: 'fell' } | { kind: 'top' } | { kind: 'grab'; who: string; won: number; h: number }
-    | { kind: 'gilded'; who: string; amount: number } | { kind: 'flip'; who: string; win: boolean; amount: number } | { kind: 'interest'; amount: number }
-    | { kind: 'beep' } | { kind: 'go' } | { kind: 'won' };
-  const events: Ev[] = [];
-  let lastBeep = -1;
-
-  const watching = () => playing === 0 && (round.phase === 'count' || round.phase === 'play');
-  /** Whether my seat is in the climb going on: while waiting, every climb is practice for whoever is there. */
-  const seated = () => round.phase === 'wait' || (round.phase === 'play' && playing === round.n && playing > 0);
-  const heard = (now: number): Other[] => [...others.values()].filter((o) => now - o.at < HEARD_MS);
+  // Who leads, the round, the climb, my seat and the frames: the table's (core/clinktable.ts). Here: the screen.
+  const table = createTable(me, links, () => rig ?? Math.random(), () => performance.now());
+  let last = performance.now();
+  const step = (now: number) => { last = now; table.step(now, document.visibilityState !== 'hidden'); };
+  const { watching, seated } = table;
+  /** Who is at the table: everyone in it, those away a while too. */
+  const atTable = (now: number) => table.present(now);
   const worth = (s: { chips: number; stake: number; at: number }) => s.chips + (s.at === RIDING ? s.stake : 0);
-
-  const took = (next: Round) => {
-    const was = round;
-    round = next;
-    if (next.n === was.n && next.phase === was.phase) return;
-    if (next.phase === 'count') {
-      playing = next.players.includes(myWho) ? next.n : 0;
-      seat = { ...newSeat(), share: seat.share };
-      climb = null;
-    } else if (next.phase === 'play') {
-      if (playing !== next.n) playing = 0;
-      else events.push({ kind: 'go' });
-    } else if (next.phase === 'wait') {
-      playing = 0;
-      seat = { ...newSeat(), share: seat.share };
-      climb = null;
-    } else if (next.phase === 'over') {
-      climb = null;
-      if (next.winner === myWho && playing === next.n) events.push({ kind: 'won' });
-    }
-  };
-
-  /** The climb as it now stands, from the leader's run or its frames; what changed, as events. */
-  const tookClimb = (next: Climb | null) => {
-    const was = climb;
-    climb = next;
-    if (!next || !was || next.c !== was.c) {
-      // A tower first seen already fallen is not put up to fall again.
-      if (next && next.fell >= 0 && next.h < TOP) toppled = next.c;
-      return;
-    }
-    for (let k = was.h + 1; k <= next.h; k++) events.push({ kind: 'land', h: k, gold: next.gold.some(([g]) => g === k) });
-    if (next.fell >= 0 && was.fell < 0) events.push({ kind: next.h >= TOP ? 'top' : 'fell' });
-  };
-
-  const offFrames = links.listen((from, data) => {
-    const f = parseFrame(data);
-    if (!f) return;
-    const now = performance.now();
-    if (f.k === 's') {
-      const was = others.get(from)?.frame;
-      others.set(from, { key: from, frame: f, at: now });
-      if (was && was.c === f.c) {
-        if (was.a === RIDING && f.a >= 0) events.push({ kind: 'grab', who: from, won: f.w, h: f.a });
-        if (f.g > was.g) events.push({ kind: 'gilded', who: from, amount: f.g - was.g });
-        if (was.f === 0 && f.f !== 0) events.push({ kind: 'flip', who: from, win: f.f === 1, amount: Math.max(0, f.w - f.st) });
-      }
-      return;
-    }
-    if (from !== leader) return;
-    if (f.k === 'r') {
-      if (f.q <= (roundSeq.get(from) ?? -1)) return;
-      roundSeq.set(from, f.q);
-      const next = roundOf(f, now);
-      took(next.n === round.n && next.phase === round.phase && Math.abs(next.since - round.since) < 150 ? { ...next, since: round.since } : next);
-      return;
-    }
-    if (f.q <= (climbSeq.get(from) ?? -1) || f.n !== round.n || round.phase === 'count' || round.phase === 'over') return;
-    climbSeq.set(from, f.q);
-    const next = climbOf(f, now);
-    // The same climb keeps its start, unless the leader's says otherwise by more than a frame's wander.
-    tookClimb(climb && climb.c === next.c && Math.abs(next.t0 - climb.t0) < 150 ? { ...next, t0: climb.t0 } : next);
-  });
-
-  function step(now: number): void {
-    const dt = now - last;
-    last = now;
-    const around = heard(now);
-    leader = leaderOf([{ key: me, n: round.n }, ...around.map((o) => ({ key: o.key, n: o.frame.n }))]);
-    if (leader === me) {
-      const counted: Counted[] = [
-        { who: myWho, n: playing, known: round.n, chips: worth(seat), riding: seated() && seat.at === RIDING },
-        ...around.map((o) => ({ who: whoOf(o.key), n: o.frame.r, known: o.frame.n, chips: o.frame.ch + (o.frame.a === RIDING ? o.frame.st : 0), riding: o.frame.a === RIDING && o.frame.c === climb?.c })),
-      ];
-      const next = advance({ round, climb }, now, counted, rand);
-      if (next.round !== round) { took(next.round); lastRoundSent = 0; }
-      if (next.climb !== climb) { tookClimb(next.climb); lastClimbSent = 0; }
-      if (now - lastRoundSent >= ROUND_SEND_MS) { sentQ = Math.max(Date.now(), sentQ + 1); links.broadcast(JSON.stringify(roundFrame(round, now, sentQ))); lastRoundSent = now; }
-      if (climb && now - lastClimbSent >= CLIMB_SEND_MS) { sentQ = Math.max(Date.now(), sentQ + 1); links.broadcast(JSON.stringify(climbFrame(climb, round.n, now, sentQ))); lastClimbSent = now; }
-    }
-    // My seat, as the climb goes.
-    if (seated()) {
-      seat = earn(seat, dt);
-      if (climb) {
-        const was = seat;
-        seat = follow(seat, climb, now - climb.t0);
-        if (seat.gilded > was.gilded && seat.c === was.c) events.push({ kind: 'gilded', who: me, amount: seat.gilded - was.gilded });
-        if (seat.interest > 0 && was.interest < 0 && seat.c === was.c) events.push({ kind: 'interest', amount: seat.interest });
-        if (was.at === RIDING && seat.at >= 0) events.push({ kind: 'grab', who: me, won: seat.won, h: seat.at });
-        // The stakes' last seconds.
-        const left = Math.ceil((climb.bet - (now - climb.t0)) / 1000);
-        if (left !== lastBeep && left >= 1 && left <= 3) { lastBeep = left; events.push({ kind: 'beep' }); }
-      }
-    }
-    if (round.phase === 'count' && !watching()) {
-      const left = Math.ceil((COUNT_MS - (now - round.since)) / 1000);
-      if (left !== lastBeep && left >= 1 && left <= 3) { lastBeep = left; events.push({ kind: 'beep' }); }
-    }
-    if (now - lastSeatSent >= SEND_MS) {
-      links.broadcast(JSON.stringify(seatFrame(seat, watching() ? 0 : playing, round.n)));
-      lastSeatSent = now;
-    }
-  }
-
-  // What I do: grab, double or nothing, my share, the shop.
-  /** Whether a grab now is one: on the tower, the stakes closed, and the next coin not yet due, by my clock. */
-  const canGrab = (now: number): boolean => {
-    if (!seated() || !climb || seat.at !== RIDING || seat.c !== climb.c || climb.fell >= 0) return false;
-    const ms = now - climb.t0;
-    return ms >= climb.bet && ms < climb.next;
-  };
-  const doGrab = () => { const now = performance.now(); if (canGrab(now)) { seat = grab(seat, climb!.h); events.push({ kind: 'grab', who: me, won: seat.won, h: seat.at }); lastSeatSent = 0; } };
-  const doFlip = () => {
-    if (!seated() || !canFlip(seat)) return;
-    const amount = flipStake(seat);
-    seat = flip(seat, Math.random());
-    events.push({ kind: 'flip', who: me, win: seat.flip === 1, amount });
-    lastSeatSent = 0;
-  };
-  const doShare = (s: Share) => { seat = { ...seat, share: s }; };
-  const doBuy = (u: Upgrade) => { if (!seated()) return; const next = buy(seat, u); if (next !== seat) { seat = next; pour(4); lastSeatSent = 0; } };
+  const canGrab = (now: number) => table.canGrab(now);
+  const doGrab = () => table.grab(performance.now());
+  const doFlip = () => table.flip(Math.random(), performance.now());
+  const doShare = (s: Share) => table.share(s);
+  const doBuy = (u: Upgrade) => { if (table.buy(u)) pour(4); };
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -425,9 +287,9 @@ export function mountClink(host: HTMLElement, opts: { me: string; links: GameLin
   const stacked: THREE.Mesh[] = [];
   const dropping = makeCoin(moodMats[1]!);
   scene.add(dropping);
-  let shownClimb = 0;
-  /** The climb whose tower has fallen on screen: not built again. */
-  let toppled = 0;
+  /** The climb whose tower is on screen, and the one whose tower has fallen there, not to be built again (`Table.climbId`). */
+  let shownClimb = '';
+  let toppled = '';
   const coinSpot = (c: number, k: number) => ({ x: (hashed(c, k, 1) - 0.5) * 0.16, z: (hashed(c, k, 2) - 0.5) * 0.16, r: hashed(c, k, 3) * Math.PI });
   // Coins flying off a fallen tower, and sparks: each moved here until gone.
   type Flying = { mesh: THREE.Object3D; v: THREE.Vector3; spin: THREE.Vector3; until: number; floor: number };
@@ -565,10 +427,12 @@ export function mountClink(host: HTMLElement, opts: { me: string; links: GameLin
 
   function draw(now: number, dt: number): void {
     const s = dt / 1000;
+    const { round, climb, seat } = table;
+    const others = table.others();
     // Who sits where: those in the match (while waiting or after one, everyone), round the far side of the table, facing
     // the camera, in their keys' order; nobody right behind the tower.
     const inMatch = round.phase === 'play' || round.phase === 'count';
-    const players = [...(watching() ? [] : [me]), ...heard(now).filter((o) => !inMatch || o.frame.r === round.n).map((o) => o.key)];
+    const players = [...(watching() ? [] : [me]), ...atTable(now).filter((o) => !inMatch || o.frame.r === round.n).map((o) => o.key)];
     const order = [...players].sort();
     const keysShown = new Set<string>();
     for (const key of players) {
@@ -606,14 +470,15 @@ export function mountClink(host: HTMLElement, opts: { me: string; links: GameLin
     }
     for (const [key, sh] of shown) if (!keysShown.has(key)) { sh.group.visible = false; sh.stake.visible = false; }
 
-    // The tower, as the climb has it.
+    // The tower, as the climb has it: another climb, another tower.
     const cl = climb;
-    if (!cl || cl.c !== shownClimb) {
+    const id = table.climbId();
+    if (id !== shownClimb) {
       for (const m of stacked.splice(0)) tower.remove(m);
-      shownClimb = cl?.c ?? 0;
+      shownClimb = id;
     }
     const ms = cl ? now - cl.t0 : 0;
-    if (cl && toppled !== cl.c) {
+    if (cl && toppled !== id) {
       while (stacked.length < cl.h) {
         const k = stacked.length + 1;
         const m = makeCoin(cl.gold.some(([g]) => g === k) ? goldenMat : coinMat);
@@ -642,11 +507,11 @@ export function mountClink(host: HTMLElement, opts: { me: string; links: GameLin
     } else dropping.visible = false;
 
     // What happened since the last frame.
-    for (const e of events.splice(0)) {
+    for (const e of table.drain(now)) {
       if (e.kind === 'land') {
         clinkSound(e.h, 0, e.gold ? 0.2 : 0.13);
         if (e.gold) { fanfare(); glowUntil = now + 1500; burst(new THREE.Vector3(0, topY + 0.3, 0), 60, now, 7); }
-      } else if (e.kind === 'fell') { crash(); topple(now); toppled = cl?.c ?? 0; shake = 0.6; }
+      } else if (e.kind === 'fell') { if (e.climb === id) { crash(); topple(now); toppled = id; shake = 0.6; } }
       else if (e.kind === 'top') { fanfare(); pour(14); burst(new THREE.Vector3(0, topY + 0.3, 0), 140, now, 9); glowUntil = now + 2500; }
       else if (e.kind === 'grab') {
         const won = e.won > 0 ? `+${chipsText(e.won)}` : '';
@@ -661,6 +526,7 @@ export function mountClink(host: HTMLElement, opts: { me: string; links: GameLin
       else if (e.kind === 'go') { thump(5, true); thump(3, true); }
       else if (e.kind === 'won') { fanfare(); pour(16); }
     }
+    if (cl && cl.fell >= 0 && cl.h < TOP && toppled !== id) { for (const m of stacked.splice(0)) tower.remove(m); toppled = id; }
     for (let i = flying.length - 1; i >= 0; i--) {
       const f = flying[i]!;
       if (now > f.until) { scene.remove(f.mesh); flying.splice(i, 1); continue; }
@@ -698,6 +564,8 @@ export function mountClink(host: HTMLElement, opts: { me: string; links: GameLin
   let hudKey = '';
   let panelWas = true;
   function updateHud(now: number): void {
+    const { round, climb, seat } = table;
+    const others = table.others();
     const name = (who: string | null) => {
       if (who === null) return null;
       if (who === myWho) return 'You';
@@ -710,7 +578,7 @@ export function mountClink(host: HTMLElement, opts: { me: string; links: GameLin
     const sat = seated();
     const final = round.phase === 'play' && cl?.c === CLIMBS;
     let text = '';
-    if (round.phase === 'wait') text = heard(now).length === 0 ? 'Practice · waiting for a friend to join' : 'Next match starts soon';
+    if (round.phase === 'wait') text = atTable(now).length === 0 ? 'Practice · waiting for a friend to join' : 'Next match starts soon';
     else if (round.phase === 'count') text = iWatch ? 'You are in the next match' : String(Math.max(1, Math.ceil((COUNT_MS - (now - round.since)) / 1000)));
     else if (round.phase === 'play' && iWatch) text = 'You are in the next match';
     else if (round.phase === 'over') { const w = name(round.winner); text = w === null ? 'Nobody wins' : w === 'You' ? '🏆 You win!' : `🏆 ${w} wins!`; }
@@ -719,7 +587,7 @@ export function mountClink(host: HTMLElement, opts: { me: string; links: GameLin
     // The board: everyone's chips, most first, and where they are on the tower.
     const rows = [
       { key: me, who: myWho, chips: worth(seat), at: seat.at, c: seat.c },
-      ...heard(now).filter((o) => round.phase === 'wait' || o.frame.r === round.n || round.phase === 'over').map((o) => ({ key: o.key, who: whoOf(o.key), chips: o.frame.ch + (o.frame.a === RIDING ? o.frame.st : 0), at: o.frame.a, c: o.frame.c })),
+      ...atTable(now).filter((o) => round.phase === 'wait' || o.frame.r === round.n || round.phase === 'over').map((o) => ({ key: o.key, who: whoOf(o.key), chips: o.frame.ch + (o.frame.a === RIDING ? o.frame.st : 0), at: o.frame.a, c: o.frame.c })),
     ];
     const scored = round.phase === 'over' && round.scores ? rows.map((r) => ({ ...r, chips: round.scores?.[r.who] ?? r.chips })) : rows;
     scored.sort((a, b) => b.chips - a.chips);
@@ -735,7 +603,7 @@ export function mountClink(host: HTMLElement, opts: { me: string; links: GameLin
     let actText = '', actOn = false, actKind = 'none';
     if (sat && cl && seat.c === cl.c) {
       if (canGrab(now)) { actText = `Grab ${multText(MULTS[cl.h]!)} · ${chipsText(payout(seat.stake, cl.h, seat.levels, seat.c))}`; actOn = true; actKind = 'grab'; }
-      else if (canFlip(seat)) { actText = `Double or nothing  ${chipsText(flipStake(seat))}`; actOn = true; actKind = 'flip'; }
+      else if (table.canFlip(now)) { actText = `Double or nothing  ${chipsText(flipStake(seat))}`; actOn = true; actKind = 'flip'; }
       else if (seat.at === RIDING && ms < cl.bet) { actText = `${chipsText(seat.stake)} on the tower`; actKind = 'wait'; }
       else if (seat.at === RIDING) { actText = '…'; actKind = 'wait'; }
       else if (ms < cl.bet) { actText = `Stake ${SHARE_LABELS[seat.share]}: ${chipsText(Math.floor(seat.chips / seat.share))}`; actKind = 'wait'; }
@@ -809,12 +677,12 @@ export function mountClink(host: HTMLElement, opts: { me: string; links: GameLin
     w.__daveClinkRig = (v) => { rig = v; };
     w.__daveGame = (): ClinkView => {
       const now = performance.now();
-      const cl = climb;
+      const { round, climb: cl, seat, leader, playing } = table;
       return {
         game: 'clink', phase: round.phase, round: round.n, leader, playing: playing !== 0, connected: links.connected().length,
         climb: cl ? { c: cl.c, h: cl.h, fell: cl.fell >= 0, odds: nextOdds(cl), open: now - cl.t0 < cl.bet, pot: Math.floor(cl.pot), gold: cl.gold.length } : null,
         me: { chips: Math.floor(seat.chips), share: seat.share, stake: seat.stake, at: seat.at, won: seat.won, flip: seat.flip, levels: [...seat.levels] },
-        others: heard(now).map((o) => ({ key: o.key, chips: o.frame.ch, at: o.frame.a, c: o.frame.c })),
+        others: atTable(now).map((o) => ({ key: o.key, chips: o.frame.ch, at: o.frame.a, c: o.frame.c, flip: o.frame.f })),
         scores: round.scores ?? null, winner: round.winner, wins: { ...round.wins },
       };
     };
@@ -823,7 +691,7 @@ export function mountClink(host: HTMLElement, opts: { me: string; links: GameLin
   return () => {
     cancelAnimationFrame(frame);
     clearInterval(ticker);
-    offFrames();
+    table.close();
     sizer.disconnect();
     host.removeEventListener('keydown', onKeyDown);
     host.removeEventListener('pointerdown', onPointerDown);

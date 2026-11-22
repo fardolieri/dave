@@ -58,7 +58,12 @@ worker keeps it with the rest of the build, so a tab left open across a deploy s
   app's own; an oil slick goes out in its dropper's frames, and each app spins its own kart on it. **Clink** took
   Splotch's place (2026-11-22): the tower is the leader's, which lands every coin, rolls whether it topples or is golden,
   and sends the climb as it stands (`ClimbFrame`); every player's chips, stake and grab are their own app's, sent in
-  their frames, a grab judged by the coins that app had seen land. Its balance is checked by simulation: bots of several
+  their frames, a grab judged by the coins that app had seen land. What one app does at the table (who leads, the round,
+  the climb, its seat, its frames) is core/clinktable.ts, runtime-neutral and tested several at once over a pretend
+  network (test/clinktable.test.ts). Who leads goes by the newest round, then the newest climb of it known, then whether
+  the app may lead (its tab in front, not just come back): a friend who comes in mid-match leads nothing before they
+  know its tower, and a tab in the background hands the tower on. A friend not heard from but whose link is still open
+  (a phone put down) stays in the match a while. A coin that lands late puts the next a whole interval after it. Its balance is checked by simulation: bots of several
   kinds play thousands of matches with the game's own rules, and the matches must land in bands for skill, drama
   (Browne's lead changes and comebacks), pacing and growth (`test/fun.ts`, `test/clink.fun.test.ts`), a kit the next
   game can use too. A friend whose app still knows Splotch can start one that updated apps do not show, as above. A

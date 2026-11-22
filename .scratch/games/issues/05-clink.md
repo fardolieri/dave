@@ -39,6 +39,17 @@ last climb in 22%; a smart player beats a novice 75% of the time; buying beats n
 loses; all in is strong (1.3 times its fair share), not the answer; the winner's chips grow some 36 times; a good
 moment every 13 s (median); a match about two minutes. `pnpm vitest run test/clink.fun.test.ts` prints all of it.
 
+**The review** (before landing) found five bugs, all in what one app does at the table, all fixed and moved to
+core/clinktable.ts with tests that run several tables at once (each test checked to fail without its fix):
+- A friend with the smallest key, coming in mid-match after practising alone, took over the match with their practice
+  tower: everyone's stake gone, the climbs counted from 1 again.
+- The leader leaving mid-climb left the others unable to grab for 2.5 s, then several coins landed at once.
+- A leader's tab in the background landed coins late in pairs, the others' grab windows shrinking to nothing.
+- A match's first tower was not drawn on a screen whose practice climb 1 had fallen.
+- A tab coming back played everything it missed at once, and a fall from an old climb toppled the tower standing now.
+Also from it: a leader who reloads no longer sends everyone back to waiting (a round older than one's own is not
+followed); a phone put down for a few seconds no longer forfeits the match (away, link open, still in it).
+
 **Also:** the tower rendered without a GPU (headless Chromium's SwiftShader) ran at 7 frames a second, slowing the page
 behind it; such a renderer, or any that turns out slow, now draws plainly (no reflections or shadows, fewer pixels and
 frames).

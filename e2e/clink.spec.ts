@@ -100,6 +100,7 @@ test('clink: practice alone, a match with a friend, a grab and a double seen by 
   const want = again.chips + (flipped.flip === 1 ? profit : -profit);
   expect(flipped.chips).toBeGreaterThanOrEqual(want);
   expect(flipped.chips).toBeLessThanOrEqual(want + ALLOWANCE * ((Date.now() - againAt) / 1000 + 1));
+  await expect.poll(async () => (await view(bob))!.others[0]?.flip, { message: "Bob sees how Alice's double went" }).toBe(flipped.flip);
   await shot(alice, '4-doubled');
   await shot(bob, '4-riding');
 

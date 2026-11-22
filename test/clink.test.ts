@@ -72,6 +72,20 @@ describe('Clink, the tower (core/clink.ts)', () => {
     expect(cl.next - at).toBe(FAST_MS);
   });
 
+  it('lands a late coin once, and the next a whole interval after it, never several at once', () => {
+    let cl = newClimb(1, 0, 0, 0.5);
+    const due = cl.next;
+    // Nobody ran the tower for three intervals (a leader gone, or hidden): one coin lands now, the next comes later.
+    cl = climbAt(cl, due + 3000, steady, 1, 0);
+    expect(cl.h).toBe(1);
+    expect(cl.next).toBe(due + 3000 + clinkMs(1));
+    // On time, it keeps to the schedule.
+    const on = climbAt(newClimb(1, 0, 0, 0.5), due + 100, steady, 1, 0);
+    expect(on.next).toBe(due + clinkMs(1));
+    // A late fall counts from when it fell, so the pause after it is whole.
+    expect(climbAt(newClimb(1, 0, 0, 0.5), due + 3000, dice(0), 1, 0).fell).toBe(due + 3000);
+  });
+
   it('ends at the top, every coin landed', () => {
     const cl = runTo(newClimb(1, 0, 0, 0.5), 60_000, steady);
     expect(cl.h).toBe(TOP);
@@ -277,7 +291,7 @@ describe('Clink, the match (core/clink.ts)', () => {
 describe('Clink, on the wire (core/clink.ts)', () => {
   it('sends a seat and a climb as they are, and takes them back', () => {
     const s = { ...follow(newSeat(), newClimb(4, 0, 0, 0.5), 5000), chips: 1234.7 };
-    const sf = seatFrame(s, 2, 2);
+    const sf = seatFrame(s, 2, 2, 4, true);
     expect(parseFrame(JSON.stringify(sf))).toEqual({ ...sf, ch: 1234 });
     let cl = runTo(newClimb(4, 1000, 77, 0.5), 9000, steady);
     cl = { ...cl, gold: [[2, 400]] };
@@ -290,10 +304,10 @@ describe('Clink, on the wire (core/clink.ts)', () => {
   });
 
   it('turns away a frame with anything off', () => {
-    const sf = seatFrame(newSeat(), 1, 1);
+    const sf = seatFrame(newSeat(), 1, 1, 0, false);
     const cf = climbFrame(newClimb(1, 0, 0, 0.5), 1, 0, 1);
     for (const bad of [
-      { ...sf, ch: -1 }, { ...sf, ch: 1.5 }, { ...sf, sh: 3 }, { ...sf, a: 21 }, { ...sf, a: -4 }, { ...sf, f: 2 }, { ...sf, lv: 'x' }, { ...sf, lv: [99] },
+      { ...sf, ch: -1 }, { ...sf, ch: 1.5 }, { ...sf, sh: 3 }, { ...sf, a: 21 }, { ...sf, a: -4 }, { ...sf, f: 2 }, { ...sf, lv: 'x' }, { ...sf, lv: [99] }, { ...sf, kc: -1 }, { ...sf, v: 1 },
       { ...cf, h: 21 }, { ...cf, m: [3] }, { ...cf, m: [] }, { ...cf, fl: -2 }, { ...cf, gd: [[0, 5]] }, { ...cf, gd: [[1, -5]] }, { ...cf, q: 'x' }, { ...cf, t: -1 },
       { k: 'z' },
     ]) expect(parseFrame(JSON.stringify(bad))).toBeNull();

@@ -104,25 +104,30 @@ export const newClimb = (c: number, t0: number, pot: number, roll: number, first
 /** The chance the next coin topples it, in percent; null once it is over. */
 export const nextOdds = (cl: Climb): number | null => (cl.fell >= 0 ? null : odds(cl.h + 1, cl.moods[cl.h] ?? 1));
 
+/** A coin landed later than this after it was due (a leader's hidden tab, a leader just taken over) counts from then. */
+export const LATE_MS = 250;
+
 /**
  * The climb `ms` after it opened, as the leader lands its coins: each in turn, on time, may topple it; one that lands
  * may be golden, while anyone is on (`riders`), and pays them the pot, which every coin landed with someone on adds to
- * (`potPerCoin`). With nobody on, the coins come down quickly to where it falls.
+ * (`potPerCoin`). With nobody on, the coins come down quickly to where it falls. A coin that lands late puts the next
+ * a whole interval after it, never several down at once: whoever is on gets the time to grab between any two.
  */
 export function climbAt(cl: Climb, ms: number, rand: () => number, riders: number, potPerCoin: number): Climb {
   if (cl.fell >= 0 || ms < cl.next) return cl;
   let { h, next, pot, fell } = cl;
   const moods = [...cl.moods], gold = [...cl.gold];
   while (fell < 0 && ms >= next) {
-    if (rand() * 100 < odds(h + 1, moods[h] ?? 1)) { fell = next; break; }
+    const at = ms - next > LATE_MS ? ms : next;
+    if (rand() * 100 < odds(h + 1, moods[h] ?? 1)) { fell = at; break; }
     h++;
     if (riders > 0) {
       pot += potPerCoin;
       if (rand() < GOLD_CHANCE) { gold.push([h, Math.floor(pot)]); pot = 0; }
     }
-    if (h >= TOP) { fell = next; break; }
+    if (h >= TOP) { fell = at; break; }
     moods.push(moodOf(rand()));
-    next += riders > 0 ? clinkMs(h) : FAST_MS;
+    next = at + (riders > 0 ? clinkMs(h) : FAST_MS);
   }
   return { ...cl, h, moods, next, fell, gold, pot };
 }
@@ -279,17 +284,20 @@ export function advance(t: Table, now: number, here: readonly Counted[], rand: (
 // On the wire: as core/rounds.ts says.
 
 /**
- * My seat, from me: `r` the match I play (0 for none), `n` the newest I know; `c` the climb the rest is of; my chips,
- * share, stake, where I am on the tower (`a`, as `Seat.at`), what my grab paid, how my double or nothing went, what
- * golden coins paid me, and my levels in the shop.
+ * My seat, from me: `r` the match I play (0 for none), `n` the newest I know; `kc` the climb of it I know (0 for none),
+ * and `v` whether I may lead (core/clinktable.ts, `rankOf`); `c` the climb the rest is of; my chips, share, stake, where
+ * I am on the tower (`a`, as `Seat.at`), what my grab paid, how my double or nothing went, what golden coins paid me,
+ * and my levels in the shop.
  */
-export type SeatFrame = { k: 's'; r: number; n: number; c: number; ch: number; sh: Share; st: number; a: number; w: number; f: 0 | 1 | -1; g: number; lv: number[] };
+export type SeatFrame = {
+  k: 's'; r: number; n: number; kc: number; v: boolean; c: number; ch: number; sh: Share; st: number; a: number; w: number; f: 0 | 1 | -1; g: number; lv: number[];
+};
 /** The climb, from the leader: as `Climb`, `t` ms after it opened; `q` orders the leader's frames (core/rounds.ts). */
 export type ClimbFrame = { k: 'c'; q: number; n: number; c: number; t: number; b: number; h: number; m: Mood[]; nx: number; fl: number; gd: [number, number][]; pot: number };
 export type Frame = SeatFrame | ClimbFrame | RoundFrame;
 
-export const seatFrame = (s: Seat, r: number, n: number): SeatFrame => ({
-  k: 's', r, n, c: s.c, ch: Math.floor(s.chips), sh: s.share, st: Math.floor(s.stake), a: s.at, w: Math.floor(s.won), f: s.flip, g: Math.floor(s.gilded), lv: [...s.levels],
+export const seatFrame = (s: Seat, r: number, n: number, kc: number, v: boolean): SeatFrame => ({
+  k: 's', r, n, kc, v, c: s.c, ch: Math.floor(s.chips), sh: s.share, st: Math.floor(s.stake), a: s.at, w: Math.floor(s.won), f: s.flip, g: Math.floor(s.gilded), lv: [...s.levels],
 });
 export const climbFrame = (cl: Climb, n: number, now: number, q: number): ClimbFrame => ({
   k: 'c', q, n, c: cl.c, t: Math.max(0, Math.round(now - cl.t0)), b: cl.bet, h: cl.h, m: [...cl.moods], nx: cl.next, fl: cl.fell, gd: cl.gold.map(([k, p]) => [k, p]), pot: Math.floor(cl.pot),
@@ -306,12 +314,13 @@ export function parseFrame(text: unknown): Frame | null {
   const f = frameFields(text);
   if (!f) return null;
   if (f['k'] === 's') {
-    const { r, n, c, ch, sh, st, a, w, g, lv } = f;
+    const { r, n, kc, v, c, ch, sh, st, a, w, g, lv } = f;
     const fl = f['f'];
-    if (!int(r, 0, BIG) || !int(n, 0, BIG) || !int(c, 0, BIG) || !int(ch, 0, MAX_CHIPS) || (sh !== 1 && sh !== 2 && sh !== 4) || !int(st, 0, MAX_CHIPS)) return null;
+    if (!int(r, 0, BIG) || !int(n, 0, BIG) || !int(kc, 0, BIG) || typeof v !== 'boolean' || !int(c, 0, BIG)) return null;
+    if (!int(ch, 0, MAX_CHIPS) || (sh !== 1 && sh !== 2 && sh !== 4) || !int(st, 0, MAX_CHIPS)) return null;
     if (!int(a, FELL, TOP) || !int(w, 0, MAX_CHIPS) || (fl !== 0 && fl !== 1 && fl !== -1) || !int(g, 0, MAX_CHIPS)) return null;
     if (!Array.isArray(lv) || lv.length > 16 || !lv.every((l) => int(l, 0, 16))) return null;
-    return { k: 's', r, n, c, ch, sh, st, a, w, f: fl, g, lv: lv as number[] };
+    return { k: 's', r, n, kc, v, c, ch, sh, st, a, w, f: fl, g, lv: lv as number[] };
   }
   if (f['k'] === 'c') {
     const { q, n, c, t, b, h, m, nx, fl, gd, pot } = f;
@@ -330,7 +339,7 @@ export type ClinkView = {
   game: 'clink'; phase: Phase; round: number; leader: string | null; playing: boolean; connected: number;
   climb: { c: number; h: number; fell: boolean; odds: number | null; open: boolean; pot: number; gold: number } | null;
   me: { chips: number; share: Share; stake: number; at: number; won: number; flip: 0 | 1 | -1; levels: number[] };
-  others: { key: string; chips: number; at: number; c: number }[];
+  others: { key: string; chips: number; at: number; c: number; flip: 0 | 1 | -1 }[];
   scores: Record<string, number> | null; winner: string | null; wins: Record<string, number>;
 };
 
