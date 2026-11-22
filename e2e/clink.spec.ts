@@ -100,11 +100,6 @@ test('clink: practice alone, a match with a friend, a grab and a double seen by 
   expect(fallen.chips).toBeGreaterThanOrEqual(riding.chips);
   expect(fallen.chips).toBeLessThanOrEqual(riding.chips + ALLOWANCE * ((Date.now() - ridingAt) / 1000 + 1));
 
-  // The shop: Alice buys a lucky charm with what she won.
-  await tile(alice).getByRole('button', { name: /^Lucky charm/ }).click();
-  await expect.poll(async () => (await view(alice))!.me.levels[1]).toBe(1);
-  // Half from the next climb on: chips kept back.
-  await tile(alice).getByRole('button', { name: '½', exact: true }).click();
   await shot(alice, '3-grabbed');
   await shot(bob, '3-fell');
 
@@ -126,6 +121,13 @@ test('clink: practice alone, a match with a friend, a grab and a double seen by 
   expect(flipped.chips).toBeGreaterThanOrEqual(want);
   expect(flipped.chips).toBeLessThanOrEqual(want + ALLOWANCE * ((Date.now() - againAt) / 1000 + 1));
   await expect.poll(async () => (await view(bob))!.others[0]?.flip, { message: "Bob sees how Alice's double went" }).toBe(flipped.flip);
+  // The shop: Alice buys a lucky charm with what she won, and keeps half back from the next climb on. Here, with her
+  // chips in hand, not between climbs: a page drawing in software may click only once the next stakes are in, all of
+  // hers, and the shop is shut to no chips (ticket 93).
+  await tile(alice).getByRole('button', { name: /^Lucky charm/ }).click();
+  await expect.poll(async () => (await view(alice))!.me.levels[1]).toBe(1);
+  await tile(alice).getByRole('button', { name: '½', exact: true }).click();
+  await expect.poll(async () => (await view(alice))!.me.share).toBe(2);
   await shot(alice, '4-doubled');
   await shot(bob, '4-riding');
 

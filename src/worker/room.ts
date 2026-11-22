@@ -24,11 +24,12 @@ export const CLOSE_SILENT = 4003;
 /** An attached socket the runtime reported an error on is closed with this, should it still reach the client (it reconnects). */
 export const CLOSE_ERRORED = 4005;
 /**
- * How long a keep the Store threw on waits before each try again (`keep`): a Store that fails for a moment (on a preview
- * on 2026-11-17, for under 15 s: ticket 92) would otherwise lose a text or a file announcement for friends away, while a
- * file's pieces go again from the sender's app. On the room's chain of keeps, so later keeps and syncs wait for them.
+ * How long a keep the Store threw on waits before each try again (`keep`): a Store that fails for a moment would otherwise
+ * lose a text or a file announcement for friends away, while a file's pieces go again from the sender's app. On a preview
+ * on 2026-11-17 it took pieces again 15 s after it failed them (ticket 92); the last try comes 20 s after the first. On the
+ * room's chain of keeps, so later keeps and syncs wait for them: only while the Store fails, when a sync would fail too.
  */
-export const KEEP_RETRY_MS = [1_000, 4_000];
+export const KEEP_RETRY_MS = [1_000, 4_000, 15_000];
 /** Storage key of the room's verifier, set by the first friend to enter (ADR 0004). */
 const AUTH_KEY = 'authKey';
 /**
@@ -346,7 +347,7 @@ export class Room extends DurableObject<Env> {
       } catch (e) {
         const wait = KEEP_RETRY_MS[tried];
         if (wait === undefined) { console.log('history not kept', JSON.stringify({ reason: String(e), tries: tried + 1 })); return; }
-        console.log('history not kept, trying again', JSON.stringify({ reason: String(e), in_ms: wait }));
+        console.log('history keep failed, trying again', JSON.stringify({ reason: String(e), in_ms: wait }));
         await new Promise((r) => setTimeout(r, wait));
       }
     }

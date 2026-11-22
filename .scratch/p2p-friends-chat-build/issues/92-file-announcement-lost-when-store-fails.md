@@ -36,16 +36,21 @@ On a preview, 16 shards share one Store, and its first calls in a run may be slo
 
 ## Comments
 
-2026-11-22, fixed: the Room's `keep` (`worker/room.ts`) asks the Store again 1 s and then 4 s after a keep it threw on
-(`KEEP_RETRY_MS`), with a stub of its own each try, on the same chain (`keeping`): later keeps wait, so the order of
+2026-11-22, fixed: the Room's `keep` (`worker/room.ts`) asks the Store again 1 s, 4 s and 15 s after a keep it threw on
+(`KEEP_RETRY_MS`), the last try 20 s after the first, with a stub of its own each try, on the same chain (`keeping`): later keeps wait, so the order of
 keeps holds, and a sync waits for the tries as it waits for any keep under way. The Store keeps an entry once per
 writer and id, so a keep that got through though its call threw is no second entry. The logs say "history not kept,
-trying again" for each try again, and "history kept on a try again" or "history not kept" (with `tries`) at the end.
+keep failed, trying again" for each try again (so a search for "history not kept" finds only the lost), and "history kept on a try again" or "history not kept" (with `tries`) at the end.
 
 Regression test: `test/kept.test.ts` "a file announcement the Store failed to keep is kept on another try, so a friend
 away still learns of it (ticket 92)": the Room's next keep throws, and Bob's sync must still bring the announcement.
 It fails on the Room from before (Bob's history empty).
 
-What it does not cover: a Store that fails for longer than the tries (5 s). Then the announcement is lost as before, and
-the sender's app is still not told; that would need an answer to a `file` as a piece has `kept`. Not done: nothing has
-shown a failure that long.
+Why 20 s: the sighting does not say when the Store came back, only that it kept the pieces sent again 15 s after it failed
+them, and answered Bob's sync 18 s after the file. The tries cover that. While they go on, syncs and forgets in that room
+wait for them, as they wait for any keep: only while the Store fails, when they would fail too.
+
+What it does not cover: a Store that fails for longer than 20 s. Then the announcement is lost as before, and the sender's
+app is still not told; that would need an answer to a `file` as a piece has `kept`. Not done: nothing has shown one.
+The tries also go to errors Cloudflare marks `overloaded`, which its docs say not to retry: at most three more calls per
+keep, over 20 s, to one Store.

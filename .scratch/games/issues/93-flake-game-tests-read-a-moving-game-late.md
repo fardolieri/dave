@@ -49,7 +49,9 @@ whose stakes then went in and fell too (`fallen.chips` 380 < `riding.chips` 624)
 Fix (`e2e/clink.spec.ts`): `rig` says whether the game was there to rig; Bob's first one is polled until it was, and
 every other one must have been. Alice's grab and the tower are read in one read before the rigs; the next climb's
 landing rig goes in right after the topple rig, before the fall; Bob's fall is taken as his `at` FELL, or the next climb
-with his stake not in yet, his chips still his until its stakes close.
+with his stake not in yet, his chips still his until its stakes close. The shop moved to after the double or nothing:
+between climbs Alice had the 2.6 s pause and 4 s of stakes to click it, and once climb 2's stakes were in, all of hers,
+the charm's button was shut to her no chips (in #184's trace, her stake was in 0.3 s after the click ended).
 
 Not fixed: on the dev box at that load even the first stakes can close before Alice's "All" lands (staked 541, not
 1000 or more). Not seen on a runner. Skid's reading (above) is not looked at.
