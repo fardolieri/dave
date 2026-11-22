@@ -180,6 +180,28 @@ describe('Clink, tables at once (core/clinktable.ts)', () => {
     expect(a.round.n).toBeGreaterThanOrEqual(n);
   });
 
+  it('lets nobody who knows less restart a match while all who know it hold back: a reload, a newcomer', () => {
+    for (const comes of ['reload', 'newcomer'] as const) {
+      const net = matchOf(ALICE, BOB);
+      const b = net.table(BOB);
+      net.until(() => (b.climb?.c ?? 0) >= 2, 120_000);
+      const id = b.climbId(), c = b.climb!.c;
+      const seed = id.split(':')[2];
+      // Bob's tab in the background (holding back at every step); Alice reloads, or Dan comes in, knowing round 0.
+      net.background(BOB, 1004);
+      if (comes === 'reload') { net.remove(ALICE); net.add(ALICE); } else { net.add(DAN); net.background(ALICE, 1004); }
+      let lowest = Infinity;
+      net.run(6000, () => { if (b.climbId().split(':')[2] === seed) lowest = Math.min(lowest, b.climb?.c ?? Infinity); else lowest = -1; });
+      expect(lowest, `${comes}: Bob's match keeps its seed and climbs`).toBeGreaterThanOrEqual(c);
+      // Bob back in front: he leads it on, and the one who came follows it.
+      net.background(BOB, 0);
+      net.run(3000);
+      const came = net.table(comes === 'reload' ? ALICE : DAN);
+      expect(came.round.n, comes).toBe(b.round.n);
+      expect(came.climbId(), comes).toBe(b.climbId());
+    }
+  });
+
   it('keeps a friend away a while in the match, link open; ends it once they have left', () => {
     const net = matchOf(ALICE, BOB);
     const a = net.table(ALICE);

@@ -151,7 +151,11 @@ export function createTable(me: string, wire: Wire, rand: () => number, clock: (
     last = at;
     const around = heard(at);
     const holding = at < holdUntil;
-    leader = leaderOf([...(holding ? [] : [{ key: me, n: rankOf(round.n, round.phase) }]), ...around.filter((o) => !o.frame.hd).map((o) => ({ key: o.key, n: o.frame.n * 4 + o.frame.po }))]);
+    // Who leads: of those who know the newest round and phase, holding back or not, the smallest key not holding back;
+    // none, while all of them hold back (one who knows less never leads in their place).
+    const ranked = [{ key: me, n: rankOf(round.n, round.phase), hold: holding }, ...around.map((o) => ({ key: o.key, n: o.frame.n * 4 + o.frame.po, hold: o.frame.hd }))];
+    const top = Math.max(...ranked.map((p) => p.n));
+    leader = leaderOf(ranked.filter((p) => p.n === top && !p.hold));
     if (leader === me) {
       const counted = (o: Other): Counted => ({ who: whoOf(o.key), n: o.frame.r, known: o.frame.n, chips: o.frame.ch });
       const mine: Counted = { who: myWho, n: playing, known: round.n, chips: seat.chips };
