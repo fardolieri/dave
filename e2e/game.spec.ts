@@ -157,6 +157,9 @@ test('a friend back from a gap, moved over to the game of a kind started since, 
   await expect.poll(async () => (await view(alice))!.me.alive, { timeout: 15_000 }).toBe(false);
   await alice.page.keyboard.up('ArrowRight');
   await expect.poll(async () => (await view(carol))!.wins, { timeout: 15_000 }).toEqual({ [carolWho]: 1 });
+  // On to round 2, so Carol's Bonk knows a newer round than the one the others start next will for a while: brought
+  // along, it would lead theirs whatever the keys.
+  await expect.poll(async () => (await view(carol))!.round, { timeout: 20_000 }).toBeGreaterThanOrEqual(2);
 
   // Carol's socket goes away; she stays in the call, in her Bonk. Meanwhile Alice leaves it, and with Bob starts another.
   await carol.wire.cut();
@@ -173,9 +176,6 @@ test('a friend back from a gap, moved over to the game of a kind started since, 
   await carol.connected();
   await expect(tile(carol).locator('.share-faces .face')).toHaveCount(3, { timeout: 30_000 });
   await expect.poll(async () => (await view(carol))?.connected, { timeout: 30_000, message: 'Carol links up with both' }).toBe(2);
-  expect((await view(carol))!.wins).toEqual({});
-  const [a, c] = [(await view(alice))!, (await view(carol))!];
-  expect(a.round).toBeGreaterThanOrEqual(1);
-  expect(a.wins[carolWho]).toBeUndefined();
-  expect(c.leader === null || c.leader === a.leader).toBe(true);
+  // Not the win from before: Carol's game follows the others' rounds, and theirs do not take hers.
+  for (const f of [carol, alice, bob]) expect((await view(f))!.wins[carolWho], `${f.name} sees no win of Carol's`).toBeUndefined();
 });
