@@ -28,7 +28,6 @@ export const STORED_STATE: Record<string, unknown> = {
   "localStorage dave.unsentPrivate": {"default":{},"shape":{"<key>":[{"at":"number","id":"string","out?":"boolean","text":"string","to":{"fingerprint":"string","name":"string","picture?":"string","publicKey":"string"}}]},"fixtures":{"2026-10-20, private texts":{"roomA":[{"id":"0a1b2c3d4e5f60718293a4b5","to":{"publicKey":"pkB","fingerprint":"DEF456","name":"Ben","picture":"🦕"},"text":"hi","at":1760900000000},{"id":"1a1b2c3d4e5f60718293a4b5","to":{"publicKey":"pkC","fingerprint":"GHI789","name":"Cleo"},"text":"yo","at":1760900001000,"out":true}]}}},
   "localStorage dave.roomThemes": {"default":{},"shape":{"<key>":"string"},"fixtures":{"2026-10-24, a look per room":{"roomA":"fd-walkie","roomB":""}}},
   "localStorage dave.theme": {"default":null,"shape":"string","fixtures":{"2026-10-15":"fd-walkie"}},
-  "localStorage dave.bonkControls": {"default":"stick","shape":"string","fixtures":{"2026-11-22, follow":"follow"}},
   "localStorage dave.viewerSettings": {"default":{"jitterBufferTargetMs":0},"shape":{"jitterBufferTargetMs":"number"},"fixtures":{"2026-09-06, low latency":{"jitterBufferTargetMs":100}}},
   "IndexedDB identity": "not parsed",
   "IndexedDB pairIdentity:<friendKey>": "not parsed",

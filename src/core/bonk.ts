@@ -75,15 +75,7 @@ export function steer(x: number, z: number): { x: number; z: number } {
 }
 
 /**
- * How a finger or the mouse steers, picked in the game and kept in this browser: a stick dragged from where the finger
- * went down (the mouse does nothing), or the ball rolled to where the finger or the mouse is held, the mouse's other
- * button a dash.
- */
-export type Controls = 'stick' | 'follow';
-export const parseControls = (raw: string | null): Controls => (raw === 'follow' ? 'follow' : 'stick');
-
-/**
- * Steering toward a spot on the floe a finger or the mouse is held on: for the speed that gets there, full on from afar
+ * Steering toward a spot on the floe the mouse is held on: for the speed that gets there, full on from afar
  * and slower the nearer it is, so the ball brakes and stops there instead of sliding past and swinging round it, as it
  * would on ice. `ball` is where it is and how fast it goes.
  */
@@ -192,7 +184,7 @@ export type Counted = { who: string; n: number; known: number; alive: boolean };
 /** What the inspection hooks show of the game (`window.__daveGame`, client/bonk.ts). */
 export type GameView = {
   phase: Phase; round: number; leader: string | null; playing: boolean; spectating: boolean; webgl: boolean;
-  me: { x: number; z: number; alive: boolean; lastDash: { vx: number; vz: number } | null }; controls: Controls; aim: { x: number; z: number } | null; others: { key: string; x: number; z: number; alive: boolean }[]; wins: Record<string, number>; connected: number;
+  me: { x: number; z: number; alive: boolean; lastDash: { vx: number; vz: number } | null }; aim: { x: number; z: number } | null; others: { key: string; x: number; z: number; alive: boolean }[]; wins: Record<string, number>; connected: number;
 };
 
 /**

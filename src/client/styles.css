@@ -505,13 +505,11 @@ button.play { flex: 1; min-width: 0; padding-inline: 4px; font-weight: 600; font
 .bonk-board li { margin-bottom: 3px; padding: 1px 8px; border-radius: 6px; background: rgba(255,255,255,.75); }
 .bonk-help { position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; font-size: 12px; color: #0b2033cc; }
 .bonk-dash { display: none; position: absolute; right: 16px; bottom: 24px; width: 72px; height: 72px; border-radius: 50%; pointer-events: auto; font-weight: 800; background: #ffc400; color: #1a1300; border: 3px solid #fff; }
-.bonk-controls { position: absolute; top: 44px; right: 10px; padding: 3px 10px; border: 0; border-radius: 999px; pointer-events: auto; font: 600 12px system-ui, sans-serif; background: rgba(255,255,255,.8); color: #0b2033; cursor: pointer; }
-.bonk.bonk-follow .bonk-canvas { cursor: crosshair; }
+@media (any-pointer: fine) { [data-game="bonk"] .bonk-canvas { cursor: crosshair; } }
 .bonk-stick { display: none; position: absolute; width: 90px; height: 90px; margin: -45px 0 0 -45px; border-radius: 50%; border: 3px solid rgba(255,255,255,.8); background: rgba(255,255,255,.25); }
 .bonk.bonk-touch .bonk-dash, .bonk-stick.on { display: block; }
 .bonk.bonk-touch .bonk-help { display: none; }
 @media (pointer: coarse) { .bonk-dash { display: block; } .bonk-help { display: none; } } 
-@media (pointer: coarse) { .bonk-controls { padding: 6px 12px; font-size: 14px; } }
 /* Clink's results, over the table when a match ends */
 .clink-results { position: absolute; top: 46%; left: 50%; transform: translateX(-50%); margin: 0; padding: 10px 18px; list-style: none; border-radius: 12px; background: rgba(11,32,51,.7); color: #fff; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .clink-results:empty { display: none; }

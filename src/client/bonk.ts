@@ -1,14 +1,13 @@
 // Bonk on screen (core/bonk.ts): my ball, everyone else's as their apps say, the floe and the sea, in three.js; the keys,
-// a stick on a touch screen or the finger or mouse followed (`Controls`), the sounds; the round, run by its leader. Loaded only once a friend plays (client/Game.tsx):
-// three.js is most of a megabyte.
+// a stick on a touch screen, the mouse held followed, the sounds; the round, run by its leader. Loaded only once a friend
+// plays (client/Game.tsx): three.js is most of a megabyte.
 import * as THREE from 'three';
 import {
   BALL_RADIUS, FLOE_START, RESPAWN_MS, SUNK_Y, BONK_AGAIN_MS, advance, ahead, ballAt, ballFrame, bonk, dash, firstRound, floeRadius, hitFrame, knocked, leaderOf, parseFrame,
-  roll, roundFrame, roundOf, spawnAt, steer, toward, whoOf, COUNT_MS, type Ball, type BallFrame, type Controls, type Counted, type GameView, type Round,
+  roll, roundFrame, roundOf, spawnAt, steer, toward, whoOf, COUNT_MS, type Ball, type BallFrame, type Counted, type GameView, type Round,
 } from '../core/bonk';
 import type { GameLinks } from './gamelinks';
 import { exposeHooks } from './hooks';
-import { local } from './storage';
 import { colourOf, isSoftware, isTyping, nameTag, popWord, skin, splash, thump, type Face } from './gamekit';
 
 
@@ -201,6 +200,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   board.setAttribute('aria-label', 'Rounds won');
   const help = document.createElement('div');
   help.className = 'bonk-help';
+  help.textContent = 'Arrows, WASD or the mouse held to roll · Space or the right button to dash · bonk everyone into the sea';
   const dashButton = document.createElement('button');
   dashButton.type = 'button';
   dashButton.className = 'bonk-dash';
@@ -208,39 +208,27 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   dashButton.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); dashAsked = true; });
   const stick = document.createElement('div');
   stick.className = 'bonk-stick';
-  // How a finger or the mouse steers (core/bonk.ts, `Controls`), picked here and kept in this browser.
-  let controls: Controls = local.read('bonkControls');
-  const controlsButton = document.createElement('button');
-  controlsButton.type = 'button';
-  controlsButton.className = 'bonk-controls';
-  hud.append(banner, board, help, dashButton, controlsButton, stick);
+  hud.append(banner, board, help, dashButton, stick);
   host.append(hud);
 
-  // A stick where the finger goes down, in `stick`; in `follow`, the finger or the mouse held, which the ball rolls
-  // toward, the spot under it on the floe worked out when it goes down or moves (the camera holds still in `follow`,
-  // so a finger stays over its spot); and the spot of a dash by the right button.
+  // A mouse there (a desktop, or a tablet with one): the camera for it, below. A finger on one still gets the stick.
+  const desk = matchMedia('(any-pointer: fine)').matches;
+  // A stick where a finger goes down; the mouse's left button held, which the ball rolls toward, the spot under it on the
+  // floe worked out when it goes down or moves (the camera holds still on a desktop, so the mouse stays over its spot);
+  // and the spot of a dash by the right button.
   let touch: { id: number; x: number; y: number } | null = null;
   let held: { id: number; at: { x: number; z: number } | null } | null = null;
   let dashAim: { x: number; z: number } | null = null;
-  const letGo = () => {
-    touch = null;
-    held = null;
-    sticked = null;
-    stick.classList.remove('on');
-  };
   const onPointerDown = (e: PointerEvent) => {
     host.focus({ preventScroll: true });
-    const mouse = e.pointerType === 'mouse';
-    if (!mouse) host.classList.add('bonk-touch');
-    if (controls === 'follow') {
-      if (mouse && e.button === 2) { dashAsked = true; dashAim = aim(e.clientX, e.clientY); return; }
-      if (mouse && e.button !== 0) return;
-      if (held) return;
+    if (e.pointerType === 'mouse') {
+      if (e.button === 2) { dashAsked = true; dashAim = aim(e.clientX, e.clientY); return; }
+      if (e.button !== 0 || held) return;
       held = { id: e.pointerId, at: aim(e.clientX, e.clientY) };
       try { host.setPointerCapture(e.pointerId); } catch { /* gone already */ }
       return;
     }
-    if (mouse) return;
+    host.classList.add('bonk-touch');
     touch = { id: e.pointerId, x: e.clientX, y: e.clientY };
     stick.style.left = `${e.clientX - host.getBoundingClientRect().left}px`;
     stick.style.top = `${e.clientY - host.getBoundingClientRect().top}px`;
@@ -251,7 +239,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     // A mouse button pressed or let go while another is down comes as a move, not a press or a let-go; and a let-go
     // somewhere else (another window) may come as nothing at all: a mouse hold lasts only while the left button is down.
     if (e.pointerType === 'mouse' && held?.id === e.pointerId && !(e.buttons & 1)) held = null;
-    if (controls === 'follow' && e.pointerType === 'mouse' && e.target instanceof Node && host.contains(e.target)) {
+    if (e.pointerType === 'mouse' && e.target instanceof Node && host.contains(e.target)) {
       if (e.button === 2 && e.buttons & 2) { dashAsked = true; dashAim = aim(e.clientX, e.clientY); }
       if (e.button === 0 && e.buttons & 1 && !held) { held = { id: e.pointerId, at: null }; try { host.setPointerCapture(e.pointerId); } catch { /* gone already */ } }
     }
@@ -260,31 +248,12 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   };
   const onPointerUp = (e: PointerEvent) => {
     if (held?.id === e.pointerId) held = null;
-    if (touch?.id === e.pointerId) letGo();
+    if (touch?.id === e.pointerId) { touch = null; sticked = null; stick.classList.remove('on'); }
   };
-  // Only the game's own capture: a finger's first capture, on what it went down on, is not the hold.
+  // Only the game's own capture of the mouse: a finger's, on what it went down on, ends no hold.
   const onLostCapture = (e: PointerEvent) => { if (e.target === host) onPointerUp(e); };
   // No menu for the right button on the game, nor over the page while the game holds the mouse.
-  const onContextMenu = (e: Event) => { if (controls === 'follow' && (held || (e.target instanceof Node && host.contains(e.target)))) e.preventDefault(); };
-  const showControls = () => {
-    const follow = controls === 'follow';
-    controlsButton.textContent = follow ? '👆 Follow' : '🕹️ Stick';
-    controlsButton.setAttribute('aria-label', `Controls: ${follow ? 'follow' : 'stick'}`);
-    controlsButton.title = follow
-      ? 'The ball rolls to where you hold your finger or the mouse; the right mouse button dashes. Tap for the stick.'
-      : 'Drag from where your finger goes down to roll. Tap to have the ball follow your finger or the mouse instead.';
-    host.classList.toggle('bonk-follow', follow);
-    if (renderer) help.textContent = follow ? 'Hold the mouse where to roll · right button or Space to dash' : 'Arrows or WASD to roll · Space to dash · bonk everyone into the sea';
-  };
-  // Down on it does not take the focus from the game, nor start a stick under it.
-  controlsButton.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); });
-  controlsButton.addEventListener('click', (e) => {
-    e.stopPropagation();
-    controls = controls === 'follow' ? 'stick' : 'follow';
-    local.set('bonkControls', controls);
-    letGo();
-    showControls();
-  });
+  const onContextMenu = (e: Event) => { if (held || (e.target instanceof Node && host.contains(e.target))) e.preventDefault(); };
   host.addEventListener('pointerdown', onPointerDown);
   window.addEventListener('contextmenu', onContextMenu);
   host.addEventListener('lostpointercapture', onLostCapture);
@@ -356,7 +325,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   const snow = new THREE.Points(snowGeometry, new THREE.PointsMaterial({ color: '#ffffff', size: 0.12, transparent: true, opacity: 0.85 }));
   scene.add(snow);
 
-  // Where the finger or the mouse is held, on the floe.
+  // Where the mouse is held, on the floe.
   let aimAt: { x: number; z: number } | null = null;
   const raycaster = new THREE.Raycaster();
   const floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -427,7 +396,6 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   } else {
     help.textContent = 'This browser cannot draw the game (no WebGL), but you are in it.';
   }
-  showControls();
   const resize = () => {
     const w = Math.max(1, host.clientWidth), h = Math.max(1, host.clientHeight);
     renderer?.setSize(w, h, false);
@@ -522,14 +490,13 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     }
 
     // The camera: over the floe from the south, a little toward my ball, further back on a tall screen; shaken by a bonk.
-    // Held still while the ball follows a finger, watching or not, and a little further back to keep the whole floe in
-    // sight, the fog as far back with it: moved with the ball, the spot under a finger held still would move on ahead of
-    // it, off the floe.
-    const back = controls === 'follow' ? 1.15 : 1;
+    // Held still on a desktop, watching or not, and a little further back to keep the whole floe in sight, the fog as far
+    // back with it: moved with the ball, the spot under the mouse held still would move on ahead of it, off the floe.
+    const back = desk ? 1.15 : 1;
     const far = Math.max(1, 1.25 / camera.aspect) * back;
     fog.near = 30 * back;
     fog.far = 70 * back;
-    const still = watching || controls === 'follow';
+    const still = watching || desk;
     const fx = still ? 0 : ball.x * 0.2, fz = still ? 0 : ball.z * 0.2;
     shake = Math.max(0, shake - dt * 1.5);
     camera.position.set(fx + (Math.random() - 0.5) * shake, 15 * far + (Math.random() - 0.5) * shake, fz + 13 * far);
@@ -607,7 +574,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       const now = performance.now();
       return {
         phase: round.phase, round: round.n, leader, playing: playing !== 0, spectating: playing === 0 && (round.phase === 'count' || round.phase === 'play'), webgl: renderer !== null,
-        me: { x: ball.x, z: ball.z, alive: ball.alive, lastDash }, controls, aim: aimAt,
+        me: { x: ball.x, z: ball.z, alive: ball.alive, lastDash }, aim: aimAt,
         others: heard(now).map((o) => ({ key: o.key, x: o.frame.x, z: o.frame.z, alive: o.frame.a })),
         wins: { ...round.wins }, connected: links.connected().length,
       };

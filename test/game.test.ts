@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MAX_GAME_BODY_BYTES, current, currents, gameLinkId, gameOfLink, gameText, parseGame, sameGame, type Game } from '../src/core/game';
 import {
   BALL_RADIUS, COUNT_MS, DASH_COOLDOWN_MS, DASH_SPEED, FLOE_MID, FLOE_START, MAX_ROLL, OVER_MS, SHRINK_END_MS, SHRINK_MID_MS, SUNK_Y,
-  advance, ahead, ballAt, ballFrame, bonk, dash, hitFrame, knocked, parseControls, toward, firstRound, floeRadius, leaderOf, parseFrame, roll, roundFrame, roundOf, spawnAt, steer, whoOf,
+  advance, ahead, ballAt, ballFrame, bonk, dash, hitFrame, knocked, toward, firstRound, floeRadius, leaderOf, parseFrame, roll, roundFrame, roundOf, spawnAt, steer, whoOf,
   type Ball, type Counted, type Round,
 } from '../src/core/bonk';
 
@@ -91,11 +91,6 @@ describe('Bonk, a ball on the floe (core/bonk.ts)', () => {
     expect(Math.hypot(b.vx, b.vz)).toBeLessThan(0.5);
   });
 
-  it('steers by the stick unless this browser picked follow', () => {
-    expect(parseControls(null)).toBe('stick');
-    expect(parseControls('follow')).toBe('follow');
-    expect(parseControls('joystick')).toBe('stick');
-  });
 
   it('falls off past the edge, out of the round, and sinks', () => {
     let b = roll({ ...ballAt(FLOE_START - 0.01, 0), vx: 5 }, { x: 0, z: 0 }, 0.1, FLOE_START);

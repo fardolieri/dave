@@ -1,6 +1,6 @@
-# 06 · Bonk: the ball follows the finger or the mouse, picked by a toggle
+# 06 · Bonk: the ball follows the mouse held
 
-Status: in review
+Status: in review (the toggle landed 2026-11-22, PR #186; replaced the same day)
 Raised by: the owner, 2026-11-22
 
 **Why:** "Maybe we can have a toggle that changes the controls on phones. the alternative control should be that the
@@ -18,3 +18,13 @@ before as the only way to steer (PR #179, closed unmerged, 2026-11-21); now besi
   Space dash toward the spot held, if one is. The keys still steer when nothing is held.
 
 **Not done:** tried on no real phone (rung 4 for the owner): which of the two feels better is the question.
+
+**Tried, then changed (2026-11-22):** "Lets remove the new controls from smartphones. The fixed point control is better
+there. But on desktop we can allow both controls simultaniously. That removes the toggle on the top right for both
+cases." So now:
+- No toggle. A finger always drags the stick, as before Follow; Follow is the mouse's alone.
+- The mouse steers beside the keys, from the start: the left button held rolls the ball to the spot under it, the
+  right button dashes toward where it was pressed. The keys steer whenever the mouse is not held.
+- A device with a mouse (`any-pointer: fine`) has Follow's camera: still, a little further back, the fog with it. A phone
+  keeps the camera that follows the ball a little.
+- `bonkControls` is no longer read or listed (core/storedstate.ts). Browsers that picked a side keep the value, unused.

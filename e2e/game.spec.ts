@@ -221,7 +221,7 @@ test('a friend back from a gap, moved over to the game of a kind started since, 
   for (const f of [carol, alice, bob]) expect((await view(f))!.wins[carolWho], `${f.name} sees no win of Carol's`).toBeUndefined();
 });
 
-test('Bonk followed: the ball rolls to where the mouse is held, the right button dashes, and the pick is kept', async ({ crowd }) => {
+test('Bonk with the mouse: the ball rolls to where it is held and stops there, and the right button dashes', async ({ crowd }) => {
   test.setTimeout(90_000);
   const alice = await open(crowd, 'Alice');
   await needHooks(alice);
@@ -229,21 +229,14 @@ test('Bonk followed: the ball rolls to where the mouse is held, the right button
   await alice.page.getByRole('button', { name: /Play Bonk/ }).click();
   await expect.poll(async () => (await view(alice))?.phase, { timeout: 30_000 }).toBe('wait');
 
-  // The drag stick to start with; the mouse held does nothing then.
+  // No toggle: on a desktop the mouse steers beside the keys, from the start.
   const game = tile(alice).locator('.bonk');
+  await expect(game.getByRole('button', { name: /Controls/ })).toHaveCount(0);
   const box = (await game.boundingBox())!;
   const from = (await view(alice))!.me;
-  await alice.page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2);
-  await alice.page.mouse.down();
-  await alice.page.waitForTimeout(500);
-  await alice.page.mouse.up();
-  expect((await view(alice))!.me.x).toBeCloseTo(from.x, 1);
 
-  // Follow: held right of the middle, on the floe, the ball rolls there and stops on the spot. The spot stays under the
-  // mouse, a wobble or not: with the camera following the ball a little, it would go on ahead of the ball, off the floe.
-  await tile(alice).getByRole('button', { name: 'Controls: stick' }).click();
-  await expect(tile(alice).getByRole('button', { name: 'Controls: follow' })).toBeVisible();
-  expect((await view(alice))!.controls).toBe('follow');
+  // Held right of the middle, on the floe, the ball rolls there and stops on the spot. The spot stays under the mouse,
+  // a wobble or not: with the camera following the ball a little, it would go on ahead of the ball, off the floe.
   await alice.page.mouse.move(box.x + box.width * 0.65, box.y + box.height / 2);
   await alice.page.mouse.down();
   await expect.poll(async () => (await view(alice))!.aim).not.toBeNull();
@@ -258,15 +251,10 @@ test('Bonk followed: the ball rolls to where the mouse is held, the right button
   expect(there.me.alive).toBe(true);
   expect(Math.hypot(there.me.x - spot.x, there.me.z - spot.z)).toBeLessThan(0.3); // stopped on it, not swinging round it
   await alice.page.mouse.up();
+  await expect.poll(async () => (await view(alice))!.aim).toBeNull();
 
   // The right button, left of the middle: a dash that way (and on, off the floe: a dash goes some 15).
   expect((await view(alice))!.me.lastDash).toBeNull();
   await alice.page.mouse.click(box.x + box.width * 0.3, box.y + box.height / 2, { button: 'right' });
   await expect.poll(async () => (await view(alice))!.me.lastDash?.vx ?? 0, { timeout: 5000 }).toBeLessThan(-10);
-
-  // Kept: a game started again follows still.
-  await tile(alice).getByRole('button', { name: 'Leave game' }).click();
-  await expect(tile(alice)).toHaveCount(0);
-  await alice.page.getByRole('button', { name: /Play Bonk/ }).click();
-  await expect(tile(alice).getByRole('button', { name: 'Controls: follow' })).toBeVisible();
 });
