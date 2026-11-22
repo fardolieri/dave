@@ -32,14 +32,16 @@ test('skid: a race counted down on the grid, each kart seen by the other, places
 
   // The countdown: both on the grid, held there, the throttle down or not.
   for (const f of [alice, bob]) await expect.poll(async () => { const v = await view(f); return v?.phase === 'count' && v.playing; }, { timeout: 15_000 }).toBe(true);
+  const grid = (await view(alice))!.me;
   await tile(alice).locator('.bonk').click();
   await alice.page.keyboard.down('ArrowUp');
-  const grid = (await view(alice))!.me;
-  await alice.page.waitForTimeout(500);
-  if ((await view(alice))!.phase === 'count') expect((await view(alice))!.me).toMatchObject({ x: grid.x, z: grid.z, v: 0 });
 
-  // Go: Alice drives off, Bob stays; Bob sees her kart go, and both screens put her first.
-  for (const f of [alice, bob]) await expect.poll(async () => (await view(f))?.phase, { timeout: 15_000 }).toBe('play');
+  // Go: Alice drives off, Bob stays; Bob sees her kart go, and both screens put her first. Held on the grid through the
+  // countdown, her throttle down all along, she is still near it at the go: a few seconds' driving would be 40 units on.
+  await expect.poll(async () => (await view(alice))?.phase, { timeout: 15_000, intervals: [50] }).toBe('play');
+  const atGo = (await view(alice))!.me;
+  expect(Math.hypot(atGo.x - grid.x, atGo.z - grid.z), 'Alice held on the grid through the countdown').toBeLessThan(12);
+  await expect.poll(async () => (await view(bob))?.phase, { timeout: 15_000 }).toBe('play');
   const bobFrom = (await view(bob))!.me;
   await expect.poll(async () => { const o = (await view(bob))!.others[0]!; return Math.hypot(o.x - grid.x, o.z - grid.z); }, { timeout: 5000, message: "Bob sees Alice's kart go" }).toBeGreaterThan(10);
   await alice.page.keyboard.up('ArrowUp');

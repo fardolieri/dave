@@ -132,12 +132,15 @@ export type Controls = { throttle: number; steer: number; drift: boolean };
 
 const CHECKPOINTS = [0.25, 0.5, 0.75];
 
+/** How far from the middle of the world a kart may go: well past the track, inside what a frame carries (`parseFrame`). */
+export const WORLD = 140;
+
 /**
  * The kart `dt` seconds on at `now`, as the player drives it, round the track; `raceMs` is the race's time, for its
- * finish. On the grass it is slow; boosting, fast; spun, it neither steers nor speeds up. A drift (held while steering
+ * finish, which only a race counts (`racing`): driving round while waiting for a friend finishes nothing. On the grass it is slow; boosting, fast; spun, it neither steers nor speeds up. A drift (held while steering
  * at speed) turns tighter and charges; let go, it boosts. The lap counts at the line once all checkpoints are passed.
  */
-export function drive(k: Kart, c: Controls, dt: number, now: number, raceMs: number, track: Track = TRACK): Kart {
+export function drive(k: Kart, c: Controls, dt: number, now: number, raceMs: number, racing = true, track: Track = TRACK): Kart {
   if (k.finished !== null) c = { throttle: 0, steer: 0, drift: false };
   const spun = now < k.spinUntil;
   const boosting = now < k.boostUntil;
@@ -166,7 +169,9 @@ export function drive(k: Kart, c: Controls, dt: number, now: number, raceMs: num
   const grip = Math.min(1, Math.abs(v) / 8) * Math.sign(v);
   const steer = spun ? 0 : drift !== 0 ? drift * 0.75 + c.steer * 0.55 : c.steer;
   const h = k.h + steer * TURN * (drift !== 0 ? 1.25 : 1) * grip * dt;
-  const x = k.x + Math.cos(h) * v * dt, z = k.z + Math.sin(h) * v * dt;
+  let x = k.x + Math.cos(h) * v * dt, z = k.z + Math.sin(h) * v * dt;
+  // The edge of the world: a kart that gets there stops against it.
+  if (Math.abs(x) > WORLD || Math.abs(z) > WORLD) { x = Math.max(-WORLD, Math.min(WORLD, x)); z = Math.max(-WORLD, Math.min(WORLD, z)); v *= 0.5; }
 
   // The lap: checkpoints in order, then the line, forward.
   const now_ = locate(x, z, track);
@@ -176,7 +181,8 @@ export function drive(k: Kart, c: Controls, dt: number, now: number, raceMs: num
   if (k.progress > 0.9 && now_.progress < 0.1 && next === CHECKPOINTS.length) {
     lap++;
     next = 0;
-    if (lap > LAPS && finished === null) finished = Math.max(0, Math.round(raceMs));
+    if (lap > LAPS && finished === null && racing) finished = Math.max(0, Math.round(raceMs));
+    if (!racing && lap > LAPS) lap = 1;
   }
   return { ...k, x, z, h, v, drift, charge, boostUntil, lap, next, progress: now_.progress, finished };
 }
@@ -244,7 +250,9 @@ export type Counted = { who: string; n: number; known: number; finished: number 
 /**
  * The race at `now`, with `here` the players the leader hears from (the leader too). A second player starts one; the
  * countdown runs to the go; the race runs until everyone in it has finished, or GRACE_MS after the first did, or for
- * MAX_RACE_MS; then the finishers' times are its score, the fastest wins, and the next race starts, or the wait.
+ * MAX_RACE_MS; then the finishers' times are its score, the fastest wins, and the next race starts, or the wait. A finish
+ * once seen is kept in the race's score as it goes (`scores`, which the round's frames carry): a finisher who leaves,
+ * or is not heard from for a while, keeps their place, and so does one whose leader hands over.
  */
 export function advance(r: Round, now: number, here: readonly Counted[]): Round {
   const ms = now - r.since;
@@ -259,12 +267,18 @@ export function advance(r: Round, now: number, here: readonly Counted[]): Round 
     case 'play': {
       // In it: those who race this round, or have not yet taken it. Gone, or back and watching, is out of it.
       const racing = r.players.map((who) => here.find((h) => h.who === who)).filter((p): p is Counted => p !== undefined && (p.known < r.n || p.n === r.n));
-      const done = racing.filter((p) => p.n === r.n && p.finished !== null);
-      const first = Math.min(...done.map((p) => p.finished!));
-      const over = racing.length === 0 || done.length === racing.length || (done.length > 0 && ms >= first + GRACE_MS) || ms >= MAX_RACE_MS || (racing.length < 2 && done.length === 0 && r.players.length > 1);
-      if (!over) return r;
-      const scores = Object.fromEntries(done.map((p) => [p.who, p.finished!]));
-      const winner = done.length > 0 ? done.reduce((a, b) => (b.finished! < a.finished! ? b : a)).who : null;
+      // Every finish seen so far, this time's added to those kept.
+      const kept = r.scores ?? {};
+      const fresh = racing.filter((p) => p.n === r.n && p.finished !== null && kept[p.who] === undefined);
+      const scores = fresh.length ? { ...kept, ...Object.fromEntries(fresh.map((p) => [p.who, p.finished!])) } : kept;
+      const times = Object.values(scores);
+      const still = racing.filter((p) => scores[p.who] === undefined);
+      // Over once nobody is left racing; a while after the first finish; at the longest; or, with nobody finished, once
+      // a race of two or more is down to one.
+      const over = (times.length > 0 && still.length === 0) || racing.length === 0 || (times.length > 0 && ms >= Math.min(...times) + GRACE_MS) || ms >= MAX_RACE_MS
+        || (times.length === 0 && racing.length < 2 && r.players.length > 1);
+      if (!over) return fresh.length ? { ...r, scores } : r;
+      const winner = times.length > 0 ? Object.entries(scores).reduce((a, b) => (b[1] < a[1] ? b : a))[0] : null;
       return { ...r, phase: 'over', since: now, winner, scores, wins: winner ? { ...r.wins, [winner]: (r.wins[winner] ?? 0) + 1 } : r.wins };
     }
     case 'over':

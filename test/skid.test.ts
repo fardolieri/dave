@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BOXES, DRIFT_CHARGE, GRACE_MS, GRASS_SPEED, KART_RADIUS, LAPS, MAX_SPEED, OVER_MS, COUNT_MS, TRACK, TRACK_WIDTH,
   advance, boost, boxAt, bump, distance, drive, gridAt, kartAt, kartFrame, locate, onPad, parseFrame, pointAt, spin, standings, PADS,
-  type Controls, type Counted, type Kart,
+  WORLD, type Controls, type Counted, type Kart,
 } from '../src/core/skid';
 import { firstRound, roundFrame, roundOf, whoOf, type Round } from '../src/core/rounds';
 
@@ -88,16 +88,33 @@ describe('Skid, a kart (core/skid.ts)', () => {
     expect(after.finished).toBe(k.finished);
   });
 
-  it('counts no lap for crossing the line back and forth, nor for the start', () => {
+  it('counts no lap for the start, nor for crossing the line backwards and forwards again', () => {
     let k = kartAt(0);
+    let t = 0;
+    const until = (c: Controls | ((k: Kart) => Controls), done: (k: Kart) => boolean) => {
+      for (let i = 0; i < 3000 && !done(k); i++, t += 16) k = drive(k, typeof c === 'function' ? c(k) : c, DT, t, t);
+      expect(done(k)).toBe(true);
+    };
     // Forward over the line from the grid: still lap 1.
-    for (let i = 0; i < 120; i++) k = drive(k, autopilot(k), DT, i * 16, 0);
-    expect(locate(k.x, k.z).progress).toBeLessThan(0.2);
+    until(autopilot, (k) => k.progress > 0.05 && k.progress < 0.2);
     expect(k.lap).toBe(1);
-    // Back over it and forward again: still lap 1.
-    for (let i = 0; i < 200; i++) k = drive(k, { throttle: -1, steer: 0, drift: false }, DT, 3000 + i * 16, 0);
-    for (let i = 0; i < 200; i++) k = drive(k, autopilot(k), DT, 8000 + i * 16, 0);
+    // Backwards over it, and forwards over it again: still lap 1.
+    until({ throttle: -1, steer: 0, drift: false }, (k) => k.progress > 0.9);
+    until(autopilot, (k) => k.progress > 0.05 && k.progress < 0.2);
     expect(k.lap).toBe(1);
+  });
+
+  it('finishes nothing while not racing, laps going round as they please; and stops at the edge of the world', () => {
+    let k = kartAt(0);
+    for (let t = 0; t < 200_000 && k.lap < LAPS; t += 16) k = drive(k, autopilot(k), DT, t, t, false);
+    for (let t = 0; t < 60_000; t += 16) k = drive(k, autopilot(k), DT, t, t, false);
+    expect(k.finished).toBeNull();
+    expect(k.lap).toBeLessThanOrEqual(LAPS);
+    let off: Kart = { ...kartAt(0), h: Math.PI / 4 };
+    for (let t = 0; t < 120_000; t += 16) off = drive(off, { throttle: 1, steer: 0, drift: false }, DT, t, t);
+    expect(Math.max(Math.abs(off.x), Math.abs(off.z))).toBeLessThanOrEqual(WORLD);
+    // Its frames still go: another app hears it.
+    expect(parseFrame(JSON.stringify(kartFrame(off, 1, 1, 0, null)))).not.toBeNull();
   });
 
   it('boosts after a drift held long enough, and not after a short one', () => {
@@ -146,7 +163,10 @@ describe('Skid, the races (core/skid.ts)', () => {
     expect(r).toMatchObject({ n: 1, phase: 'count', players: [A, B] });
     r = advance(r, at(r, COUNT_MS), [c(A, 1), c(B, 1)]);
     expect(r.phase).toBe('play');
-    expect(advance(r, at(r, 60_000), [c(A, 1, 58_000), c(B, 1)])).toBe(r);
+    r = advance(r, at(r, 60_000), [c(A, 1, 58_000), c(B, 1)]);
+    expect(r).toMatchObject({ phase: 'play', scores: { [A]: 58_000 } });
+    // Nothing new: the same round, sent no more often.
+    expect(advance(r, at(r, 60_100), [c(A, 1, 58_000), c(B, 1)])).toBe(r);
     r = advance(r, at(r, 61_000), [c(A, 1, 58_000), c(B, 1, 60_500)]);
     expect(r).toMatchObject({ phase: 'over', winner: A, scores: { [A]: 58_000, [B]: 60_500 }, wins: { [A]: 1 } });
     r = advance(r, at(r, OVER_MS), [c(A, 1), c(B, 1)]);
@@ -156,14 +176,30 @@ describe('Skid, the races (core/skid.ts)', () => {
   it('gives the rest a while once the first has finished, then ends without them', () => {
     const r: Round = { ...firstRound(0), n: 4, phase: 'play', players: [A, B, C] };
     const here = [c(A, 4, 70_000), c(B, 4), c(C, 4)];
-    expect(advance(r, 70_000 + GRACE_MS - 1, here)).toBe(r);
+    expect(advance(r, 70_000 + GRACE_MS - 1, here)).toMatchObject({ phase: 'play' });
     expect(advance(r, 70_000 + GRACE_MS, here)).toMatchObject({ phase: 'over', winner: A, scores: { [A]: 70_000 } });
+  });
+
+  it('keeps a finish once seen: a finisher who leaves keeps their place and their win, under another leader too', () => {
+    const r: Round = { ...firstRound(0), n: 5, phase: 'play', players: [A, B] };
+    // A finished, and is still heard: kept.
+    const seen = advance(r, 61_000, [c(A, 5, 60_000), c(B, 5)]);
+    expect(seen).toMatchObject({ phase: 'play', scores: { [A]: 60_000 } });
+    // A left. B, alone and still racing, does not end it with nobody finished; the grace does, and A wins.
+    expect(advance(seen, 62_000, [c(B, 5)])).toBe(seen);
+    expect(advance(seen, 60_000 + GRACE_MS, [c(B, 5)])).toMatchObject({ phase: 'over', winner: A, scores: { [A]: 60_000 } });
+    // B led, and leaves: C takes the race over from B's frame, the kept finish with it.
+    const three: Round = { ...firstRound(0), n: 6, phase: 'play', players: [A, B, C] };
+    const kept = advance(three, 61_000, [c(A, 6, 60_000), c(B, 6), c(C, 6)]);
+    const taken = roundOf(roundFrame(kept, 61_000, 1), 61_000);
+    const later = advance(taken, 81_000, [c(B, 6, 70_000), c(C, 6, 80_000)]);
+    expect(later).toMatchObject({ phase: 'over', winner: A, scores: { [A]: 60_000, [B]: 70_000, [C]: 80_000 } });
   });
 
   it('counts a player gone or watching as out, one not yet in the race as in it', () => {
     const r: Round = { ...firstRound(0), n: 4, phase: 'play', players: [A, B] };
     // B has not taken the race yet: A's finish does not end it at once.
-    expect(advance(r, 50_000, [c(A, 4, 49_000), c(B, 3)])).toBe(r);
+    expect(advance(r, 50_000, [c(A, 4, 49_000), c(B, 3)])).toMatchObject({ phase: 'play' });
     // B reloaded and watches: A alone finished, and the race is over.
     expect(advance(r, 50_000, [c(A, 4, 49_000), c(B, 0, null, 4)])).toMatchObject({ phase: 'over', winner: A });
   });

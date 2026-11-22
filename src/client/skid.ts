@@ -103,7 +103,8 @@ export function mountSkid(host: HTMLElement, opts: { me: string; links: GameLink
     const now = performance.now();
     if (f.k === 'k') {
       others.set(from, { key: from, frame: f, at: now });
-      if (f.s) { const id = `${from}:${f.s[2]}`; if (!slicksSeen.has(id)) slicksSeen.set(id, { x: f.s[0], z: f.s[1], seen: now }); }
+      // A slick of this race only: a frame sent before its dropper took the countdown still carries the last race's.
+      if (f.s && round.phase === 'play' && f.r === round.n && f.r > 0) { const id = `${from}:${f.s[2]}`; if (!slicksSeen.has(id)) slicksSeen.set(id, { x: f.s[0], z: f.s[1], seen: now }); }
       return;
     }
     if (from !== leader || f.q <= (roundSeq.get(from) ?? -1)) return;
@@ -135,7 +136,7 @@ export function mountSkid(host: HTMLElement, opts: { me: string; links: GameLink
         const h = Math.min(dt, MAX_STEP_S / 3);
         dt -= h;
         const was = kart;
-        kart = drive(kart, controls, h, now, race);
+        kart = drive(kart, controls, h, now, race, round.phase === 'play');
         if (kart.drift === 0 && was.drift !== 0 && kart.boostUntil > was.boostUntil) events.push({ kind: 'boost' });
       }
       const where = locate(kart.x, kart.z);
@@ -154,7 +155,6 @@ export function mountSkid(host: HTMLElement, opts: { me: string; links: GameLink
       }
       // Others' slicks, and bumps with their karts.
       for (const [id, s] of slicksSeen) {
-        if (now - s.seen > SLICK_LIFE_MS) { slicksSeen.delete(id); continue; }
         if (!slicksHit.has(id) && now >= kart.spinUntil && Math.hypot(s.x - kart.x, s.z - kart.z) < SLICK_RADIUS) { slicksHit.add(id); kart = spin(kart, now); events.push({ kind: 'spin' }); }
       }
       for (const o of around) {
@@ -166,6 +166,8 @@ export function mountSkid(host: HTMLElement, opts: { me: string; links: GameLink
         kart = b;
       }
     }
+    // Slicks dry up, watched or not.
+    for (const [id, s] of slicksSeen) if (now - s.seen > SLICK_LIFE_MS) slicksSeen.delete(id);
     if (mySlick && Date.now() - mySlick[2] > SLICK_LIFE_MS) mySlick = null;
     itemAsked = false;
     if (now - lastSent >= SEND_MS) {
