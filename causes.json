@@ -358,5 +358,13 @@
  {
   "match": "^clink\\.spec\\.ts › clink: practice alone, .* \\| expect\\(received\\)\\.toBeLessThanOrEqual\\(expected\\)",
   "ticket": "93"
+ },
+ {
+  "match": "^skid\\.spec\\.ts › skid: a race counted down on the grid, .* \\| Alice held on the grid through the countdown",
+  "ticket": "93"
+ },
+ {
+  "match": "^clink\\.spec\\.ts › clink: practice alone, .* \\| expect\\(received\\)\\.toBe\\(expected\\)",
+  "ticket": "93"
  }
 ]
