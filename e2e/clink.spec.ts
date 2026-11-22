@@ -9,8 +9,16 @@ import { ALLOWANCE, type ClinkView } from '../src/core/clink';
 
 const tile = (f: Friend) => f.page.locator('.shares .game');
 const view = (f: Friend) => f.page.evaluate(() => (window as unknown as { __daveGame?: () => ClinkView }).__daveGame?.() ?? null);
-/** Every roll the leader's dice make comes out `v` (core/clinktable.ts, `rig`): after this coin of this round's climbs (default: the next not seen yet), and every one of later rounds'. */
-const rig = (f: Friend, v: number | null, from?: [number, number]) => f.page.evaluate(([x, at]) => (window as unknown as { __daveClinkRig?: (v: number | null, from?: [number, number]) => void }).__daveClinkRig?.(x, at), [v, from] as const);
+/**
+ * Every roll the leader's dice make comes out `v` (core/clinktable.ts, `rig`): after this coin of this round's climbs
+ * (default: the next not seen yet), and every one of later rounds'. Whether the game was there to rig: not before its
+ * chunk has loaded, and a rig that came too soon left that screen's coins to chance (ticket 93).
+ */
+const rig = (f: Friend, v: number | null, from?: [number, number]) => f.page.evaluate(([x, at]) => {
+  const r = (window as unknown as { __daveClinkRig?: (v: number | null, from?: [number, number]) => void }).__daveClinkRig;
+  r?.(x, at);
+  return r !== undefined;
+}, [v, from] as const);
 const shots = process.env['E2E_SHOTS'];
 const shot = async (f: Friend, name: string) => { if (shots) await f.page.screenshot({ path: `${shots}/${f.name}-${name}.png` }); };
 const FELL = -3;
@@ -37,10 +45,10 @@ test('clink: practice alone, a match with a friend, a grab and a double seen by 
   expect((await view(alice))!.phase).toBe('wait');
   await expect(tile(alice).locator('.bonk-banner')).toContainText('Practice');
   await shot(alice, '1-practice');
-  await rig(alice, 0.5);
+  expect(await rig(alice, 0.5)).toBe(true);
   await expect(tile(bob)).toContainText('1 friend plays. Click to play');
   await tile(bob).click();
-  await expect.poll(() => rig(bob, 0.5).then(() => view(bob)), { timeout: 30_000 }).not.toBeNull();
+  await expect.poll(() => rig(bob, 0.5), { timeout: 30_000, message: "Bob's game is there to rig" }).toBe(true);
   for (const f of [alice, bob]) await expect.poll(async () => (await view(f))?.connected, { timeout: 30_000, message: `${f.name}'s game link opens` }).toBe(1);
 
   // The match: the first climb's stakes open; Alice puts all of hers on, Bob keeps to half.
@@ -63,19 +71,32 @@ test('clink: practice alone, a match with a friend, a grab and a double seen by 
   // Each moment taken before its read: the allowance after it is counted from no later than it was.
   const ridingAt = Date.now();
   const riding = (await view(bob))!.me;
+  // Her grab and the tower as she saw it, read before the rigs: a page drawing in software takes up to a second a read,
+  // and the climb may be over by the last of them (ticket 93).
+  let seen: ClinkView | null = null;
+  await expect.poll(async () => { const v = (await view(alice))!; if (v.me.at >= 1) seen = v; return seen !== null; }, { message: "Alice's grab" }).toBe(true);
+  const grabbed = seen!.me;
+  const tower = seen!.climb!;
   // The coin after next topples it: the same coin on both screens, which neither has seen land.
-  const tower = (await view(alice))!.climb!;
   const topples: [number, number] = [tower.c, tower.h + 1];
-  await rig(alice, 0, topples);
-  await rig(bob, 0, topples);
+  expect(await rig(alice, 0, topples)).toBe(true);
+  expect(await rig(bob, 0, topples)).toBe(true);
+  // From the next climb on, every coin lands again: rigged before the fall, which a page drawing in software may read
+  // only once the next climb has begun (ticket 93).
+  const fell = tower.c;
+  expect(await rig(alice, 0.5, [fell + 1, 0])).toBe(true);
+  expect(await rig(bob, 0.5, [fell + 1, 0])).toBe(true);
   expect(riding.at).toBe(-1);
-  const grabbed = (await view(alice))!.me;
-  expect(grabbed.at).toBeGreaterThanOrEqual(1);
   expect(grabbed.won).toBeGreaterThanOrEqual(Math.floor(staked * 1.2));
   expect(grabbed.chips).toBeGreaterThanOrEqual(grabbed.won);
-  await expect.poll(async () => (await view(bob))!.me.at, { timeout: 15_000 }).toBe(FELL);
-  const fallen = (await view(bob))!.me;
-  const fell = (await view(bob))!.climb!.c;
+  // Fallen, or on to the next climb with his stake not in yet: the chips he kept are his until its stakes close.
+  let fallen: ClinkView['me'] | null = null;
+  await expect.poll(async () => {
+    const v = (await view(bob))!;
+    if (v.me.at === FELL || ((v.climb?.c ?? 0) > fell && v.me.stake === 0)) fallen = v.me;
+    return fallen !== null;
+  }, { timeout: 15_000, message: 'the tower falls under Bob' }).toBe(true);
+  fallen = fallen!;
   expect(fallen.chips).toBeGreaterThanOrEqual(riding.chips);
   expect(fallen.chips).toBeLessThanOrEqual(riding.chips + ALLOWANCE * ((Date.now() - ridingAt) / 1000 + 1));
 
@@ -84,9 +105,6 @@ test('clink: practice alone, a match with a friend, a grab and a double seen by 
   await expect.poll(async () => (await view(alice))!.me.levels[1]).toBe(1);
   // Half from the next climb on: chips kept back.
   await tile(alice).getByRole('button', { name: '½', exact: true }).click();
-  // From the next climb on, every coin lands again.
-  await rig(alice, 0.5, [fell + 1, 0]);
-  await rig(bob, 0.5, [fell + 1, 0]);
   await shot(alice, '3-grabbed');
   await shot(bob, '3-fell');
 
