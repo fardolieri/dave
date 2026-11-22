@@ -352,7 +352,11 @@
   "ticket": "55"
  },
  {
-  "match": "^party\\.spec\\.ts › .* \\| console warnings, errors or exceptions nobody expected: \\w+: error: Failed to load resource: net::ERR_CONNECTION_REFUSED \\(https://[^/]*googlevideo\\.com/",
+  "match": "^party\\.spec\\.ts › .* \\| console warnings, errors or exceptions nobody expected: \\w+: error: Failed to load resource: net::ERR_[A-Z_.]+ \\(https://[^/]*googlevideo\\.com/",
   "ticket": "90"
+ },
+ {
+  "match": "^clink\\.spec\\.ts › clink: practice alone, .* \\| expect\\(received\\)\\.toBeLessThanOrEqual\\(expected\\)",
+  "ticket": "93"
  }
 ]
