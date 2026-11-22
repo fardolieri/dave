@@ -312,7 +312,11 @@
   "ticket": "80"
  },
  {
-  "match": "^attachment\\.spec\\.ts › ADR 0009: a picture sent while nobody else was there comes from the server, sealed, once its sender is gone \\| expect\\(received\\)\\.toBe\\(expected\\)",
+  "match": "^attachment\\.spec\\.ts › ADR 0009: a picture sent while nobody else was there comes from the server, sealed, once its sender is gone \\| (?!expect\\(locator\\)\\.toHaveCount)",
+  "ticket": "81"
+ },
+ {
+  "match": "^attachment\\.spec\\.ts › ADR 0009: a picture from the server whose socket drops under a fetch is asked again on the next socket, once \\|",
   "ticket": "81"
  },
  {
