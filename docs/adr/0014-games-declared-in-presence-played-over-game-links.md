@@ -55,7 +55,15 @@ worker keeps it with the rest of the build, so a tab left open across a deploy s
   friend whose app knew only Bonk saw no Splotch, until it updated. **Skid**, a kart race, came third (2026-11-22): each
   app drives its own kart and counts its own laps and finish, which its frames carry; the leader ends the race once
   everyone in it has finished, or a while after the first did, and sends the times with its end. Item boxes are each
-  app's own; an oil slick goes out in its dropper's frames, and each app spins its own kart on it.
+  app's own; an oil slick goes out in its dropper's frames, and each app spins its own kart on it. **Clink** took
+  Splotch's place (2026-11-22): the tower is the leader's, which lands every coin, rolls whether it topples or is golden,
+  and sends the climb as it stands (`ClimbFrame`); every player's chips, stake and grab are their own app's, sent in
+  their frames, a grab judged by the coins that app had seen land. Its balance is checked by simulation: bots of several
+  kinds play thousands of matches with the game's own rules, and the matches must land in bands for skill, drama
+  (Browne's lead changes and comebacks), pacing and growth (`test/fun.ts`, `test/clink.fun.test.ts`), a kit the next
+  game can use too. A friend whose app still knows Splotch can start one that updated apps do not show, as above. A
+  renderer without a GPU, or one that turns out slow, draws Clink plainly (no reflections or shadows, fewer pixels and
+  frames).
 
 ## Considered options
 

@@ -1,6 +1,6 @@
 // The rounds of a game (core/game.ts, ADR 0014), as every game plays them: one player's app, the leader, runs them, and
 // sends the round as it stands (`RoundFrame`) to the others, who follow it; another takes over where it was when the
-// leader leaves. What ends a round is each game's own (core/bonk.ts, core/splotch.ts). Runtime-neutral: plain data only.
+// leader leaves. What ends a round is each game's own (core/bonk.ts, core/skid.ts, core/clink.ts). Runtime-neutral: plain data only.
 
 /** What a game is doing: waiting for a second player, counting down to a round, playing one, or showing who won it. */
 export type Phase = 'wait' | 'count' | 'play' | 'over';

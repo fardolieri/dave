@@ -1,5 +1,5 @@
 // The room's game on screen (client/game.ts, ADR 0014): the button that starts one from the call, and its tile beside
-// the shares, which a click puts me in. The game itself is loaded only then (client/bonk.ts, client/splotch.ts): three.js
+// the shares, which a click puts me in. The game itself is loaded only then (client/bonk.ts, client/clink.ts): three.js
 // is big, and most visits never play.
 import { For, Show, createEffect, createSignal, onCleanup, onSettled, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
@@ -14,15 +14,15 @@ import { canFullscreen, exitFullscreenSafely, fullscreenElement, requestFullscre
 const TITLES: Record<GameName, { title: string; icon: string; blurb: string }> = {
   bonk: { title: 'Bonk', icon: '🧊', blurb: 'Bonk your friends off a shrinking ice floe. Last one on it wins.' },
   skid: { title: 'Skid', icon: '🏎️', blurb: 'A kart race, three laps. Drift round the bends to boost, grab items, beat your friends to the line.' },
-  splotch: { title: 'Splotch', icon: '🎨', blurb: 'Paint the board your colour, over everyone else\'s. Most of it when time is up wins.' },
+  clink: { title: 'Clink', icon: '🪙', blurb: 'A tower of coins, everyone\'s chips on it. Grab before it falls. Most chips after ten climbs wins.' },
 };
 
 /** Each game, as loaded when someone plays it: a chunk of its own, three.js shared. */
 type Mount = (host: HTMLElement, opts: { me: string; links: GameLinks; faceOf: (key: string) => Face }) => () => void;
 const LOAD: Record<GameName, () => Promise<Mount>> = {
   bonk: () => import('./bonk').then((m) => m.mountBonk),
-  splotch: () => import('./splotch').then((m) => m.mountSplotch),
   skid: () => import('./skid').then((m) => m.mountSkid),
+  clink: () => import('./clink').then((m) => m.mountClink),
 };
 
 /** In the call's controls: a game for everyone in the call, in one click; while one goes on, a way into it. */

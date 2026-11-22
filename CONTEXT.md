@@ -107,15 +107,20 @@ _Avoid_: Data channel (its transport, fine in code), game connection
 **Bonk**:
 The first game: every player is a ball with their face on it, on an ice floe in the sea. Roll, dash, bonk the others into the water; the floe shrinks while a round plays, and the last one on it wins the round.
 
-**Splotch**:
-The second game: every player is a blob of paint on a square board, leaving their colour wherever they go, over anyone else's, and now and then a splat. When the time is up, who has the most of the board wins the round.
 
 **Skid**:
 The third game: a kart race, three laps of a winding track, every player's face in their kart. Drifting round a bend charges a boost; boost pads and turbos speed you up; an oil slick dropped behind you spins whoever drives over it. First over the line wins the race.
 _Avoid_: Mario Kart, or any other game's names, in UI copy and code
 
+**Clink**:
+A game of chance and nerve: a tower of coins in the middle of the table, everyone's stake on it. Coin by coin it grows, and with it what a stake pays; any coin may topple it, the next one's odds shown to all. Grab before it falls and the stake comes back multiplied; ride it down and it is gone. Golden coins pay the pot to everyone still on. Between climbs, winnings buy things that make the next climbs pay (a piggy bank, a lucky charm, a safety net, a magnet). A match is ten climbs; most chips at the end wins it. Replaced Splotch, the second game, which the owner did not take to (2026-11-22).
+_Avoid_: Casino, bet (UI copy says stake), crash game
+
+**Climb** (in Clink):
+One tower, from the stakes closing to its fall or its top. A match of Clink is ten; while one waits alone for a friend, climbs go on for practice.
+
 **Round** (of a game):
-From the countdown to the winner: who was there at the countdown plays it, whoever comes in later watches until the next. Run by one player's app, the leader, whom the others follow; in Bonk it ends when one is left on the floe, in Splotch when the time is up, the leader's board counted, in Skid (a race) when everyone in it has finished, or a while after the first did.
+From the countdown to the winner: who was there at the countdown plays it, whoever comes in later watches until the next. Run by one player's app, the leader, whom the others follow; in Bonk it ends when one is left on the floe, in Skid (a race) when everyone in it has finished, or a while after the first did, in Clink (a match) after its tenth climb, the most chips winning.
 _Avoid_: Match, game (the whole of it), level
 
 **Signaling**:

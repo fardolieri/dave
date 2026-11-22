@@ -1,7 +1,11 @@
 # 03 · A second game, Splotch; and fullscreen for the games
 
-Status: in review
+Status: Splotch removed 2026-11-22 (ticket 05); fullscreen stays
 Raised by: the owner, 2026-11-21 ("Lets add a new game", then "And add a fullscreen button to the games")
+
+**Removed:** the owner, 2026-11-22: "not the biggest fan of this one. I feel like the first one chasing the other always
+wins", then "Lets remove the splotch game. And replace it with a new fun game." Clink took its place (ticket 05), with a
+check this game did not have: matches played by bots, which must show the lead changing hands and comebacks happening.
 
 **What was built:**
 - Splotch: every player a blob of paint on a 24 × 24 board, leaving their colour wherever they go, over anyone else's;

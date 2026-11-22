@@ -1,4 +1,4 @@
-// What every game draws and sounds alike (client/bonk.ts, client/splotch.ts): a player's colour, their face on a ball,
+// What every game draws and sounds alike (client/bonk.ts, client/skid.ts, client/clink.ts): a player's colour, their face on a ball,
 // their name over it, a word that pops up, a thump and a splash, through the cues' audio (client/sound.ts).
 import * as THREE from 'three';
 import { cueContext } from './sound';
