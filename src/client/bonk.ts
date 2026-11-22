@@ -215,9 +215,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   host.append(hud);
 
   // A stick where the finger goes down, in `stick`; in `follow`, the finger or the mouse held, which the ball rolls
-  // toward, the spot under it on the floe worked out when it goes down or moves, from the camera as it is then (worked
-  // out again each step, a finger held still would chase the ball off the floe, as the camera follows the ball a
-  // little); and the spot of a dash by the right button.
+  // toward, the spot under it on the floe worked out when it goes down or moves (the camera holds still in `follow`,
+  // so a finger stays over its spot); and the spot of a dash by the right button.
   let touch: { id: number; x: number; y: number } | null = null;
   let held: { id: number; at: { x: number; z: number } | null } | null = null;
   let dashAim: { x: number; z: number } | null = null;
@@ -521,7 +520,10 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
 
     // The camera: over the floe from the south, a little toward my ball, further back on a tall screen; shaken by a bonk.
     const far = Math.max(1, 1.25 / camera.aspect);
-    const fx = watching ? 0 : ball.x * 0.2, fz = watching ? 0 : ball.z * 0.2;
+    // Held still while the ball follows a finger: moved with the ball, the spot under a finger held still would move on
+    // ahead of it, off the floe.
+    const still = watching || controls === 'follow';
+    const fx = still ? 0 : ball.x * 0.2, fz = still ? 0 : ball.z * 0.2;
     shake = Math.max(0, shake - dt * 1.5);
     camera.position.set(fx + (Math.random() - 0.5) * shake, 15 * far + (Math.random() - 0.5) * shake, fz + 13 * far);
     camera.lookAt(fx, -0.5, fz + 0.5);

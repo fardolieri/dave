@@ -239,9 +239,8 @@ test('Bonk followed: the ball rolls to where the mouse is held, the right button
   await alice.page.mouse.up();
   expect((await view(alice))!.me.x).toBeCloseTo(from.x, 1);
 
-  // Follow: held still right of the middle, on the floe, the ball rolls there and stops on the spot. The spot stays
-  // where it went down, though the camera follows the ball a little: worked out again as the ball goes, it would go on
-  // ahead of the ball, off the floe.
+  // Follow: held right of the middle, on the floe, the ball rolls there and stops on the spot. The spot stays under the
+  // mouse, a wobble or not: with the camera following the ball a little, it would go on ahead of the ball, off the floe.
   await tile(alice).getByRole('button', { name: 'Controls: stick' }).click();
   await expect(tile(alice).getByRole('button', { name: 'Controls: follow' })).toBeVisible();
   expect((await view(alice))!.controls).toBe('follow');
@@ -251,9 +250,11 @@ test('Bonk followed: the ball rolls to where the mouse is held, the right button
   const spot = (await view(alice))!.aim!;
   expect(spot.x).toBeGreaterThan(from.x + 2);
   await expect.poll(async () => { const v = (await view(alice))!; return Math.hypot(v.me.x - spot.x, v.me.z - spot.z); }, { timeout: 5000 }).toBeLessThan(0.3);
+  await alice.page.mouse.move(box.x + box.width * 0.65 + 1, box.y + box.height / 2);
+  await alice.page.mouse.move(box.x + box.width * 0.65, box.y + box.height / 2);
   await alice.page.waitForTimeout(1000);
   const there = (await view(alice))!;
-  expect(there.aim).toEqual(spot);
+  expect(Math.hypot(there.aim!.x - spot.x, there.aim!.z - spot.z)).toBeLessThan(0.05);
   expect(there.me.alive).toBe(true);
   expect(Math.hypot(there.me.x - spot.x, there.me.z - spot.z)).toBeLessThan(0.3); // stopped on it, not swinging round it
   await alice.page.mouse.up();
