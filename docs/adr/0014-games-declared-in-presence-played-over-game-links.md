@@ -15,8 +15,8 @@ awake. So a game has two halves, as a watch party (ADR 0012) and a file (ADR 000
 text key under the domain `dave game v1` (`sealGame`), as a `game` field of their presence entry (`{ t: 'game', sealed }`).
 The server learns that a friend plays, not what; a game it does not know is a field like any other, so a new game needs
 no change to the Room. Leaving the call, or the socket, ends the declaration with the friend's place in the call. The
-call's game is the one most players declare, then the one started first, then the smaller id, and whoever is in another
-moves over: two friends who start one at the same moment end up in the same game, and a friend whose socket was away a
+call's game of each kind is the one most players declare of it, then the one started first, then the smaller id, and
+whoever is in another of that kind moves over (games of different kinds go on side by side, see Consequences): two friends who start one at the same moment end up in the same game, and a friend whose socket was away a
 while, back with a game that ended meanwhile, moves over to the one the others started since (unless as many play it),
 instead of pulling them back into theirs. The game ends when nobody declares it.
 
@@ -73,6 +73,12 @@ worker keeps it with the rest of the build, so a tab left open across a deploy s
   `test/clink.fun.test.ts`), a kit the next game can use too. A friend whose app still knows Splotch can start one that
   updated apps do not show, as above. A renderer without a GPU, or one that turns out slow, draws Clink plainly (no
   reflections or shadows, fewer pixels and frames).
+- **Games side by side** (2026-11-22): the owner wanted more than one game going at once. The call has one game of each
+  kind (`currents`), each with its tile, and a friend joins any of them, which takes them out of the one they played: a
+  player still declares one game, so presence, the links and the Room stay as they were. Of two Bonks, the friends
+  still end up in one, as above. An app from before this picks one game of all the call's, whatever its kind, so until
+  it updates it shows only that one, can start none beside it, and a friend whose old app plays a game that another
+  overtakes in players is moved over into that one.
 
 ## Considered options
 

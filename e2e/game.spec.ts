@@ -1,7 +1,7 @@
 import { expect, needHooks, test, type Friend } from './fixtures';
 import type { GameView } from '../src/core/bonk';
 
-// The call's game (client/game.ts, ADR 0014): started from the call in one click, joined from its tile beside the shares,
+// The call's games (client/game.ts, ADR 0014): started from the call in one click, joined from their tiles beside the shares,
 // played over game links between the players (client/gamelinks.ts), never through the server.
 
 const tile = (f: Friend) => f.page.locator('.shares .game');
@@ -90,4 +90,46 @@ test('a game: started from the call in one click, joined from its tile, rounds c
   await bob.page.getByRole('button', { name: 'Leave', exact: true }).click();
   await expect(tile(alice)).toHaveCount(0);
   await expect(alice.page.getByRole('button', { name: /Play Bonk/ })).toBeVisible();
+});
+
+test('games of different kinds go on side by side, each linking only its own players, and a click on another moves a friend over', async ({ crowd }) => {
+  test.setTimeout(120_000);
+  const alice = await open(crowd, 'Alice');
+  await needHooks(alice);
+  const bob = await open(crowd, 'Bob');
+  const carol = await open(crowd, 'Carol');
+  const of = (f: Friend, name: string) => f.page.locator(`.shares .game[data-game="${name}"]`);
+  await alice.join();
+  await bob.join();
+  await carol.join();
+
+  // Alice plays Bonk; Bob, with Bonk going on, may join it or start Clink beside it.
+  await alice.page.getByRole('button', { name: /Play Bonk/ }).click();
+  await expect(bob.page.getByRole('button', { name: /Join Bonk/ })).toBeVisible();
+  await bob.page.getByRole('button', { name: /Play Clink/ }).click();
+  await expect(of(carol, 'bonk')).toContainText('1 friend plays. Click to play');
+  await expect(of(carol, 'clink')).toContainText('1 friend plays. Click to play');
+  // Playing one, Alice is offered the other in its tile, not in the call's buttons.
+  await expect(of(alice, 'clink')).toContainText('Click to play this instead');
+  await expect(alice.page.getByRole('button', { name: /Join Clink/ })).toHaveCount(0);
+
+  // Carol joins Clink: linked to Bob, and not to Alice, whose Bonk goes on waiting for a friend.
+  await of(carol, 'clink').click();
+  await expect(of(alice, 'clink').locator('.share-faces .face')).toHaveCount(2);
+  await expect(of(alice, 'bonk').locator('.share-faces .face')).toHaveCount(1);
+  for (const f of [bob, carol]) await expect.poll(async () => { const v = await view(f) as { game?: string; connected: number } | null; return v && `${v.game}:${v.connected}`; }, { timeout: 30_000, message: `${f.name}'s Clink link opens` }).toBe('clink:1');
+  await expect.poll(async () => { const v = await view(alice); return v && `${v.phase}:${v.connected}`; }, { timeout: 15_000 }).toBe('wait:0');
+
+  // Carol clicks Bonk's tile: out of Clink, into Bonk with Alice. Bob is left in Clink alone.
+  await of(carol, 'bonk').click();
+  await expect(of(bob, 'bonk').locator('.share-faces .face')).toHaveCount(2);
+  await expect(of(bob, 'clink').locator('.share-faces .face')).toHaveCount(1);
+  for (const f of [alice, carol]) await expect.poll(async () => (await view(f))?.connected, { timeout: 30_000, message: `${f.name}'s Bonk link opens` }).toBe(1);
+  await expect.poll(async () => (await view(bob))?.connected, { timeout: 15_000 }).toBe(0);
+
+  // Bob leaves Clink: it ends, and Bonk goes on.
+  await of(bob, 'clink').getByRole('button', { name: 'Leave game' }).click();
+  await expect(of(alice, 'clink')).toHaveCount(0);
+  await expect(of(bob, 'bonk')).toContainText('2 friends play. Click to play');
+  await expect(bob.page.getByRole('button', { name: /Play Clink/ })).toBeVisible();
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_GAME_BODY_BYTES, current, gameLinkId, gameOfLink, gameText, parseGame, sameGame, type Game } from '../src/core/game';
+import { MAX_GAME_BODY_BYTES, current, currents, gameLinkId, gameOfLink, gameText, parseGame, sameGame, type Game } from '../src/core/game';
 import {
   BALL_RADIUS, COUNT_MS, DASH_COOLDOWN_MS, DASH_SPEED, FLOE_MID, FLOE_START, MAX_ROLL, OVER_MS, SHRINK_END_MS, SHRINK_MID_MS, SUNK_Y,
   advance, ahead, ballAt, ballFrame, bonk, dash, hitFrame, knocked, firstRound, floeRadius, leaderOf, parseFrame, roll, roundFrame, roundOf, spawnAt, steer, whoOf,
@@ -34,6 +34,21 @@ describe('a game in the call (core/game.ts)', () => {
     expect(sameGame(first, { ...first })).toBe(true);
     expect(sameGame(first, null)).toBe(false);
     expect(sameGame(null, null)).toBe(true);
+  });
+
+  it('goes on side by side with a game of another kind, but never with another of its own', () => {
+    const bonk = game({ id: 'bbbbbbbb', at: 7 });
+    const clink = game({ game: 'clink', id: 'cccccccc', at: 5 });
+    const later = game({ id: 'aaaaaaaa', at: 8 });
+    // Each kind as `current` picks it, started first first, whatever order the players are listed in.
+    expect(currents([bonk, later, clink])).toEqual([clink, bonk]);
+    expect(currents([later, clink, bonk])).toEqual([clink, bonk]);
+    // More play the later Bonk: it is the call's Bonk, and the Clink goes on beside it.
+    expect(currents([bonk, later, { ...later }, clink])).toEqual([clink, later]);
+    // Started at the same moment: the smaller id first.
+    const skid = game({ game: 'skid', id: 'aaaaaaaa', at: 5 });
+    expect(currents([clink, skid])).toEqual([skid, clink]);
+    expect(currents([])).toEqual([]);
   });
 
   it('names its links apart from file links, whose names are hex', () => {

@@ -1,5 +1,5 @@
-// A game: a little game friends in the call play together, started from the call in one click (ADR 0014). One at a time
-// per call. Each player declares the game they are in, sealed for the room, in presence (`game`, core/protocol.ts), as a
+// A game: a little game friends in the call play together, started from the call in one click (ADR 0014). One of each
+// at a time per call, side by side: some friends may play Bonk while others play Clink. Each player declares the game they are in, sealed for the room, in presence (`game`, core/protocol.ts), as a
 // watch party is declared (ADR 0012): the server learns that a friend plays, not what. Everything that moves in a game
 // goes from player to player over game links (client/gamelinks.ts), never through the server. Runtime-neutral: plain
 // data only.
@@ -9,7 +9,7 @@ export const GAME_NAMES = ['bonk', 'skid', 'clink'] as const;
 export type GameName = (typeof GAME_NAMES)[number];
 export const isGameName = (v: unknown): v is GameName => typeof v === 'string' && (GAME_NAMES as readonly string[]).includes(v);
 
-/** A game as a player declares it: which one, and the one round of it they are in. */
+/** A game as a player declares it: which one, and the one round of it they are in. A player plays one game at a time. */
 export type Game = {
   game: GameName;
   /** Tells this game from one started after it ended: chosen at random by whoever started it. */
@@ -39,10 +39,12 @@ export const gameText = (g: Game): string => JSON.stringify({ game: g.game, id: 
 export const sameGame = (a: Game | null, b: Game | null): boolean => (a === null || b === null ? a === b : a.game === b.game && a.id === b.id && a.at === b.at);
 
 /**
- * The call's game, of all its players declare: the one most of them play, then the one started first, then the smaller
- * id, the same for everyone. Whoever is in another moves over to it (client/game.ts): two friends who start one at the
- * same moment end up in the first, and a friend whose socket was away a while, back with a game that ended meanwhile,
- * moves over to the one the others started since, unless as many play it, rather than pull them all back into theirs.
+ * The call's game of one kind (`currents` asks this of each), of all its players declare of it: the one most of them
+ * play, then the one started first, then the smaller id, the same for everyone. Whoever is in another of that kind moves
+ * over to it (client/game.ts): two friends who start Bonk at the same moment end up in the first, and a friend whose
+ * socket was away a while, back with a Bonk that ended meanwhile, moves over to the one the others started since, unless
+ * as many play it, rather than pull them all back into theirs. (An app from before games went side by side asks this of
+ * every game in the call, whatever its kind.)
  */
 export function current(declared: Iterable<Game>): Game | null {
   const all = [...declared];
@@ -54,6 +56,20 @@ export function current(declared: Iterable<Game>): Game | null {
     if (more > 0 || (more === 0 && (g.at < best.at || (g.at === best.at && g.id < best.id)))) best = g;
   }
   return best;
+}
+
+/**
+ * The call's games: of each game anyone plays, the one `current` picks of that kind, so a Bonk and a Clink go on side by
+ * side but two Bonks never do. In the order they were started, then by id, the same for everyone.
+ */
+export function currents(declared: Iterable<Game>): Game[] {
+  const all = [...declared];
+  const out: Game[] = [];
+  for (const name of GAME_NAMES) {
+    const g = current(all.filter((d) => d.game === name));
+    if (g) out.push(g);
+  }
+  return out.sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 /**

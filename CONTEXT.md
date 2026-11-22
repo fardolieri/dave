@@ -97,7 +97,7 @@ What plays next in a watch party, in order: cards of the chat its friends lined 
 _Avoid_: Playlist (YouTube's, made elsewhere)
 
 **Game**:
-A little game the participants of a call play together, started from the call in one click, beside the shares while anyone plays it; one at a time per call. Who plays it travels sealed in presence; everything that moves in it goes from player to player over game links, never through the server (ADR 0014). Bonk is the first.
+A little game the participants of a call play together, started from the call in one click, beside the shares while anyone plays it. Games of different kinds go on side by side in a call, one of each kind at a time; a participant plays one at a time. Who plays it travels sealed in presence; everything that moves in it goes from player to player over game links, never through the server (ADR 0014). Bonk is the first.
 _Avoid_: Match, session, lobby, minigame (in UI copy)
 
 **Game link**:

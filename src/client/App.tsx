@@ -683,7 +683,7 @@ function Workspace(props: WorkspaceProps) {
 
   return (
     <Show when={current()}>{(cur) => (
-      <div class={['app', { split: sharers().length > 0 || !!stage()?.party.now() || !!stage()?.game.now(), dropping: dragging() }]}
+      <div class={['app', { split: sharers().length > 0 || !!stage()?.party.now() || !!stage()?.game.names().length, dropping: dragging() }]}
            onDragEnter={(e) => { if (hasFiles(e)) { depth++; if (!onTop(e.target)) overPage(); } }}
            onDragOver={(e) => {
              if (!hasFiles(e)) return;
@@ -939,13 +939,13 @@ function Workspace(props: WorkspaceProps) {
           {/* The state of the room on screen; with a private conversation on screen, of the room that carries it, as its
               composer goes by: a room down behind it is not the conversation's */}
           <Banner status={bannerStatus((() => { const k = privates.openWith(); return (k ? privates.via(k) : null) ?? cur().room; })())} onTakeOver={() => { for (const l of links()) l.room.takeOver(); privates.takeOver(); }} />
-          <Show when={(sharers().length > 0 || stage()?.party.now() || stage()?.game.now()) && stage()}>{(s) => (
-            <section class="shares" style={`grid-template-columns: repeat(${sharers().length + (s().party.now() ? 1 : 0) + (s().game.now() ? 1 : 0)}, 1fr)`}>
-              <Show when={s().game.now()}>
-                <GameTile game={s().game} inCall={s().call.inCall()}
+          <Show when={(sharers().length > 0 || stage()?.party.now() || (stage()?.game.names().length ?? 0) > 0) && stage()}>{(s) => (
+            <section class="shares" style={`grid-template-columns: repeat(${sharers().length + (s().party.now() ? 1 : 0) + s().game.names().length}, 1fr)`}>
+              <For each={s().game.names()}>{(name) => (
+                <GameTile name={name} game={s().game} inCall={s().call.inCall()}
                           faceOf={(k) => { if (k === me) return { name: props.name, picture: getPicture() }; const f = present(k); const l = f && labelOf(f); return { name: l?.shown ?? 'A friend', picture: l?.picture ?? null }; }}
-                          faces={<ShareFaces keys={s().game.members()} label={(k) => { const p = present(k); return p && labelOf(p); }} />} />
-              </Show>
+                          faces={(keys) => <ShareFaces keys={keys()} label={(k) => { const p = present(k); return p && labelOf(p); }} />} />
+              )}</For>
               <Show when={s().party.now()}>{(p) => (
                 <PartyTile party={s().party} title={p().card?.youtube?.title ?? p().title} video={p().video} inCall={s().call.inCall()}
                            thumb={(() => { const card = p().card; if (!card) return undefined; const a = s().room.attachment(card.hash); return a?.status === 'ready' ? a.url : card.preview; })()}
