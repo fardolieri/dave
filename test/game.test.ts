@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_GAME_BODY_BYTES, current, currents, gameLinkId, gameOfLink, gameText, parseGame, sameGame, type Game } from '../src/core/game';
 import {
-  BALL_RADIUS, COUNT_MS, DASH_COOLDOWN_MS, DASH_SPEED, FELT_HIT, FLOE_MID, FLOE_START, GIGA_EVERY, GIGA_LOW, GIGA_MOST, GIGA_TOP, SKY_TOP, MAX_ROLL, OVER_MS, SHRINK_END_MS, SHRINK_MID_MS, SUNK_Y,
-  advance, ahead, ballAt, ballFrame, bonk, canDash, dash, giga, gigaIn, gigaPower, gigaTier, hitFrame, knocked, toward, firstRound, floeRadius, leaderOf, parseFrame, roll, roundFrame, roundOf, spawnAt, steer, whoOf,
+  BALL_RADIUS, COUNT_MS, DASH_COOLDOWN_MS, DASH_SPEED, DROP_PLAY_MS, DROP_WINS, DROP_Y, FAST, FELT_HIT, FLOE_MID, FLOE_START, GIGA_LOW, HEAVY_MASS, ITEM_EVERY, PLAIN, GIGA_MOST, GIGA_TOP, SKY_TOP, MAX_ROLL, OVER_MS, SHRINK_END_MS, SHRINK_MID_MS, SUNK_Y,
+  advance, ahead, ask, ballAt, ballFrame, bonk, canDash, dash, dropDue, dropIn, dropped, dropsLeft, effectsOf, fastFrom, firstStage, giga, gigaPower, gigaTier, gone, hitFrame, itemFrame, itemOf, movesOf, playClock, pushFrame, speedAt, stageFrame, stageOf, stageOfFrame, touched, knocked, toward, firstRound, floeRadius, leaderOf, parseFrame, roll, roundFrame, roundOf, spawnAt, steer, whoOf,
   type Ball, type Counted, type Round,
 } from '../src/core/bonk';
 
@@ -144,11 +144,12 @@ describe('Bonk, a ball on the floe (core/bonk.ts)', () => {
     expect(bonk(runner, ballAt(5, 0)).knock).toEqual({ vx: 0, vz: 0, up: 0 });
   });
 
-  it('goes giga roughly every hundred bonks, mostly a little harder, now and then far harder, with no top', () => {
-    expect(gigaIn(0)).toBe(1);
-    expect(gigaIn(0.999_999)).toBe(2 * GIGA_EVERY - 1);
-    const waits = Array.from({ length: 1000 }, (_, i) => gigaIn((i + 0.5) / 1000));
-    expect(waits.reduce((a, b) => a + b, 0) / waits.length).toBeCloseTo(GIGA_EVERY, 0);
+  it('drops a mystery ball roughly every hundred bonks, holding any item as likely; a giga is mostly a little harder, now and then far harder, with no top', () => {
+    expect(dropIn(0)).toBe(1);
+    expect(dropIn(0.999_999)).toBe(2 * ITEM_EVERY - 1);
+    const waits = Array.from({ length: 1000 }, (_, i) => dropIn((i + 0.5) / 1000));
+    expect(waits.reduce((a, b) => a + b, 0) / waits.length).toBeCloseTo(ITEM_EVERY, 0);
+    expect([0, 0.3, 0.6, 0.9, 0.999_999].map(itemOf)).toEqual(['giga', 'heavy', 'handling', 'fast', 'fast']);
     expect(gigaPower(0)).toBe(GIGA_LOW);
     expect(gigaPower(0.5)).toBeCloseTo(3.17, 2);
     // A hundred times or more, one giga in some 350; a thousand, one in some 11,000; and on.
@@ -221,6 +222,101 @@ describe('Bonk, a ball on the floe (core/bonk.ts)', () => {
     expect(far.y).toBeGreaterThan(0);
     for (let i = 0; i < 80; i++) far = roll(far, { x: 0, z: 0 }, 0.05, FLOE_START);
     expect(far.y).toBe(SUNK_Y);
+  });
+
+  it('a winner drops a mystery ball for every ten wins, one a round, at its start', () => {
+    expect([0, 9, 10, 19, 20, 35].map((w) => dropsLeft(w, 0))).toEqual([0, 0, 1, 1, 2, 3]);
+    expect(dropsLeft(20, 2)).toBe(0);
+    expect(dropsLeft(10, 3)).toBe(0);
+    const r: Round = { n: 3, phase: 'count', since: 0, players: [A, B], winner: null, wins: { [A]: 10, [B]: 25 } };
+    const s = stageOf(firstStage(), 3);
+    const asked = ask(s, r, A, 100);
+    expect(asked).toMatchObject({ asked: A, used: { [A]: 1 } });
+    // One a round; none without the wins; none once the round has played a while, or of another round.
+    expect(ask(asked, r, B, 100)).toBe(asked);
+    expect(ask(s, { ...r, wins: { [A]: 9 } }, A, 100)).toBe(s);
+    expect(ask(s, { ...r, phase: 'play' }, A, DROP_PLAY_MS - 1).asked).toBe(A);
+    expect(ask(s, { ...r, phase: 'play' }, A, DROP_PLAY_MS)).toBe(s);
+    expect(ask(s, { ...r, phase: 'over' }, A, 100)).toBe(s);
+    expect(ask(stageOf(firstStage(), 2), r, A, 100).asked).toBeNull();
+    // Not while another mystery ball is on the floe.
+    expect(ask(dropped(s, 50), r, A, 100).asked).toBeNull();
+    // It falls at the go; still one a round, though it is gone off the floe within the first seconds.
+    const fell = dropped({ ...asked, bonks: 40, next: 60 }, 99);
+    expect(fell).toMatchObject({ ball: 1, asked: A, waiting: false, bonks: 40, next: 60 }); // a drop leaves the count be
+    expect(ask(gone(fell, 1000, 'fast', 2), { ...r, phase: 'play' }, B, 1000).asked).toBe(A);
+    // A's one is used: the next round, none; B's two go on.
+    const next = stageOf(fell, 4);
+    expect(next).toMatchObject({ n: 4, asked: null, used: { [A]: 1 } });
+    expect(ask(next, { ...r, n: 4 }, A, 100)).toBe(next);
+    expect(ask(next, { ...r, n: 4 }, B, 100).asked).toBe(B);
+    // A drop that never fell, the round gone back to waiting for a friend: given back.
+    expect(stageOf(asked, 4).used).toEqual({ [A]: 0 });
+  });
+
+  it('drops a mystery ball by itself once the felt bonks, counted by both balls, come to the draw, and counts again to a new one', () => {
+    const s = { ...stageOf(firstStage(30), 1), bonks: 59 };
+    expect(dropDue(s)).toBe(false);
+    expect(dropDue({ ...s, bonks: 60 })).toBe(true);
+    expect(dropped({ ...s, bonks: 60 }, 120)).toMatchObject({ ball: 1, bonks: 0, next: 120 });
+    // The count goes on from round to round.
+    expect(stageOf({ ...s, bonks: 60 }, 2).bonks).toBe(60);
+  });
+
+  it('gives what is in a mystery ball to who bonked it last when it went off, for the round', () => {
+    let s = dropped(stageOf(firstStage(), 2), 50);
+    expect(s).toMatchObject({ ball: 1, by: null, asked: null });
+    s = touched(touched(s, 1, A), 1, B);
+    expect(touched(s, 7, A).by).toBe(B); // another ball's bonk, gone already
+    s = gone(s, 12_345.6, 'heavy', 50);
+    expect(s.got).toEqual([{ id: 1, who: B, item: 'heavy', power: 0, t: 12_346 }]);
+    expect(s.ball).toBe(0);
+    expect(effectsOf(s, B)).toEqual({ heavy: true, handling: false });
+    expect(effectsOf(s, A)).toEqual({ heavy: false, handling: false });
+    // Off with nobody's bonk on it: nobody's.
+    expect(gone(dropped(s, 50), 20_000, 'fast', 2).got).toHaveLength(1);
+    // A giga keeps its power; double speed, when it began.
+    s = gone(touched(dropped(s, 50), 2, A), 30_000, 'giga', 37.5);
+    s = gone(touched(dropped(s, 50), 3, A), 40_000, 'fast', 9);
+    expect(s.got.slice(1)).toEqual([{ id: 2, who: A, item: 'giga', power: 37.5, t: 30_000 }, { id: 3, who: A, item: 'fast', power: 0, t: 40_000 }]);
+    expect(fastFrom(s)).toBe(40_000);
+    // The next round, all gone.
+    expect(stageOf(s, 3)).toMatchObject({ got: [], ball: 0 });
+    expect(fastFrom(stageOf(s, 3))).toBeNull();
+  });
+
+  it('moves a heavy ball hard and slow, a handling one quick to turn and stop, and everything twice as fast at double speed', () => {
+    expect(movesOf({ heavy: false, handling: false })).toEqual(PLAIN);
+    const heavy = movesOf({ heavy: true, handling: false }), handling = movesOf({ heavy: false, handling: true });
+    expect(heavy.mass).toBe(HEAVY_MASS);
+    expect(heavy.accel).toBeLessThan(PLAIN.accel);
+    expect(heavy.top).toBeLessThan(PLAIN.top);
+    expect(handling.accel).toBeGreaterThan(PLAIN.accel);
+    expect(handling.drag).toBeGreaterThan(PLAIN.drag);
+    // Rolled the same way for a second: the heavy one goes less far, the handling one stops sooner once let go.
+    const go = (m: typeof PLAIN, steps: number, dir: { x: number; z: number }, from = ballAt(0, 0)) => { let b = from; for (let i = 0; i < steps; i++) b = roll(b, dir, 0.02, 100, m); return b; };
+    expect(go(heavy, 50, { x: 1, z: 0 }).x).toBeLessThan(go(PLAIN, 50, { x: 1, z: 0 }).x);
+    const fast = { ...ballAt(0, 0), vx: 7 };
+    expect(go(handling, 25, { x: 0, z: 0 }, fast).vx).toBeLessThan(go(PLAIN, 25, { x: 0, z: 0 }, fast).vx);
+    // A heavy ball run into by a plain one moves half as much, and the plain one bounces back hard.
+    const runner: Ball = { ...ballAt(0, 0), vx: 6 };
+    const standing: Ball = ballAt(2 * BALL_RADIUS - 0.2, 0);
+    const plain = bonk(runner, standing), intoHeavy = bonk(runner, standing, 0, 0, 1, HEAVY_MASS);
+    expect(intoHeavy.knock.vx).toBeCloseTo(plain.knock.vx / 2); // three times the mass: half the knock
+    expect(intoHeavy.ball.vx).toBeLessThan(plain.ball.vx);
+    // Momentum along the line is kept.
+    expect(intoHeavy.ball.vx + HEAVY_MASS * intoHeavy.knock.vx).toBeCloseTo(6);
+    // Double speed from 10 s in: the floe's clock runs twice as fast from then.
+    expect(playClock(5000, 10_000)).toBe(5000);
+    expect(playClock(15_000, 10_000)).toBe(10_000 + 5000 * FAST);
+    expect(playClock(15_000, null)).toBe(15_000);
+    expect([speedAt(9999, 10_000), speedAt(10_000, 10_000), speedAt(1e6, null)]).toEqual([1, FAST, 1]);
+  });
+
+  it('drops a mystery ball from the sky onto the middle of the floe', () => {
+    let b: Ball = { ...ballAt(0, 0), y: DROP_Y };
+    for (let i = 0; i < 100 && b.y > 0; i++) b = roll(b, { x: 0, z: 0 }, 0.02, FLOE_START);
+    expect(b).toMatchObject({ x: 0, z: 0, y: 0, vy: 0, alive: true });
   });
 
   it('puts every player round a ring on the floe, the same for everyone, none on another', () => {
@@ -310,6 +406,28 @@ describe('Bonk, on the wire (core/bonk.ts)', () => {
     expect(parseFrame(JSON.stringify(ballFrame(ballAt(0, 0), 1, 1, false, 37.5)))).toMatchObject({ g: 37.5 });
     expect(parseFrame(JSON.stringify(hitFrame(BOB, { vx: 60, vz: 0, up: 21.234 }, 6.5, { mine: 37, theirs: 0 })))).toEqual({ k: 'h', to: B, vx: 60, vz: 0, hit: 6.5, up: 21.23, g: 37 });
     expect(parseFrame(JSON.stringify(hitFrame(BOB, { vx: 1, vz: 0, up: 0 }, 6.5, { mine: 2, theirs: GIGA_MOST })))).toMatchObject({ g: 2, u: GIGA_MOST });
+    expect(parseFrame(JSON.stringify(ballFrame(ballAt(0, 0), 1, 1, false, 0, 42)))).toMatchObject({ c: 42 });
+  });
+
+  it('reads back the items: the stage with the round, the mystery ball, a push and a drop; apps from before items as before', () => {
+    const r: Round = { n: 2, phase: 'play', since: 1000, players: [A, B], winner: null, wins: { [A]: 12 } };
+    let s = ask(stageOf(firstStage(), 2), { ...r, phase: 'count' }, A, 0);
+    s = gone(touched(dropped({ ...s, bonks: 17, next: 80 }, 50), 1, B), 3000, 'giga', 4.5);
+    const f = stageFrame(r, s, 1500, 7);
+    const back = parseFrame(JSON.stringify(f));
+    expect(back).toEqual(f);
+    expect(stageOfFrame(back as typeof f)).toEqual(s);
+    // An app from before items reads the round all the same (core/rounds.ts), and one from after reads a round with no stage.
+    expect(parseFrame(JSON.stringify(roundFrame(r, 1500, 7)))).toEqual(roundFrame(r, 1500, 7));
+    expect(stageOfFrame(roundFrame(r, 1500, 7))).toBeNull();
+    // A stage that is off is left out, the round kept.
+    expect(parseFrame(JSON.stringify({ ...f, st: { ...f.st, g: [[1, B, 'banana', 0, 0]] } }))).toEqual(roundFrame(r, 1500, 7));
+    const i = itemFrame(3, { ...ballAt(1.234, -2), vx: 5, y: 7.891 });
+    expect(parseFrame(JSON.stringify(i))).toEqual({ k: 'i', id: 3, x: 1.23, z: -2, vx: 5, vz: 0, y: 7.89, vy: 0, a: true });
+    const p = pushFrame(3, { vx: 4.444, vz: -1, up: 0 });
+    expect(parseFrame(JSON.stringify(p))).toEqual({ k: 'p', id: 3, vx: 4.44, vz: -1, up: 0 });
+    expect(parseFrame(JSON.stringify({ k: 'd', n: 4 }))).toEqual({ k: 'd', n: 4 });
+    for (const off of [{ ...i, id: 0 }, { ...i, x: 'x' }, { ...p, vx: 500 }, { ...p, up: -1 }, { k: 'd', n: 0 }, { k: 'd' }]) expect(parseFrame(JSON.stringify(off))).toBeNull();
   });
 
   it('drops anything off', () => {

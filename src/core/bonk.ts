@@ -1,11 +1,13 @@
 // Bonk, the first game (core/game.ts): every player is a ball with their face on it, on an ice floe in the sea. Roll,
 // dash, bonk the others off; the floe shrinks while a round goes on, and the last one on it wins the round. Now and then
-// a ball goes giga, and its next bonk is many times as hard (`gigaIn`, `gigaPower`).
+// a mystery ball falls in the middle, and whoever bonked it last when it goes off gets what is in it: a giga, its next
+// bonk many times as hard (`gigaPower`), or heavy, handling or double speed for the rest of the round (`Item`).
 //
 // Every app moves its own ball and nobody else's, and sends where it is to every other player many times a second
 // (`BallFrame`); the app whose ball runs into another works the bonk out and gives the other ball its knock (`HitFrame`).
-// The rounds are the leader's, as in every game (core/rounds.ts); what ends one here is the floe. Runtime-neutral: plain
-// data only.
+// The rounds are the leader's, as in every game (core/rounds.ts); what ends one here is the floe. The items are the
+// leader's too (`Stage`), and so is the mystery ball: its app moves it, and the others send it their bonks (`PushFrame`).
+// Runtime-neutral: plain data only.
 import { firstRound, frameFields, isWho, leaderOf, num, parseRoundFrame, round2, roundFrame, roundOf, whoOf, MAX_PLAYERS, WHO_LENGTH, type Phase, type Round, type RoundFrame } from './rounds';
 // The rounds are every game's (core/rounds.ts); Bonk's are said here too, as they were before there were two games.
 export { firstRound, leaderOf, roundFrame, roundOf, whoOf, MAX_PLAYERS, WHO_LENGTH, type Phase, type Round, type RoundFrame };
@@ -104,11 +106,19 @@ export function dash(b: Ball, dir: { x: number; z: number }, now: number): Ball 
 }
 
 /**
- * The ball `dt` seconds on: rolled the way it is steered (to MAX_ROLL; faster only by a dash or a bonk, which then slow
- * by themselves), slowed by the ice. Off the floe (`floe`, its radius) it falls, and is out. Thrown up by a giga
- * (`giga`), it flies, steered by nobody, and comes down on the floe again; out over the sea, it is out.
+ * How a ball moves and how much it weighs, by what it got this round (`movesOf`): its mass in a bonk, how hard it rolls
+ * itself (ACCEL), how fast (MAX_ROLL), and how quickly the ice slows it (DRAG).
  */
-export function roll(b: Ball, dir: { x: number; z: number }, dt: number, floe: number): Ball {
+export type Moves = { mass: number; accel: number; top: number; drag: number };
+export const PLAIN: Moves = { mass: 1, accel: ACCEL, top: MAX_ROLL, drag: DRAG };
+
+/**
+ * The ball `dt` seconds on: rolled the way it is steered (to its top speed, `moves`; faster only by a dash or a bonk,
+ * which then slow by themselves), slowed by the ice. Off the floe (`floe`, its radius) it falls, and is out. Thrown up
+ * by a giga (`giga`), or dropped from the sky, it flies, steered by nobody, and comes down on the floe; out over the sea,
+ * it is out.
+ */
+export function roll(b: Ball, dir: { x: number; z: number }, dt: number, floe: number, moves: Moves = PLAIN): Ball {
   if (!b.alive) {
     if (b.y <= SUNK_Y) return b;
     const vy = b.vy - GRAVITY * dt;
@@ -125,12 +135,12 @@ export function roll(b: Ball, dir: { x: number; z: number }, dt: number, floe: n
     return { ...b, x, z, y: 0, vy: 0 };
   }
   const was = Math.hypot(b.vx, b.vz);
-  let vx = b.vx + dir.x * ACCEL * dt;
-  let vz = b.vz + dir.z * ACCEL * dt;
+  let vx = b.vx + dir.x * moves.accel * dt;
+  let vz = b.vz + dir.z * moves.accel * dt;
   const speed = Math.hypot(vx, vz);
-  const cap = Math.max(was, MAX_ROLL);
+  const cap = Math.max(was, moves.top);
   if (speed > cap) { vx = (vx / speed) * cap; vz = (vz / speed) * cap; }
-  const slow = Math.exp(-DRAG * dt);
+  const slow = Math.exp(-moves.drag * dt);
   vx *= slow; vz *= slow;
   const x = b.x + vx * dt, z = b.z + vz * dt;
   // Off once its middle is past the edge: half of it hangs over the water, and over it goes.
@@ -138,13 +148,8 @@ export function roll(b: Ball, dir: { x: number; z: number }, dt: number, floe: n
   return { ...b, x, z, vx, vz };
 }
 
-/** A bonk at least this hard (`bonk`, `hit`) is felt: it shows, counts toward giga, and spends it. */
+/** A bonk at least this hard (`bonk`, `hit`) is felt: it shows, counts toward the next item, and spends a giga. */
 export const FELT_HIT = 0.5;
-/**
- * Giga: roughly every GIGA_EVERY felt bonks a ball has, it goes giga, and the next one it has is many times as hard
- * (`gigaPower`), whichever of the two ran into the other.
- */
-export const GIGA_EVERY = 100;
 /** The least a giga multiplies a bonk by, and the most a frame may say, which no draw comes near (`gigaPower`). */
 export const GIGA_LOW = 2;
 export const GIGA_MOST = 1e6;
@@ -164,9 +169,6 @@ const LIFT_FROM = 8;
 export const SKY_TOP = 80;
 /** How quickly a ball in the air slows along the floe, per second: more than on the ice, so it lands in sight. */
 export const AIR_DRAG = 1.5;
-
-/** How many felt bonks until a ball goes giga: 1 to 2 × GIGA_EVERY − 1, all as likely, so GIGA_EVERY on average. `random` in [0, 1). */
-export const gigaIn = (random: number): number => 1 + Math.floor(random * (2 * GIGA_EVERY - 1));
 
 /** How many times as hard a giga bonk is (GIGA_TAIL): GIGA_LOW or more, to two places. `random` in [0, 1). */
 export const gigaPower = (random: number): number => Math.min(GIGA_MOST, Math.round(GIGA_LOW * (1 - random) ** (-1 / GIGA_TAIL) * 100) / 100);
@@ -202,8 +204,9 @@ export type Knock = { vx: number; vz: number; up: number };
  * `mine` and `theirs` are the two balls' giga (`gigaPower`, 0 for none): a felt bonk (FELT_HIT) makes my giga's knock
  * that much harder (`giga`), and theirs my own change, and spends them (`spent`, 0 for a giga not spent). Each app
  * knows another's giga from its last frame, so in a pile-up, two bonks a moment apart, one giga may land on both.
+ * `myMass` and `theirMass` (`Moves`): the heavier ball is the harder to move.
  */
-export function bonk(me: Ball, other: Seen, mine = 0, theirs = 0): { ball: Ball; hit: number; knock: Knock; spent: { mine: number; theirs: number } } {
+export function bonk(me: Ball, other: Seen, mine = 0, theirs = 0, myMass = 1, theirMass = 1): { ball: Ball; hit: number; knock: Knock; spent: { mine: number; theirs: number } } {
   const none = { vx: 0, vz: 0, up: 0 };
   const unspent = { mine: 0, theirs: 0 };
   if (!me.alive || !other.alive || me.y > BALL_RADIUS || (other.y ?? 0) > BALL_RADIUS) return { ball: me, hit: 0, knock: none, spent: unspent };
@@ -218,13 +221,13 @@ export function bonk(me: Ball, other: Seen, mine = 0, theirs = 0): { ball: Ball;
   const theirsAlong = other.vx * nx + other.vz * nz;
   // Moving apart already: only pushed out.
   if (mineAlong - theirsAlong <= 0) return { ball: { ...me, x, z }, hit: 0, knock: none, spent: unspent };
-  // Of two equal masses, mine along the line becomes theirs and theirs mine, and the difference is given back BOUNCE
-  // times: what one loses the other gets.
+  // They come apart BOUNCE times as fast as they met: what one loses the other gets, shared out by mass (of two equal
+  // masses, mine along the line becomes theirs and theirs mine, and more).
   const hit = mineAlong - theirsAlong;
-  const mid = (mineAlong + theirsAlong) / 2, apart = (BOUNCE * hit) / 2;
+  const shove = ((1 + BOUNCE) * hit) / (1 / myMass + 1 / theirMass);
   const spent = hit >= FELT_HIT ? { mine, theirs } : unspent;
-  const change = giga(mid - apart - mineAlong, spent.theirs);
-  const knock = giga(mid + apart - theirsAlong, spent.mine);
+  const change = giga(-shove / myMass, spent.theirs);
+  const knock = giga(shove / theirMass, spent.mine);
   const ball = { ...me, x, z, vx: me.vx + change.along * nx, vz: me.vz + change.along * nz, vy: Math.max(me.vy, change.up) };
   return { ball, hit, knock: { vx: knock.along * nx, vz: knock.along * nz, up: knock.up }, spent };
 }
@@ -232,6 +235,123 @@ export function bonk(me: Ball, other: Seen, mine = 0, theirs = 0): { ball: Ball;
 /** A bonk another player's app worked out, given to my ball: `knock`, the change in its speed (`bonk`). */
 export const knocked = (b: Ball, knock: { vx: number; vz: number; up?: number }): Ball =>
   (b.alive ? { ...b, vx: b.vx + knock.vx, vz: b.vz + knock.vz, vy: Math.max(b.vy, knock.up ?? 0) } : b);
+
+// Items.
+
+/**
+ * What a mystery ball holds: a giga (`gigaPower`) for the next bonk, or for the rest of the round heavy (hard to move,
+ * and slow), handling (quick to turn and to stop) or double speed, for everyone and the floe too.
+ */
+export type Item = 'giga' | 'heavy' | 'handling' | 'fast';
+export const ITEMS: readonly Item[] = ['giga', 'heavy', 'handling', 'fast'];
+/** Roughly every ITEM_EVERY felt bonks in a game, a mystery ball falls (`dropIn`); and one for every DROP_WINS wins. */
+export const ITEM_EVERY = 100;
+export const DROP_WINS = 10;
+/** How high a mystery ball falls from, into the middle of the floe. */
+export const DROP_Y = 14;
+/** Heavy: so many times the mass, rolled so much less hard and fast. */
+export const HEAVY_MASS = 3;
+const HEAVY_ACCEL = 0.6;
+const HEAVY_TOP = 0.75;
+/** Handling: rolled so much harder, a little faster, and slowed by the ice this much more quickly (DRAG). */
+const HANDLING_ACCEL = 2.2;
+const HANDLING_TOP = 1.15;
+const HANDLING_DRAG = 2;
+/** Double speed: everything goes this many times as fast, the floe's shrinking too. */
+export const FAST = 2;
+
+/** How many felt bonks until the next mystery ball: 1 to 2 × ITEM_EVERY − 1, all as likely, so ITEM_EVERY on average. `random` in [0, 1). */
+export const dropIn = (random: number): number => 1 + Math.floor(random * (2 * ITEM_EVERY - 1));
+/** What a mystery ball holds, all four as likely. `random` in [0, 1). */
+export const itemOf = (random: number): Item => ITEMS[Math.min(ITEMS.length - 1, Math.floor(random * ITEMS.length))]!;
+/** How many mystery balls a player may still drop: one for every DROP_WINS wins, less those dropped. */
+export const dropsLeft = (wins: number, used: number): number => Math.max(0, Math.floor(wins / DROP_WINS) - used);
+
+/** An item a player got: its mystery ball's `id`, who got it, what, a giga's power (0 for another), and when (`t`, ms into the round's play). */
+export type Got = { id: number; who: string; item: Item; power: number; t: number };
+
+/**
+ * Bonk's items, as the leader keeps them beside the round and sends them with it (`StageFrame`), so another leader goes
+ * on from them: for round `n`, the mystery balls each player has dropped of those their wins earned (`used`), who dropped
+ * one this round (`asked`) and whether it has yet to fall (`waiting`), what was got, and the mystery ball on the floe
+ * (`ball`, its id; 0 for none) with who bonked it last (`by`). `ids` is the last id given; `bonks`, the felt bonks
+ * counted since the last mystery ball fell by itself, each twice, once by each ball's app, toward the next (`next`,
+ * `dropIn`).
+ */
+export type Stage = {
+  n: number; used: Record<string, number>; asked: string | null; waiting: boolean; got: Got[]; ball: number; by: string | null; ids: number;
+  bonks: number; next: number;
+};
+
+export const firstStage = (next = ITEM_EVERY): Stage => ({ n: 0, used: {}, asked: null, waiting: false, got: [], ball: 0, by: null, ids: 0, bonks: 0, next });
+
+/**
+ * The stage for round `n`: a new round starts with nothing got, no ball and no drop asked for. A drop asked for that
+ * never fell (the round went back to waiting for a friend) is given back.
+ */
+export function stageOf(s: Stage, n: number): Stage {
+  if (s.n === n) return s;
+  const used = s.asked !== null && s.waiting ? { ...s.used, [s.asked]: Math.max(0, (s.used[s.asked] ?? 0) - 1) } : s.used;
+  return { ...s, n, used, asked: null, waiting: false, got: [], ball: 0, by: null };
+}
+
+/** The felt bonks of the game come to the next draw: a mystery ball falls by itself (`dropped`). */
+export const dropDue = (s: Stage): boolean => s.bonks / 2 >= s.next;
+
+/** How long into a round's play a mystery ball may still be dropped: its start, as the floe stays whole. */
+export const DROP_PLAY_MS = SHRINK_FROM_MS;
+/** Whether a round is at its start at `now`, for a drop: counting down, or the first of its play (DROP_PLAY_MS). */
+export const dropTime = (r: Round, now: number): boolean => r.phase === 'count' || (r.phase === 'play' && now - r.since < DROP_PLAY_MS);
+
+/**
+ * A player asks to drop a mystery ball in round `r` at `now`: taken at its start (`dropTime`), if their wins earned one,
+ * one a round, and none while another is on the floe.
+ */
+export function ask(s: Stage, r: Round, who: string, now: number): Stage {
+  const used = s.used[who] ?? 0;
+  if (!dropTime(r, now) || s.n !== r.n || s.asked !== null || s.ball !== 0 || dropsLeft(r.wins[who] ?? 0, used) === 0) return s;
+  return { ...s, asked: who, waiting: true, used: { ...s.used, [who]: used + 1 } };
+}
+
+/**
+ * A mystery ball falls in: a new id, bonked by nobody yet. The drop asked for, if one waits, is the one; else it fell by
+ * itself, and the count starts over to a new draw (`next`, `dropIn`).
+ */
+export const dropped = (s: Stage, next: number): Stage =>
+  ({ ...s, ball: s.ids + 1, ids: s.ids + 1, by: null, ...(s.waiting ? { waiting: false } : { bonks: 0, next }) });
+
+/** Mystery ball `id` bonked by `who`. */
+export const touched = (s: Stage, id: number, who: string): Stage => (s.ball === id && id !== 0 ? { ...s, by: who } : s);
+
+/**
+ * The mystery ball off the floe, `t` ms into the play: what is in it goes to who bonked it last, if anybody did. `item`
+ * and `power` drawn by the leader (`itemOf`, `gigaPower`).
+ */
+export function gone(s: Stage, t: number, item: Item, power: number): Stage {
+  if (s.ball === 0) return s;
+  const got = s.by === null ? s.got : [...s.got, { id: s.ball, who: s.by, item, power: item === 'giga' ? power : 0, t: Math.max(0, Math.round(t)) }];
+  return { ...s, ball: 0, by: null, got };
+}
+
+/** What a player got this round that lasts it: heavy, handling. */
+export type Effects = { heavy: boolean; handling: boolean };
+export const effectsOf = (s: Stage, who: string): Effects =>
+  ({ heavy: s.got.some((g) => g.who === who && g.item === 'heavy'), handling: s.got.some((g) => g.who === who && g.item === 'handling') });
+
+/** How a ball with `e` moves (`Moves`). */
+export const movesOf = (e: Effects): Moves => ({
+  mass: e.heavy ? HEAVY_MASS : 1,
+  accel: ACCEL * (e.heavy ? HEAVY_ACCEL : 1) * (e.handling ? HANDLING_ACCEL : 1),
+  top: MAX_ROLL * (e.heavy ? HEAVY_TOP : 1) * (e.handling ? HANDLING_TOP : 1),
+  drag: e.handling ? HANDLING_DRAG : DRAG,
+});
+
+/** When double speed began, ms into the round's play; null for not this round. */
+export const fastFrom = (s: Stage): number | null => s.got.reduce<number | null>((at, g) => (g.item === 'fast' && (at === null || g.t < at) ? g.t : at), null);
+/** How many times as fast the game goes `ms` into the play. */
+export const speedAt = (ms: number, fast: number | null): number => (fast !== null && ms >= fast ? FAST : 1);
+/** How far on the round's play is `ms` into it, for the floe: double speed's time counts double. */
+export const playClock = (ms: number, fast: number | null): number => (fast === null || ms <= fast ? ms : fast + (ms - fast) * FAST);
 
 /**
  * How long after a bonk between two balls another between the same two is not taken: both apps may work out the same
@@ -259,7 +379,8 @@ export type Counted = { who: string; n: number; known: number; alive: boolean };
 /** What the inspection hooks show of the game (`window.__daveGame`, client/bonk.ts). */
 export type GameView = {
   phase: Phase; round: number; leader: string | null; playing: boolean; spectating: boolean; webgl: boolean;
-  me: { x: number; z: number; alive: boolean; lastDash: { vx: number; vz: number } | null; giga: number; gigaIn: number };
+  me: { x: number; z: number; vx: number; vz: number; alive: boolean; lastDash: { vx: number; vz: number } | null; giga: number; heavy: boolean; handling: boolean; drops: number };
+  item: { x: number; z: number; y: number; vx: number; vz: number; alive: boolean } | null; got: { who: string; item: Item }[]; fast: boolean;
   aim: { x: number; z: number } | null; others: { key: string; x: number; z: number; alive: boolean; giga: number }[]; wins: Record<string, number>; connected: number;
 };
 
@@ -298,19 +419,53 @@ export function advance(r: Round, now: number, here: readonly Counted[]): Round 
 /**
  * Where a player's ball is, from that player: `r` the round they play (0 for none: they watch), `n` the newest round
  * they know (core `leaderOf`). `a`: on the floe (or up over it); `d`: dashed just now; `g`: its giga (`gigaPower`), left
- * out for none, as apps from before giga send it.
+ * out for none, as apps from before giga send it; `c`: the felt bonks it had in the game, which the leader counts
+ * toward the next mystery ball (`dropIn`), left out by apps from before items.
  */
-export type BallFrame = { k: 'b'; r: number; n: number; x: number; z: number; vx: number; vz: number; y: number; a: boolean; d: boolean; g?: number };
+export type BallFrame = { k: 'b'; r: number; n: number; x: number; z: number; vx: number; vz: number; y: number; a: boolean; d: boolean; g?: number; c?: number };
 /**
  * A bonk my app worked out, for the ball of `to` (the start of its key): the change in its speed (`bonk`, `knock`), with
  * `up` how fast a giga throws it up. `g`: my giga, spent on it; `u`: theirs, spent on my own ball's change, so their app
  * knows it is gone (`bonk`, `spent`). Each left out for none.
  */
 export type HitFrame = { k: 'h'; to: string; vx: number; vz: number; hit: number; up?: number; g?: number; u?: number };
-export type Frame = BallFrame | RoundFrame | HitFrame;
+/** The round with Bonk's items (`Stage`, of the round's `n`), from the leader; `st` is left out by apps from before items. */
+export type StageFrame = RoundFrame & { st?: StageWire };
+/**
+ * A stage on the wire: `u` used, `a` asked, `w` waiting, `g` got (`id`, `who`, `item`, `power`, `t`), `b` ball, `by`,
+ * `i` ids, `f` bonks, `nx` next.
+ */
+export type StageWire = { u: [string, number][]; a: string | null; w: boolean; g: [number, string, Item, number, number][]; b: number; by: string | null; i: number; f: number; nx: number };
+/** The mystery ball `id`, where the leader's app has it, as a ball's frame says (`a`: on the floe or over it). */
+export type ItemFrame = { k: 'i'; id: number; x: number; z: number; vx: number; vz: number; y: number; vy: number; a: boolean };
+/** A bonk my app worked out between my ball and mystery ball `id`, for the leader: the ball's knock (`bonk`, `knock`). */
+export type PushFrame = { k: 'p'; id: number; vx: number; vz: number; up: number };
+/** For the leader: I drop a mystery ball in round `n` (`ask`). */
+export type DropFrame = { k: 'd'; n: number };
+export type Frame = BallFrame | StageFrame | HitFrame | ItemFrame | PushFrame | DropFrame;
 
-export const ballFrame = (b: Ball, r: number, n: number, dashed: boolean, giga = 0): BallFrame =>
-  ({ k: 'b', r, n, x: round2(b.x), z: round2(b.z), vx: round2(b.vx), vz: round2(b.vz), y: round2(b.y), a: b.alive, d: dashed, ...(giga ? { g: giga } : {}) });
+export const ballFrame = (b: Ball, r: number, n: number, dashed: boolean, giga = 0, felt = 0): BallFrame =>
+  ({ k: 'b', r, n, x: round2(b.x), z: round2(b.z), vx: round2(b.vx), vz: round2(b.vz), y: round2(b.y), a: b.alive, d: dashed, ...(giga ? { g: giga } : {}), ...(felt ? { c: felt } : {}) });
+
+export const stageFrame = (r: Round, s: Stage, now: number, q: number): StageFrame => ({
+  ...roundFrame(r, now, q),
+  st: {
+    u: Object.entries(s.used), a: s.asked, w: s.waiting, g: s.got.map((g) => [g.id, g.who, g.item, g.power, g.t]), b: s.ball, by: s.by, i: s.ids,
+    f: s.bonks, nx: s.next,
+  },
+});
+/** The stage a follower takes from the leader's frame. */
+export const stageOfFrame = (f: StageFrame): Stage | null => (f.st
+  ? {
+    n: f.n, used: Object.fromEntries(f.st.u), asked: f.st.a, waiting: f.st.w, got: f.st.g.map(([id, who, item, power, t]) => ({ id, who, item, power, t })),
+    ball: f.st.b, by: f.st.by, ids: f.st.i, bonks: f.st.f, next: f.st.nx,
+  }
+  : null);
+
+export const itemFrame = (id: number, b: Ball): ItemFrame =>
+  ({ k: 'i', id, x: round2(b.x), z: round2(b.z), vx: round2(b.vx), vz: round2(b.vz), y: round2(b.y), vy: round2(b.vy), a: b.alive });
+
+export const pushFrame = (id: number, knock: Knock): PushFrame => ({ k: 'p', id, vx: round2(knock.vx), vz: round2(knock.vz), up: round2(knock.up) });
 
 export const hitFrame = (to: string, knock: Knock, hit: number, spent = { mine: 0, theirs: 0 }): HitFrame => ({
   k: 'h', to: whoOf(to), vx: round2(knock.vx), vz: round2(knock.vz), hit: round2(hit),
@@ -331,7 +486,8 @@ export function parseFrame(text: unknown): Frame | null {
     const { r, n, x, z, vx, vz, y, a, d } = f;
     if (!Number.isSafeInteger(r) || (r as number) < 0 || !Number.isSafeInteger(n) || (n as number) < 0 || !num(x) || !num(z) || !num(vx) || !num(vz) || !num(y) || typeof a !== 'boolean' || typeof d !== 'boolean') return null;
     const g = gigaOf(f['g']);
-    return { k: 'b', r: r as number, n: n as number, x, z, vx, vz, y, a, d, ...(g !== undefined ? { g } : {}) };
+    const c = Number.isSafeInteger(f['c']) && (f['c'] as number) > 0 ? (f['c'] as number) : undefined;
+    return { k: 'b', r: r as number, n: n as number, x, z, vx, vz, y, a, d, ...(g !== undefined ? { g } : {}), ...(c !== undefined ? { c } : {}) };
   }
   if (f['k'] === 'h') {
     const { to, vx, vz, hit } = f;
@@ -340,6 +496,34 @@ export function parseFrame(text: unknown): Frame | null {
     const g = gigaOf(f['g']), u = gigaOf(f['u']), up = num(f['up'], 1e6) && f['up'] > 0 ? Math.min(SKY_TOP, f['up']) : undefined;
     return { k: 'h', to, vx, vz, hit: hit as number, ...(up !== undefined ? { up } : {}), ...(g !== undefined ? { g } : {}), ...(u !== undefined ? { u } : {}) };
   }
-  if (f['k'] === 'r') return parseRoundFrame(f);
+  if (f['k'] === 'r') {
+    const r = parseRoundFrame(f);
+    if (!r) return null;
+    // A stage that is off is left out, not the round with it: the round still goes on.
+    const st = parseStage(f['st']);
+    return st ? { ...r, st } : r;
+  }
+  const id = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0;
+  if (f['k'] === 'i') {
+    const { x, z, vx, vz, y, vy, a } = f;
+    if (!id(f['id']) || !num(x) || !num(z) || !num(vx) || !num(vz) || !num(y) || !num(vy) || typeof a !== 'boolean') return null;
+    return { k: 'i', id: f['id'], x, z, vx, vz, y, vy, a };
+  }
+  if (f['k'] === 'p') {
+    const { vx, vz, up } = f;
+    if (!id(f['id']) || !num(vx, 100) || !num(vz, 100) || !num(up, SKY_TOP) || up < 0) return null;
+    return { k: 'p', id: f['id'], vx, vz, up };
+  }
+  if (f['k'] === 'd') return Number.isSafeInteger(f['n']) && (f['n'] as number) > 0 ? { k: 'd', n: f['n'] as number } : null;
   return null;
+}
+
+function parseStage(v: unknown): StageWire | null {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const { u, a, w, g, b, by, i, f, nx } = v as Record<string, unknown>;
+  const count = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) >= 0;
+  if (!Array.isArray(u) || u.length > 64 || !u.every((e: unknown) => Array.isArray(e) && e.length === 2 && isWho(e[0]) && count(e[1]))) return null;
+  if (!Array.isArray(g) || g.length > 64 || !g.every((e: unknown) => Array.isArray(e) && e.length === 5 && count(e[0]) && isWho(e[1]) && ITEMS.includes(e[2] as Item) && num(e[3], GIGA_MOST) && count(e[4]))) return null;
+  if ((a !== null && !isWho(a)) || typeof w !== 'boolean' || (by !== null && !isWho(by)) || !count(b) || !count(i) || !count(f) || !count(nx)) return null;
+  return { u: u as [string, number][], a, w, g: g as StageWire['g'], b, by, i, f, nx };
 }

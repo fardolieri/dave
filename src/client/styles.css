@@ -503,8 +503,21 @@ button.play { flex: 1; min-width: 0; padding-inline: 4px; font-weight: 600; font
 .bonk-banner.big { top: 30%; padding: 8px 26px; font-size: clamp(28px, 7vw, 64px); font-weight: 900; color: #fff; background: rgba(11,32,51,.55); text-shadow: 0 3px 0 #0b2033; }
 .bonk-giga { --giga: #c3ccd4; position: absolute; top: 44px; right: 10px; padding: 3px 14px; border-radius: 999px; background: var(--giga); color: #fff; font-size: 14px; font-weight: 900; white-space: nowrap; text-shadow: 0 1px 2px #0b2033; box-shadow: 0 0 14px var(--giga); }
 .bonk-giga:empty { display: none; }
+/* The items: what I got that lasts the round; a mystery ball to drop while a round counts down; who got what */
+.bonk-effects { position: absolute; top: 76px; right: 10px; padding: 2px 10px; border-radius: 999px; background: rgba(11,32,51,.7); color: #fff; font-size: 13px; font-weight: 800; white-space: nowrap; }
+.bonk-effects:empty, .bonk-drop:empty, .bonk-toast:empty { display: none; }
+.bonk-drop { position: absolute; bottom: 20%; left: 50%; transform: translateX(-50%); padding: 10px 20px; border-radius: 999px; border: 3px solid #fff; pointer-events: auto; background: linear-gradient(90deg, #7c5cff, #ff4fd8, #ffd23f); color: #fff; font-size: 17px; font-weight: 900; text-shadow: 0 1px 2px #0b2033; box-shadow: 0 4px 18px rgba(124,92,255,.6); cursor: pointer; }
+.bonk-drop:disabled { cursor: default; opacity: .85; }
+.bonk-drop.playing { bottom: auto; top: 78px; padding: 5px 14px; font-size: 14px; }
+.bonk-toast { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); max-width: 60%; padding: 4px 14px; border-radius: 999px; background: rgba(11,32,51,.8); color: #fff; font-size: 14px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* On a narrow tile, above the dash button, clear of the wins */
-@container (max-width: 480px) { .bonk-giga { top: auto; bottom: 104px; right: 50%; transform: translateX(50%); } }
+@container (max-width: 480px) {
+  .bonk-giga { top: auto; bottom: 104px; right: 50%; transform: translateX(50%); }
+  .bonk-effects { top: auto; bottom: 136px; right: 50%; transform: translateX(50%); }
+  .bonk-toast { top: 78px; max-width: 90%; }
+  .bonk-drop.playing { top: 112px; }
+  .bonk-drop:not(.playing) { bottom: 168px; }
+}
 .bonk-giga[data-tier="5"] { background: linear-gradient(90deg, #ffd23f, #fff6c8, #ffb703, #ffd23f); background-size: 300% 100%; color: #3a2208; text-shadow: none; }
 @media (prefers-reduced-motion: no-preference) {
   .bonk-giga { animation: bonk-giga-pulse .6s ease-in-out infinite alternate; }

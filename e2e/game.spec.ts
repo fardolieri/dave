@@ -55,7 +55,7 @@ test('a game: started from the call in one click, joined from its tile, rounds c
   const aliceWho = (await view(bob))!.others[0]!.key.slice(0, 11); // as the game's frames carry a player (core/bonk.ts, `whoOf`)
   const bobWho = (await view(alice))!.others[0]!.key.slice(0, 11);
 
-  // Alice's ball goes giga, 50 times, a hyper giga (as one in some 50 does, after some hundred bonks): she is told how
+  // Alice's ball goes giga, 50 times, a hyper giga (as one in some 50 from a mystery ball is): she is told how
   // mighty, never how many times, and Bob sees it.
   await alice.page.evaluate(() => (window as unknown as { __daveGiga: (power: number) => void }).__daveGiga(50));
   await expect(tile(alice).locator('.bonk-giga')).toHaveText('Hyper giga: your next bonk');
@@ -229,6 +229,50 @@ test('a friend back from a gap, moved over to the game of a kind started since, 
   await expect.poll(async () => (await view(carol))?.connected, { timeout: 60_000, message: 'Carol links up with both' }).toBe(2);
   // Not the win from before: Carol's game follows the others' rounds, and theirs do not take hers.
   for (const f of [carol, alice, bob]) expect((await view(f))!.wins[carolWho], `${f.name} sees no win of Carol's`).toBeUndefined();
+});
+
+test('Bonk items: a mystery ball pushed off the floe gives what is in it to who bonked it last, and ten wins drop one at the go', async ({ crowd }) => {
+  test.setTimeout(150_000);
+  const alice = await open(crowd, 'Alice');
+  await needHooks(alice);
+  const bob = await open(crowd, 'Bob');
+  await alice.join();
+  await bob.join();
+  await alice.page.getByRole('button', { name: /Play Bonk/ }).click();
+  await tile(bob).click();
+  for (const f of [alice, bob]) await expect.poll(async () => { const v = await view(f); return v?.phase === 'play' && v.round === 1 && v.connected === 1; }, { timeout: 45_000 }).toBe(true);
+  const aliceWho = (await view(bob))!.others[0]!.key.slice(0, 11);
+  // The leader's app moves the mystery ball (core/bonk.ts, `Stage`); its hooks drop one.
+  const a = (await view(alice))!;
+  const lead = a.leader === a.others[0]!.key ? bob : alice;
+
+  // A mystery ball, holding heavy, falls beside Alice, away from Bob; she rolls into it, and it goes off the floe.
+  await lead.page.evaluate(([x, z]) => (window as unknown as { __daveItem: (what: string, x: number, z: number) => void }).__daveItem('heavy', x!, z!), [a.me.x + 2.5, a.me.z]);
+  for (const f of [alice, bob]) await expect.poll(async () => (await view(f))!.item?.y, { timeout: 10_000, message: `${f.name} sees it land` }).toBe(0);
+  // She holds the mouse a step past it: she rolls there and stops, so she does not slide off after it on the ice,
+  // however slow the page is to answer.
+  const spot = await alice.page.evaluate(([x, z]) => (window as unknown as { __daveScreen: (x: number, z: number) => { x: number; y: number } }).__daveScreen(x!, z!), [a.me.x + 3.5, a.me.z]);
+  await alice.page.mouse.move(spot.x, spot.y);
+  await alice.page.mouse.down();
+  // Hers, on both screens, and said for a few seconds: heavy for the rest of the round.
+  await expect(tile(alice).locator('.bonk-toast')).toHaveText('You got Heavy 🏋️', { timeout: 10_000 });
+  await expect(tile(bob).locator('.bonk-toast')).toHaveText('Alice got Heavy 🏋️');
+  for (const f of [alice, bob]) await expect.poll(async () => (await view(f))!.got, { message: `${f.name} sees Alice get it` }).toEqual([{ who: aliceWho, item: 'heavy' }]);
+  await expect.poll(async () => (await view(alice))!.me.heavy).toBe(true);
+  await alice.page.mouse.up();
+  await expect(tile(alice).locator('.bonk-effects')).toHaveText('🏋️ Heavy');
+
+  // Alice has ten wins: one mystery ball to drop. She rolls off, Bob wins, and the next round counts down.
+  await lead.page.evaluate((who) => (window as unknown as { __daveWins: (who: string, wins: number) => void }).__daveWins(who, 10), aliceWho);
+  await expect.poll(async () => (await view(alice))!.me.drops, { timeout: 10_000 }).toBe(1);
+  await alice.page.keyboard.down('ArrowLeft');
+  await expect.poll(async () => (await view(alice))!.me.alive, { timeout: 15_000 }).toBe(false);
+  await alice.page.keyboard.up('ArrowLeft');
+  // The next round counts down: she drops hers, and it falls at the go, for both; what she got is gone.
+  await tile(alice).getByRole('button', { name: /Drop a mystery ball/ }).click({ timeout: 20_000 });
+  expect((await view(alice))!.me.heavy).toBe(false);
+  for (const f of [alice, bob]) await expect.poll(async () => { const v = await view(f); return v?.phase === 'play' && v.item !== null; }, { timeout: 10_000, message: `${f.name} sees it fall` }).toBe(true);
+  await expect.poll(async () => (await view(alice))!.me.drops).toBe(0);
 });
 
 test('Bonk with the mouse: the ball rolls to where it is held and stops there, and the right button dashes', async ({ crowd }) => {
