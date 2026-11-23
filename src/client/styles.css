@@ -506,7 +506,7 @@ button.play { flex: 1; min-width: 0; padding-inline: 4px; font-weight: 600; font
 /* The items: what I got that lasts the round; a mystery ball to drop while a round counts down; who got what */
 .bonk-effects { position: absolute; top: 76px; right: 10px; padding: 2px 10px; border-radius: 999px; background: rgba(11,32,51,.7); color: #fff; font-size: 13px; font-weight: 800; white-space: nowrap; }
 .bonk-effects:empty, .bonk-toast:empty { display: none; }
-.bonk-drop { position: absolute; left: 16px; bottom: 24px; width: 56px; height: 56px; padding: 0; border-radius: 50%; border: 3px solid #fff; pointer-events: auto; background: linear-gradient(135deg, #7c5cff, #ff4fd8, #ffd23f); font-size: 28px; line-height: 1; box-shadow: 0 4px 18px rgba(124,92,255,.6); cursor: pointer; }
+.bonk-drop { position: absolute; left: 16px; bottom: 40px; width: 56px; height: 56px; padding: 0; border-radius: 50%; border: 3px solid #fff; pointer-events: auto; background: linear-gradient(135deg, #7c5cff, #ff4fd8, #ffd23f); font-size: 28px; line-height: 1; box-shadow: 0 4px 18px rgba(124,92,255,.6); cursor: pointer; }
 .bonk-drop[hidden] { display: none; }
 .bonk-drop::before { content: '🎁'; }
 .bonk-drop:not([data-left=""])::after { content: attr(data-left); position: absolute; top: -6px; right: -6px; min-width: 20px; padding: 0 4px; border-radius: 999px; background: #ff3b3b; color: #fff; font-size: 12px; font-weight: 900; line-height: 20px; }
@@ -534,8 +534,10 @@ button.play { flex: 1; min-width: 0; padding-inline: 4px; font-weight: 600; font
 @media (any-pointer: fine) { [data-game="bonk"] .bonk-canvas { cursor: crosshair; } }
 .bonk-stick { display: none; position: absolute; width: 90px; height: 90px; margin: -45px 0 0 -45px; border-radius: 50%; border: 3px solid rgba(255,255,255,.8); background: rgba(255,255,255,.25); }
 .bonk.bonk-touch .bonk-dash, .bonk-stick.on { display: block; }
+/* On a touch screen, above the dash button: down left, a thumb starting the stick would drop it */
+.bonk.bonk-touch .bonk-drop { left: auto; right: 24px; bottom: 112px; }
 .bonk.bonk-touch .bonk-help { display: none; }
-@media (pointer: coarse) { .bonk-dash { display: block; } .bonk-help { display: none; } } 
+@media (pointer: coarse) { .bonk-dash { display: block; } .bonk-help { display: none; } .bonk-drop { left: auto; right: 24px; bottom: 112px; } } 
 /* Clink's results, over the table when a match ends */
 .clink-results { position: absolute; top: 46%; left: 50%; transform: translateX(-50%); margin: 0; padding: 10px 18px; list-style: none; border-radius: 12px; background: rgba(11,32,51,.7); color: #fff; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .clink-results:empty { display: none; }

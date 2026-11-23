@@ -101,9 +101,10 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   const hadBonk = (spent: boolean) => { felt++; if (spent) giga = 0; };
 
   // The items. The stage as the leader has it (core `Stage`); the mystery ball, moved by the leader's app (mine when I
-  // lead) and as its frames say otherwise, with when it was last heard of; what its next one holds, for the test hooks.
+  // lead) and as its frames say otherwise, with when it was last heard of and to when it was rolled on; what its next
+  // one holds, for the test hooks.
   let stage: Stage = firstStage(dropIn(Math.random()));
-  let item: { id: number; ball: Ball; at: number } | null = null;
+  let item: { id: number; ball: Ball; at: number; rolled: number } | null = null;
   let forced: Item | null = null;
   let forcedAt = { x: 0, z: 0, y: DROP_Y };
   /**
@@ -120,7 +121,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   const lasting = (): Stage => (round.phase === 'wait' ? { ...current(), got: [] } : current());
   const fastNow = () => (round.phase === 'play' ? fastFrom(current()) : null);
   /** A mystery ball falls in the middle, from the sky: by the leader's app only. */
-  const dropItem = (at = { x: 0, z: 0, y: DROP_Y }) => { stage = dropped(current(), dropIn(Math.random())); item = { id: stage.ball, ball: { ...ballAt(at.x, at.z), y: at.y }, at: performance.now() }; lastRoundSent = 0; };
+  const dropItem = (at = { x: 0, z: 0, y: DROP_Y }) => { stage = dropped(current(), dropIn(Math.random())); item = { id: stage.ball, ball: { ...ballAt(at.x, at.z), y: at.y }, at: performance.now(), rolled: performance.now() }; lastRoundSent = 0; };
   /** How a bonk sounds and shakes: a giga one as hard as they come, and the mightier, the more (`spent`, its power). */
   const feel = (hard: number, spent: number) => {
     if (!spent) { thump(hard); shake = Math.min(0.6, shake + hard * 0.04); return; }
@@ -170,7 +171,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     if (f.k === 'i') {
       // The mystery ball, from the leader's app: mine moves it when I lead.
       if (from !== leader || leader === me) return;
-      item = { id: f.id, ball: { ...ballAt(f.x, f.z), vx: f.vx, vz: f.vz, y: f.y, vy: f.vy, alive: f.a }, at: now };
+      item = { id: f.id, ball: { ...ballAt(f.x, f.z), vx: f.vx, vz: f.vz, y: f.y, vy: f.vy, alive: f.a }, at: now, rolled: now };
       return;
     }
     if (f.k === 'p') {
@@ -249,23 +250,26 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     }
     const watching = playing === 0 && (round.phase === 'count' || round.phase === 'play');
     if (watching) { dashAsked = false; dashAim = null; }
-    // The mystery ball, by the leader's app: rolled as a ball nobody steers, until it is off the floe, when what was in
-    // it goes to who bonked it last; and on until it has sunk.
-    if (leader === me && item) {
-      let left = dt;
+    // The mystery ball, rolled as a ball nobody steers. By the leader's app, until it is off the floe, when what was in it
+    // goes to who bonked it last, and on until it has sunk; by the others' from where its frames last said, so it falls
+    // and rolls on smoothly between them (they come only so often: a fall seen from them alone goes by in steps), from
+    // when the last came.
+    if (item) {
+      let left = Math.min(dt, (now - item.rolled) / 1000);
       while (left > 0) {
         const h = Math.min(left, MAX_STEP_S / 3);
         left -= h;
-        const wasAlive = item.ball.alive;
         item.ball = roll(item.ball, { x: 0, z: 0 }, h * speed, floe);
-        if (wasAlive && !item.ball.alive && stage.ball === item.id) {
+        // Off the floe: what was in it is given, once; by a new leader too, whose copy went off before it took over.
+        if (leader === me && !item.ball.alive && stage.ball === item.id) {
           stage = gone(stage, playClock(ms, fast), forced ?? itemOf(Math.random()), gigaPower(Math.random()));
           forced = null;
           lastRoundSent = 0;
         }
       }
-      item.at = now;
-      if (item.ball.y <= SUNK_Y) item = null;
+      item.rolled = now;
+      if (leader === me) item.at = now;
+      if (leader === me && item.ball.y <= SUNK_Y) item = null;
     }
     while (dt > 0 && !watching) {
       const h = Math.min(dt, MAX_STEP_S / 3);
@@ -293,9 +297,10 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
           feel(met.hit, spent);
         }
       }
-      // The mystery ball: its knock goes to the leader's app, which moves it, and to mine at once, until it says.
+      // The mystery ball, where this app has rolled it: its knock goes to the leader's app, which moves it, and to mine at
+      // once, until it says.
       if (item && item.ball.alive && round.phase === 'play') {
-        const seen = leader === me ? item.ball : ahead(item.ball, (now - item.at) * speed);
+        const seen = item.ball;
         const met = bonk(ball, seen, giga, 0, moves.mass, 1);
         if (met.hit === 0) ball = met.ball;
         else if (now - (bonkedAt.get('item') ?? -Infinity) < BONK_AGAIN_MS) ball = { ...ball, x: met.ball.x, z: met.ball.z };
@@ -744,10 +749,11 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
 
     // The mystery ball, where the leader's app has it, carried on; it falls in from the sky, and splashes when it goes in.
     if (item) {
-      const at = leader === me ? item.ball : ahead(item.ball, (now - item.at) * (round.phase === 'play' ? speedAt(ms, fastNow()) : 1));
-      const ease = shownItem.id === item.id ? 1 - Math.exp(-dt * 18) : 1;
+      // Where this app has it, moved on every step: eased toward it only on another's, so a new frame does not jump it.
+      const at = item.ball;
+      const ease = shownItem.id === item.id && leader !== me ? 1 - Math.exp(-dt * 25) : 1;
       const ox = shownItem.x, oz = shownItem.z;
-      shownItem.x += (at.x - shownItem.x) * ease; shownItem.z += (at.z - shownItem.z) * ease; shownItem.y += (item.ball.y - shownItem.y) * ease;
+      shownItem.x += (at.x - shownItem.x) * ease; shownItem.z += (at.z - shownItem.z) * ease; shownItem.y += (at.y - shownItem.y) * ease;
       if (shownItem.id !== item.id) shownItem.splashed = false;
       shownItem.id = item.id;
       mystery.position.set(shownItem.x, shownItem.y + BALL_RADIUS + bob, shownItem.z);
