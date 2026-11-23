@@ -10,8 +10,8 @@ const tile = (f: Friend) => f.page.locator('.shares .game');
  * every frame of the game's WebGL canvas back to do so, which its GL driver notes, for the first such canvas of the
  * browser. A browser with a GPU composites it there and reads nothing back.
  */
-async function open(crowd: { open: (name: string) => Promise<Friend> }, name: string): Promise<Friend> {
-  const f = await crowd.open(name);
+async function open(crowd: { open: (name: string, options?: { viewport?: { width: number; height: number } }) => Promise<Friend> }, name: string, viewport?: { width: number; height: number }): Promise<Friend> {
+  const f = await crowd.open(name, viewport ? { viewport } : {});
   // Headless Firefox on a machine with no GPU gives a page no WebGL 2 (this dev box, 2026-11-21): the game is played
   // blind there, as in any browser without it, and Firefox says why it gave none.
   f.expectWarning(/^warning: \[JavaScript Warning: "Failed to create WebGL context: WebGL creation failed: \n\* AllowWebgl2:false restricts context creation on this system\. \(\)" \{file: "[^"]+" line: \d+\}\]$/);
@@ -351,4 +351,23 @@ test('Bonk with the mouse: the ball rolls to where it is held and stops there, a
   expect((await view(alice))!.me.lastDash).toBeNull();
   await alice.page.mouse.click(box.x + box.width * 0.3, box.y + box.height / 2, { button: 'right' });
   await expect.poll(async () => (await view(alice))!.me.lastDash?.vx ?? 0, { timeout: 5000 }).toBeLessThan(-10);
+});
+
+test('regression: Bonk in fullscreen on a phone fills the whole screen, not the top of it', async ({ crowd, browserName }) => {
+  // Report of 23 Nov 2026, Android Chrome, 360x755: fullscreen covered only the top half. A phone's layout gives the game
+  // a set height in the page (62vh), and that height went into fullscreen with it.
+  test.skip(browserName !== 'chromium', 'headless Firefox does not grant fullscreen');
+  const phone = { width: 360, height: 755 };
+  const alice = await open(crowd, 'Alice', phone);
+  await alice.join();
+  await alice.page.getByRole('button', { name: /Play Bonk/ }).click();
+  const game = tile(alice).locator('.bonk');
+  await expect(game).toBeVisible();
+  await tile(alice).getByRole('button', { name: 'Fullscreen' }).click();
+  await expect.poll(() => alice.page.evaluate(() => document.fullscreenElement?.matches('.game') ?? false)).toBe(true);
+  await expect.poll(async () => { const b = await game.boundingBox(); return b && { top: Math.round(b.y), bottom: Math.round(b.y + b.height) }; })
+    .toEqual({ top: 0, bottom: phone.height });
+  // And back in the page, the tile has its height there again.
+  await tile(alice).getByRole('button', { name: 'Leave fullscreen' }).click();
+  await expect.poll(async () => Math.round((await game.boundingBox())?.height ?? 0)).toBe(Math.round(phone.height * 0.62));
 });
