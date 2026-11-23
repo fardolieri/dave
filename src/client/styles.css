@@ -839,6 +839,7 @@ dialog.clear .check input { margin: 0 6px 0 0; vertical-align: -1px; }
   .shares .party .party-player { flex: none; height: auto; aspect-ratio: 16 / 9; }
   .shares .party .party-queue { max-height: 40vh; }
   .shares .game .bonk { flex: none; height: 62vh; }
+  .shares .game.share-fs .bonk { flex: 1; height: auto; } /* in fullscreen, the whole screen (report of 23 Nov) */
   .party .party-queue .queued-move { width: 32px; height: 30px; } /* a finger's */
   .chat { grid-column: 1; grid-row: 3; min-height: 180px; padding-bottom: 8px; } /* breathing room between the newest line and the composer's top border */
   /* A private conversation is brought into view whole: its head and room for its lines below it, the composer under that */
