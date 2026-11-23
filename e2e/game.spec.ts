@@ -256,9 +256,9 @@ test('Bonk items: a mystery ball pushed off the floe gives what is in it to who 
   await alice.page.mouse.down();
   // Hers, on both screens, and said for a few seconds: heavy for the rest of the round.
   await expect(tile(alice).locator('.bonk-toast')).toHaveText('You got Heavy 🏋️', { timeout: 10_000 });
+  await expect.poll(async () => (await view(alice))!.me.heavy).toBe(true);
   await expect(tile(bob).locator('.bonk-toast')).toHaveText('Alice got Heavy 🏋️');
   for (const f of [alice, bob]) await expect.poll(async () => (await view(f))!.got, { message: `${f.name} sees Alice get it` }).toEqual([{ who: aliceWho, item: 'heavy' }]);
-  await expect.poll(async () => (await view(alice))!.me.heavy).toBe(true);
   await alice.page.mouse.up();
   await expect(tile(alice).locator('.bonk-effects')).toHaveText('🏋️ Heavy');
 
@@ -273,6 +273,46 @@ test('Bonk items: a mystery ball pushed off the floe gives what is in it to who 
   expect((await view(alice))!.me.heavy).toBe(false);
   for (const f of [alice, bob]) await expect.poll(async () => { const v = await view(f); return v?.phase === 'play' && v.item !== null; }, { timeout: 10_000, message: `${f.name} sees it fall` }).toBe(true);
   await expect.poll(async () => (await view(alice))!.me.drops).toBe(0);
+});
+
+test('a mystery ball falls on smoothly on every screen, between the leader\'s frames', async ({ crowd }) => {
+  test.setTimeout(90_000);
+  const alice = await open(crowd, 'Alice');
+  await needHooks(alice);
+  const bob = await open(crowd, 'Bob');
+  await alice.join();
+  await bob.join();
+  await alice.page.getByRole('button', { name: /Play Bonk/ }).click();
+  await tile(bob).click();
+  for (const f of [alice, bob]) await expect.poll(async () => { const v = await view(f); return v?.phase === 'play' && v.round === 1 && v.connected === 1; }, { timeout: 45_000 }).toBe(true);
+  const a = (await view(alice))!;
+  const [lead, other] = a.leader === a.others[0]!.key ? [bob, alice] : [alice, bob];
+  // Dropped from as high up as a frame says (core/rounds.ts, `num`), so it falls a good while, some nine seconds: pages
+  // drawn in software, two games at once, answer slowly.
+  await lead.page.evaluate(() => (window as unknown as { __daveItem: (what: string, x: number, z: number, y: number) => void }).__daveItem('fast', 0, 0, 990));
+  // It falls on, smoothly, on the other's screen too, between the leader's frames: even with none coming for a while,
+  // as from a page busy (here, held up for two seconds: not so long that the other takes over the lead).
+  await expect.poll(async () => (await view(other))!.item?.y ?? 999, { timeout: 10_000, message: `${other.name} sees it fall` }).toBeLessThan(980);
+  // The other's page looks at every frame it draws for a while, and the leader's is held up within it: by the clock both
+  // pages share, so only the frames drawn while it was held up count, whenever each began.
+  const [falling, held] = await Promise.all([
+    other.page.evaluate(() => new Promise<{ t: number; y: number }[]>((done) => {
+      const seen: { t: number; y: number }[] = [], until = performance.now() + 3000;
+      const look = () => { seen.push({ t: Date.now(), y: (window as unknown as { __daveGame: () => GameView }).__daveGame().item?.y ?? -1 }); if (performance.now() < until) requestAnimationFrame(look); else done(seen); };
+      requestAnimationFrame(look);
+    })),
+    (async () => {
+      await lead.page.waitForTimeout(300);
+      return lead.page.evaluate(() => { const from = Date.now(), until = performance.now() + 2000; while (performance.now() < until); return { from, to: Date.now() }; });
+    })(),
+  ]);
+  // Its last frames on the way (sent before it was held up) come in a moment: after them, none.
+  const quiet = falling.filter((f) => f.t >= held.from + 150 && f.t <= held.to).map((f) => f.y);
+  const drawn = falling.map((f) => `${f.t - held.from}:${f.y}`).join(', ');
+  expect(quiet.length, `frames drawn while it was held up: ${drawn}`).toBeGreaterThanOrEqual(2);
+  expect(Math.min(...quiet), `in the air all along: ${drawn}`).toBeGreaterThan(0);
+  // Lower by the last of them than by the first: it falls on, though no frame of the leader's came.
+  expect(quiet.at(-1)!, `heights drawn: ${drawn}`).toBeLessThan(quiet[0]!);
 });
 
 test('Bonk with the mouse: the ball rolls to where it is held and stops there, and the right button dashes', async ({ crowd }) => {

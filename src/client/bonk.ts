@@ -105,7 +105,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   let stage: Stage = firstStage(dropIn(Math.random()));
   let item: { id: number; ball: Ball; at: number } | null = null;
   let forced: Item | null = null;
-  let forcedAt = { x: 0, z: 0 };
+  let forcedAt = { x: 0, z: 0, y: DROP_Y };
   /**
    * The felt bonks of each ball, mine (`felt`) and the others' from their frames, as last counted into the stage's
    * (core `Stage`, `bonks`), by the leader. Every app keeps up with them, so a new leader counts on from what is new.
@@ -120,7 +120,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   const lasting = (): Stage => (round.phase === 'wait' ? { ...current(), got: [] } : current());
   const fastNow = () => (round.phase === 'play' ? fastFrom(current()) : null);
   /** A mystery ball falls in the middle, from the sky: by the leader's app only. */
-  const dropItem = (at = { x: 0, z: 0 }) => { stage = dropped(current(), dropIn(Math.random())); item = { id: stage.ball, ball: { ...ballAt(at.x, at.z), y: DROP_Y }, at: performance.now() }; lastRoundSent = 0; };
+  const dropItem = (at = { x: 0, z: 0, y: DROP_Y }) => { stage = dropped(current(), dropIn(Math.random())); item = { id: stage.ball, ball: { ...ballAt(at.x, at.z), y: at.y }, at: performance.now() }; lastRoundSent = 0; };
   /** How a bonk sounds and shakes: a giga one as hard as they come, and the mightier, the more (`spent`, its power). */
   const feel = (hard: number, spent: number) => {
     if (!spent) { thump(hard); shake = Math.min(0.6, shake + hard * 0.04); return; }
@@ -937,8 +937,11 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     };
     // Giga now, for the suite: a mystery ball's would take it minutes.
     (window as unknown as { __daveGiga?: (power: number) => void }).__daveGiga = (power) => { giga = power; };
-    // For the leader's app: a mystery ball now, holding `what`, dropped at a spot; wins for a player, for their drops.
-    (window as unknown as { __daveItem?: (what: Item, x?: number, z?: number) => void }).__daveItem = (what, x = 0, z = 0) => { if (ITEMS.includes(what)) { forced = what; forcedAt = { x, z }; } };
+    // For the leader's app: a mystery ball now, holding `what`, dropped at a spot, from a height; wins for a player, for
+    // their drops.
+    (window as unknown as { __daveItem?: (what: Item, x?: number, z?: number, y?: number) => void }).__daveItem = (what, x = 0, z = 0, y = DROP_Y) => {
+      if (ITEMS.includes(what)) { forced = what; forcedAt = { x, z, y }; }
+    };
     (window as unknown as { __daveWins?: (who: string, wins: number) => void }).__daveWins = (who, wins) => { round = { ...round, wins: { ...round.wins, [who]: wins } }; lastRoundSent = 0; };
     // Where a spot on the floe is on the page, for the mouse.
     (window as unknown as { __daveScreen?: (x: number, z: number) => { x: number; y: number } }).__daveScreen = (x, z) => {
