@@ -505,18 +505,19 @@ button.play { flex: 1; min-width: 0; padding-inline: 4px; font-weight: 600; font
 .bonk-giga:empty { display: none; }
 /* The items: what I got that lasts the round; a mystery ball to drop while a round counts down; who got what */
 .bonk-effects { position: absolute; top: 76px; right: 10px; padding: 2px 10px; border-radius: 999px; background: rgba(11,32,51,.7); color: #fff; font-size: 13px; font-weight: 800; white-space: nowrap; }
-.bonk-effects:empty, .bonk-drop:empty, .bonk-toast:empty { display: none; }
-.bonk-drop { position: absolute; bottom: 20%; left: 50%; transform: translateX(-50%); padding: 10px 20px; border-radius: 999px; border: 3px solid #fff; pointer-events: auto; background: linear-gradient(90deg, #7c5cff, #ff4fd8, #ffd23f); color: #fff; font-size: 17px; font-weight: 900; text-shadow: 0 1px 2px #0b2033; box-shadow: 0 4px 18px rgba(124,92,255,.6); cursor: pointer; }
-.bonk-drop:disabled { cursor: default; opacity: .85; }
-.bonk-drop.playing { bottom: auto; top: 78px; padding: 5px 14px; font-size: 14px; }
+.bonk-effects:empty, .bonk-toast:empty { display: none; }
+.bonk-drop { position: absolute; left: 16px; bottom: 24px; width: 56px; height: 56px; padding: 0; border-radius: 50%; border: 3px solid #fff; pointer-events: auto; background: linear-gradient(135deg, #7c5cff, #ff4fd8, #ffd23f); font-size: 28px; line-height: 1; box-shadow: 0 4px 18px rgba(124,92,255,.6); cursor: pointer; }
+.bonk-drop[hidden] { display: none; }
+.bonk-drop::before { content: '🎁'; }
+.bonk-drop:not([data-left=""])::after { content: attr(data-left); position: absolute; top: -6px; right: -6px; min-width: 20px; padding: 0 4px; border-radius: 999px; background: #ff3b3b; color: #fff; font-size: 12px; font-weight: 900; line-height: 20px; }
+@media (prefers-reduced-motion: no-preference) { .bonk-drop { animation: bonk-drop-glow .8s ease-in-out infinite alternate; } }
+@keyframes bonk-drop-glow { to { box-shadow: 0 0 26px #ff4fd8, 0 0 6px #fff; } }
 .bonk-toast { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); max-width: 60%; padding: 4px 14px; border-radius: 999px; background: rgba(11,32,51,.8); color: #fff; font-size: 14px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* On a narrow tile, above the dash button, clear of the wins */
 @container (max-width: 480px) {
   .bonk-giga { top: auto; bottom: 104px; right: 50%; transform: translateX(50%); }
   .bonk-effects { top: auto; bottom: 136px; right: 50%; transform: translateX(50%); }
   .bonk-toast { top: 78px; max-width: 90%; }
-  .bonk-drop.playing { top: 112px; }
-  .bonk-drop:not(.playing) { bottom: 168px; }
 }
 .bonk-giga[data-tier="5"] { background: linear-gradient(90deg, #ffd23f, #fff6c8, #ffb703, #ffd23f); background-size: 300% 100%; color: #3a2208; text-shadow: none; }
 @media (prefers-reduced-motion: no-preference) {

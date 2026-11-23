@@ -384,9 +384,11 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   // who got what, for a moment.
   const effectsLine = document.createElement('div');
   effectsLine.className = 'bonk-effects';
+  // Only a present on it, in a corner: what it does is for the players to find out (a mystery too). Hidden till then.
   const dropButton = document.createElement('button');
   dropButton.type = 'button';
   dropButton.className = 'bonk-drop';
+  dropButton.hidden = true;
   dropButton.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); if (canDrop()) drop(); });
   dropButton.addEventListener('click', () => { if (canDrop()) drop(); });
   const toast = document.createElement('div');
@@ -878,16 +880,17 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     const kept = [...(fx.heavy ? ['heavy'] : []), ...(fx.handling ? ['handling'] : []), ...(fastNow() !== null && ms >= fastNow()! ? ['fast'] : [])] as Item[];
     const effectsText = kept.map((i) => `${ITEM_LOOKS[i].mark} ${ITEM_LOOKS[i].name}`).join(' · ');
     const left = dropsLeft(round.wins[myWho] ?? 0, st.used[myWho] ?? 0);
-    const dropText = canDrop() ? `🎁 Drop a mystery ball${left > 1 ? ` ×${left}` : ''}${desk ? ' · E' : ''}` : round.phase === 'count' && st.asked !== null ? `🎁 ${name(st.asked)} dropped a mystery ball` : '';
-    // While a round plays, the button's spot is the floe's middle, where the ball falls: up out of the way.
-    dropButton.classList.toggle('playing', round.phase === 'play');
+    const dropText = canDrop() ? `${left}` : '';
     const toastText = now < toastUntil ? toast.textContent ?? '' : '';
     const key = `${text}|${JSON.stringify(wins)}|${round.phase}|${gigaText}|${effectsText}|${dropText}|${toastText}`;
     if (key === hudKey) return;
     hudKey = key;
     effectsLine.textContent = effectsText;
-    dropButton.textContent = dropText;
-    dropButton.disabled = !canDrop();
+    dropButton.hidden = !dropText;
+    dropButton.dataset['left'] = left > 1 ? dropText : '';
+    const label = `Drop a mystery ball${left > 1 ? ` (${left} left)` : ''}${desk ? ' · E' : ''}`;
+    dropButton.setAttribute('aria-label', label);
+    dropButton.title = label;
     if (!toastText) toast.textContent = '';
     banner.textContent = text;
     gigaBadge.textContent = gigaText;
