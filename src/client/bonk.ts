@@ -822,12 +822,13 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     }
 
     // The camera: over the floe from the south, a little toward my ball, further back on a tall screen; shaken by a bonk.
-    // Held still on a desktop, watching or not, and a little further back to keep the whole floe in sight, the fog as far
-    // back with it: moved with the ball, the spot under the mouse held still would move on ahead of it, off the floe.
+    // Held still on a desktop, watching or not, and a little further back to keep the whole floe in sight: moved with the
+    // ball, the spot under the mouse held still would move on ahead of it, off the floe. The fog goes as far back with it,
+    // or a tall screen (a phone's in fullscreen) sees the floe through a haze.
     const back = desk ? 1.15 : 1;
     const far = Math.max(1, 1.25 / camera.aspect) * back;
-    fog.near = 30 * back;
-    fog.far = 70 * back;
+    fog.near = 30 * far;
+    fog.far = 70 * far;
     const still = watching || desk;
     // Toward my ball no further than the floe's edge: one a giga threw far out to sea would take the floe out of sight.
     const toEdge = Math.min(1, FLOE_START / Math.max(1e-6, Math.hypot(ball.x, ball.z)));
