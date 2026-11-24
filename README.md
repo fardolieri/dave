@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-24T10:52 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-24T22:48 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: nightly 24, preview 179, branch 180.
+Runs recorded: nightly 21, preview 180, branch 181.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -73,7 +73,3 @@ Runs recorded: nightly 24, preview 179, branch 180.
 | 1 | 0 | nightly 1 | privacy.spec.ts › a fresh browser is asked once, again only from the sidebar, and sends nothing to PostHog before a yes or after a no | console warnings, errors or exceptions nobody expected: Alice: warning: [JavaScript Warning: \"Loading failed for the module with source “https://dave-nightly.d | [10-26](https://github.com/fardolieri/dave/actions/runs/40392826988/attempts/1) | [10-26](https://github.com/fardolieri/dave/actions/runs/40392826988/attempts/1) | 55 |
 | 1 | 1 | nightly 1 | themes.spec.ts › each room wears its own look: the page the top room's, a room's box and its chat their own, kept over a reload | console warnings, errors or exceptions nobody expected: Alice: warning: [JavaScript Warning: \"Loading failed for the module with source “https://dave-nightly.d | [10-26](https://github.com/fardolieri/dave/actions/runs/40392826988/attempts/1) | [10-26](https://github.com/fardolieri/dave/actions/runs/40392826988/attempts/1) |  |
 | 1 | 1 | nightly 1 | themes.spec.ts › a room's ⋯ menu and the cards opened from it wear its look, not the page's, and a folded room has no ⋯ | console warnings, errors or exceptions nobody expected: Alice: warning: [JavaScript Warning: \"Loading failed for the module with source “https://dave-nightly.d | [10-26](https://github.com/fardolieri/dave/actions/runs/40392826988/attempts/1) | [10-26](https://github.com/fardolieri/dave/actions/runs/40392826988/attempts/1) |  |
-| 1 | 1 | nightly 1 | resilience.spec.ts › after a stalled attempt the rebuild goes through the TURN relay, and both sides take it (ticket 22) | Bob hears Alice | [10-25](https://github.com/fardolieri/dave/actions/runs/40239237252/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40239237252/attempts/1) | 63 |
-| 1 | 1 | nightly 1 | themes.spec.ts › every theme applies, loads its fonts and keeps the console quiet, at desktop and phone width; the pick survives a reload | expect(locator).toHaveCount(expected) failed | [10-25](https://github.com/fardolieri/dave/actions/runs/40194632521/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40194632521/attempts/1) | 61 |
-| 1 | 1 | nightly 1 | presence.spec.ts › the room whose call I join goes to the top of the list, and stays there after a reload | console warnings, errors or exceptions nobody expected: Alice: error: [JavaScript Error: "Failed to load ‘https://dave-nightly.danielmittereder.workers.dev/asse | [10-25](https://github.com/fardolieri/dave/actions/runs/40191892619/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40191892619/attempts/1) | 62 |
-| 1 | 1 | nightly 1 | resilience.spec.ts › a Rejoin left for another room's call is not taken up by the next reload | console warnings, errors or exceptions nobody expected: Alice: error: [JavaScript Error: "Failed to load ‘https://dave-nightly.danielmittereder.workers.dev/asse | [10-25](https://github.com/fardolieri/dave/actions/runs/40191892619/attempts/1) | [10-25](https://github.com/fardolieri/dave/actions/runs/40191892619/attempts/1) | 62 |
