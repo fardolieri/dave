@@ -189,22 +189,41 @@ export function onConsentChange(l: (on: boolean) => void): () => void {
 }
 
 /**
- * One event sent because the friend asked for it (a problem report), with or without the opt-in. Without it, it goes
- * straight to PostHog's capture endpoint: no SDK, no cookies, no person profile, no replay beside it.
+ * One event sent because the friend asked for it (a problem report, a wish), with or without the opt-in, by hand to
+ * PostHog's capture endpoint. Without the opt-in that is all: no SDK, no cookies, no person profile, no replay beside it.
+ * With it, it carries the SDK's person and session, so it sits beside the replay as the SDK's own events do.
+ *
+ * Resolves to whether it went, once PostHog answered, so the friend is not told it did when it did not. Never through
+ * the SDK, which says nothing of how a send went.
+ *
+ * It goes to `/e/`, not `/i/v0/e/`: EasyPrivacy, on by default in uBlock Origin and Brave, blocks `/i/v0/e/*` on every
+ * site, our own origin too, and the wishes of two friends were lost to it (November 2026). The SDK's own events go there
+ * too, as the project's remote config says. A bare `/e/` is too common a path for a list to block.
  */
-export function captureOnce(event: string, props: Props): void {
-  // What led up to the report goes with it, not up to 30 s after.
-  if (telemetryOn() && sdk) { outbox.flush(); sdk.capture(event, props); return; }
-  if (!key || !host) return;
+export async function captureOnce(event: string, props: Props): Promise<boolean> {
+  if (!key || !host) return false;
+  const on = telemetryOn() ? sdk : null;
+  // What led up to the report goes too, not up to 30 s after.
+  if (on) outbox.flush();
   const body = {
     api_key: key,
     event,
-    distinct_id: person?.id ?? 'anonymous',
-    properties: { ...props, ...buildProps, $process_person_profile: false, ...(isTestAccount ? { is_test_account: true } : {}) },
+    distinct_id: on ? on.get_distinct_id() : person?.id ?? 'anonymous',
+    properties: {
+      ...props, ...buildProps,
+      ...(on ? { ...appProps, $session_id: on.get_session_id() } : { $process_person_profile: false }),
+      ...(isTestAccount ? { is_test_account: true } : {}),
+    },
     timestamp: new Date().toISOString(),
   };
-  void fetch(`${host}/i/v0/e/`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), credentials: 'omit', keepalive: true })
-    .catch((e: unknown) => console.warn(`${event} not sent`, e));
+  try {
+    const res = await fetch(`${host}/e/`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), credentials: 'omit', keepalive: true });
+    if (!res.ok) console.warn(`${event} not sent: ${res.status}`);
+    return res.ok;
+  } catch (e) {
+    console.warn(`${event} not sent`, e);
+    return false;
+  }
 }
 
 /** The calls the app makes. They send nothing without the opt-in, as it is when they are made: effects and components call them too. */

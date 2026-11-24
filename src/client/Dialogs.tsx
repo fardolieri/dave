@@ -19,15 +19,17 @@ export function ReportDialog(props: { collect: () => Promise<Report> }) {
   const [text, setText] = createSignal('');
   const [category, setCategory] = createSignal<Category>('other');
   const [severity, setSeverity] = createSignal<Severity>('annoying');
-  const [phase, setPhase] = createSignal<'idle' | 'sending' | 'sent' | 'copied' | 'copy_failed'>('idle');
+  const [phase, setPhase] = createSignal<'idle' | 'sending' | 'sent' | 'not_sent' | 'copied' | 'copy_failed'>('idle');
   const form = () => ({ text: text(), category: category(), severity: severity() });
   const wish = () => isWish(category());
-  const open = () => { setPhase('idle'); dialog?.showModal(); };
+  // Which send may still say how it went: one still out when the dialog is opened again says nothing there.
+  let sends = 0;
+  const open = () => { sends++; setPhase('idle'); dialog?.showModal(); };
   const send = async () => {
+    const mine = ++sends;
     setPhase('sending');
-    if (wish()) sendWish(text());
-    else sendReport(form(), await props.collect());
-    setPhase('sent');
+    const went = wish() ? await sendWish(text()) : await sendReport(form(), await props.collect());
+    if (mine === sends) setPhase(went ? 'sent' : 'not_sent');
   };
   const copy = async () => {
     const body = wish() ? formatWish(text()) : formatReport(form(), await props.collect());
@@ -59,7 +61,8 @@ export function ReportDialog(props: { collect: () => Promise<Report> }) {
           {telemetryOn() ? ' The last minutes of this tab are already kept as a masked session replay.' : ' Only this report goes, nothing before or after it.'}
         </p>
         <Switch>
-          <Match when={phase() === 'sent'}><p class="ok">Sent, thank you. Brave and strict tracking protection can block this silently: if in doubt, also use Copy and paste it to the person running this room.</p></Match>
+          <Match when={phase() === 'sent'}><p class="ok">Sent, thank you.</p></Match>
+          <Match when={phase() === 'not_sent'}><p class="warn">Not sent: it did not get through, held back by this browser (a tracker blocker perhaps) or not taken by the server. Use Copy and paste it to the person running this room.</p></Match>
           <Match when={phase() === 'copied'}><p class="ok">Copied. Paste it to the person running this room.</p></Match>
           <Match when={phase() === 'copy_failed'}><p class="warn">Could not access the clipboard. Try Send instead.</p></Match>
         </Switch>

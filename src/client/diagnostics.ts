@@ -64,11 +64,11 @@ export function videoElementStates(): Report['videoElements'] {
 }
 
 /** A wish: the friend's words, nothing about the tab. Its own event, so it never counts as a problem. */
-export function sendWish(text: string): void {
-  captureOnce('wish', { text: text.trim() });
+export function sendWish(text: string): Promise<boolean> {
+  return captureOnce('wish', { text: text.trim() });
 }
 
 /** One event: the friend's words and tags as properties, the snapshot as JSON, and the flat fields `reportProperties` lifts out of it. */
-export function sendReport(form: ReportForm, report: Report): void {
-  captureOnce('bug_report', reportProperties(form, report));
+export function sendReport(form: ReportForm, report: Report): Promise<boolean> {
+  return captureOnce('bug_report', reportProperties(form, report));
 }

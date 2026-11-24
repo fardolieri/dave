@@ -267,7 +267,7 @@ test('regression: a friend\'s voice that stopped playing while it arrives plays 
   await dialog.locator('select').selectOption('audio');
   await dialog.getByLabel(/Blocking/).check();
   await dialog.locator('textarea').fill('automated test report, please ignore');
-  const sent = alice.page.waitForRequest((r) => /\/i\/v0\/e\/$/.test(r.url()) && r.postDataJSON()?.event === 'bug_report');
+  const sent = alice.page.waitForRequest((r) => /\/diag\/e\/$/.test(r.url()) && r.postDataJSON()?.event === 'bug_report');
   await dialog.getByRole('button', { name: 'Send' }).click();
   const report = JSON.parse((await sent).postDataJSON().properties.report);
   expect(report.call.playback).toMatchObject({ blocked: false });

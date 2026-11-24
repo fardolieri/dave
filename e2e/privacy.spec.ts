@@ -180,10 +180,10 @@ test('a problem report still goes without the opt-in, alone and saying where it 
   await expect(dialog.locator('.hint')).toContainText('sent to PostHog');
   await expect(dialog.locator('.hint')).toContainText('Only this report goes');
   await dialog.locator('textarea').fill('automated test report, please ignore');
-  const sent = alice.page.waitForRequest(/\/i\/v0\/e\/$/);
+  const sent = alice.page.waitForRequest(/\/diag\/e\/$/);
   await dialog.getByRole('button', { name: 'Send' }).click();
   await expect(dialog.locator('.ok')).toContainText('Sent, thank you');
-  await expect.poll(() => alice.posthog).toEqual([expect.stringMatching(/\/i\/v0\/e\/$/)]);
+  await expect.poll(() => alice.posthog).toEqual([expect.stringMatching(/\/diag\/e\/$/)]);
   expect(new URL(alice.posthog[0]!).origin, 'through our own origin, past tracker blockers').toBe(new URL(alice.page.url()).origin);
   // It says which copy of the app sent it, so a report from a preview or a test build is not taken for one from prod.
   expect((await sent).postDataJSON()).toMatchObject({
