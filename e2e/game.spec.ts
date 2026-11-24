@@ -1,4 +1,4 @@
-import { expect, needHooks, test, type Friend } from './fixtures';
+import { expect, needHooks, test, type Friend, type FriendOptions } from './fixtures';
 import type { GameView } from '../src/core/bonk';
 
 // The call's games (client/game.ts, ADR 0014): started from the call in one click, joined from their tiles beside the shares,
@@ -10,8 +10,8 @@ const tile = (f: Friend) => f.page.locator('.shares .game');
  * every frame of the game's WebGL canvas back to do so, which its GL driver notes, for the first such canvas of the
  * browser. A browser with a GPU composites it there and reads nothing back.
  */
-async function open(crowd: { open: (name: string) => Promise<Friend> }, name: string): Promise<Friend> {
-  const f = await crowd.open(name);
+async function open(crowd: { open: (name: string, options?: Partial<FriendOptions>) => Promise<Friend> }, name: string, options?: Partial<FriendOptions>): Promise<Friend> {
+  const f = await crowd.open(name, options);
   // Headless Firefox on a machine with no GPU gives a page no WebGL 2 (this dev box, 2026-11-21): the game is played
   // blind there, as in any browser without it, and Firefox says why it gave none.
   f.expectWarning(/^warning: \[JavaScript Warning: "Failed to create WebGL context: WebGL creation failed: \n\* AllowWebgl2:false restricts context creation on this system\. \(\)" \{file: "[^"]+" line: \d+\}\]$/);
@@ -351,4 +351,21 @@ test('Bonk with the mouse: the ball rolls to where it is held and stops there, a
   expect((await view(alice))!.me.lastDash).toBeNull();
   await alice.page.mouse.click(box.x + box.width * 0.3, box.y + box.height / 2, { button: 'right' });
   await expect.poll(async () => (await view(alice))!.me.lastDash?.vx ?? 0, { timeout: 5000 }).toBeLessThan(-10);
+});
+
+test('regression: Bonk in fullscreen on a phone fills the whole screen, not the top of it', async ({ crowd, browserName }) => {
+  // Nov 2026, live site: a friend on an Android phone made Bonk fullscreen, and the game covered only the top part of the
+  // screen, black below it.
+  test.skip(browserName !== 'chromium', 'headless Firefox does not grant fullscreen');
+  test.setTimeout(90_000);
+  const alice = await open(crowd, 'Alice', { viewport: { width: 360, height: 755 } });
+  await alice.join();
+  await alice.page.getByRole('button', { name: /Play Bonk/ }).click();
+  const game = tile(alice).locator('.bonk');
+  await expect(game.locator('canvas')).toBeVisible({ timeout: 30_000 });
+  await tile(alice).getByRole('button', { name: 'Fullscreen' }).click();
+  await expect.poll(() => alice.page.evaluate(() => document.fullscreenElement?.classList.contains('game') ?? false)).toBe(true);
+  // The tile is the screen, its header and bar laid over the game: the game reaches from its top to its bottom.
+  await expect.poll(async () => { const b = (await game.boundingBox())!; return { top: Math.round(b.y), bottom: Math.round(b.y + b.height) }; },
+    { message: 'the game fills the fullscreen tile' }).toEqual({ top: 0, bottom: 755 });
 });
