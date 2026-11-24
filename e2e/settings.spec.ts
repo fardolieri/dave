@@ -364,12 +364,70 @@ test('a wish goes out as its own event, its words alone, without being asked how
   await expect(dialog.getByRole('heading')).toHaveText('Make a wish');
   await expect(dialog.locator('textarea')).toHaveAttribute('placeholder', /What would you like/);
   await dialog.locator('textarea').fill('automated test wish, please ignore');
-  const sent = alice.page.waitForRequest(/\/i\/v0\/e\/$/);
+  const sent = alice.page.waitForRequest(/\/diag\/e\/$/);
   await dialog.getByRole('button', { name: 'Send' }).click();
   await expect(dialog.locator('.ok')).toContainText('Sent, thank you');
   const event = (await sent).postDataJSON();
   expect(event).toMatchObject({ event: 'wish', properties: { text: 'automated test wish, please ignore' } });
   expect(event.properties, 'nothing about the tab goes with a wish').not.toHaveProperty('report');
+});
+
+/** Opens the report dialog, picks the wish and writes it; the caller sends it. */
+async function writeWish(page: import('@playwright/test').Page) {
+  await openMenu(page);
+  await page.getByRole('button', { name: 'Report a problem' }).click();
+  const dialog = page.locator('dialog.report');
+  await dialog.locator('select').selectOption('wish');
+  await dialog.locator('textarea').fill('automated test wish, please ignore');
+  return dialog;
+}
+
+test('regression: a wish without the opt-in gets past a tracker blocker that blocks PostHog\'s own paths', async ({ crowd }) => {
+  // Two friends' wishes never reached PostHog (November 2026). EasyPrivacy, on by default in uBlock Origin and Brave,
+  // blocks `/i/v0/e/*` on every site, our own origin too: the blocker is stood in for by that one rule. Routes added
+  // later are asked first, so this one comes before the fixture's stand-in for PostHog.
+  const alice = await crowd.open('Alice', { telemetry: 'off', plainUserAgent: true });
+  await alice.context.route(/\/i\/v0\/e\//, (r) => r.abort('blockedbyclient'));
+  const dialog = await writeWish(alice.page);
+  const answered = alice.page.waitForResponse((r) => r.request().method() === 'POST' && /"event":"wish"/.test(r.request().postData() ?? ''), { timeout: 10_000 });
+  await dialog.getByRole('button', { name: 'Send' }).click();
+  expect((await answered).ok(), 'the wish reached the stand-in for PostHog').toBe(true);
+  await expect(dialog.locator('.ok')).toContainText('Sent, thank you');
+});
+
+test('regression: a wish from a friend who said yes also gets past that blocker', async ({ crowd }) => {
+  // With the yes the SDK sends, and the project's remote config moves its events to `/i/v0/e/` (the live site's answers
+  // `{"analytics":{"endpoint":"/i/v0/e/"}}`), which the blocker stops. The stand-in answers the same, before the page loads.
+  const alice = await crowd.open('Alice', { plainUserAgent: true, connect: false });
+  await alice.context.route(/\/diag\/array\/[^/]+\/config$/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ analytics: { endpoint: '/i/v0/e/' } }) }));
+  await alice.context.route(/\/i\/v0\/e\//, (r) => r.abort('blockedbyclient'));
+  alice.expectWarning(/ERR_BLOCKED_BY_CLIENT/); // the SDK's own events, which the blocker stops as it is meant to
+  const configured = alice.page.waitForResponse(/\/diag\/array\/[^/]+\/config$/);
+  await alice.open();
+  await configured;
+  const dialog = await writeWish(alice.page);
+  const answered = alice.page.waitForResponse((r) => r.request().method() === 'POST' && /"event":"wish"/.test(r.request().postData() ?? ''), { timeout: 10_000 });
+  await dialog.getByRole('button', { name: 'Send' }).click();
+  const response = await answered;
+  expect(response.ok(), 'the wish reached the stand-in for PostHog').toBe(true);
+  await expect(dialog.locator('.ok')).toContainText('Sent, thank you');
+  // Beside the friend's replay and person, as the SDK's own events are.
+  const sent = response.request().postDataJSON();
+  expect(sent.distinct_id, 'the friend, not anonymous').not.toBe('anonymous');
+  expect(sent.properties.$session_id, 'the session of the replay').toEqual(expect.any(String));
+  expect(sent.properties, 'a person to keep it beside').not.toHaveProperty('$process_person_profile');
+});
+
+test('regression: a wish the browser does not let out is not called sent, and Copy is offered instead', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { telemetry: 'off', plainUserAgent: true });
+  await alice.context.route(/\/diag\//, (r) => r.abort('blockedbyclient'));
+  alice.expectWarning(/wish not sent/);
+  alice.expectWarning(/ERR_BLOCKED_BY_CLIENT/);
+  const dialog = await writeWish(alice.page);
+  await dialog.getByRole('button', { name: 'Send' }).click();
+  await expect(dialog.locator('.warn')).toContainText('Not sent');
+  await expect(dialog.locator('.warn')).toContainText('Copy');
+  await expect(dialog.locator('.ok'), 'nothing says it went').toHaveCount(0);
 });
 
 test('About shows the relay this month and the free plan today, the figure nearest its limit first, and nothing where that is not known', async ({ crowd }) => {
