@@ -371,3 +371,39 @@ test('regression: Bonk in fullscreen on a phone fills the whole screen, not the 
   await tile(alice).getByRole('button', { name: 'Leave fullscreen' }).click();
   await expect.poll(async () => Math.round((await game.boundingBox())?.height ?? 0)).toBe(Math.round(phone.height * 0.62));
 });
+
+test('regression: Bonk in fullscreen on a phone is as clear as in the page, not fogged over', async ({ crowd, browserName }) => {
+  // Seen on a phone, 24 Nov 2026, once fullscreen filled the screen: the floe and the balls under a white haze. A tall
+  // screen sets the camera further back to keep the floe's width in sight, and the fog stayed where it was.
+  test.skip(browserName !== 'chromium', 'headless Firefox does not grant fullscreen');
+  test.setTimeout(90_000);
+  const alice = await open(crowd, 'Alice', { width: 360, height: 755 });
+  await needHooks(alice);
+  await alice.join();
+  await alice.page.getByRole('button', { name: /Play Bonk/ }).click();
+  await expect.poll(async () => (await view(alice))?.phase, { timeout: 30_000 }).toBe('wait');
+  // A spot on the floe away from my ball, as the screen shows it: its colour, from a screenshot (the canvas keeps no frame to read).
+  const floe = async () => {
+    const me = (await view(alice))!.me;
+    const at = await alice.page.evaluate(([x, z]) => (window as unknown as { __daveScreen: (x: number, z: number) => { x: number; y: number } }).__daveScreen(x!, z!), [me.x > 0 ? -4 : 4, 0]);
+    const png = (await alice.page.screenshot({ clip: { x: Math.round(at.x) - 2, y: Math.round(at.y) - 2, width: 4, height: 4 } })).toString('base64');
+    return alice.page.evaluate(async (src) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${src}`;
+      await img.decode();
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const g = c.getContext('2d')!;
+      g.drawImage(img, 0, 0);
+      return Array.from(g.getImageData(1, 1, 1, 1).data.slice(0, 3));
+    }, png);
+  };
+  await alice.page.waitForTimeout(500); // a frame drawn: before it, the camera projects nothing
+  const inPage = await floe();
+  await tile(alice).getByRole('button', { name: 'Fullscreen' }).click();
+  await expect.poll(() => alice.page.evaluate(() => document.fullscreenElement?.matches('.game') ?? false)).toBe(true);
+  await expect.poll(async () => Math.round((await tile(alice).locator('.bonk').boundingBox())?.height ?? 0)).toBe(755);
+  await alice.page.waitForTimeout(500); // a few frames drawn at the new size
+  const full = await floe();
+  for (let i = 0; i < 3; i++) expect(Math.abs(full[i]! - inPage[i]!), `channel ${i}: ${inPage} in the page, ${full} in fullscreen`).toBeLessThanOrEqual(8);
+});
