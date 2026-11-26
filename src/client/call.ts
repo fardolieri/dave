@@ -944,6 +944,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   let outputMovedAt = 0;
   /** How often `output` was found stopped or failed and played again in this call (playbackTimer). */
   let outputRestarts = 0;
+  /** Listens to the mix for the `loudestOutput` dev hook, once asked. */
+  let outputMeter: { peak: number; timer: ReturnType<typeof setInterval> } | null = null;
   /** The error code it last failed with in this call, kept after the element's own is cleared by playing it again. */
   let outputLastError: number | null = null;
   /** Where a friend's sound goes: the mix, which `output` plays from the first friend of a call on. */
@@ -2106,6 +2108,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     clearInterval(clockTimer);
     clearInterval(speakingTimer);
     clearInterval(playbackTimer);
+    if (outputMeter) clearInterval(outputMeter.timer);
     invariants.stop();
     leave();
     silent?.stop();
@@ -2144,6 +2147,18 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         return { seconds: buf.duration, peak };
       },
       playback: () => untrack(() => ({ context: audioCtx?.state ?? null, clock: audioCtx?.currentTime ?? null, cues: cueContext()?.state ?? null, blocked: audioBlocked(), output: output.srcObject ? !output.paused : null, paused: [...peers.values()].map((p) => ({ name: p.name, keepAlive: p.keepAlive.paused })) })),
+      /** The loudest the call's mix has been since first asked, as the element that plays the call gets it (reports of 2026-11-26). */
+      loudestOutput: () => {
+        if (!mix || !audioCtx) return null;
+        if (!outputMeter) {
+          const an = audioCtx.createAnalyser();
+          an.fftSize = 512;
+          audioCtx.createMediaStreamSource(mix.stream).connect(an);
+          const meter = { peak: 0, timer: setInterval(() => { meter.peak = Math.max(meter.peak, levelOf(an)); }, 20) };
+          outputMeter = meter;
+        }
+        return outputMeter.peak;
+      },
       /** Pauses the element that plays the call, as a browser that stops it on its own does (reports of 2026-11-22). */
       pauseOutput: () => {
         if (!output.srcObject) return 'nothing plays';

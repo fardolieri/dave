@@ -284,6 +284,12 @@ test('regression: every friend\'s voice and share sound play through one element
   const alice = await crowd.open('Alice');
   const bob = await crowd.open('Bob');
   const carol = await crowd.open('Carol');
+  // Their voices go out as the microphone has them: noise removal takes a fake microphone's tone or beeps for noise, and
+  // the end of this test listens for them.
+  for (const f of [bob, carol]) {
+    await f.page.evaluate(() => localStorage.setItem('dave.audioSettings', JSON.stringify({ noiseRemoval: false })));
+    await f.page.reload();
+  }
   // The elements that play the call are never in the page: every one that is given a stream is noted on the way.
   await alice.page.evaluate(() => {
     const given = new Set<HTMLMediaElement>();
@@ -297,4 +303,10 @@ test('regression: every friend\'s voice and share sound play through one element
   await alice.hearing('Bob', 'Carol');
   const audible = () => alice.page.evaluate(() => (window as unknown as { audible: () => number }).audible());
   await expect.poll(audible, { message: 'one element plays the whole call for Alice' }).toBe(1);
+  // And the friends' voices are in what it plays: Chromium's fake microphones beep on and off, so the loudest moment is listened for.
+  // Headless Firefox on a runner without a sound device never gets a running AudioContext, which the mix needs.
+  const context = (await alice.hook<{ context: string | null }>('playback')).context;
+  if (context !== 'running') { test.info().annotations.push({ type: 'not checked', description: `the voices in what it plays: no running AudioContext here (${context})` }); return; }
+  const loudest = async () => (await alice.hook<number | null>('loudestOutput')) ?? 0;
+  await expect.poll(loudest, { message: "the friends' voices come out of that element" }).toBeGreaterThan(0.01);
 });
