@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-26T21:55 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-26T22:02 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: branch 164, preview 172, nightly 9.
+Runs recorded: branch 165, preview 173, nightly 9.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -18,6 +18,7 @@ Runs recorded: branch 164, preview 172, nightly 9.
 | 2 | 2 | preview 2 | attachment.spec.ts › ADR 0009: a picture sent while nobody else was there comes from the server, sealed, once its sender is gone | expect(locator).toHaveCount(expected) failed | [11-05](https://github.com/fardolieri/dave/actions/runs/42064671698/attempts/1) | [11-17](https://github.com/fardolieri/dave/actions/runs/44168521032/attempts/1) | 92 |
 | 2 | 2 | preview 2 | attachment.spec.ts › a picture that could not be pulled while its sender was frozen is pulled once she is back | expect(received).not.toContain(expected) // indexOf | [11-12](https://github.com/fardolieri/dave/actions/runs/43127137009/attempts/1) | [11-17](https://github.com/fardolieri/dave/actions/runs/44151462674/attempts/1) | 51 |
 | 2 | 2 | nightly 1, preview 1 | resilience.spec.ts › regression: a socket gone silent without a close is given up, and the text written into it arrives once | Alice gives the silent socket up herself | [10-28](https://github.com/fardolieri/dave/actions/runs/40765359543/attempts/1) | [11-05](https://github.com/fardolieri/dave/actions/runs/42066686999/attempts/1) | 61 |
+| 1 | 1 | preview 1 | game.spec.ts › Bonk: the last two to fall together share the round, a photo finish on both screens | Alice sees the tie | [11-26](https://github.com/fardolieri/dave/actions/runs/45901471833/attempts/1) | [11-26](https://github.com/fardolieri/dave/actions/runs/45901471833/attempts/1) |  |
 | 1 | 1 | preview 1 | game.spec.ts › Bonk: one who fell off blows a wind the way they choose, every ten seconds, and it pushes the balls still on the floe | expect(locator).toHaveText(expected) failed | [11-26](https://github.com/fardolieri/dave/actions/runs/45898834710/attempts/1) | [11-26](https://github.com/fardolieri/dave/actions/runs/45898834710/attempts/1) |  |
 | 1 | 1 | branch 1 | settings.spec.ts › noise removal keeps time with the microphone, and stops itself only when friends would hear it go wrong | the worker keeps up with the microphone | [11-22](https://github.com/fardolieri/dave/actions/runs/45070532200/attempts/1) | [11-22](https://github.com/fardolieri/dave/actions/runs/45070532200/attempts/1) |  |
 | 1 | 1 | preview 1 | clink.spec.ts › clink: practice alone, a match with a friend, a grab and a double seen by both, a fall, the shop, won when the other leaves | expect(received).toBe(expected) // Object.is equality | [11-22](https://github.com/fardolieri/dave/actions/runs/45047144263/attempts/1) | [11-22](https://github.com/fardolieri/dave/actions/runs/45047144263/attempts/1) | 93 |
