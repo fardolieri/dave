@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import {
   BALL_RADIUS, DROP_Y, FELT_HIT, FLOE_START, GUST_EVERY_MS, GUST_MS, PLAIN, RESPAWN_MS, STILL, SUNK_Y, BONK_AGAIN_MS, advance, ahead, ask, ballAt, ballFrame, bonk, canBlow, dash, dropDue, dropIn,
   dropTime, dropped, dropsLeft, effectsOf, fastFrom, firstRound, firstStage, floeRadius, gigaPower, gigaTier, gone, gust, gustFrame, hitFrame, itemFrame, itemOf, knocked, leaderOf, movesOf,
-  parseFrame, playClock, pushFrame, roll, roundOf, spawnAt, speedAt, stageFrame, stageOf, stageOfFrame, steer, toward, touched, whoOf, windAt, COUNT_MS, ITEMS, type Ball, type BallFrame,
+  parseFrame, playClock, pushFrame, roll, roundOf, spawnAt, speedAt, stageFrame, stageOf, stageOfFrame, steer, toward, touched, whoOf, windAt, COUNT_MS, ITEMS, TIE_MS, type Ball, type BallFrame,
   type Counted, type GameView, type Gust, type Item, type Led, type Stage,
 } from '../core/bonk';
 import type { GameLinks } from './gamelinks';
@@ -105,8 +105,9 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   let gusts: Gust[] = [];
   const blown: { who: string; g: Gust }[] = [];
   let blewAt = -Infinity;
-  /** For the suite: my ball off the floe once `Date.now()` comes to this (`__daveFall`). */
+  /** For the suite: my ball off the floe once `Date.now()` comes to this (`__daveFall`); the tie's window (`__daveTie`). */
   let fallAt: number | null = null;
+  let tieMs = TIE_MS;
   /** A felt bonk my ball had with another's (core FELT_HIT): one more, and its giga spent by it. */
   const hadBonk = (spent: boolean) => { felt++; if (spent) giga = 0; };
 
@@ -266,7 +267,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     leader = leaderOf([{ key: me, n: round.n }, ...around.map((o) => ({ key: o.key, n: o.frame.n }))]);
     if (leader === me) {
       const counted: Counted[] = [{ who: myWho, n: playing, known: round.n, alive: ball.alive }, ...around.map((o) => ({ who: whoOf(o.key), n: o.frame.r, known: o.frame.n, alive: o.frame.a }))];
-      const next = advance(round, now, counted);
+      const next = advance(round, now, counted, tieMs);
       if (next !== round) { took(next, now); lastRoundSent = 0; }
       stage = { ...current(), bonks: current().bonks + felt - feltCounted };
       feltCounted = felt;
@@ -1076,6 +1077,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     // My ball off the floe, once `Date.now()` comes to `at` (now, by default): two pages fall together by one clock. Only in
     // a round's play: asked for at another time, nothing.
     (window as unknown as { __daveFall?: (at?: number) => void }).__daveFall = (at = 0) => { fallAt = at; };
+    // The tie's window, when this app leads (core TIE_MS).
+    (window as unknown as { __daveTie?: (ms: number) => void }).__daveTie = (ms) => { tieMs = ms; };
     // Where a spot on the floe is on the page, for the mouse.
     (window as unknown as { __daveScreen?: (x: number, z: number) => { x: number; y: number } }).__daveScreen = (x, z) => {
       const p = new THREE.Vector3(x, 0, z).project(camera), r = host.getBoundingClientRect();
@@ -1104,6 +1107,6 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     renderer?.dispose();
     renderer?.domElement.remove();
     hud.remove();
-    if (exposeHooks) for (const hook of ['__daveGame', '__daveGiga', '__daveItem', '__daveWins', '__daveFall', '__daveScreen']) delete (window as unknown as Record<string, unknown>)[hook];
+    if (exposeHooks) for (const hook of ['__daveGame', '__daveGiga', '__daveItem', '__daveWins', '__daveFall', '__daveTie', '__daveScreen']) delete (window as unknown as Record<string, unknown>)[hook];
   };
 }

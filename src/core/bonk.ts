@@ -432,9 +432,10 @@ export type Led = Round & { standing?: string[]; closing?: { at: number; who: st
  * The round at `now`, with `here` the players the leader hears from (the leader too). A second player starts a round;
  * the countdown runs to the play, and starts over with everyone when who is here changes; the play runs until one player
  * or none is left on the floe, and TIE_MS on for one; the winner is shown, or those who tied, and the next round starts,
- * or the wait if only one player is left. A player who came in after the countdown watches.
+ * or the wait if only one player is left. A player who came in after the countdown watches. `tieMs`: TIE_MS, but for the
+ * suite's pages, which draw in software, a frame in up to half a second.
  */
-export function advance(r: Led, now: number, here: readonly Counted[]): Led {
+export function advance(r: Led, now: number, here: readonly Counted[], tieMs = TIE_MS): Led {
   const ms = now - r.since;
   const enough = here.length >= 2;
   const count = (n: number): Led => ({ n, phase: 'count', since: now, players: here.map((p) => p.who).sort(), winner: null, wins: r.wins });
@@ -456,7 +457,7 @@ export function advance(r: Led, now: number, here: readonly Counted[]): Led {
       // One left, or none: those who stood until then share the round if the last one falls too, within TIE_MS. A leader
       // that never counted more than the one standing (it took over just now) has nobody to wait for.
       const closing = r.closing ?? { at: now, who: r.standing ?? standing, ...(standing.length === 1 ? { last: standing[0] } : {}) };
-      const late = now - closing.at >= TIE_MS;
+      const late = now - closing.at >= tieMs;
       if (standing.length === 1 && closing.who.length > 1 && !late) return r.closing ? r : { ...r, closing };
       // None left, counted only after TIE_MS (a leader whose tab is hidden counts once a second): the last one stood it out.
       const winner = standing[0] ?? (late ? closing.last ?? null : null);

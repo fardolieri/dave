@@ -421,9 +421,10 @@ test('Bonk: the last two to fall together share the round, a photo finish on bot
   const aliceWho = (await view(bob))!.others[0]!.key.slice(0, 11);
   const bobWho = (await view(alice))!.others[0]!.key.slice(0, 11);
 
-  // Both off the floe at once, by the clock both pages share (core/bonk.ts, TIE_MS): neither wins it alone, both do. The
-  // leader counts the two falls a frame or two late each, its own and the other's: a tie while they are counted within
-  // TIE_MS of each other, either way round.
+  // Both off the floe at once, by the clock both pages share: neither wins it alone, both do. The leader counts each fall a
+  // frame or two late, and a page drawing in software takes up to half a second for one (CI, 2026-11-26: counted more
+  // than TIE_MS apart, a win): the window is widened here, whoever leads. Its own sums are test/game.test.ts's.
+  await Promise.all([alice, bob].map((f) => f.page.evaluate(() => (window as unknown as { __daveTie: (ms: number) => void }).__daveTie(3000))));
   const at = Date.now() + 1500;
   await Promise.all([alice, bob].map((f) => f.page.evaluate((at) => (window as unknown as { __daveFall: (at: number) => void }).__daveFall(at), at)));
   // Said big for a few seconds, and who shares it over it: looked at on both pages at once, before the next round.
