@@ -1,5 +1,5 @@
 import { expect, needHooks, test, type Friend } from './fixtures';
-import { GUST_ACCEL, type GameView } from '../src/core/bonk';
+import { GUST_EVERY_MS, type GameView } from '../src/core/bonk';
 
 // The call's games (client/game.ts, ADR 0014): started from the call in one click, joined from their tiles beside the shares,
 // played over game links between the players (client/gamelinks.ts), never through the server.
@@ -473,10 +473,27 @@ test('Bonk: one who fell off blows a wind the way they choose, every ten seconds
   expect(before.every((m) => m.alive)).toBe(true);
 
   // She aims it with the keys back toward where she started, so it blows the two others across the floe, not off its near
-  // edge at once, and blows it with Space, twice: the second does nothing, not for ten seconds. Read in her page, a few
-  // frames on: a page drawing in software takes half a second for one, and the round ends once one is blown off.
+  // edge at once, and blows it with Space, twice: the second does nothing, not for ten seconds. Every page here draws a
+  // frame in up to half a second or more, and the round ends once the gust has blown one off: so what each page shows is
+  // recorded in that page, frame by frame, and read afterwards.
   const keys = [...(start.x > 2 ? ['ArrowRight'] : start.x < -2 ? ['ArrowLeft'] : []), ...(start.z > 2 ? ['ArrowDown'] : start.z < -2 ? ['ArrowUp'] : [])];
-  const way = { x: keys.includes('ArrowRight') ? 1 : keys.includes('ArrowLeft') ? -1 : 0, z: keys.includes('ArrowDown') ? 1 : keys.includes('ArrowUp') ? -1 : 0 };
+  const l = Math.hypot(keys.includes('ArrowRight') ? 1 : keys.includes('ArrowLeft') ? -1 : 0, keys.includes('ArrowDown') ? 1 : keys.includes('ArrowUp') ? -1 : 0);
+  const way = { x: (keys.includes('ArrowRight') ? 1 : keys.includes('ArrowLeft') ? -1 : 0) / l, z: (keys.includes('ArrowDown') ? 1 : keys.includes('ArrowUp') ? -1 : 0) / l };
+  // Alice's and Bob's pages: how far their ball went that way at most, and what their toast said.
+  type Watched = { moved: number; toasts: string[] };
+  await Promise.all([alice, bob].map((f, i) => f.page.evaluate(({ from, way }) => {
+    const w: Watched = { moved: -Infinity, toasts: [] };
+    (window as unknown as { __watched: Watched }).__watched = w;
+    const until = performance.now() + 30_000;
+    const look = () => {
+      const m = (window as unknown as { __daveGame: () => GameView }).__daveGame().me;
+      w.moved = Math.max(w.moved, (m.x - from.x) * way.x + (m.z - from.z) * way.z);
+      const t = document.querySelector('.bonk-toast')?.textContent;
+      if (t && !w.toasts.includes(t)) w.toasts.push(t);
+      if (performance.now() < until) requestAnimationFrame(look);
+    };
+    requestAnimationFrame(look);
+  }, { from: { x: before[i]!.x, z: before[i]!.z }, way })));
   await tile(carol).locator('.bonk').focus();
   const blew = await carol.page.evaluate(async (keys) => {
     const host = document.querySelector('.bonk')!;
@@ -484,25 +501,23 @@ test('Bonk: one who fell off blows a wind the way they choose, every ten seconds
     const frame = () => new Promise((done) => requestAnimationFrame(done));
     for (const k of keys) key('keydown', k);
     key('keydown', 'Space');
+    // The game's frame comes before this one's: the first has blown by now, and the second is pressed after it.
     await frame();
+    const second = performance.now();
     key('keydown', 'Space');
     await frame();
-    await frame();
     for (const k of keys) key('keyup', k);
+    const since = performance.now() - second;
     const me = (window as unknown as { __daveGame: () => GameView }).__daveGame().me;
-    return { blow: me.blow, wind: me.wind, banner: document.querySelector('.bonk-banner')?.textContent };
+    return { blow: me.blow, since, banner: document.querySelector('.bonk-banner')?.textContent };
   }, keys);
-  expect(blew.blow).toBeGreaterThan(5000);
-  expect(blew.blow).toBeLessThanOrEqual(10_000);
-  expect(blew.banner).toMatch(/^Splash! You are out · 💨 again in (9|10)$/);
-  // One gust blows, the way she aimed, not two.
-  const l = Math.hypot(way.x, way.z);
-  expect(blew.wind.x).toBeCloseTo((way.x / l) * GUST_ACCEL, 1);
-  expect(blew.wind.z).toBeCloseTo((way.z / l) * GUST_ACCEL, 1);
-  // Both are told who blew it, for a few seconds, and both balls go that way: looked at on both pages at once, before the
-  // round ends with one off the floe and the next puts them back.
-  await Promise.all([alice, bob].map(async (f, i) => {
-    await expect(tile(f).locator('.bonk-toast')).toHaveText('Carol blew a wind 💨');
-    await expect.poll(async () => { const m = (await view(f))!.me; return ((m.x - before[i]!.x) * way.x + (m.z - before[i]!.z) * way.z) / l; }, { timeout: 10_000, message: `${f.name} is blown her way` }).toBeGreaterThan(2);
-  }));
+  // Out and waiting to blow again, from the first: the second, had it blown, would have her wait from after `second`.
+  expect(blew.blow).toBeGreaterThan(0);
+  expect(blew.blow).toBeLessThan(GUST_EVERY_MS - blew.since);
+  expect(blew.banner).toMatch(/^Splash! You are out · 💨 again in \d+$/);
+  // Both are told who blew it, and both balls go the way she aimed.
+  for (const f of [alice, bob]) {
+    await expect.poll(async () => { const w = await f.page.evaluate(() => (window as unknown as { __watched: Watched }).__watched); return { blown: w.moved > 2, told: w.toasts.includes('Carol blew a wind 💨') }; }, { timeout: 20_000, message: `${f.name} is blown her way, and told` })
+      .toEqual({ blown: true, told: true });
+  }
 });
