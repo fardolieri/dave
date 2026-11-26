@@ -244,7 +244,7 @@ test('in a call, the ⋯ of another room open on screen says it cannot go on top
   await expect(menu.getByRole('button', { name: 'Put on top' })).toHaveCount(0);
 });
 
-test('regression: a friend\'s voice that stopped playing while it arrives plays again, and a report says how each voice plays', async ({ crowd, browserName }) => {
+test('regression: the call\'s sound that stopped playing while voices arrive plays again, and a report says how it plays', async ({ crowd, browserName }) => {
   // Reports of 2026-11-22: a friend on Android saw another's ring light up as he spoke and heard nothing, until several
   // reloads. The ring measures the voice as it arrives, so it reached the tab: what plays it had stopped.
   const alice = await crowd.open('Alice', { telemetry: 'off', plainUserAgent: true });
@@ -254,13 +254,12 @@ test('regression: a friend\'s voice that stopped playing while it arrives plays 
   await alice.connectedTo('Bob');
   await needHooks(alice);
   await alice.hearing('Bob');
-  type Playback = { paused: Array<{ name: string; voice: boolean }> };
-  const playing = async () => (await alice.hook<Playback>('playback')).paused.find((p) => p.name === 'Bob')?.voice === false;
-  await expect.poll(playing, { message: "Bob's voice plays for Alice" }).toBe(true);
-  expect(await alice.hook('pauseVoice', 'Bob')).toBe('paused');
-  await expect.poll(playing, { message: "Bob's voice plays again for Alice" }).toBe(true);
+  const playing = async () => (await alice.hook<{ output: boolean | null }>('playback')).output === true;
+  await expect.poll(playing, { message: "the call's sound plays for Alice" }).toBe(true);
+  expect(await alice.hook('pauseOutput')).toBe('paused');
+  await expect.poll(playing, { message: "the call's sound plays again for Alice" }).toBe(true);
 
-  // A report from the one who cannot hear says, friend by friend, whether their voice plays there.
+  // A report from the one who cannot hear says whether the call's sound plays there, and how loud each friend arrives.
   await openMenu(alice.page);
   await alice.page.getByRole('button', { name: 'Report a problem' }).click();
   const dialog = alice.page.locator('dialog.report');
@@ -270,11 +269,11 @@ test('regression: a friend\'s voice that stopped playing while it arrives plays 
   const sent = alice.page.waitForRequest((r) => /\/diag\/e\/$/.test(r.url()) && r.postDataJSON()?.event === 'bug_report');
   await dialog.getByRole('button', { name: 'Send' }).click();
   const report = JSON.parse((await sent).postDataJSON().properties.report);
-  expect(report.call.playback).toMatchObject({ blocked: false });
-  const bobs = report.call.peers[0].playback;
-  expect(bobs).toMatchObject({ paused: false, ended: false, restarts: 1 });
-  expect(typeof bobs.stillMs).toBe('number');
-  if (browserName === 'chromium') expect(bobs.stillMs, "Bob's voice moves on").toBeLessThan(3000);
+  const playback = report.call.playback;
+  expect(playback).toMatchObject({ blocked: false, paused: false, ended: false, error: null, restarts: 1, speaker: 'default' });
+  expect(typeof playback.stillMs).toBe('number');
+  if (browserName === 'chromium') expect(playback.stillMs, "the call's sound moves on").toBeLessThan(3000);
+  expect(report.call.peers[0].playback).toMatchObject({ gain: 1 });
 });
 
 test('regression: every friend\'s voice and share sound play through one element, however many friends are in the call', async ({ crowd }) => {

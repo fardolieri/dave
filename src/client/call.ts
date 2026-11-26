@@ -69,17 +69,23 @@ export type PeerDiagnostics = {
   outboundVoice: Record<string, unknown> | null;
   pair: { local: string; remote: string; state: string; rttMs: number | null; outgoingKbps: number | null } | null;
   /**
-   * How their voice plays here (reports of 2026-11-22): the element that plays it, how long its place in the stream has
-   * stood still, how often it was found stopped and played again, its gain and whether a speaker was chosen for it (not which: a device id stays here), and how long since their voice
-   * was last loud as it arrived (what lights their ring).
+   * How their voice plays here (reports of 2026-11-22): its gain into the call's one output, and how long since their voice
+   * was last loud as it arrived (what lights their ring). The element that plays it is the call's, in `CallDiagnostics`.
    */
-  playback: { paused: boolean; ended: boolean; readyState: number; error: number | null; stillMs: number | null; restarts: number; gain: number | null; speaker: 'default' | 'chosen'; loudMs: number | null };
+  playback: { gain: number | null; loudMs: number | null };
 };
 export type CallDiagnostics = {
   inCall: boolean; muted: boolean; microphone: boolean; micTest: MicTest | null; joinSeq: number | null; sharing: Record<string, unknown> | null; outgoing: Omit<OutgoingShare, 'each'> | null;
   shareSettings: unknown; viewerSettings: unknown; audioProcessing: unknown; lowBandwidthVoice: boolean; voiceRepair: VoiceRepair; ice: { servers: number; turn: boolean; ageMinutes: number | null };
-  /** The call's AudioContext, and whether the browser held the call's sound back until a click. */
-  playback: { context: AudioContextState | null; blocked: boolean };
+  /**
+   * The call's AudioContext, whether the browser held the call's sound back until a click, and the one element that plays
+   * every friend (reports of 2026-11-22 and 11-26): how long its place in the stream has stood still, how often it was
+   * found stopped or failed and played again, and whether a speaker was chosen for it (not which: a device id stays here).
+   */
+  playback: {
+    context: AudioContextState | null; blocked: boolean;
+    paused: boolean; ended: boolean; readyState: number; error: number | null; stillMs: number | null; restarts: number; speaker: 'default' | 'chosen';
+  };
   peers: PeerDiagnostics[];
 };
 /** Whether a published view still says what a peer's view says now, field for field. */
@@ -129,15 +135,8 @@ type Peer = {
   answerN: number | undefined;
   /** The offer that last went out: its number, on which of my sockets, and after how many returns of theirs (resendOffer). */
   offerSent: { n: number; socket: number; returns: number } | null;
-  /** Plays the gain-adjusted voice; sink-selectable. */
-  audio: HTMLAudioElement;
   /** Chrome only feeds a remote track into WebAudio while some media element plays it, so the raw track stays attached here, muted. */
   keepAlive: HTMLAudioElement;
-  /** Where `audio` was in its stream when last looked at, and when that last moved on (playbackTimer). */
-  voiceTime: number;
-  voiceMovedAt: number;
-  /** How often `audio` was found stopped and played again (playbackTimer). */
-  voiceRestarts: number;
   analyser?: AnalyserNode;
   voiceGain?: GainNode;
   shareGain?: GainNode;
@@ -164,7 +163,6 @@ type Peer = {
   /** Whether my share was last set to go to them (applyShareEncoding): read against sendsShareTo, it says when to set it again. */
   shareActive: boolean;
   remoteShare: MediaStream;
-  shareAudio: HTMLAudioElement;
   videoBytesIn: number;
   /** Bytes of their share's sound received so far, as refreshStats last read them, and when that read began. */
   shareSoundBytesIn: number;
@@ -212,9 +210,9 @@ const VOICE_SEND_EVERY_MS = 30_000;
 
 const SPEAK_THRESHOLD = 0.02;
 const SPEAK_HOLD_MS = 300;
-/** How often each friend's voice element is checked for having stopped (playbackTimer). */
+/** How often the element that plays the call is checked for having stopped or failed (playbackTimer). */
 const PLAYBACK_CHECK_MS = 1_000;
-/** How many of a friend's stops go to PostHog in one connection: enough to tell a few from a loop. */
+/** How many of its stops go to PostHog in one call: enough to tell a few from a loop. */
 const PLAYBACK_RESTARTS_REPORTED = 3;
 
 /** A setting signal that also persists: [read, write]. */
@@ -826,7 +824,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
 
     }
     if (next.speakerId !== prev.speakerId) {
-      for (const p of peers.values()) { void applySink(p.audio); void applySink(p.shareAudio); }
+      void applySink(output);
       void applySink(testOut);
     }
     if (next.lowBandwidthVoice !== lowVoiceOn) {
@@ -930,23 +928,56 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }, 100);
 
   /**
-   * A friend's voice whose element stopped while the call plays (reports of 2026-11-22: a friend on Android saw another's
-   * ring light up and heard nothing, until several reloads; the ring measures the voice as it arrives, so it got that
-   * far). Played again, and each stop is counted for the report and, the first few, sent as `voice_playback_restarted`.
-   * Not while the browser holds the sound back for a click: that has its own button. Also follows how far each element
-   * has played, for the report's `stillMs`.
+   * Every friend's voice and share sound, each through its own gain, mixed into one stream that one element plays (reports
+   * of 2026-11-26). Chrome gives each element playing a mixed stream an audio output of its own (TrackAudioRenderer): with an
+   * element per voice and per share sound, a call of six asked a phone for ten, and the phone's output for the friend who
+   * joined last failed, silent while its element said it played. One element, sink-selectable, is one output however
+   * many friends are in the call.
+   */
+  const output = new Audio();
+  output.autoplay = true;
+  let mix: MediaStreamAudioDestinationNode | null = null;
+  /** Where `output` was in its stream when last looked at, and when that last moved on (playbackTimer). */
+  let outputTime = 0;
+  let outputMovedAt = 0;
+  /** How often `output` was found stopped or failed and played again in this call (playbackTimer). */
+  let outputRestarts = 0;
+  /** Where a friend's sound goes: the mix, which `output` plays from the first friend of a call on. */
+  function mixIn(ctx: AudioContext): MediaStreamAudioDestinationNode {
+    mix ??= ctx.createMediaStreamDestination();
+    if (output.srcObject !== mix.stream) {
+      output.srcObject = mix.stream;
+      void applySink(output);
+      output.play().catch(refused); // the join click, or on a Rejoin the live microphone, normally suffices
+    }
+    return mix;
+  }
+  /** Ends the call's playback at a Leave: the next call's first friend starts it again. */
+  function stopOutput(): void {
+    output.pause();
+    output.srcObject = null;
+    outputTime = 0;
+    outputMovedAt = 0;
+    outputRestarts = 0;
+  }
+
+  /**
+   * The element that plays the call, found stopped while the call plays (reports of 2026-11-22: a friend on Android saw
+   * another's ring light up and heard nothing, until several reloads; the ring measures the voice as it arrives, so it got
+   * that far), or with its sound output failed (error 3 while it "plays", reports of 2026-11-26), is played again: a failed
+   * output is opened anew by giving the element its stream again. Each time is counted for the report and, the first few,
+   * sent as `voice_playback_restarted`. Not while the browser holds the sound back for a click: that has its own button.
+   * Also follows how far the element has played, for the report's `stillMs`.
    */
   const playbackTimer = setInterval(() => {
-    if (!joined || untrack(audioBlocked)) return;
+    if (!joined || untrack(audioBlocked) || !mix || output.srcObject !== mix.stream) return;
     const now = Date.now();
-    for (const p of peers.values()) {
-      const el = p.audio;
-      if (!el.srcObject) continue;
-      if (el.currentTime !== p.voiceTime || !p.voiceMovedAt) { p.voiceTime = el.currentTime; p.voiceMovedAt = now; }
-      if (!el.paused && !el.ended) continue;
-      if (++p.voiceRestarts <= PLAYBACK_RESTARTS_REPORTED) posthog.capture('voice_playback_restarted', { peer: fingerprintOf(p), restarts: p.voiceRestarts, ended: el.ended, ready_state: el.readyState, speaking: p.view.speaking, visible: document.visibilityState === 'visible' });
-      el.play().catch(refused);
-    }
+    if (output.currentTime !== outputTime || !outputMovedAt) { outputTime = output.currentTime; outputMovedAt = now; }
+    const error = output.error?.code ?? null;
+    if (!output.paused && !output.ended && error === null) return;
+    if (++outputRestarts <= PLAYBACK_RESTARTS_REPORTED) posthog.capture('voice_playback_restarted', { restarts: outputRestarts, ended: output.ended, ready_state: output.readyState, error, peers: peers.size, visible: document.visibilityState === 'visible' });
+    if (error !== null) { output.srcObject = null; output.srcObject = mix.stream; }
+    output.play().catch(refused);
   }, PLAYBACK_CHECK_MS);
 
   // ---- peers
@@ -955,23 +986,18 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     // encryption, so the retry avoids it. My relay candidates suffice; every pair then passes through the TURN server.
     const relayOnly = transportPolicyFor(countsOf(key).stalled, hasTurn()) === 'relay';
     const pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: relayOnly ? 'relay' : 'all' });
-    const audio = new Audio();
-    audio.autoplay = true;
     const keepAlive = new Audio();
     keepAlive.autoplay = true;
     keepAlive.muted = true;
     const { closed, close: markClosed } = closeLatch();
     const peer: Peer = {
       key, name, pc, closed, markClosed, polite: isPolite(myKey, key), tx: [], makingOffer: false, ignoreOffer: false, srdAnswerPending: false, joinSeq: untrack(room.people).find((p) => p.publicKey === key && p.role === 'participant')?.joinSeq ?? null,
-      returns: 0, id: crypto.randomUUID().replaceAll('-', ''), remoteId: null, offerN: 0, answerN: undefined, offerSent: null, audio, keepAlive, voiceTime: 0, voiceMovedAt: 0, voiceRestarts: 0, audioNodes: [], relayOnly, generation: ++generation, link: newLink(initiator, countsOf(key)), timers: {}, iceRestarts: 0, iceIssuedAt,
+      returns: 0, id: crypto.randomUUID().replaceAll('-', ''), remoteId: null, offerN: 0, answerN: undefined, offerSent: null, keepAlive, audioNodes: [], relayOnly, generation: ++generation, link: newLink(initiator, countsOf(key)), timers: {}, iceRestarts: 0, iceIssuedAt,
       view: { publicKey: key, name, conn: 'connecting', speaking: false, serverLost: false, audioBytesIn: 0, watching: false, shareLive: false, shareKbps: 0, shareFormat: null, volume: untrack(volumes)[key] ?? 1, shareVolume: untrack(shareVolumes)[key] ?? 1, shareSound: false, rttMs: null },
-      viewsMyShare: earlyViewers.has(key), shareActive: false, viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, sendsRed: false, sendsFec: true, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), shareAudio: new Audio(), videoBytesIn: 0, shareSoundBytesIn: 0, shareSoundReadAt: 0, watchedAt: 0, shareSoundChecks: 0, videoBytesAt: 0, framesDecoded: null, framesGrewAt: null, holdOpening: false, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
+      viewsMyShare: earlyViewers.has(key), shareActive: false, viewerScale: earlyViewers.get(key) ?? 1, asksLowVoice: false, sendsRed: false, sendsFec: true, voiceLast: null, voiceReported: null, voiceSamples: 0, buffer: INITIAL_BUFFER, lastWindow: null, remoteShare: new MediaStream(), videoBytesIn: 0, shareSoundBytesIn: 0, shareSoundReadAt: 0, watchedAt: 0, shareSoundChecks: 0, videoBytesAt: 0, framesDecoded: null, framesGrewAt: null, holdOpening: false, videoBytesOut: 0, outKbps: 0, outFormat: null, encodingChain: Promise.resolve(),
       outgoingCandidates: [],
     };
     earlyViewers.delete(key);
-    peer.shareAudio.autoplay = true;
-    void applySink(peer.audio);
-    void applySink(peer.shareAudio);
     setShareStreams((m) => new Map(m).set(key, peer.remoteShare));
     if (initiator) {
       // Only the offering side pre-adds transceivers (ADR 0001, spike finding).
@@ -1007,7 +1033,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
           track.onunmute = () => setView(peer, { shareLive: true });
           track.onmute = () => setView(peer, { shareLive: false, shareKbps: 0, shareFormat: null, shareSound: false });
         } else {
-          // The tile's video element is muted (autoplay), so share audio plays through its own element, gain-adjusted.
+          // The tile's video element is muted (autoplay), so share audio plays with the voices, gain-adjusted.
           wireRemoteAudio(peer, 'share', new MediaStream([track]));
         }
       }
@@ -1022,20 +1048,19 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   }
 
   /**
-   * Remote audio path (ticket 08): raw track -> gain (master times the participant's voice or share volume, local only) -> a MediaStream that a
-   * normal audio element plays, so speaker selection via setSinkId keeps working. The raw track also stays
-   * attached to a muted element, which Chrome requires before it feeds remote audio into WebAudio at all.
+   * Remote audio path (ticket 08): raw track -> gain (master times the participant's voice or share volume, local only) -> the
+   * call's mix, a MediaStream that one normal audio element plays, so speaker selection via setSinkId keeps working. The raw
+   * track also stays attached to a muted element, which Chrome requires before it feeds remote audio into WebAudio at all;
+   * those cost no output of their own, Chrome plays every remote track through one (WebRtcAudioRenderer).
    */
   function wireRemoteAudio(peer: Peer, kind: 'voice' | 'share', stream: MediaStream): void {
-    const out = kind === 'voice' ? peer.audio : peer.shareAudio;
     const ctx = callContext();
     if (kind === 'voice') { peer.keepAlive.srcObject = stream; peer.keepAlive.play().catch(refused); }
     const source = ctx.createMediaStreamSource(stream);
     const gain = ctx.createGain();
     gain.gain.value = effectiveGain(peer, kind);
-    const dest = ctx.createMediaStreamDestination();
-    source.connect(gain).connect(dest);
-    peer.audioNodes.push(source, gain, dest);
+    source.connect(gain).connect(mixIn(ctx));
+    peer.audioNodes.push(source, gain);
     if (kind === 'voice') {
       peer.voiceGain = gain;
       const an = ctx.createAnalyser();
@@ -1046,8 +1071,6 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     } else {
       peer.shareGain = gain;
     }
-    out.srcObject = dest.stream;
-    out.play().catch(refused); // the join click, or on a Rejoin the live microphone, normally suffices
   }
 
   const refused = (e: unknown) => { if (e instanceof Error && e.name === 'NotAllowedError') setAudioBlocked(true); };
@@ -1056,7 +1079,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     setAudioBlocked(false);
     audioRestart?.startAgain();
     voice?.resume();
-    for (const p of peers.values()) for (const el of [p.keepAlive, p.audio, p.shareAudio]) if (el.srcObject) el.play().catch(refused);
+    for (const el of [output, ...[...peers.values()].map((p) => p.keepAlive)]) if (el.srcObject) el.play().catch(refused);
   }
 
   function attachLocalTracks(peer: Peer): void {
@@ -1434,11 +1457,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       pc: { connection: peer.pc.connectionState, ice: peer.pc.iceConnectionState, signaling: peer.pc.signalingState, gathering: peer.pc.iceGatheringState, transceivers: peer.pc.getTransceivers().length },
       shareTrack: track ? { readyState: track.readyState, muted: track.muted } : null,
       inboundVideo, outboundVideo, inboundVoice, outboundVoice, pair,
-      playback: {
-        paused: peer.audio.paused, ended: peer.audio.ended, readyState: peer.audio.readyState, error: peer.audio.error?.code ?? null,
-        stillMs: peer.voiceMovedAt ? Date.now() - peer.voiceMovedAt : null, restarts: peer.voiceRestarts, gain: peer.voiceGain?.gain.value ?? null,
-        speaker: (peer.audio as HTMLAudioElement & { sinkId?: string }).sinkId ? 'chosen' : 'default', loudMs: lastLoud.has(peer.key) ? Date.now() - lastLoud.get(peer.key)! : null,
-      },
+      playback: { gain: peer.voiceGain?.gain.value ?? null, loudMs: lastLoud.has(peer.key) ? Date.now() - lastLoud.get(peer.key)! : null },
     };
   }
 
@@ -1477,7 +1496,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       peer.voiceReported = cur;
       if (w) {
         const target = (peer.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined)?.jitterBufferTarget ?? null;
-        posthog.capture('voice_quality', { peer: fingerprintOf(peer), conn: peer.view.conn, rtt_ms: peer.view.rttMs, buffer_target_ms: target, adaptive_ms: bufferMs(peer.buffer), low_voice: lowVoiceOn || peer.asksLowVoice, voice_repair: voiceRepair, sends_red: peer.sendsRed, sends_fec: peer.sendsFec, ...contextLatency(), speaker: (peer.audio as HTMLAudioElement & { sinkId?: string }).sinkId ? 'chosen' : 'default', ...windowProps(w) });
+        posthog.capture('voice_quality', { peer: fingerprintOf(peer), conn: peer.view.conn, rtt_ms: peer.view.rttMs, buffer_target_ms: target, adaptive_ms: bufferMs(peer.buffer), low_voice: lowVoiceOn || peer.asksLowVoice, voice_repair: voiceRepair, sends_red: peer.sendsRed, sends_fec: peer.sendsFec, ...contextLatency(), speaker: (output as HTMLAudioElement & { sinkId?: string }).sinkId ? 'chosen' : 'default', ...windowProps(w) });
       }
     }
   }
@@ -1502,7 +1521,11 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       outgoing: untrack(() => { const o = outgoing(); return o && { kbps: o.kbps, formats: o.formats, viewers: o.viewers }; }), // without who watches: a report names friends by fingerprint only
       shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl, noiseRemoval: untrack(noiseRemoval), voiceThreshold, path: voice?.path ?? null, stop: untrack(noiseRemovalStop), load: voiceLoad, micRate: voiceTrack?.getSettings().sampleRate ?? null }, lowBandwidthVoice: lowVoiceOn, voiceRepair,
       ice: { servers: iceServers.length, turn: hasTurn(), ageMinutes: iceIssuedAt ? Math.round((Date.now() - iceIssuedAt) / 60000) : null },
-      playback: { context: audioCtx?.state ?? null, blocked: untrack(audioBlocked) },
+      playback: {
+        context: audioCtx?.state ?? null, blocked: untrack(audioBlocked),
+        paused: output.paused, ended: output.ended, readyState: output.readyState, error: output.error?.code ?? null,
+        stillMs: outputMovedAt ? Date.now() - outputMovedAt : null, restarts: outputRestarts, speaker: (output as HTMLAudioElement & { sinkId?: string }).sinkId ? 'chosen' : 'default',
+      },
       peers: await Promise.all([...peers.values()].map(peerDiag)),
     };
   }
@@ -1719,8 +1742,6 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     clearTimeout(peer.candidateTimer);
     peer.pc.close();
     peer.markClosed();
-    peer.audio.srcObject = null;
-    peer.shareAudio.srcObject = null;
     peer.keepAlive.srcObject = null;
     for (const n of peer.audioNodes) n.disconnect();
     sources.get(key)?.disconnect();
@@ -2012,6 +2033,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     pending.get('call')?.cancel();
     pending.get('ice')?.cancel(); // fresh credentials for peers about to close: the server sends no answer after the Leave
     for (const key of [...peers.keys()]) closePeer(key);
+    stopOutput();
     attempts.clear();
     watchIntent.clear(); // joining again starts with every tile at "click to watch", not with yesterday's subscriptions
     clearInterval(heartbeat);
@@ -2116,15 +2138,14 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         for (let i = 0; i + step <= data.length; i += step) { let sum = 0; for (let j = i; j < i + step; j++) sum += data[j]! * data[j]!; peak = Math.max(peak, Math.sqrt(sum / step)); }
         return { seconds: buf.duration, peak };
       },
-      playback: () => untrack(() => ({ context: audioCtx?.state ?? null, clock: audioCtx?.currentTime ?? null, cues: cueContext()?.state ?? null, blocked: audioBlocked(), paused: [...peers.values()].map((p) => ({ name: p.name, voice: p.audio.paused, keepAlive: p.keepAlive.paused })) })),
-      /** Pauses the element that plays `name`'s voice, as a browser that stops it on its own does (reports of 2026-11-22). */
-      pauseVoice: (name: string) => {
-        const peer = [...peers.values()].find((p) => p.name === name);
-        if (!peer) return 'no such peer';
-        peer.audio.pause();
+      playback: () => untrack(() => ({ context: audioCtx?.state ?? null, clock: audioCtx?.currentTime ?? null, cues: cueContext()?.state ?? null, blocked: audioBlocked(), output: output.srcObject ? !output.paused : null, paused: [...peers.values()].map((p) => ({ name: p.name, keepAlive: p.keepAlive.paused })) })),
+      /** Pauses the element that plays the call, as a browser that stops it on its own does (reports of 2026-11-22). */
+      pauseOutput: () => {
+        if (!output.srcObject) return 'nothing plays';
+        output.pause();
         return 'paused';
       },
-      volumes: () => ({ master: untrack(audioSettings).masterVolume, peers: [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, shareView: p.view.shareVolume, shareSoundChecks: p.shareSoundChecks, sink: (p.audio as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' })) }),
+      volumes: () => ({ master: untrack(audioSettings).masterVolume, peers: [...peers.values()].map((p) => ({ name: p.name, voiceGain: p.voiceGain?.gain.value ?? null, shareGain: p.shareGain?.gain.value ?? null, view: p.view.volume, shareView: p.view.shareVolume, shareSoundChecks: p.shareSoundChecks })), sink: (output as HTMLAudioElement & { sinkId?: string }).sinkId ?? '' }),
       dropSocket: () => room.dropSocket(),
       /** Fails the call's AudioContext ('call') or the cues' ('cues') as Chromium does when the audio device errs; `stuck`, as after a start that failed again (hooks.ts). */
       failAudio: async (which: 'call' | 'cues', stuck = false) => {
