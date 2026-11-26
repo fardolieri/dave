@@ -185,15 +185,18 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   /** Out of the round I play: fallen off, and blowing the wind (core `Gust`). */
   const isOut = () => round.phase === 'play' && playing !== 0 && playing === round.n && !ball.alive;
   /**
-   * Which way I would blow, out: toward a spot on the floe pointed at, from its middle, else as steered; else the way last
-   * chosen, so a thumb let go of the stick still blows where it pointed; else, before any, across the floe from where I
-   * went in, so Blow on a touch screen does something from the start.
+   * Which way I would blow, out: toward a spot on the floe clicked or held, from its middle, else as steered; else the
+   * way last chosen, by the keys, the stick or the mouse moved over the floe (`hover`), so a thumb let go of the stick
+   * still blows where it pointed; else, before any, toward where the mouse is, or across the floe from where I went in,
+   * so Blow on a touch screen does something from the start.
    */
   let lastWay: { x: number; z: number } | null = null;
+  /** Where the mouse is over the floe, moved with no button held too; null for no mouse yet. */
+  let hover: { x: number; z: number } | null = null;
   const blowWay = (spot: { x: number; z: number } | null) => {
     const way = spot ?? sticked ?? keyed;
     if (Math.hypot(way.x, way.z) >= 0.1) lastWay = way;
-    return lastWay ?? (Math.hypot(ball.x, ball.z) >= 0.1 ? { x: -ball.x, z: -ball.z } : way);
+    return lastWay ?? (hover && Math.hypot(hover.x, hover.z) >= 0.1 ? hover : Math.hypot(ball.x, ball.z) >= 0.1 ? { x: -ball.x, z: -ball.z } : way);
   };
 
   const offFrames = links.listen((from, data) => {
@@ -489,7 +492,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   const onPointerDown = (e: PointerEvent) => {
     host.focus({ preventScroll: true });
     if (e.pointerType === 'mouse') {
-      if (e.button === 2) { dashAsked = true; dashAim = aim(e.clientX, e.clientY); return; }
+      // The right button dashes; out of the round, either blows the wind toward the spot.
+      if (e.button === 2 || (e.button === 0 && isOut())) { dashAsked = true; dashAim = aim(e.clientX, e.clientY); return; }
       if (e.button !== 0 || held) return;
       held = { id: e.pointerId, at: aim(e.clientX, e.clientY) };
       try { host.setPointerCapture(e.pointerId); } catch { /* gone already */ }
@@ -507,6 +511,9 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     // somewhere else (another window) may come as nothing at all: a mouse hold lasts only while the left button is down.
     if (e.pointerType === 'mouse' && held?.id === e.pointerId && !(e.buttons & 1)) held = null;
     if (e.pointerType === 'mouse' && e.target instanceof Node && host.contains(e.target)) {
+      // Out of the round, the wind is aimed where the mouse is, held or not.
+      hover = aim(e.clientX, e.clientY);
+      if (hover && isOut() && Math.hypot(hover.x, hover.z) >= 0.1) lastWay = hover;
       if (e.button === 2 && e.buttons & 2) { dashAsked = true; dashAim = aim(e.clientX, e.clientY); }
       if (e.button === 0 && e.buttons & 1 && !held) { held = { id: e.pointerId, at: null }; try { host.setPointerCapture(e.pointerId); } catch { /* gone already */ } }
     }
@@ -609,15 +616,16 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   aimRing.renderOrder = 9;
   scene.add(aimRing);
 
-  // Which way I would blow a wind, out of the round: an arrow over the middle of the floe, faint until I may.
-  const arrowShape = new THREE.Shape([[-0.35, 0], [-0.35, 2], [-0.9, 2], [0, 3.2], [0.9, 2], [0.35, 2], [0.35, 0]].map(([x, y]) => new THREE.Vector2(x, y)));
-  const arrowGeometry = new THREE.ShapeGeometry(arrowShape);
-  arrowGeometry.translate(0, -1.6, 0);
-  arrowGeometry.rotateX(-Math.PI / 2);
-  const windArrow = new THREE.Mesh(arrowGeometry, new THREE.MeshBasicMaterial({ color: '#2a8fd8', transparent: true, depthTest: false }));
-  windArrow.renderOrder = 9;
-  windArrow.visible = false;
-  scene.add(windArrow);
+  // Which way I would blow a wind, out of the round: a few faint streaks of air drifting across the floe that way, fainter
+  // still until I may. Each where it is along the way and across it, as a share of the floe's radius.
+  const AIM_STREAKS = 14;
+  const aimDrift = Array.from({ length: AIM_STREAKS }, () => ({ along: Math.random() * 2 - 1, across: Math.random() * 2 - 1 }));
+  const aimPoints = new Float32Array(AIM_STREAKS * 6);
+  const aimGeometry = new THREE.BufferGeometry();
+  aimGeometry.setAttribute('position', new THREE.BufferAttribute(aimPoints, 3));
+  const windAim = new THREE.LineSegments(aimGeometry, new THREE.LineBasicMaterial({ color: '#5aaee6', transparent: true, depthWrite: false }));
+  windAim.visible = false;
+  scene.add(windAim);
   /** A gust on screen: streaks of air going the way it blows, across the floe, while it lasts. */
   const gales: { lines: THREE.LineSegments; g: Gust; born: number }[] = [];
   const gale = (g: Gust, now: number) => {
@@ -887,11 +895,20 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       if (age >= 1) { scene.remove(w.lines); dispose(w.lines); gales.splice(gales.indexOf(w), 1); }
     }
     const way = isOut() ? gust(blowWay(aimAt), now) : null;
-    windArrow.visible = way !== null;
+    windAim.visible = way !== null;
     if (way) {
-      windArrow.rotation.y = Math.atan2(-way.x, -way.z);
-      windArrow.position.set(0, 0.05 + bob, 0);
-      (windArrow.material as THREE.MeshBasicMaterial).opacity = canBlow(blewAt, now) ? 0.85 : 0.25;
+      // Over the floe as it is now, and back in upwind once past it.
+      const reach = Math.max(2, r);
+      for (let i = 0; i < AIM_STREAKS; i++) {
+        const d = aimDrift[i]!;
+        d.along += dt * 0.45;
+        if (d.along > 1) { d.along -= 2; d.across = Math.random() * 2 - 1; }
+        const length = d.along ** 2 + d.across ** 2 <= 1 ? 0.14 * reach : 0;
+        const x = reach * (d.along * way.x - d.across * way.z), z = reach * (d.along * way.z + d.across * way.x);
+        aimPoints.set([x, 0.25 + bob, z, x + way.x * length, 0.25 + bob, z + way.z * length], i * 6);
+      }
+      aimGeometry.attributes['position']!.needsUpdate = true;
+      (windAim.material as THREE.LineBasicMaterial).opacity = canBlow(blewAt, now) ? 0.6 : 0.2;
     }
     marker.visible = !watching && ball.alive;
     aimRing.visible = aimAt !== null && marker.visible;
@@ -995,7 +1012,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     else if (round.tied?.length) text = '📸 Photo finish!';
     else { const w = name(round.winner); text = w === null ? 'Splash! Nobody is left' : w === 'You' ? '🏆 You win!' : `🏆 ${w} wins!`; }
     const helpText = !renderer ? help.textContent ?? '' : out
-      ? 'Out: aim a wind with the arrows, WASD or the mouse held · Space or the right button blows it, every 10 s'
+      ? 'Out: the wind goes where the mouse points, or the arrows or WASD · a click or Space blows it, every 10 s'
       : 'Arrows, WASD or the mouse held to roll · Space or the right button to dash · bonk everyone into the sea';
     const dashText = out ? (again ? `💨 ${again}` : 'Blow') : 'Dash';
     const wins = Object.entries(round.wins).sort((a, b) => b[1] - a[1]);
@@ -1057,7 +1074,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
         winner: round.winner, tied: round.tied ?? [],
         me: {
           x: ball.x, z: ball.z, vx: ball.vx, vz: ball.vz, alive: ball.alive, lastDash, giga, ...effectsOf(lasting(), myWho), drops: dropsLeft(round.wins[myWho] ?? 0, current().used[myWho] ?? 0),
-          wind: windAt(gusts, now), blow: isOut() ? Math.max(0, GUST_EVERY_MS - (now - blewAt)) : -1,
+          wind: windAt(gusts, now), blow: isOut() ? Math.max(0, GUST_EVERY_MS - (now - blewAt)) : -1, way: (() => { const g = isOut() ? gust(blowWay(aimAt), now) : null; return g && { x: g.x, z: g.z }; })(),
         },
         aim: aimAt,
         item: item && { x: item.ball.x, z: item.ball.z, y: item.ball.y, vx: item.ball.vx, vz: item.ball.vz, alive: item.ball.alive },

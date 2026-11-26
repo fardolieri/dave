@@ -414,8 +414,14 @@ export type Counted = { who: string; n: number; known: number; alive: boolean };
 /** What the inspection hooks show of the game (`window.__daveGame`, client/bonk.ts). */
 export type GameView = {
   phase: Phase; round: number; leader: string | null; playing: boolean; spectating: boolean; webgl: boolean; winner: string | null; tied: string[];
-  /** `wind`: what blows on my ball now (`windAt`); `blow`: ms until I may blow one, 0 for now, -1 for not at all (I am not out). */
-  me: { x: number; z: number; vx: number; vz: number; alive: boolean; lastDash: { vx: number; vz: number } | null; giga: number; heavy: boolean; handling: boolean; drops: number; wind: { x: number; z: number }; blow: number };
+  /**
+   * `wind`: what blows on my ball now (`windAt`); `blow`: ms until I may blow one, 0 for now, -1 for not at all (I am not
+   * out); `way`: which way I would blow it, of length 1, null while I am not out.
+   */
+  me: {
+    x: number; z: number; vx: number; vz: number; alive: boolean; lastDash: { vx: number; vz: number } | null; giga: number; heavy: boolean; handling: boolean; drops: number;
+    wind: { x: number; z: number }; blow: number; way: { x: number; z: number } | null;
+  };
   item: { x: number; z: number; y: number; vx: number; vz: number; alive: boolean } | null; got: { who: string; item: Item }[]; fast: boolean;
   aim: { x: number; z: number } | null; others: { key: string; x: number; z: number; alive: boolean; giga: number }[]; wins: Record<string, number>; connected: number;
 };

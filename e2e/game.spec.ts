@@ -472,13 +472,19 @@ test('Bonk: one who fell off blows a wind the way they choose, every ten seconds
   const before = await Promise.all([alice, bob].map(async (f) => (await view(f))!.me));
   expect(before.every((m) => m.alive)).toBe(true);
 
-  // She aims it with the keys back toward where she started, so it blows the two others across the floe, not off its near
-  // edge at once, and blows it with Space, twice: the second does nothing, not for ten seconds. Every page here draws a
-  // frame in up to half a second or more, and the round ends once the gust has blown one off: so what each page shows is
-  // recorded in that page, frame by frame, and read afterwards.
-  const keys = [...(start.x > 2 ? ['ArrowRight'] : start.x < -2 ? ['ArrowLeft'] : []), ...(start.z > 2 ? ['ArrowDown'] : start.z < -2 ? ['ArrowUp'] : [])];
-  const l = Math.hypot(keys.includes('ArrowRight') ? 1 : keys.includes('ArrowLeft') ? -1 : 0, keys.includes('ArrowDown') ? 1 : keys.includes('ArrowUp') ? -1 : 0);
-  const way = { x: (keys.includes('ArrowRight') ? 1 : keys.includes('ArrowLeft') ? -1 : 0) / l, z: (keys.includes('ArrowDown') ? 1 : keys.includes('ArrowUp') ? -1 : 0) / l };
+  // She aims it: with the keys first, then with the mouse, moved over the game with no button held, toward where she
+  // started, so it blows the two others across the floe, not off its near edge at once.
+  // How near the way she would blow is to `to` (1 for the same way), as a turn of a pixel or two allows.
+  const along = async (to: { x: number; z: number }) => { const w = (await view(carol))!.me.way; return w ? w.x * to.x + w.z * to.z : -1; };
+  await tile(carol).locator('.bonk').focus();
+  await carol.page.keyboard.down('ArrowLeft');
+  await expect.poll(() => along({ x: -1, z: 0 }), { message: 'the keys aim it' }).toBeGreaterThan(0.999);
+  await carol.page.keyboard.up('ArrowLeft');
+  const l = Math.hypot(start.x, start.z);
+  const way = { x: start.x / l, z: start.z / l };
+  const spot = await carol.page.evaluate(([x, z]) => (window as unknown as { __daveScreen: (x: number, z: number) => { x: number; y: number } }).__daveScreen(x!, z!), [start.x, start.z]);
+  await carol.page.mouse.move(spot.x, spot.y);
+  await expect.poll(() => along(way), { message: 'the mouse aims it' }).toBeGreaterThan(0.995);
   // Alice's and Bob's pages: how far their ball went that way at most, and what their toast said.
   type Watched = { moved: number; toasts: string[] };
   await Promise.all([alice, bob].map((f, i) => f.page.evaluate(({ from, way }) => {
@@ -494,24 +500,25 @@ test('Bonk: one who fell off blows a wind the way they choose, every ten seconds
     };
     requestAnimationFrame(look);
   }, { from: { x: before[i]!.x, z: before[i]!.z }, way })));
-  await tile(carol).locator('.bonk').focus();
-  const blew = await carol.page.evaluate(async (keys) => {
+  // A click there blows it, and Space right after does nothing, not for ten seconds. Every page here draws a frame in
+  // up to half a second or more, and the round ends once the gust has blown one off: so what each page shows is recorded
+  // in that page (above, and here), and read afterwards.
+  const blew = await carol.page.evaluate(async (spot) => {
     const host = document.querySelector('.bonk')!;
-    const key = (type: string, code: string) => host.dispatchEvent(new KeyboardEvent(type, { code, bubbles: true }));
     const frame = () => new Promise((done) => requestAnimationFrame(done));
-    for (const k of keys) key('keydown', k);
-    key('keydown', 'Space');
-    // The game's frame comes before this one's: the first has blown by now, and the second is pressed after it.
+    const at = { clientX: spot.x, clientY: spot.y, pointerType: 'mouse', pointerId: 1, bubbles: true };
+    host.dispatchEvent(new PointerEvent('pointerdown', { ...at, button: 0, buttons: 1 }));
+    window.dispatchEvent(new PointerEvent('pointerup', { ...at, button: 0, buttons: 0 }));
+    // The game's frame comes before this one's: the click has blown by now, and Space is pressed after it.
     await frame();
     const second = performance.now();
-    key('keydown', 'Space');
+    host.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', bubbles: true }));
     await frame();
-    for (const k of keys) key('keyup', k);
     const since = performance.now() - second;
     const me = (window as unknown as { __daveGame: () => GameView }).__daveGame().me;
     return { blow: me.blow, since, banner: document.querySelector('.bonk-banner')?.textContent };
-  }, keys);
-  // Out and waiting to blow again, from the first: the second, had it blown, would have her wait from after `second`.
+  }, spot);
+  // Out and waiting to blow again, from the click: Space, had it blown, would have her wait from after `second`.
   expect(blew.blow).toBeGreaterThan(0);
   expect(blew.blow).toBeLessThan(GUST_EVERY_MS - blew.since);
   expect(blew.banner).toMatch(/^Splash! You are out · 💨 again in \d+$/);

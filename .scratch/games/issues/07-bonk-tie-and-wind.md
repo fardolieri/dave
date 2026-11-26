@@ -27,3 +27,9 @@ direction." The lava co-op round is left for later.
 
 **Not done:** the strength of a gust (`GUST_ACCEL`, `GUST_MS`) and the tie's half a second are first guesses, tried by
 nobody in a real game (rung 4 for the owner).
+
+**Changed 2026-11-27** (the owner: "Instead of an arrow I would like to have a more subtle wind indicator. And it should
+follow the mouse on plain move, not just when holding left mouse button. Then we could start the blow on left mouse
+click as well"): the arrow is now a few faint streaks of air drifting across the floe the way the wind would go,
+fainter while it cannot blow yet. On a desktop the way follows the mouse over the game, no button held, and a left
+click blows it toward the spot clicked; the keys still aim it while pressed.
