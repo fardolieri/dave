@@ -21,26 +21,38 @@ body:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *
 /* the paper behind the chat is a riso poster: halftone suns in the two inks, each screen at its own angle, drifting past
    each other (half a minute to a minute a way, slow enough to rest the eye on, quick enough to notice) so the inks overprint purple
    where they meet and the dots slip in and out of a moire. Only the paper shows
-   them, never a panel; the dots stay light enough that ink text reads over them as it does on bare paper. */
+   them, never a panel; the dots stay light enough that ink text reads over them as it does on bare paper. The suns move
+   in steps, eight a second, all on one beat (--n is the steps in an eighth of --t, so --t in seconds; every --d is whole seconds), so the
+   screen is drawn again eight times a second and not sixty: a sun moves under a pixel a step, and the moire, which
+   moves faster than its dots, still slides rather than jumps. */
 .ambient:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { display: block; --dot: clamp(6px, .6vmin, 10px); }
 .ambient > i:is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --ink-c: var(--pink); --o: .4; width: var(--s); height: var(--s); border-radius: 50%; mix-blend-mode: multiply;
   background: radial-gradient(circle closest-side, var(--ink-c) 46%, transparent 58%) 0 0 / var(--dot) var(--dot); opacity: var(--o);
   -webkit-mask-image: radial-gradient(circle at 36% 34%, #000 16%, transparent 72%); mask-image: radial-gradient(circle at 36% 34%, #000 16%, transparent 72%);
-  animation: fd-riso-drift var(--t) ease-in-out var(--d) infinite alternate; animation-play-state: var(--ambient-play); }
+  animation: fd-riso-drift var(--t) steps(var(--n)) var(--d) infinite alternate; animation-play-state: var(--ambient-play); }
 .ambient > i:nth-child(even):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --ink-c: var(--blue); --o: .34; }
 .ambient > i:nth-child(n+9):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { display: none; }
-.ambient > i:nth-child(1):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 46vmin; top: -10vmin; right: -6vmin; --t: 52s; --d: -20s; --x: -6vmin; --y: 5vmin; --r0: 15deg; --r1: 24deg; }
-.ambient > i:nth-child(2):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 30vmin; top: 18vh; right: 22vw; --t: 64s; --d: -41s; --x: 7vmin; --y: -5vmin; --r0: -15deg; --r1: -4deg; }
-.ambient > i:nth-child(3):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 22vmin; top: 47vh; left: calc(300px + 12vw); --t: 46s; --d: -9s; --x: 5vmin; --y: -6vmin; --r0: 15deg; --r1: 6deg; }
-.ambient > i:nth-child(4):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 13vmin; top: 7vh; left: calc(300px + 20vw); --t: 38s; --d: -30s; --x: -4vmin; --y: 6vmin; --r0: -15deg; --r1: -26deg; }
-.ambient > i:nth-child(5):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 40vmin; bottom: -16vmin; right: -10vmin; --t: 58s; --d: -12s; --x: -4vmin; --y: -5vmin; --r0: 15deg; --r1: 22deg; }
-.ambient > i:nth-child(6):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 9vmin; top: 60vh; right: 33vw; --t: 34s; --d: -6s; --x: 6vmin; --y: 4vmin; --r0: -15deg; --r1: -5deg; }
-.ambient > i:nth-child(7):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 7vmin; top: 31vh; left: calc(300px + 38vw); --t: 30s; --d: -22s; --x: -5vmin; --y: -4vmin; --r0: 15deg; --r1: 28deg; }
-.ambient > i:nth-child(8):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 15vmin; bottom: 20vh; right: 9vw; --t: 42s; --d: -35s; --x: -3vmin; --y: 6vmin; --r0: -15deg; --r1: -24deg; }
+.ambient > i:nth-child(1):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 46vmin; top: -10vmin; right: -6vmin; --t: 52s; --n: 52; --d: -20s; --x: -6vmin; --y: 5vmin; --r0: 15deg; --r1: 24deg; }
+.ambient > i:nth-child(2):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 30vmin; top: 18vh; right: 22vw; --t: 64s; --n: 64; --d: -41s; --x: 7vmin; --y: -5vmin; --r0: -15deg; --r1: -4deg; }
+.ambient > i:nth-child(3):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 22vmin; top: 47vh; left: calc(300px + 12vw); --t: 46s; --n: 46; --d: -9s; --x: 5vmin; --y: -6vmin; --r0: 15deg; --r1: 6deg; }
+.ambient > i:nth-child(4):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 13vmin; top: 7vh; left: calc(300px + 20vw); --t: 38s; --n: 38; --d: -30s; --x: -4vmin; --y: 6vmin; --r0: -15deg; --r1: -26deg; }
+.ambient > i:nth-child(5):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 40vmin; bottom: -16vmin; right: -10vmin; --t: 58s; --n: 58; --d: -12s; --x: -4vmin; --y: -5vmin; --r0: 15deg; --r1: 22deg; }
+.ambient > i:nth-child(6):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 9vmin; top: 60vh; right: 33vw; --t: 34s; --n: 34; --d: -6s; --x: 6vmin; --y: 4vmin; --r0: -15deg; --r1: -5deg; }
+.ambient > i:nth-child(7):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 7vmin; top: 31vh; left: calc(300px + 38vw); --t: 30s; --n: 30; --d: -22s; --x: -5vmin; --y: -4vmin; --r0: 15deg; --r1: 28deg; }
+.ambient > i:nth-child(8):is([data-theme="fd-riso"][data-theme], [data-theme="fd-riso"][data-theme] *) { --s: 15vmin; bottom: 20vh; right: 9vw; --t: 42s; --n: 42; --d: -35s; --x: -3vmin; --y: 6vmin; --r0: -15deg; --r1: -24deg; }
 
 }
-@keyframes fd-riso-drift { from { transform: translate(0, 0) rotate(var(--r0)); }
-  to { transform: translate(calc(var(--x) * 1.6), calc(var(--y) * 1.6)) rotate(calc(var(--r1) * 1.5 - var(--r0) * .5)); opacity: calc(var(--o) * .75); } }@scope ([data-theme="fd-riso"]) to ([data-theme]) {
+/* the ease in and out of a drift, written out in its keyframes an eighth of the way apart, since its timing is steps */
+@keyframes fd-riso-drift {
+  0% { transform: translate(0, 0) rotate(var(--r0)); }
+  12.5% { transform: translate(calc(var(--x) * 0.0496), calc(var(--y) * 0.0496)) rotate(calc(var(--r0) + (var(--r1) - var(--r0)) * 0.0465)); opacity: calc(var(--o) * 0.9922); }
+  25% { transform: translate(calc(var(--x) * 0.2064), calc(var(--y) * 0.2064)) rotate(calc(var(--r0) + (var(--r1) - var(--r0)) * 0.1935)); opacity: calc(var(--o) * 0.9677); }
+  37.5% { transform: translate(calc(var(--x) * 0.4688), calc(var(--y) * 0.4688)) rotate(calc(var(--r0) + (var(--r1) - var(--r0)) * 0.4395)); opacity: calc(var(--o) * 0.9267); }
+  50% { transform: translate(calc(var(--x) * 0.8), calc(var(--y) * 0.8)) rotate(calc(var(--r0) + (var(--r1) - var(--r0)) * 0.75)); opacity: calc(var(--o) * 0.875); }
+  62.5% { transform: translate(calc(var(--x) * 1.131), calc(var(--y) * 1.131)) rotate(calc(var(--r0) + (var(--r1) - var(--r0)) * 1.06)); opacity: calc(var(--o) * 0.8233); }
+  75% { transform: translate(calc(var(--x) * 1.394), calc(var(--y) * 1.394)) rotate(calc(var(--r0) + (var(--r1) - var(--r0)) * 1.306)); opacity: calc(var(--o) * 0.7823); }
+  87.5% { transform: translate(calc(var(--x) * 1.55), calc(var(--y) * 1.55)) rotate(calc(var(--r0) + (var(--r1) - var(--r0)) * 1.454)); opacity: calc(var(--o) * 0.7578); }
+  100% { transform: translate(calc(var(--x) * 1.6), calc(var(--y) * 1.6)) rotate(calc(var(--r1) * 1.5 - var(--r0) * .5)); opacity: calc(var(--o) * .75); } }@scope ([data-theme="fd-riso"]) to ([data-theme]) {
 
 h1 { font-weight: 800; font-size: 30px; letter-spacing: -.01em; }
 h2 { text-transform: none; letter-spacing: 0; font-size: 17px; font-weight: 800; color: var(--ink); }

@@ -79,7 +79,10 @@ input:focus-visible:is([data-theme="tf-tech-innovation"][data-theme], [data-them
    a few blue nodes light up and dim again slowly, and five cyan signals run straight along its rows and columns, tail
    behind, and go dark, then rest a while. Transform and
    opacity only; the grid grows with the screen so a 1440p page is not left empty. It sits behind
-   everything; the opaque sidebar hides it, so it shows round the chat and the composer. */
+   everything; the opaque sidebar hides it, so it shows round the chat and the composer.
+   The nodes and signals move in steps, twenty a second, all on one beat (every cycle and delay is whole seconds, and every
+   stretch between keyframes a whole number of steps), so the screen is drawn again twenty times a second and not sixty: a
+   signal moves a pixel and a half a step. */
 :scope[data-theme="tf-tech-innovation"] { --tf-g: clamp(20px, 1.25vw, 36px); }
 body:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *)::before,
 body:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *)::after { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; }
@@ -89,14 +92,24 @@ body:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-inno
   mask-image: radial-gradient(100vw 140vh at 100% 100%, #000 25%, transparent);
 }
 body:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *)::after {
-  background: radial-gradient(110vw 130vh at 100% 100%, rgba(0,102,255,.22), rgba(0,102,255,.11) 40%, rgba(0,102,255,.04) 70%, transparent);
-  transform-origin: 100% 100%; /* it grows up and to the left only, off the page's unscrollable side */
-  animation: tf-tech-innovation-glow 20s ease-in-out infinite alternate;
+  /* The swell is the gradient's own size, not a transform, so the glow is painted with the page instead of riding on a
+     layer of its own: such a layer, screen-sized, made every frame cost a third more while the signals ran. Painted, it
+     is redrawn at each step of the swell, two a second (five a stretch of its eased keyframes, each 2.5 s), and not
+     otherwise. It grows up and to the left from the corner. */
+  --swell: var(--tf-tech-innovation-swell, 0);
+  background: radial-gradient(calc(110vw * (1 + .18 * var(--swell))) calc(130vh * (1 + .18 * var(--swell))) at 100% 100%, rgba(0,102,255,.22), rgba(0,102,255,.11) 40%, rgba(0,102,255,.04) 70%, transparent);
+  opacity: calc(1 - .3 * var(--swell));
+  animation: tf-tech-innovation-glow 20s steps(5) infinite alternate;
   animation-play-state: var(--ambient-play);
 }
 
 }
-@keyframes tf-tech-innovation-glow { to { transform: scale(1.18); opacity: .7; } }@scope ([data-theme="tf-tech-innovation"]) to ([data-theme]) {
+@property --tf-tech-innovation-swell { syntax: '<number>'; inherits: false; initial-value: 0; }
+/* ease-in-out, written out in the keyframes, since the timing is the steps */
+@keyframes tf-tech-innovation-glow {
+  0% { --tf-tech-innovation-swell: 0; } 12.5% { --tf-tech-innovation-swell: .031; } 25% { --tf-tech-innovation-swell: .129; }
+  37.5% { --tf-tech-innovation-swell: .293; } 50% { --tf-tech-innovation-swell: .5; } 62.5% { --tf-tech-innovation-swell: .707; }
+  75% { --tf-tech-innovation-swell: .871; } 87.5% { --tf-tech-innovation-swell: .969; } 100% { --tf-tech-innovation-swell: 1; } }@scope ([data-theme="tf-tech-innovation"]) to ([data-theme]) {
 
 
 /* the nodes and signals: each sits on a dot of the grid (round() snaps --x and --y to it) */
@@ -120,7 +133,7 @@ body:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-inno
 
 .ambient > i:nth-child(-n+7):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) {
   background: #0066ff; box-shadow: 0 0 calc(var(--s) * 1.6) calc(var(--s) * .4) rgba(0,102,255,.35);
-  animation: tf-tech-innovation-node var(--t) ease-in-out var(--d) infinite;
+  animation: tf-tech-innovation-node var(--t) steps(var(--n)) var(--d) infinite;
   animation-play-state: var(--ambient-play);
 }
 .ambient > i:nth-child(n+8):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) {
@@ -130,30 +143,38 @@ body:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-inno
   background: radial-gradient(circle at calc(100% - var(--s) / 2) 50%, #00ffff calc(var(--s) / 2), transparent calc(var(--s) / 2 + 1px)),
     linear-gradient(to right, transparent, rgba(0,255,255,.5));
   transform-origin: calc(100% - var(--s) / 2) 50%;
-  animation: tf-tech-innovation-signal var(--t) linear var(--d) infinite;
+  animation: tf-tech-innovation-run var(--t) steps(var(--nr)) var(--d) infinite, tf-tech-innovation-signal var(--t) steps(var(--nf)) var(--d) infinite;
   animation-play-state: var(--ambient-play);
 }
-.ambient > i:nth-child(1):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 88vw; --y: 62vh; --t: 11s; --d: -2s; }
-.ambient > i:nth-child(2):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 72vw; --y: 78vh; --t: 13s; --d: -8s; }
-.ambient > i:nth-child(3):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 95vw; --y: 30vh; --t: 9s; --d: -5s; }
-.ambient > i:nth-child(4):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 61vw; --y: 47vh; --t: 14s; --d: -11s; }
-.ambient > i:nth-child(5):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 80vw; --y: 17vh; --t: 12s; --d: -1s; }
-.ambient > i:nth-child(6):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 52vw; --y: 70vh; --t: 10s; --d: -7s; }
-.ambient > i:nth-child(7):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 91vw; --y: 87vh; --t: 15s; --d: -4s; }
+.ambient > i:nth-child(1):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 88vw; --y: 62vh; --t: 11s; --n: 22; --d: -2s; }
+.ambient > i:nth-child(2):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 72vw; --y: 78vh; --t: 13s; --n: 26; --d: -8s; }
+.ambient > i:nth-child(3):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 95vw; --y: 30vh; --t: 9s; --n: 18; --d: -5s; }
+.ambient > i:nth-child(4):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 61vw; --y: 47vh; --t: 14s; --n: 28; --d: -11s; }
+.ambient > i:nth-child(5):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 80vw; --y: 17vh; --t: 12s; --n: 24; --d: -1s; }
+.ambient > i:nth-child(6):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 52vw; --y: 70vh; --t: 10s; --n: 20; --d: -7s; }
+.ambient > i:nth-child(7):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 91vw; --y: 87vh; --t: 15s; --n: 30; --d: -4s; }
 /* signals: a run of (--ax, --ay) grid steps, heading --r */
-.ambient > i:nth-child(8):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *)  { --x: 93vw; --y: 95vh; --ax: 0; --ay: -16; --r: -90deg; --t: 22s; --d: -3s; }
-.ambient > i:nth-child(9):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *)  { --x: 62vw; --y: 34vh; --ax: 14; --ay: 0; --r: 0deg; --t: 26s; --d: -15s; }
-.ambient > i:nth-child(10):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 56vw; --y: 88vh; --ax: 16; --ay: 0; --r: 0deg; --t: 24s; --d: -9s; }
-.ambient > i:nth-child(11):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 78vw; --y: 72vh; --ax: 0; --ay: -14; --r: -90deg; --t: 28s; --d: -21s; }
-.ambient > i:nth-child(12):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 98vw; --y: 58vh; --ax: -18; --ay: 0; --r: -180deg; --t: 20s; --d: -12s; }
+.ambient > i:nth-child(8):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *)  { --x: 93vw; --y: 95vh; --ax: 0; --ay: -16; --r: -90deg; --t: 22s; --nr: 220; --nf: 22; --d: -3s; }
+.ambient > i:nth-child(9):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *)  { --x: 62vw; --y: 34vh; --ax: 14; --ay: 0; --r: 0deg; --t: 26s; --nr: 260; --nf: 26; --d: -15s; }
+.ambient > i:nth-child(10):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 56vw; --y: 88vh; --ax: 16; --ay: 0; --r: 0deg; --t: 24s; --nr: 240; --nf: 24; --d: -9s; }
+.ambient > i:nth-child(11):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 78vw; --y: 72vh; --ax: 0; --ay: -14; --r: -90deg; --t: 28s; --nr: 280; --nf: 28; --d: -21s; }
+.ambient > i:nth-child(12):is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *) { --x: 98vw; --y: 58vh; --ax: -18; --ay: 0; --r: -180deg; --t: 20s; --nr: 200; --nf: 20; --d: -12s; }
 
 }
-@keyframes tf-tech-innovation-node { 0%, 62%, 100% { opacity: 0; transform: scale(.6); } 31% { opacity: .4; transform: none; } }
-@keyframes tf-tech-innovation-signal {
-  0% { opacity: 0; transform: translate(0, 0) rotate(var(--r)); }
-  6%, 46% { opacity: .5; }
-  52%, 100% { opacity: 0; transform: translate(calc(var(--ax) * var(--tf-g)), calc(var(--ay) * var(--tf-g))) rotate(var(--r)); }
-}
+/* A node lights over three tenths of its cycle and dims over three more, eased in and out: the ease is written out in
+   the keyframes, a tenth of the cycle apart, since its timing is steps. */
+@keyframes tf-tech-innovation-node {
+  0%, 60%, 100% { opacity: 0; transform: scale(.6); }
+  10%, 50% { opacity: .093; transform: scale(.693); }
+  20%, 40% { opacity: .307; transform: scale(.907); }
+  30% { opacity: .4; transform: none; } }
+/* A signal runs for half its cycle, fading in over the first twentieth and out over the last of that half. The run and
+   the fade are two animations, each with its own steps, since a step's timing holds for one stretch between keyframes:
+   --nr steps in the run's half of the cycle, --nf in a twentieth, both twenty a second. */
+@keyframes tf-tech-innovation-run {
+  0% { transform: translate(0, 0) rotate(var(--r)); }
+  50%, 100% { transform: translate(calc(var(--ax) * var(--tf-g)), calc(var(--ay) * var(--tf-g))) rotate(var(--r)); } }
+@keyframes tf-tech-innovation-signal { 0% { opacity: 0; } 5%, 45% { opacity: .5; } 50%, 100% { opacity: 0; } }
 /* the phone keeps two nodes and two signals, both running across */
 @media (max-width: 700px) {
 @scope ([data-theme="tf-tech-innovation"]) to ([data-theme]) {

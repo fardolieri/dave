@@ -63,10 +63,14 @@ button.on:not(.link):is([data-theme="tf-midnight-galaxy"][data-theme], [data-the
 .unread:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: var(--tf-link); }
 
 /* the extra: a night sky in three depths. A dense, dim field of stars sits still in the nebula's corner; a sparser,
-   nearer field drifts 200 px up and to the left over four minutes and back (transform only; two tiles of unrelated sizes,
-   so it shows no grid); and a dozen single stars, three with a faint four-point glint, each fade slowly in and out on a
+   nearer field drifts 200 px up and to the left over four minutes and back under the glow that shows it (its background's
+   position: painted twice a second, it is not one more screen-sized layer to draw for every twinkle; two tiles of
+   unrelated sizes, so it shows no grid); and a dozen single stars, three with a faint four-point glint, each fade slowly in and out on a
    cycle of its own (opacity and a slight scale, 6 to 12 s, never a flash). Paused, it is a still sky; behind the chat
-   the stars stay small and dim */
+   the stars stay small and dim. Everything moves in steps on one beat, so the screen is drawn again only when something
+   changes and not sixty times a second: the field two steps a second (480 for 240 s), the stars eight, a change of
+   about 2 % of their light a step (a step's timing holds for one stretch between keyframes, an eighth of a cycle, so --n
+   is the cycle in seconds; every cycle and delay is whole seconds, so every star steps on the beat). */
 body:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *)::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .65;
   -webkit-mask-image: radial-gradient(ellipse 75% 65% at 85% 0%, #000, transparent 80%), radial-gradient(ellipse 60% 45% at 25% 105%, rgba(0,0,0,.6), transparent 80%), linear-gradient(rgba(0,0,0,.3), rgba(0,0,0,.3));
   mask-image: radial-gradient(ellipse 75% 65% at 85% 0%, #000, transparent 80%), radial-gradient(ellipse 60% 45% at 25% 105%, rgba(0,0,0,.6), transparent 80%), linear-gradient(rgba(0,0,0,.3), rgba(0,0,0,.3));
@@ -76,34 +80,40 @@ body:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-
   background: var(--galaxy-near), var(--galaxy-wide);
   -webkit-mask-image: radial-gradient(ellipse 90% 80% at 75% 10%, #000, transparent 85%), linear-gradient(rgba(0,0,0,.45), rgba(0,0,0,.45));
   mask-image: radial-gradient(ellipse 90% 80% at 75% 10%, #000, transparent 85%), linear-gradient(rgba(0,0,0,.45), rgba(0,0,0,.45));
-  animation: tf-midnight-galaxy-drift 240s ease-in-out infinite alternate; animation-play-state: var(--ambient-play); }
+  animation: tf-midnight-galaxy-drift 240s steps(480) infinite alternate; animation-play-state: var(--ambient-play); }
 
 }
-@keyframes tf-midnight-galaxy-drift { to { transform: translate(-200px, -100px); } }@scope ([data-theme="tf-midnight-galaxy"]) to ([data-theme]) {
+@keyframes tf-midnight-galaxy-drift { to { background-position: -200px -100px; } }@scope ([data-theme="tf-midnight-galaxy"]) to ([data-theme]) {
 
 .ambient > i:is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { width: clamp(5px, .5vmin, 8px); aspect-ratio: 1;
   background: radial-gradient(closest-side, #f4f2ff 0 28%, rgba(230,230,250,.35) 45%, transparent);
-  animation: tf-midnight-galaxy-twinkle 8s ease-in-out infinite; animation-play-state: var(--ambient-play); }
+  --n: 8; animation: tf-midnight-galaxy-twinkle 8s steps(var(--n)) infinite; animation-play-state: var(--ambient-play); }
 .ambient > i:is(:nth-child(3), :nth-child(5), :nth-child(9)):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { background: radial-gradient(closest-side, #e2d6ff 0 28%, rgba(164,144,194,.4) 45%, transparent); }
 .ambient > i:is(:nth-child(2), :nth-child(7), :nth-child(10)):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { width: clamp(11px, 1.1vmin, 17px);
   background: radial-gradient(closest-side, #f4f2ff 0 14%, rgba(230,230,250,.35) 26%, transparent 55%),
     linear-gradient(90deg, transparent, rgba(230,230,250,.55), transparent) center / 100% 1px no-repeat,
     linear-gradient(transparent, rgba(230,230,250,.55), transparent) center / 1px 100% no-repeat; }
-.ambient > i:nth-child(1):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 7%; left: 61%; animation-duration: 7s; animation-delay: -2s; }
-.ambient > i:nth-child(2):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 13%; left: 84%; animation-duration: 9s; animation-delay: -5s; }
-.ambient > i:nth-child(3):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 5%; left: 93%; animation-duration: 6s; animation-delay: -1s; }
-.ambient > i:nth-child(4):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 24%; left: 72%; animation-duration: 8s; animation-delay: -6s; }
-.ambient > i:nth-child(5):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 19%; left: 42%; animation-duration: 10s; animation-delay: -3s; }
-.ambient > i:nth-child(6):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 35%; left: 91%; animation-duration: 7.5s; animation-delay: -4s; }
-.ambient > i:nth-child(7):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 31%; left: 55%; animation-duration: 11s; animation-delay: -8s; }
-.ambient > i:nth-child(8):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 47%; left: 80%; animation-duration: 6.5s; animation-delay: -2.5s; }
-.ambient > i:nth-child(9):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 56%; left: 47%; animation-duration: 9.5s; animation-delay: -7s; }
-.ambient > i:nth-child(10):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 64%; left: 94%; animation-duration: 8.5s; animation-delay: -1.5s; }
-.ambient > i:nth-child(11):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 12%; left: 27%; animation-duration: 7s; animation-delay: -5.5s; }
-.ambient > i:nth-child(12):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 41%; left: 24%; animation-duration: 12s; animation-delay: -9s; }
+.ambient > i:nth-child(1):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 7%; left: 61%; animation-duration: 7s; --n: 7; animation-delay: -2s; }
+.ambient > i:nth-child(2):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 13%; left: 84%; animation-duration: 9s; --n: 9; animation-delay: -5s; }
+.ambient > i:nth-child(3):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 5%; left: 93%; animation-duration: 6s; --n: 6; animation-delay: -1s; }
+.ambient > i:nth-child(4):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 24%; left: 72%; animation-duration: 8s; --n: 8; animation-delay: -6s; }
+.ambient > i:nth-child(5):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 19%; left: 42%; animation-duration: 10s; --n: 10; animation-delay: -3s; }
+.ambient > i:nth-child(6):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 35%; left: 91%; animation-duration: 8s; --n: 8; animation-delay: -4s; }
+.ambient > i:nth-child(7):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 31%; left: 55%; animation-duration: 11s; --n: 11; animation-delay: -8s; }
+.ambient > i:nth-child(8):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 47%; left: 80%; animation-duration: 6s; --n: 6; animation-delay: -3s; }
+.ambient > i:nth-child(9):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 56%; left: 47%; animation-duration: 10s; --n: 10; animation-delay: -7s; }
+.ambient > i:nth-child(10):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 64%; left: 94%; animation-duration: 9s; --n: 9; animation-delay: -1s; }
+.ambient > i:nth-child(11):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 12%; left: 27%; animation-duration: 7s; --n: 7; animation-delay: -6s; }
+.ambient > i:nth-child(12):is([data-theme="tf-midnight-galaxy"][data-theme], [data-theme="tf-midnight-galaxy"][data-theme] *) { top: 41%; left: 24%; animation-duration: 12s; --n: 12; animation-delay: -9s; }
 
 }
-@keyframes tf-midnight-galaxy-twinkle { 0%, 100% { opacity: .12; transform: scale(.7); } 50% { opacity: .7; transform: scale(1); } }
+/* the ease in and out of a twinkle, written out in its keyframes, since its timing is the steps */
+@keyframes tf-midnight-galaxy-twinkle {
+  0%, 100% { opacity: .12; transform: scale(.7); }
+  12.5%, 87.5% { opacity: .195; transform: scale(.739); }
+  25%, 75% { opacity: .41; transform: scale(.85); }
+  37.5%, 62.5% { opacity: .625; transform: scale(.961); }
+  50% { opacity: .7; transform: scale(1); } }
 /* on a phone the room list covers the top of the sky: only the stars that can be seen stay */
 @media (max-width: 700px) {
 @scope ([data-theme="tf-midnight-galaxy"]) to ([data-theme]) {

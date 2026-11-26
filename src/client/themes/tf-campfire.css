@@ -59,44 +59,60 @@ button.unblock:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfi
    Now and then one of them bursts: a handful of small sparks flies out every way from its heart, slowing as it goes
    and drifting up, and goes out; a smaller echo follows. Each bursts about every half minute to minute, on its own
    clock. Dim on purpose: no glow is more than 8 % of its colour where it is strongest, the sparks under half strength.
-   Only transform and opacity move, on two screen-sized layers and the sparks; a burst is one pseudo-element whose
-   box-shadows are its sparks, scaled out from the glow's heart and moving with its layer. */
-.ambient:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { display: block; backdrop-filter: blur(1px); }
+   A burst is one pseudo-element whose box-shadows are its sparks, scaled out from the glow's heart and moving with its
+   layer; only its transform, translate and opacity move.
+   The glows are drawn as one layer of their own (an opacity a hair under 1 makes it one), mixed with one another before
+   the night under them, which keeps their faint fades from showing as rings; a 1px backdrop blur did the same at the
+   price of a second pass over the whole screen in every frame. The layers drift in steps, two a second, both on the same
+   beat (300 and 360 steps for 150 and 180 s, from whole-second delays), so the screen is drawn again twice a second and
+   not sixty times: at this pace a step is a fraction of a pixel. They drift by their background's position, not by a
+   transform, so they are painted into that one layer and not composited as two more screen-sized ones in every frame of
+   a burst. A burst moves smoothly, being quick: it is drawn at the screen's own rate for its few seconds, and costs
+   nothing while it is dark. */
+.ambient:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { display: block; opacity: .999; }
 .ambient:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::before,
 .ambient:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::after { content: ''; position: absolute; inset: -15%;
-  animation: tf-campfire-drift-a 150s ease-in-out -50s infinite alternate; animation-play-state: var(--ambient-play); }
+  animation: tf-campfire-drift-a 150s steps(300) -50s infinite alternate; animation-play-state: var(--ambient-play); }
 .ambient:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::before { background:
     radial-gradient(circle 40vmax at 30% 30%, rgb(255 138 61 / 0.07), rgb(255 138 61 / 0.025) 45%, rgb(255 138 61 / 0)),
     radial-gradient(circle 38vmax at 75% 62%, rgb(190 58 40 / 0.08), rgb(190 58 40 / 0.028) 45%, rgb(190 58 40 / 0)),
-    radial-gradient(circle 34vmax at 22% 85%, rgb(255 178 96 / 0.06), rgb(255 178 96 / 0.021) 45%, rgb(255 178 96 / 0)); }
+    radial-gradient(circle 34vmax at 22% 85%, rgb(255 178 96 / 0.06), rgb(255 178 96 / 0.021) 45%, rgb(255 178 96 / 0));
+  background-repeat: no-repeat; }
 .ambient:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::after { background:
     radial-gradient(circle 36vmax at 78% 18%, rgb(160 46 42 / 0.075), rgb(160 46 42 / 0.026) 45%, rgb(160 46 42 / 0)),
     radial-gradient(circle 40vmax at 55% 88%, rgb(235 112 54 / 0.065), rgb(235 112 54 / 0.023) 45%, rgb(235 112 54 / 0));
-  animation-name: tf-campfire-drift-b; animation-duration: 180s; animation-delay: -90s; }
+  background-repeat: no-repeat;
+  animation-name: tf-campfire-drift-b; animation-duration: 180s; animation-timing-function: steps(360); animation-delay: -90s; }
 
 }
-@keyframes tf-campfire-drift-a { to { transform: translate(8vmin, 5vmin); } }
-@keyframes tf-campfire-drift-b { to { transform: translate(-9vmin, -4vmin); } }@scope ([data-theme="tf-campfire"]) to ([data-theme]) {
+/* a layer reaches 15 % past the screen on every side, so the edge of its shifted, unrepeated background never shows */
+@keyframes tf-campfire-drift-a { to { background-position: 8vmin 5vmin; } }
+@keyframes tf-campfire-drift-b { to { background-position: -9vmin -4vmin; } }
+/* the same drifts, for the sparks of a glow's heart */
+@keyframes tf-campfire-heart-a { to { translate: 8vmin 5vmin; } }
+@keyframes tf-campfire-heart-b { to { translate: -9vmin -4vmin; } }@scope ([data-theme="tf-campfire"]) to ([data-theme]) {
 
-/* the hearts the sparks fly from, each moving with its glow's layer */
+/* the hearts the sparks fly from. The sparks move with their glow's layer, on its beat (--heart, from --hd); the heart
+   itself stands still: moved, it made the browser restyle its sparks in every frame of the page. */
 .ambient > i:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { width: 0; height: 0; --r: clamp(90px, 12vmin, 260px);
-  animation: tf-campfire-drift-a 150s ease-in-out -50s infinite alternate; animation-play-state: var(--ambient-play); }
+  --heart: tf-campfire-heart-a 150s steps(300); --hd: -50s; }
 .ambient > i:nth-child(n+6):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { display: none; }
 .ambient > i:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::before,
 .ambient > i:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::after { content: ''; position: absolute; left: 50%; top: 50%; --p: clamp(2px, .22vmin, 4px);
   width: var(--p); aspect-ratio: 1; margin: calc(var(--p) / -2) 0 0 calc(var(--p) / -2); border-radius: 50%; opacity: 0; color: #ffa463;
-  animation: tf-campfire-burst var(--bt) linear var(--bd) infinite; animation-play-state: var(--ambient-play); }
+  animation: tf-campfire-burst var(--bt) linear var(--bd) infinite, var(--heart) var(--hd) infinite alternate;
+  animation-play-state: var(--ambient-play); }
 .ambient > i:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::before { box-shadow: calc(var(--r) * 0.62) calc(var(--r) * 0.0) 1px currentColor, calc(var(--r) * 0.43) calc(var(--r) * 0.39) 1px currentColor, calc(var(--r) * 0.23) calc(var(--r) * 0.68) 1px currentColor, calc(var(--r) * -0.01) calc(var(--r) * 0.78) 1px currentColor, calc(var(--r) * -0.41) calc(var(--r) * 0.63) 1px currentColor, calc(var(--r) * -0.54) calc(var(--r) * 0.23) 1px currentColor, calc(var(--r) * -0.87) calc(var(--r) * -0.3) 1px currentColor, calc(var(--r) * -0.47) calc(var(--r) * -0.45) 1px currentColor, calc(var(--r) * 0.01) calc(var(--r) * -0.98) 1px currentColor, calc(var(--r) * 0.38) calc(var(--r) * -0.62) 1px currentColor, calc(var(--r) * 0.55) calc(var(--r) * -0.14) 1px currentColor; }
 .ambient > i:is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *)::after { --r: clamp(60px, 8vmin, 170px); box-shadow: calc(var(--r) * 0.52) calc(var(--r) * 0.44) 1px currentColor, calc(var(--r) * 0.19) calc(var(--r) * 0.57) 1px currentColor, calc(var(--r) * -0.56) calc(var(--r) * 0.73) 1px currentColor, calc(var(--r) * -0.81) calc(var(--r) * 0.07) 1px currentColor, calc(var(--r) * -0.36) calc(var(--r) * -0.62) 1px currentColor, calc(var(--r) * 0.18) calc(var(--r) * -0.55) 1px currentColor, calc(var(--r) * 0.53) calc(var(--r) * -0.36) 1px currentColor;
-  animation-delay: calc(var(--bd) + .5s); }
+  animation-delay: calc(var(--bd) + .5s), var(--hd); }
 /* where the glows' hearts are on screen (each layer is the screen and 15 % more on every side) */
 .ambient > i:nth-child(1):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { left: 24%; top: 24%; --bt: 37s; --bd: -9s; }
 .ambient > i:nth-child(2):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { left: 82%; top: 66%; --bt: 53s; --bd: -30s; }
 .ambient > i:nth-child(3):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { left: 14%; top: 88%; --bt: 43s; --bd: -21s; }
 .ambient > i:nth-child(4):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { left: 86%; top: 12%; --bt: 61s; --bd: -44s;
-  animation-name: tf-campfire-drift-b; animation-duration: 180s; animation-delay: -90s; }
+  --heart: tf-campfire-heart-b 180s steps(360); --hd: -90s; }
 .ambient > i:nth-child(5):is([data-theme="tf-campfire"][data-theme], [data-theme="tf-campfire"][data-theme] *) { left: 56%; top: 86%; --bt: 47s; --bd: -2s;
-  animation-name: tf-campfire-drift-b; animation-duration: 180s; animation-delay: -90s; }
+  --heart: tf-campfire-heart-b 180s steps(360); --hd: -90s; }
 /* a burst: out fast and slowing, rising a little as it cools; four to six seconds, then dark for the rest of the cycle */
 
 }

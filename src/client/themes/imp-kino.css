@@ -69,19 +69,24 @@ select.picker option:checked { background: var(--acc); color: #0d1a2b; }
    Only transform moves, on round gradients that fade to nothing, so nothing has an edge. They fade along a bell curve, not
    a straight line, and are wide and faint: a straight fade peaks in the middle and stops dead at the rim, and the eye
    sees each glow as a disc of its own instead of one wash of light. The stage black of
-   .app.split covers them: when someone shares, the house goes dark. */
-.ambient:is([data-theme="imp-kino"][data-theme], [data-theme="imp-kino"][data-theme] *) { display: block; backdrop-filter: blur(1px); }
+   .app.split covers them: when someone shares, the house goes dark.
+   The glows are drawn as one layer of their own (an opacity a hair under 1 makes it one), mixed with one another before
+   the hall under them, which keeps their faint fades from showing as rings; a 1px backdrop blur did the same at the price
+   of a second pass over the whole screen in every frame. They move in steps, two a second, all on the same beat (--n is
+   the steps in an eighth of --t, which is a multiple of 4 s, and every --d is whole seconds), so the screen is drawn again
+   twice a second and not sixty times: at this pace a step is about a pixel. */
+.ambient:is([data-theme="imp-kino"][data-theme], [data-theme="imp-kino"][data-theme] *) { display: block; opacity: .999; }
 /* nobody can see them under the stage, so they do not move there either */
 :scope[data-theme="imp-kino"]:has(.app.split) .ambient { display: none; }
 .ambient > i { width: var(--s); aspect-ratio: 1; margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
   background: radial-gradient(circle closest-side, rgb(var(--c) / var(--a)), rgb(var(--c) / calc(var(--a) * 0.959)) 10%, rgb(var(--c) / calc(var(--a) * 0.847)) 20%, rgb(var(--c) / calc(var(--a) * 0.687)) 30%, rgb(var(--c) / calc(var(--a) * 0.512)) 40%, rgb(var(--c) / calc(var(--a) * 0.349)) 50%, rgb(var(--c) / calc(var(--a) * 0.217)) 60%, rgb(var(--c) / calc(var(--a) * 0.120)) 70%, rgb(var(--c) / calc(var(--a) * 0.057)) 80%, rgb(var(--c) / calc(var(--a) * 0.020)) 90%, rgb(var(--c) / 0));
-  animation: imp-kino-drift var(--t) ease-in-out var(--d) infinite alternate; animation-play-state: var(--ambient-play); }
+  animation: imp-kino-drift var(--t) steps(var(--n)) var(--d) infinite alternate; animation-play-state: var(--ambient-play); }
 .ambient > i:nth-child(n+6) { display: none; }
-.ambient > i:nth-child(1) { left: 78%; top: 12%; --s: 105vmax; --c: 112 44 50; --a: .12; --dx: -6vmax; --dy: 5vmax; --t: 83s; --d: -30s; }
-.ambient > i:nth-child(2) { left: 42%; top: 88%; --s: 93vmax; --c: 96 38 46; --a: .13; --dx: 7vmax; --dy: -4vmax; --t: 97s; --d: -61s; }
-.ambient > i:nth-child(3) { left: 96%; top: 82%; --s: 66vmax; --c: 170 112 72; --a: .05; --dx: -5vmax; --dy: -6vmax; --t: 71s; --d: -12s; }
-.ambient > i:nth-child(4) { left: 48%; top: 6%; --s: 69vmax; --c: 84 36 52; --a: .13; --dx: 5vmax; --dy: 4vmax; --t: 109s; --d: -77s; }
-.ambient > i:nth-child(5) { left: 66%; top: 52%; --s: 51vmax; --c: 130 60 62; --a: .06; --dx: -4vmax; --dy: -3vmax; --t: 89s; --d: -44s; }
+.ambient > i:nth-child(1) { left: 78%; top: 12%; --s: 105vmax; --c: 112 44 50; --a: .12; --dx: -6vmax; --dy: 5vmax; --t: 84s; --n: 21; --d: -30s; }
+.ambient > i:nth-child(2) { left: 42%; top: 88%; --s: 93vmax; --c: 96 38 46; --a: .13; --dx: 7vmax; --dy: -4vmax; --t: 96s; --n: 24; --d: -61s; }
+.ambient > i:nth-child(3) { left: 96%; top: 82%; --s: 66vmax; --c: 170 112 72; --a: .05; --dx: -5vmax; --dy: -6vmax; --t: 72s; --n: 18; --d: -12s; }
+.ambient > i:nth-child(4) { left: 48%; top: 6%; --s: 69vmax; --c: 84 36 52; --a: .13; --dx: 5vmax; --dy: 4vmax; --t: 108s; --n: 27; --d: -77s; }
+.ambient > i:nth-child(5) { left: 66%; top: 52%; --s: 51vmax; --c: 130 60 62; --a: .06; --dx: -4vmax; --dy: -3vmax; --t: 88s; --n: 22; --d: -44s; }
 /* A fine grain over the glows. The glows are so faint that the whole wash spans only a dozen or so of the screen's
    brightness steps, so each step shows as a wide band, a ring around each glow; no curve or colour space helps with that,
    only noise that breaks up the edge between two steps. It does not move, so it costs nothing per frame. */
@@ -89,7 +94,17 @@ select.picker option:checked { background: var(--acc); color: #0d1a2b; }
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1.6 -.3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
 
 }
-@keyframes imp-kino-drift { from { transform: translate(0, 0) scale(1); } to { transform: translate(var(--dx), var(--dy)) scale(1.15); } }
+/* the ease in and out of a drift, written out in its keyframes an eighth of the way apart, since its timing is steps */
+@keyframes imp-kino-drift {
+  0% { transform: translate(0, 0) scale(1); }
+  12.5% { transform: translate(calc(var(--dx) * 0.031), calc(var(--dy) * 0.031)) scale(1.005); }
+  25% { transform: translate(calc(var(--dx) * 0.129), calc(var(--dy) * 0.129)) scale(1.019); }
+  37.5% { transform: translate(calc(var(--dx) * 0.293), calc(var(--dy) * 0.293)) scale(1.044); }
+  50% { transform: translate(calc(var(--dx) * 0.5), calc(var(--dy) * 0.5)) scale(1.075); }
+  62.5% { transform: translate(calc(var(--dx) * 0.707), calc(var(--dy) * 0.707)) scale(1.106); }
+  75% { transform: translate(calc(var(--dx) * 0.871), calc(var(--dy) * 0.871)) scale(1.131); }
+  87.5% { transform: translate(calc(var(--dx) * 0.969), calc(var(--dy) * 0.969)) scale(1.145); }
+  100% { transform: translate(var(--dx), var(--dy)) scale(1.15); } }
 /* a phone's chat is the lower half of the screen: the glows gather there */
 @media (max-width: 700px) {
 @scope ([data-theme="imp-kino"]) to ([data-theme]) {

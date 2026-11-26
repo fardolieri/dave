@@ -103,38 +103,45 @@ select.picker option:checked:is([data-theme="fd-nightbus"][data-theme], [data-th
    sign) sliding right to left, the far ones small and slow, the near ones big, faint and a little quicker, so slowly that you look twice to be sure they move at all (a pixel or two a second, ten minutes and more from edge
    to edge), and gone behind the
    sidebar as behind the window frame. Every eight minutes a streetlamp's faint band of light creeps through the cabin over four of them. The lights keep to the
-   upper part of the window, above where the chat's lines gather. */
+   upper part of the window, above where the chat's lines gather. All of it moves in steps on one beat, so the screen is
+   drawn again only when something has moved and not sixty times a second: the lights two steps a second (--n is two for
+   every second of their crossing, fifteen times --t, and their delays are whole seconds), under a pixel each; the lamp's
+   band, faint and soft-edged, four (120 in each eighth of the 240 s it moves, 30 s). */
 body:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *)::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background: linear-gradient(104deg, transparent 40%, rgba(255,158,27,.045) 50%, transparent 60%);
-  transform: translateX(100%); animation: fd-nightbus-lamp 480s ease-in-out -80s infinite; animation-play-state: var(--ambient-play); }
+  transform: translateX(100%); animation: fd-nightbus-lamp 480s steps(120) -80s infinite; animation-play-state: var(--ambient-play); }
 
 }
-@keyframes fd-nightbus-lamp { 0% { transform: translateX(100%); } 50%, 100% { transform: translateX(-100%); } }@scope ([data-theme="fd-nightbus"]) to ([data-theme]) {
+/* the lamp's ease in and out, written out in the keyframes an eighth of its crossing apart, since its timing is steps */
+@keyframes fd-nightbus-lamp {
+  0% { transform: translateX(100%); } 6.25% { transform: translateX(93.8%); } 12.5% { transform: translateX(74.2%); }
+  18.75% { transform: translateX(41.4%); } 25% { transform: translateX(0); } 31.25% { transform: translateX(-41.4%); }
+  37.5% { transform: translateX(-74.2%); } 43.75% { transform: translateX(-93.8%); } 50%, 100% { transform: translateX(-100%); } }@scope ([data-theme="fd-nightbus"]) to ([data-theme]) {
 
 
 .ambient:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { display: block; }
 .ambient > i:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { left: 0; top: var(--y); width: clamp(14px, var(--s), 170px); aspect-ratio: 1; border-radius: 50%;
   background: radial-gradient(circle, rgb(var(--c) / var(--a)) 0 24%, rgb(var(--c) / calc(var(--a) * .45)) 50%, transparent 70%);
-  transform: translateX(100vw); animation: fd-nightbus-pass calc(var(--t) * 15) linear calc(var(--o) * 15) infinite; animation-play-state: var(--ambient-play); }
+  transform: translateX(100vw); animation: fd-nightbus-pass calc(var(--t) * 15) steps(var(--n)) calc(var(--o) * 15) infinite; animation-play-state: var(--ambient-play); }
 
 }
 @keyframes fd-nightbus-pass { from { transform: translateX(100vw); } to { transform: translateX(-100%); } }@scope ([data-theme="fd-nightbus"]) to ([data-theme]) {
 
 /* far: small, bright-ish, slow */
-.ambient > i:nth-child(1):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 14%; --s: 1.6vw; --c: 255 158 27; --a: .30; --t: 110s; --o: -18s; }
-.ambient > i:nth-child(2):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 23%; --s: 1.2vw; --c: 255 194 120; --a: .26; --t: 120s; --o: -74s; }
-.ambient > i:nth-child(3):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 9%; --s: 1.4vw; --c: 92 200 255; --a: .22; --t: 100s; --o: -47s; }
-.ambient > i:nth-child(4):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 33%; --s: 1.1vw; --c: 255 158 27; --a: .26; --t: 115s; --o: -96s; }
-.ambient > i:nth-child(5):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 44%; --s: 1.3vw; --c: 255 158 27; --a: .24; --t: 105s; --o: -62s; }
+.ambient > i:nth-child(1):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 14%; --s: 1.6vw; --c: 255 158 27; --a: .30; --t: 110s; --n: 3300; --o: -18s; }
+.ambient > i:nth-child(2):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 23%; --s: 1.2vw; --c: 255 194 120; --a: .26; --t: 120s; --n: 3600; --o: -74s; }
+.ambient > i:nth-child(3):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 9%; --s: 1.4vw; --c: 92 200 255; --a: .22; --t: 100s; --n: 3000; --o: -47s; }
+.ambient > i:nth-child(4):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 33%; --s: 1.1vw; --c: 255 158 27; --a: .26; --t: 115s; --n: 3450; --o: -96s; }
+.ambient > i:nth-child(5):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 44%; --s: 1.3vw; --c: 255 158 27; --a: .24; --t: 105s; --n: 3150; --o: -62s; }
 /* middle distance */
-.ambient > i:nth-child(6):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 39%; --s: 2.8vw; --c: 255 158 27; --a: .20; --t: 72s; --o: -22s; }
-.ambient > i:nth-child(7):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 17%; --s: 2.4vw; --c: 255 194 120; --a: .17; --t: 76s; --o: -55s; }
-.ambient > i:nth-child(8):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 50%; --s: 2.2vw; --c: 92 200 255; --a: .14; --t: 80s; --o: -8s; }
-.ambient > i:nth-child(9):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 27%; --s: 3vw; --c: 255 158 27; --a: .18; --t: 66s; --o: -40s; }
+.ambient > i:nth-child(6):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 39%; --s: 2.8vw; --c: 255 158 27; --a: .20; --t: 72s; --n: 2160; --o: -22s; }
+.ambient > i:nth-child(7):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 17%; --s: 2.4vw; --c: 255 194 120; --a: .17; --t: 76s; --n: 2280; --o: -55s; }
+.ambient > i:nth-child(8):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 50%; --s: 2.2vw; --c: 92 200 255; --a: .14; --t: 80s; --n: 2400; --o: -8s; }
+.ambient > i:nth-child(9):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 27%; --s: 3vw; --c: 255 158 27; --a: .18; --t: 66s; --n: 1980; --o: -40s; }
 /* near: big, faint, quicker */
-.ambient > i:nth-child(10):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 30%; --s: 6vw; --c: 255 158 27; --a: .11; --t: 46s; --o: -14s; }
-.ambient > i:nth-child(11):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 52%; --s: 7vw; --c: 255 194 120; --a: .08; --t: 52s; --o: -36s; }
-.ambient > i:nth-child(12):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 8%; --s: 5vw; --c: 92 200 255; --a: .08; --t: 50s; --o: -27s; }
+.ambient > i:nth-child(10):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 30%; --s: 6vw; --c: 255 158 27; --a: .11; --t: 46s; --n: 1380; --o: -14s; }
+.ambient > i:nth-child(11):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 52%; --s: 7vw; --c: 255 194 120; --a: .08; --t: 52s; --n: 1560; --o: -36s; }
+.ambient > i:nth-child(12):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 8%; --s: 5vw; --c: 92 200 255; --a: .08; --t: 50s; --n: 1500; --o: -27s; }
 
 
 }
@@ -144,10 +151,10 @@ body:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-
   .side:is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { border-right: 0; border-bottom: 1px solid var(--line); }
   /* on a phone the sign and buttons fill the top half: four lights, none of them the cyan of a badge, pass in the strip of window below them */
   .ambient > i:nth-child(n+5):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { display: none; }
-  .ambient > i:nth-child(1):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 52%; --s: 7vw; --t: 80s; }
-  .ambient > i:nth-child(2):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 57%; --s: 6vw; --t: 90s; }
-  .ambient > i:nth-child(3):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 49%; --s: 6.5vw; --c: 255 158 27; --t: 85s; }
-  .ambient > i:nth-child(4):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 61%; --s: 12vw; --a: .12; --t: 50s; }
+  .ambient > i:nth-child(1):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 52%; --s: 7vw; --t: 80s; --n: 2400; }
+  .ambient > i:nth-child(2):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 57%; --s: 6vw; --t: 90s; --n: 2700; }
+  .ambient > i:nth-child(3):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 49%; --s: 6.5vw; --c: 255 158 27; --t: 85s; --n: 2550; }
+  .ambient > i:nth-child(4):is([data-theme="fd-nightbus"][data-theme], [data-theme="fd-nightbus"][data-theme] *) { --y: 61%; --s: 12vw; --a: .12; --t: 50s; --n: 1500; }
 
 }
 
