@@ -681,6 +681,18 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const v = (t as (MediaStreamTrack & { stats?: { deliveredFramesDuration?: number } }) | null)?.stats?.deliveredFramesDuration;
     return typeof v === 'number' ? v : null;
   };
+  type LatencyStats = { averageLatency?: number; resetLatency?: () => void };
+  /** The microphone's own delay, from capture to the page, averaged since the last call, ms (Chromium's MediaStreamTrack stats). */
+  let micMeasured: MediaStreamTrack | null = null;
+  const micLatencyMs = (): number | null => {
+    const st = (voiceTrack as (MediaStreamTrack & { stats?: LatencyStats }) | null)?.stats;
+    const v = st?.averageLatency;
+    try { st?.resetLatency?.(); } catch { /* unsupported */ }
+    // Another microphone since the last call (switched under the same processed voice): its average is not this window's.
+    const same = micMeasured === voiceTrack;
+    micMeasured = voiceTrack;
+    return same && typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v) : null;
+  };
   let guard = createVoiceGuard('context');
   /** The e2e suite's stand-ins for a device whose voice runs off real time, and for a worker that cannot keep up (hook only). */
   let clockSkew = 1;
@@ -711,7 +723,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       }
       if (voiceLoad !== null && fresh) sendLoads.push(voiceLoad);
     } else guard.reset();
-    if (!sendMark || sendMark.track !== track) { sendMark = { ...now, track }; sendLoads = []; return; }
+    if (!sendMark || sendMark.track !== track) { sendMark = { ...now, track }; sendLoads = []; micLatencyMs(); return; }
     if (now.at - sendMark.at < VOICE_SEND_EVERY_MS) return;
     posthog.capture('voice_send', {
       rate_pct: sendRatePct(sendMark, now), seconds: Math.round((now.at - sendMark.at) / 1000),
@@ -719,7 +731,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       load_pct: sendLoads.length ? Math.round(sendLoads.reduce((a, l) => a + l.pct, 0) / sendLoads.length) : null,
       load_max_pct: sendLoads.length ? Math.max(...sendLoads.map((l) => l.pct)) : null,
       dropped_ms: sendLoads.length ? sendLoads.reduce((a, l) => a + l.droppedMs, 0) : null,
-      mic_rate: voiceTrack?.getSettings().sampleRate ?? null, peers: peers.size,
+      mic_rate: voiceTrack?.getSettings().sampleRate ?? null, peers: peers.size, mic_ms: micLatencyMs(),
     });
     sendMark = { ...now, track };
     sendLoads = [];
@@ -1465,11 +1477,21 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       peer.voiceReported = cur;
       if (w) {
         const target = (peer.pc.getTransceivers()[SLOT_INDEX.voice]?.receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined)?.jitterBufferTarget ?? null;
-        posthog.capture('voice_quality', { peer: fingerprintOf(peer), conn: peer.view.conn, rtt_ms: peer.view.rttMs, buffer_target_ms: target, adaptive_ms: bufferMs(peer.buffer), low_voice: lowVoiceOn || peer.asksLowVoice, voice_repair: voiceRepair, sends_red: peer.sendsRed, sends_fec: peer.sendsFec, ...windowProps(w) });
+        posthog.capture('voice_quality', { peer: fingerprintOf(peer), conn: peer.view.conn, rtt_ms: peer.view.rttMs, buffer_target_ms: target, adaptive_ms: bufferMs(peer.buffer), low_voice: lowVoiceOn || peer.asksLowVoice, voice_repair: voiceRepair, sends_red: peer.sendsRed, sends_fec: peer.sendsFec, ...contextLatency(), speaker: (peer.audio as HTMLAudioElement & { sinkId?: string }).sinkId ? 'chosen' : 'default', ...windowProps(w) });
       }
     }
   }
   const voiceTimer = setInterval(() => { for (const p of peers.values()) void sampleVoice(p); }, VOICE_SAMPLE_MS);
+  /**
+   * The call's context, which friends' voices pass through on their way to the element that plays them (wireRemoteAudio),
+   * ms: its processing buffer, and the delay of its own output, which nothing plays through, on the default device
+   * (ticket 96). None while it is not running: a suspended context may say 0.
+   */
+  const contextLatency = () => {
+    const running = audioCtx?.state === 'running';
+    const ms = (s: number | undefined) => (running && typeof s === 'number' && Number.isFinite(s) && s > 0 ? Math.round(s * 1000) : null);
+    return { context_base_ms: ms(audioCtx?.baseLatency), context_output_ms: ms((audioCtx as (AudioContext & { outputLatency?: number }) | null)?.outputLatency) };
+  };
 
   /** Everything a problem report wants to know about the call (ticket 12). */
   async function diagnostics(): Promise<CallDiagnostics> {

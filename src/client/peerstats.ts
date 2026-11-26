@@ -123,13 +123,20 @@ const VOICE_COUNTER_KEYS = ['packetsReceived', 'packetsLost', 'bytesReceived', '
 export async function voiceCounters(receiver: RTCRtpReceiver): Promise<VoiceCounters | null> {
   let out: VoiceCounters | null = null;
   try {
-    (await receiver.getStats()).forEach((r) => { if (r.type === 'inbound-rtp') out = { at: Date.now(), ...(pick(r as unknown as Record<string, unknown>, VOICE_COUNTER_KEYS) as Partial<VoiceCounters>) }; });
+    const st = await receiver.getStats();
+    st.forEach((r) => {
+      if (r.type !== 'inbound-rtp') return;
+      const rec = r as unknown as Record<string, unknown>;
+      // The output device the voice is handed to, where the browser says (Chromium: `media-playout`, shared by every voice).
+      const playout = rec['playoutId'] ? (st.get(rec['playoutId'] as string) as unknown as Record<string, unknown> | undefined) : undefined;
+      out = { at: Date.now(), ...(pick(rec, VOICE_COUNTER_KEYS) as Partial<VoiceCounters>), ...(playout ? pick(playout, ['totalPlayoutDelay', 'totalSamplesCount']) : {}) };
+    });
   } catch { /* closed meanwhile */ }
   return out;
 }
 
 /** A voice window as PostHog event properties. */
-export const windowProps = (w: VoiceWindow) => ({ seconds: w.seconds, packets: w.packets, lost_pct: w.lostPct, concealed_pct: w.concealedPct, concealment_events: w.concealmentEvents, jitter_ms: w.jitterMs, buffer_ms: w.bufferMs, decel_pct: w.decelPct, accel_pct: w.accelPct, fec_packets: w.fecPackets, bytes_per_packet: w.bytesPerPacket });
+export const windowProps = (w: VoiceWindow) => ({ seconds: w.seconds, packets: w.packets, lost_pct: w.lostPct, concealed_pct: w.concealedPct, concealment_events: w.concealmentEvents, jitter_ms: w.jitterMs, buffer_ms: w.bufferMs, decel_pct: w.decelPct, accel_pct: w.accelPct, fec_packets: w.fecPackets, bytes_per_packet: w.bytesPerPacket, playout_ms: w.playoutMs });
 
 /** Candidates gathered and received so far, for `peer_connecting_slow` (spec §8.2). */
 export async function candidateCounts(pc: RTCPeerConnection): Promise<{ candidates_local: number; candidates_remote: number; candidates_relay: number }> {

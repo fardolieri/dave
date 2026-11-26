@@ -11,19 +11,27 @@ describe('voiceWindow', () => {
       concealedPct: 3, // (9600 - 2400) of 240000
       concealmentEvents: 4, jitterMs: 12,
       bufferMs: 200, // 50 s more delay over 250 emitted
-      decelPct: 1, accelPct: 0, fecPackets: 3, bytesPerPacket: 80,
+      decelPct: 1, accelPct: 0, fecPackets: 3, bytesPerPacket: 80, playoutMs: null,
     });
   });
   it('is null when nothing arrived, and copes with counters a browser lacks', () => {
     expect(voiceWindow(base, { ...base, at: 6000 })).toBeNull();
-    expect(voiceWindow({ at: 0, packetsReceived: 0 }, { at: 5000, packetsReceived: 100 })).toMatchObject({ packets: 100, lostPct: 0, concealedPct: 0, jitterMs: 0, bufferMs: 0, bytesPerPacket: 0 });
+    expect(voiceWindow({ at: 0, packetsReceived: 0 }, { at: 5000, packetsReceived: 100 })).toMatchObject({ packets: 100, lostPct: 0, concealedPct: 0, jitterMs: 0, bufferMs: 0, bytesPerPacket: 0, playoutMs: null });
+  });
+  it('reads the output device\'s delay from the playout counters', () => {
+    const before = { ...base, totalPlayoutDelay: 100, totalSamplesCount: 1_000_000 };
+    expect(voiceWindow(before, { ...before, at: 6000, packetsReceived: 1250, totalPlayoutDelay: 7300, totalSamplesCount: 1_240_000 })!.playoutMs).toBe(30); // 30 ms on each of 240000 samples: 7200 s more
+    // A first read without them (no playout yet) gives no window of them, not the device's whole life.
+    expect(voiceWindow(base, { ...before, at: 6000, packetsReceived: 1250 })!.playoutMs).toBeNull();
+    // Totals that started again, on a new output device.
+    expect(voiceWindow(before, { ...before, at: 6000, packetsReceived: 1250, totalPlayoutDelay: 0.3, totalSamplesCount: 1_240_000 })!.playoutMs).toBeNull();
   });
   it('never reports negative concealment when the silent part outruns the whole (counters reset)', () => {
     expect(voiceWindow(base, { ...base, at: 6000, packetsReceived: 1100, concealedSamples: 4800, silentConcealedSamples: 9000 })!.concealedPct).toBe(0);
   });
 });
 
-const clean: VoiceWindow = { seconds: 5, packets: 250, lostPct: 0, concealedPct: 0.2, concealmentEvents: 1, jitterMs: 8, bufferMs: 60, decelPct: 0, accelPct: 0, fecPackets: 0, bytesPerPacket: 80 };
+const clean: VoiceWindow = { seconds: 5, packets: 250, lostPct: 0, concealedPct: 0.2, concealmentEvents: 1, jitterMs: 8, bufferMs: 60, decelPct: 0, accelPct: 0, fecPackets: 0, bytesPerPacket: 80, playoutMs: null };
 const rough: VoiceWindow = { ...clean, concealedPct: 4.5, concealmentEvents: 12 };
 const jittery: VoiceWindow = { ...clean, jitterMs: 70 };
 const feed = (s = INITIAL_BUFFER, ...windows: VoiceWindow[]) => windows.reduce(nextBuffer, s);

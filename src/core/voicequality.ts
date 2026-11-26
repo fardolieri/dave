@@ -23,6 +23,13 @@ export type VoiceCounters = {
   jitterBufferDelay?: number;
   jitterBufferEmittedCount?: number;
   fecPacketsReceived?: number;
+  /**
+   * From the receiver's `media-playout` stats: the output device's delay summed over every sample, seconds. Chromium's
+   * own output for call audio, which dave keeps muted and plays through an element of its own (ticket 96): a measure of
+   * the default output device, not of that element's path, nor of a speaker picked in the Audio panel.
+   */
+  totalPlayoutDelay?: number;
+  totalSamplesCount?: number;
 };
 
 /** What happened to the voice between two reads. Percentages are of the window; `jitterMs` is the estimate at its end. */
@@ -41,6 +48,8 @@ export type VoiceWindow = {
   accelPct: number;
   fecPackets: number;
   bytesPerPacket: number;
+  /** What the browser's output for call audio adds after the jitter buffer, on average, ms; null where it does not say. */
+  playoutMs: number | null;
 };
 
 const delta = (cur: number | undefined, prev: number | undefined): number => Math.max(0, (cur ?? 0) - (prev ?? 0));
@@ -67,7 +76,19 @@ export function voiceWindow(prev: VoiceCounters, cur: VoiceCounters): VoiceWindo
     accelPct: pct(delta(cur.removedSamplesForAcceleration, prev.removedSamplesForAcceleration), samples),
     fecPackets: delta(cur.fecPacketsReceived, prev.fecPacketsReceived),
     bytesPerPacket: Math.round(delta(cur.bytesReceived, prev.bytesReceived) / packets),
+    playoutMs: playoutMs(prev, cur),
   };
+}
+
+/**
+ * Both reads must carry the playout totals, and neither may have gone down: against a read without them the window
+ * would be the device's whole life, and totals that start again (a new output device) say nothing of the window.
+ */
+function playoutMs(prev: VoiceCounters, cur: VoiceCounters): number | null {
+  const { totalPlayoutDelay: d0, totalSamplesCount: n0 } = prev;
+  const { totalPlayoutDelay: d1, totalSamplesCount: n1 } = cur;
+  if (d0 === undefined || n0 === undefined || d1 === undefined || n1 === undefined || d1 < d0 || n1 <= n0) return null;
+  return Math.round(((d1 - d0) / (n1 - n0)) * 1000);
 }
 
 /**
