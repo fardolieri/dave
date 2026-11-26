@@ -451,6 +451,21 @@ describe('Bonk, the rounds (core/bonk.ts)', () => {
     expect(advance(tie, at(tie, OVER_MS), here({ who: A, n: 3, known: 3, alive: true }))).toEqual({ n: 3, phase: 'wait', since: at(tie, OVER_MS), players: [], winner: null, wins: { [A]: 3, [B]: 1 } });
   });
 
+  it('counts down again, with everyone in, when who is here changes during the countdown', () => {
+    // Two apps each counted round 1 down, with some of the players (CI, 2026-11-26: B and C by B's count, A and C by A's),
+    // and A, who knows the same round and has the smaller key, now leads them all: B is in its round too, from the start
+    // of a countdown, not left believing it plays a round A does not count it in.
+    const r: Round = { ...firstRound(0), n: 1, phase: 'count', since: 0, players: [A, C] };
+    const all = here({ who: A, n: 1, known: 1, alive: true }, { who: B, n: 1, known: 1, alive: true }, { who: C, n: 1, known: 1, alive: true });
+    expect(advance(r, 2000, all)).toEqual({ n: 1, phase: 'count', since: 2000, players: [A, B, C], winner: null, wins: {} });
+    // A friend who links during the countdown is in it, from the start of another; one who goes, out of it.
+    expect(advance(r, 2000, here({ who: A, n: 1, known: 1, alive: true }, { who: C, n: 1, known: 1, alive: true }, { who: B, n: 0, known: 0, alive: true }))).toMatchObject({ phase: 'count', since: 2000, players: [A, B, C] });
+    const three: Round = { ...r, players: [A, B, C] };
+    expect(advance(three, 2000, here({ who: A, n: 1, known: 1, alive: true }, { who: C, n: 1, known: 1, alive: true }))).toMatchObject({ phase: 'count', since: 2000, players: [A, C] });
+    // The same players: on to the play.
+    expect(advance(three, COUNT_MS, all)).toMatchObject({ phase: 'play', players: [A, B, C] });
+  });
+
   it('goes back to the wait when the second player leaves during the countdown', () => {
     const r = advance(firstRound(0), 0, here({ who: A, n: 0, known: 0, alive: true }, { who: B, n: 0, known: 0, alive: true }));
     expect(advance(r, 1000, here({ who: A, n: 1, known: 1, alive: true }))).toMatchObject({ phase: 'wait', n: 1 });
