@@ -92,10 +92,11 @@ body:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-inno
   mask-image: radial-gradient(100vw 140vh at 100% 100%, #000 25%, transparent);
 }
 body:is([data-theme="tf-tech-innovation"][data-theme], [data-theme="tf-tech-innovation"][data-theme] *)::after {
-  /* The swell is the gradient's own size, not a transform, so the glow is painted with the page instead of riding on a
-     layer of its own: such a layer, screen-sized, made every frame cost a third more while the signals ran. Painted, it
-     is redrawn at each step of the swell, two a second (five a stretch of its eased keyframes, each 2.5 s), and not
-     otherwise. It grows up and to the left from the corner. */
+  /* The swell is the gradient's own size, not a transform: the glow is painted again at each step of the swell, two a
+     second (five a stretch of its eased keyframes, each 2.5 s), and not otherwise. It grows up and to the left from the
+     corner. It keeps a layer of its own (will-change): painted with the page, its faint gradient showed bands on a real
+     screen; on its own layer, as when it swelled by a transform, it did not. */
+  will-change: transform;
   --swell: var(--tf-tech-innovation-swell, 0);
   background: radial-gradient(calc(110vw * (1 + .18 * var(--swell))) calc(130vh * (1 + .18 * var(--swell))) at 100% 100%, rgba(0,102,255,.22), rgba(0,102,255,.11) 40%, rgba(0,102,255,.04) 70%, transparent);
   opacity: calc(1 - .3 * var(--swell));
