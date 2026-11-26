@@ -441,3 +441,55 @@ test('regression: in every look a composer of many lines keeps its corners: roun
   }
   expect(rounder).toEqual([]);
 });
+
+// Nov 2026, the owner: dave ate the CPU in an idle call, and felt laggy, in Kino and in Campfire. A theme's moving
+// background was moved a little in every frame, so the browser drew the whole screen again sixty times a second, and
+// with no graphics card to do it (as on the CI runners and the dev box) that took a core and dropped the page to 10
+// frames a second. The backgrounds now move in steps on a shared beat, and the screen is drawn again only when one
+// changes. Counted from the animations themselves, paused and stepped through by script in sixtieths of a second, so
+// the count does not depend on how fast the machine draws: how many of those sixtieths something on screen changes in.
+// Campfire's sparks are left smooth on purpose: a burst is quick, and dark for nine tenths of its cycle.
+test('regression: in every look the moving background changes at most 30 times a second, not in every frame', async ({ crowd }) => {
+  const alice = await crowd.open('Alice', { viewport: DESKTOP });
+  const page = alice.page;
+  const changesPerSecond = () => page.evaluate(() => {
+    const smooth = ['tf-campfire-burst', 'pulse', 'spin', 'fd-lounge-glow'];
+    const anims = document.getAnimations().filter((a): a is CSSAnimation => a instanceof CSSAnimation && !smooth.includes(a.animationName)
+      && a.playState === 'running' && a.effect?.getComputedTiming().iterations === Infinity);
+    const props = anims.map((a) => [...new Set((a.effect as KeyframeEffect).getKeyframes().flatMap((k) => Object.keys(k)))]
+      .filter((p) => !['offset', 'computedOffset', 'easing', 'composite'].includes(p))
+      .map((p) => p.startsWith('--') ? p : p.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)));
+    const read = () => anims.map((a, i) => {
+      const effect = a.effect as KeyframeEffect;
+      const style = getComputedStyle(effect.target!, effect.pseudoElement);
+      return props[i]!.map((p) => style.getPropertyValue(p)).join('|');
+    }).join(';');
+    const from = anims.map((a) => Number(a.currentTime));
+    // Paused, Firefox may hold an animation a frame on from where it was read: every one is set where the count starts.
+    for (const a of anims) a.pause();
+    anims.forEach((a, i) => { a.currentTime = from[i]!; });
+    const seconds = 3;
+    let changes = 0;
+    let before = read();
+    for (let k = 1; k <= seconds * 60; k++) {
+      anims.forEach((a, i) => { a.currentTime = from[i]! + k * 1000 / 60; });
+      const now = read();
+      if (now !== before) changes++;
+      before = now;
+    }
+    anims.forEach((a, i) => { a.currentTime = from[i]!; a.play(); });
+    return { animations: anims.length, perSecond: changes / seconds };
+  });
+  const busy: string[] = [];
+  let moving = 0;
+  for (const look of await themeNames(page)) {
+    await pickTheme(page, look);
+    await page.waitForTimeout(500);
+    const { animations, perSecond } = await changesPerSecond();
+    if (animations) moving++;
+    // The busiest looks step twenty times a second; a background moved in every frame changes sixty times.
+    if (perSecond > 30) busy.push(`${look || 'default'}: ${perSecond} times a second, from ${animations} animations`);
+  }
+  expect(moving, 'some looks have a moving background, so the count is of something').toBeGreaterThan(3);
+  expect(busy, 'looks whose background has the screen drawn again more than 30 times a second').toEqual([]);
+});
