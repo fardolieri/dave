@@ -276,3 +276,26 @@ test('regression: a friend\'s voice that stopped playing while it arrives plays 
   expect(typeof bobs.stillMs).toBe('number');
   if (browserName === 'chromium') expect(bobs.stillMs, "Bob's voice moves on").toBeLessThan(3000);
 });
+
+test('regression: every friend\'s voice and share sound play through one element, however many friends are in the call', async ({ crowd }) => {
+  // Reports of 2026-11-26: in a call of six, a friend on Android heard none of the friends who had just joined, though
+  // their voices arrived and each element that played one said it was playing. Chrome gives every element that plays a
+  // mixed stream a sound output of its own, two per friend: ten in that call. The phone's output for the newest friend had
+  // failed (its element's error 3, which Chrome sets when an element's audio renderer fails, and leaves it "playing").
+  const alice = await crowd.open('Alice');
+  const bob = await crowd.open('Bob');
+  const carol = await crowd.open('Carol');
+  // The elements that play the call are never in the page: every one that is given a stream is noted on the way.
+  await alice.page.evaluate(() => {
+    const given = new Set<HTMLMediaElement>();
+    const src = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'srcObject')!;
+    Object.defineProperty(HTMLMediaElement.prototype, 'srcObject', { ...src, set(this: HTMLMediaElement, v: MediaProvider | null) { if (v) given.add(this); src.set!.call(this, v); } });
+    (window as unknown as { audible: () => number }).audible = () => [...given].filter((el) => el instanceof HTMLAudioElement && el.srcObject && !el.muted && !el.paused).length;
+  });
+  for (const f of [alice, bob, carol]) await f.join();
+  await alice.connectedTo('Bob', 'Carol');
+  await needHooks(alice);
+  await alice.hearing('Bob', 'Carol');
+  const audible = () => alice.page.evaluate(() => (window as unknown as { audible: () => number }).audible());
+  await expect.poll(audible, { message: 'one element plays the whole call for Alice' }).toBe(1);
+});
