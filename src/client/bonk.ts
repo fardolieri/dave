@@ -301,7 +301,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     if (fallAt !== null && Date.now() >= fallAt) {
       fallAt = null;
       const a = Math.atan2(ball.z, ball.x);
-      if (ball.alive && !watching) { ball = { ...ball, x: Math.cos(a) * (FLOE_START + 1), z: Math.sin(a) * (FLOE_START + 1), alive: false, vy: 0 }; fellAt = now; }
+      if (ball.alive && !watching && round.phase === 'play') { ball = { ...ball, x: Math.cos(a) * (FLOE_START + 1), z: Math.sin(a) * (FLOE_START + 1), alive: false, vy: 0 }; fellAt = now; }
     }
     // Out of the round: a dash asked for blows a wind instead, once in a while, the way chosen.
     if (dashAsked && isOut()) {
@@ -1073,7 +1073,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       if (ITEMS.includes(what)) { forced = what; forcedAt = { x, z, y }; }
     };
     (window as unknown as { __daveWins?: (who: string, wins: number) => void }).__daveWins = (who, wins) => { round = { ...round, wins: { ...round.wins, [who]: wins } }; lastRoundSent = 0; };
-    // My ball off the floe, once `Date.now()` comes to `at` (now, by default): two pages fall together by one clock.
+    // My ball off the floe, once `Date.now()` comes to `at` (now, by default): two pages fall together by one clock. Only in
+    // a round's play: asked for at another time, nothing.
     (window as unknown as { __daveFall?: (at?: number) => void }).__daveFall = (at = 0) => { fallAt = at; };
     // Where a spot on the floe is on the page, for the mouse.
     (window as unknown as { __daveScreen?: (x: number, z: number) => { x: number; y: number } }).__daveScreen = (x, z) => {

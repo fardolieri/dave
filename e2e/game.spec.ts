@@ -452,47 +452,56 @@ test('Bonk: one who fell off blows a wind the way they choose, every ten seconds
   // Three pages drawing in software are slow to link (see the tests above).
   const all = [alice, bob, carol];
   for (const f of all) await expect.poll(async () => (await view(f))?.connected, { timeout: 60_000, message: `${f.name}'s game links open` }).toBe(2);
-  // One linked after the countdown watches that round: it is ended, all off the floe, so the next has all three.
-  if (!(await Promise.all(all.map(view))).every((v) => v!.playing)) await Promise.all(all.map((f) => f.page.evaluate(() => (window as unknown as { __daveFall: () => void }).__daveFall())));
-  for (const f of all) await expect.poll(async () => { const v = await view(f); return v?.phase === 'play' && v.playing; }, { timeout: 30_000, message: `${f.name} plays` }).toBe(true);
-  expect(new Set(await Promise.all(all.map(async (f) => (await view(f))!.round))).size).toBe(1);
+  // All three on the floe in one round's play. One linked after the countdown watches that round (one linked during it is
+  // counted in, core/bonk.ts `advance`): it is ended, those in it off the floe (`__daveFall` acts only in a play), so the
+  // next has all three.
+  await expect.poll(async () => {
+    const vs = (await Promise.all(all.map(view))).map((v) => v!);
+    if (vs.every((v) => v.phase === 'play' && v.playing && v.me.alive) && new Set(vs.map((v) => v.round)).size === 1) return true;
+    if (vs.some((v) => v.phase === 'play' && (!v.playing || !v.me.alive))) await Promise.all(all.map((f) => f.page.evaluate(() => (window as unknown as { __daveFall: () => void }).__daveFall())));
+    return false;
+  }, { timeout: 90_000, intervals: [1000], message: 'all three play one round' }).toBe(true);
 
   // Carol falls off: out of the round, she may blow a wind, now. The others stand still.
-  expect((await view(carol))!.me.blow).toBe(-1);
+  const start = (await view(carol))!.me;
+  expect(start.blow).toBe(-1);
   await carol.page.evaluate(() => (window as unknown as { __daveFall: () => void }).__daveFall());
   await expect.poll(async () => (await view(carol))!.me.blow, { timeout: 10_000 }).toBe(0);
   await expect(tile(carol).locator('.bonk-banner')).toHaveText('Splash! You are out · blow them a wind 💨');
   const before = await Promise.all([alice, bob].map(async (f) => (await view(f))!.me));
   expect(before.every((m) => m.alive)).toBe(true);
 
-  // She aims it right with the keys and blows it with Space, then tries again at once: the second does nothing, not for ten
-  // seconds. Read in her page right away: a ball blown and left to slide goes off the floe in a few seconds, and the
-  // round with it.
+  // She aims it with the keys back toward where she started, so it blows the two others across the floe, not off its near
+  // edge at once, and blows it with Space, twice: the second does nothing, not for ten seconds. Read in her page, a few
+  // frames on: a page drawing in software takes half a second for one, and the round ends once one is blown off.
+  const keys = [...(start.x > 2 ? ['ArrowRight'] : start.x < -2 ? ['ArrowLeft'] : []), ...(start.z > 2 ? ['ArrowDown'] : start.z < -2 ? ['ArrowUp'] : [])];
+  const way = { x: keys.includes('ArrowRight') ? 1 : keys.includes('ArrowLeft') ? -1 : 0, z: keys.includes('ArrowDown') ? 1 : keys.includes('ArrowUp') ? -1 : 0 };
   await tile(carol).locator('.bonk').focus();
-  const blew = await carol.page.evaluate(async () => {
+  const blew = await carol.page.evaluate(async (keys) => {
     const host = document.querySelector('.bonk')!;
     const key = (type: string, code: string) => host.dispatchEvent(new KeyboardEvent(type, { code, bubbles: true }));
-    const frames = (n: number) => new Promise<void>((done) => { const on = () => (--n <= 0 ? done() : requestAnimationFrame(on)); requestAnimationFrame(on); });
-    const me = () => (window as unknown as { __daveGame: () => GameView }).__daveGame().me;
-    key('keydown', 'ArrowRight');
+    const frame = () => new Promise((done) => requestAnimationFrame(done));
+    for (const k of keys) key('keydown', k);
     key('keydown', 'Space');
-    await frames(2);
-    const first = me().blow, banner = document.querySelector('.bonk-banner')?.textContent;
+    await frame();
     key('keydown', 'Space');
-    await frames(2);
-    key('keyup', 'ArrowRight');
-    return { first, banner, second: me().blow, wind: me().wind.x };
-  });
-  expect(blew.first).toBeGreaterThan(5000);
-  expect(blew.first).toBeLessThanOrEqual(10_000);
-  expect(blew.second).toBeLessThanOrEqual(blew.first);
-  // One gust blows, not two.
-  expect(blew.wind).toBe(GUST_ACCEL);
+    await frame();
+    await frame();
+    for (const k of keys) key('keyup', k);
+    const me = (window as unknown as { __daveGame: () => GameView }).__daveGame().me;
+    return { blow: me.blow, wind: me.wind, banner: document.querySelector('.bonk-banner')?.textContent };
+  }, keys);
+  expect(blew.blow).toBeGreaterThan(5000);
+  expect(blew.blow).toBeLessThanOrEqual(10_000);
   expect(blew.banner).toMatch(/^Splash! You are out · 💨 again in (9|10)$/);
-  // Both are told who blew it, for a few seconds, and both balls go right: looked at on both pages at once, before the
-  // round ends with them off the floe and the next puts them back.
+  // One gust blows, the way she aimed, not two.
+  const l = Math.hypot(way.x, way.z);
+  expect(blew.wind.x).toBeCloseTo((way.x / l) * GUST_ACCEL, 1);
+  expect(blew.wind.z).toBeCloseTo((way.z / l) * GUST_ACCEL, 1);
+  // Both are told who blew it, for a few seconds, and both balls go that way: looked at on both pages at once, before the
+  // round ends with one off the floe and the next puts them back.
   await Promise.all([alice, bob].map(async (f, i) => {
     await expect(tile(f).locator('.bonk-toast')).toHaveText('Carol blew a wind 💨');
-    await expect.poll(async () => (await view(f))!.me.x, { timeout: 10_000, message: `${f.name} is blown right` }).toBeGreaterThan(before[i]!.x + 2);
+    await expect.poll(async () => { const m = (await view(f))!.me; return ((m.x - before[i]!.x) * way.x + (m.z - before[i]!.z) * way.z) / l; }, { timeout: 10_000, message: `${f.name} is blown her way` }).toBeGreaterThan(2);
   }));
 });
