@@ -1,5 +1,5 @@
 import { expect, needHooks, test, type Friend } from './fixtures';
-import type { GameView } from '../src/core/bonk';
+import { GUST_ACCEL, type GameView } from '../src/core/bonk';
 
 // The call's games (client/game.ts, ADR 0014): started from the call in one click, joined from their tiles beside the shares,
 // played over game links between the players (client/gamelinks.ts), never through the server.
@@ -406,4 +406,93 @@ test('regression: Bonk in fullscreen on a phone is as clear as in the page, not 
   await alice.page.waitForTimeout(500); // a few frames drawn at the new size
   const full = await floe();
   for (let i = 0; i < 3; i++) expect(Math.abs(full[i]! - inPage[i]!), `channel ${i}: ${inPage} in the page, ${full} in fullscreen`).toBeLessThanOrEqual(8);
+});
+
+test('Bonk: the last two to fall together share the round, a photo finish on both screens', async ({ crowd }) => {
+  test.setTimeout(90_000);
+  const alice = await open(crowd, 'Alice');
+  await needHooks(alice);
+  const bob = await open(crowd, 'Bob');
+  await alice.join();
+  await bob.join();
+  await alice.page.getByRole('button', { name: /Play Bonk/ }).click();
+  await tile(bob).click();
+  for (const f of [alice, bob]) await expect.poll(async () => { const v = await view(f); return v?.phase === 'play' && v.round === 1 && v.connected === 1; }, { timeout: 45_000 }).toBe(true);
+  const aliceWho = (await view(bob))!.others[0]!.key.slice(0, 11);
+  const bobWho = (await view(alice))!.others[0]!.key.slice(0, 11);
+
+  // Both off the floe at once, by the clock both pages share (core/bonk.ts, TIE_MS): neither wins it alone, both do. The
+  // leader counts the two falls a frame or two late each, its own and the other's: a tie while they are counted within
+  // TIE_MS of each other, either way round.
+  const at = Date.now() + 1500;
+  await Promise.all([alice, bob].map((f) => f.page.evaluate((at) => (window as unknown as { __daveFall: (at: number) => void }).__daveFall(at), at)));
+  // Said big for a few seconds, and who shares it over it: looked at on both pages at once, before the next round.
+  await Promise.all([{ f: alice, shared: 'You and Bob share the round' }, { f: bob, shared: 'You and Alice share the round' }].map(async ({ f, shared }) => {
+    await expect.poll(async () => { const v = (await view(f))!; return { tied: v.tied, winner: v.winner, wins: v.wins }; }, { timeout: 15_000, message: `${f.name} sees the tie` })
+      .toEqual({ tied: [aliceWho, bobWho].sort(), winner: null, wins: { [aliceWho]: 1, [bobWho]: 1 } });
+    await expect(tile(f).locator('.bonk-banner')).toHaveText('📸 Photo finish!');
+    await expect(tile(f).locator('.bonk-toast')).toHaveText(shared);
+  }));
+  // A win each, in either order: they have as many.
+  await expect(tile(alice).locator('.bonk-board li')).toHaveCount(2);
+  for (const won of ['You 🏆', 'Bob 🏆']) await expect(tile(alice).locator('.bonk-board li', { hasText: won })).toHaveCount(1);
+  // The next round starts with no tie.
+  for (const f of [alice, bob]) await expect.poll(async () => { const v = (await view(f))!; return v.round === 2 && v.tied.length === 0; }, { timeout: 15_000 }).toBe(true);
+});
+
+test('Bonk: one who fell off blows a wind the way they choose, every ten seconds, and it pushes the balls still on the floe', async ({ crowd }) => {
+  test.setTimeout(150_000);
+  const alice = await open(crowd, 'Alice');
+  await needHooks(alice);
+  const bob = await open(crowd, 'Bob');
+  const carol = await open(crowd, 'Carol');
+  for (const f of [alice, bob, carol]) await f.join();
+  await alice.page.getByRole('button', { name: /Play Bonk/ }).click();
+  for (const f of [bob, carol]) await tile(f).click();
+  // Three pages drawing in software are slow to link (see the tests above).
+  const all = [alice, bob, carol];
+  for (const f of all) await expect.poll(async () => (await view(f))?.connected, { timeout: 60_000, message: `${f.name}'s game links open` }).toBe(2);
+  // One linked after the countdown watches that round: it is ended, all off the floe, so the next has all three.
+  if (!(await Promise.all(all.map(view))).every((v) => v!.playing)) await Promise.all(all.map((f) => f.page.evaluate(() => (window as unknown as { __daveFall: () => void }).__daveFall())));
+  for (const f of all) await expect.poll(async () => { const v = await view(f); return v?.phase === 'play' && v.playing; }, { timeout: 30_000, message: `${f.name} plays` }).toBe(true);
+  expect(new Set(await Promise.all(all.map(async (f) => (await view(f))!.round))).size).toBe(1);
+
+  // Carol falls off: out of the round, she may blow a wind, now. The others stand still.
+  expect((await view(carol))!.me.blow).toBe(-1);
+  await carol.page.evaluate(() => (window as unknown as { __daveFall: () => void }).__daveFall());
+  await expect.poll(async () => (await view(carol))!.me.blow, { timeout: 10_000 }).toBe(0);
+  await expect(tile(carol).locator('.bonk-banner')).toHaveText('Splash! You are out · blow them a wind 💨');
+  const before = await Promise.all([alice, bob].map(async (f) => (await view(f))!.me));
+  expect(before.every((m) => m.alive)).toBe(true);
+
+  // She aims it right with the keys and blows it with Space, then tries again at once: the second does nothing, not for ten
+  // seconds. Read in her page right away: a ball blown and left to slide goes off the floe in a few seconds, and the
+  // round with it.
+  await tile(carol).locator('.bonk').focus();
+  const blew = await carol.page.evaluate(async () => {
+    const host = document.querySelector('.bonk')!;
+    const key = (type: string, code: string) => host.dispatchEvent(new KeyboardEvent(type, { code, bubbles: true }));
+    const frames = (n: number) => new Promise<void>((done) => { const on = () => (--n <= 0 ? done() : requestAnimationFrame(on)); requestAnimationFrame(on); });
+    const me = () => (window as unknown as { __daveGame: () => GameView }).__daveGame().me;
+    key('keydown', 'ArrowRight');
+    key('keydown', 'Space');
+    await frames(2);
+    const first = me().blow, banner = document.querySelector('.bonk-banner')?.textContent;
+    key('keydown', 'Space');
+    await frames(2);
+    key('keyup', 'ArrowRight');
+    return { first, banner, second: me().blow, wind: me().wind.x };
+  });
+  expect(blew.first).toBeGreaterThan(5000);
+  expect(blew.first).toBeLessThanOrEqual(10_000);
+  expect(blew.second).toBeLessThanOrEqual(blew.first);
+  // One gust blows, not two.
+  expect(blew.wind).toBe(GUST_ACCEL);
+  expect(blew.banner).toMatch(/^Splash! You are out · 💨 again in (9|10)$/);
+  // Both are told who blew it, for a few seconds, and both balls go right: looked at on both pages at once, before the
+  // round ends with them off the floe and the next puts them back.
+  await Promise.all([alice, bob].map(async (f, i) => {
+    await expect(tile(f).locator('.bonk-toast')).toHaveText('Carol blew a wind 💨');
+    await expect.poll(async () => (await view(f))!.me.x, { timeout: 10_000, message: `${f.name} is blown right` }).toBeGreaterThan(before[i]!.x + 2);
+  }));
 });

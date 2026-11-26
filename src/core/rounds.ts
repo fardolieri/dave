@@ -21,8 +21,13 @@ export type Round = {
   since: number;
   /** Who plays round `n`, in the order the game puts them at the start. */
   players: string[];
-  /** Who won the round just over; null for nobody. */
+  /** Who won the round just over; null for nobody, or for a tie. */
   winner: string | null;
+  /**
+   * Who shared the round just over, in a game that has ties (core/bonk.ts, TIE_MS): the last ones left, fallen together,
+   * each given a win. Left out for none.
+   */
+  tied?: string[];
   /** Rounds each player has won in this game. */
   wins: Record<string, number>;
   /** The round's own score, as the leader counted it at its end, for a game that keeps one; none for one that does not. */
@@ -47,17 +52,18 @@ export const leaderOf = (players: Iterable<{ key: string; n: number }>): string 
 
 /**
  * The round as the leader has it: `t` ms into its phase, its players, its winner, everyone's wins, and the round's score
- * where the game keeps one (`sc`). `q` orders the leader's frames, by its clock: one that comes after a later one (the
+ * where the game keeps one (`sc`), and who tied for it (`ti`, left out for none: an app from before ties reads a tie as
+ * nobody's, and the wins as they are). `q` orders the leader's frames, by its clock: one that comes after a later one (the
  * channel keeps no order) is dropped.
  */
-export type RoundFrame = { k: 'r'; q: number; n: number; ph: Phase; t: number; ps: string[]; w: string | null; wins: [string, number][]; sc?: [string, number][] };
+export type RoundFrame = { k: 'r'; q: number; n: number; ph: Phase; t: number; ps: string[]; w: string | null; wins: [string, number][]; sc?: [string, number][]; ti?: string[] };
 
 const BOUND = 1000;
 export const num = (v: unknown, bound = BOUND): v is number => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= bound;
 export const round2 = (v: number): number => Math.round(v * 100) / 100;
 
 export const roundFrame = (r: Round, now: number, q: number): RoundFrame =>
-  ({ k: 'r', q, n: r.n, ph: r.phase, t: Math.max(0, Math.round(now - r.since)), ps: r.players, w: r.winner, wins: Object.entries(r.wins), ...(r.scores ? { sc: Object.entries(r.scores) } : {}) });
+  ({ k: 'r', q, n: r.n, ph: r.phase, t: Math.max(0, Math.round(now - r.since)), ps: r.players, w: r.winner, wins: Object.entries(r.wins), ...(r.scores ? { sc: Object.entries(r.scores) } : {}), ...(r.tied?.length ? { ti: r.tied } : {}) });
 
 const tally = (v: unknown): v is [string, number][] =>
   Array.isArray(v) && v.length <= 64 && v.every((e: unknown) => Array.isArray(e) && e.length === 2 && isWho(e[0]) && Number.isSafeInteger(e[1]) && (e[1] as number) >= 0);
@@ -69,12 +75,14 @@ export function parseRoundFrame(f: Record<string, unknown>): RoundFrame | null {
   if (!Array.isArray(ps) || ps.length > MAX_PLAYERS || !ps.every(isWho)) return null;
   if (w !== null && !isWho(w)) return null;
   if (!tally(wins) || (sc !== undefined && !tally(sc))) return null;
-  return { k: 'r', q: q as number, n: n as number, ph: ph as Phase, t: t as number, ps: ps as string[], w: w as string | null, wins, ...(sc ? { sc } : {}) };
+  // A tie that is off is left out, not the round with it.
+  const ti = Array.isArray(f['ti']) && f['ti'].length <= MAX_PLAYERS && f['ti'].every(isWho) ? (f['ti'] as string[]) : undefined;
+  return { k: 'r', q: q as number, n: n as number, ph: ph as Phase, t: t as number, ps: ps as string[], w: w as string | null, wins, ...(sc ? { sc } : {}), ...(ti ? { ti } : {}) };
 }
 
 /** The round a follower takes from the leader's frame, heard at `now` by its own clock. */
 export const roundOf = (f: RoundFrame, now: number): Round =>
-  ({ n: f.n, phase: f.ph, since: now - f.t, players: f.ps, winner: f.w, wins: Object.fromEntries(f.wins), ...(f.sc ? { scores: Object.fromEntries(f.sc) } : {}) });
+  ({ n: f.n, phase: f.ph, since: now - f.t, players: f.ps, winner: f.w, wins: Object.fromEntries(f.wins), ...(f.sc ? { scores: Object.fromEntries(f.sc) } : {}), ...(f.ti ? { tied: f.ti } : {}) });
 
 /** A JSON frame from another player, its fields not yet checked; null for anything that is not one. */
 export function frameFields(text: unknown): Record<string, unknown> | null {

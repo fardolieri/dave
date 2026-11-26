@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_GAME_BODY_BYTES, current, currents, gameLinkId, gameOfLink, gameText, parseGame, sameGame, type Game } from '../src/core/game';
 import {
-  BALL_RADIUS, COUNT_MS, DASH_COOLDOWN_MS, DASH_SPEED, DROP_PLAY_MS, DROP_WINS, DROP_Y, FAST, FELT_HIT, FLOE_MID, FLOE_START, GIGA_LOW, HEAVY_MASS, ITEM_EVERY, PLAIN, GIGA_MOST, GIGA_TOP, SKY_TOP, MAX_ROLL, OVER_MS, SHRINK_END_MS, SHRINK_MID_MS, SUNK_Y,
-  advance, ahead, ask, ballAt, ballFrame, bonk, canDash, dash, dropDue, dropIn, dropped, dropsLeft, effectsOf, fastFrom, firstStage, giga, gigaPower, gigaTier, gone, hitFrame, itemFrame, itemOf, movesOf, playClock, pushFrame, speedAt, stageFrame, stageOf, stageOfFrame, touched, knocked, toward, firstRound, floeRadius, leaderOf, parseFrame, roll, roundFrame, roundOf, spawnAt, steer, whoOf,
-  type Ball, type Counted, type Round,
+  BALL_RADIUS, COUNT_MS, GUST_ACCEL, GUST_EVERY_MS, GUST_MS, TIE_MS, DASH_COOLDOWN_MS, DASH_SPEED, DROP_PLAY_MS, DROP_WINS, DROP_Y, FAST, FELT_HIT, FLOE_MID, FLOE_START, GIGA_LOW, HEAVY_MASS, ITEM_EVERY, PLAIN, GIGA_MOST, GIGA_TOP, SKY_TOP, MAX_ROLL, OVER_MS, SHRINK_END_MS, SHRINK_MID_MS, SUNK_Y,
+  advance, ahead, ask, canBlow, gust, gustFrame, windAt, ballAt, ballFrame, bonk, canDash, dash, dropDue, dropIn, dropped, dropsLeft, effectsOf, fastFrom, firstStage, giga, gigaPower, gigaTier, gone, hitFrame, itemFrame, itemOf, movesOf, playClock, pushFrame, speedAt, stageFrame, stageOf, stageOfFrame, touched, knocked, toward, firstRound, floeRadius, leaderOf, parseFrame, roll, roundFrame, roundOf, spawnAt, steer, whoOf,
+  type Ball, type Counted, type Led, type Round,
 } from '../src/core/bonk';
 
 const game = (over: Partial<Game> = {}): Game => ({ game: 'bonk', id: 'abcdEFGH', at: 1_000_000, ...over });
@@ -74,6 +74,40 @@ describe('Bonk, a ball on the floe (core/bonk.ts)', () => {
     expect(let_go.vx).toBeGreaterThan(b.vx * 0.95);
     expect(steer(1, 1).x).toBeCloseTo(Math.SQRT1_2);
     expect(steer(0.3, 0)).toEqual({ x: 0.3, z: 0 });
+  });
+
+  it('is blown by the wind past the speed it rolls by itself, and gusts blown at once add up', () => {
+    const g = gust({ x: 3, z: 4 }, 1000)!;
+    expect(g).toEqual({ x: 0.6, z: 0.8, until: 1000 + GUST_MS });
+    expect(gust({ x: 0.01, z: 0 }, 1000)).toBeNull();
+    // Two the same way, and a third against them: what blows is one, until each ends.
+    const w = { x: 1, z: 0 };
+    expect(windAt([{ ...w, until: 2000 }, { ...w, until: 3000 }], 1000)).toEqual({ x: 2 * GUST_ACCEL, z: 0 });
+    expect(windAt([{ ...w, until: 2000 }, { ...w, until: 3000 }, { x: -1, z: 0, until: 3000 }], 1000)).toEqual({ x: GUST_ACCEL, z: 0 });
+    expect(windAt([{ ...w, until: 2000 }, { ...w, until: 3000 }], 2000)).toEqual({ x: GUST_ACCEL, z: 0 });
+    expect(windAt([], 0)).toEqual({ x: 0, z: 0 });
+    // A ball rolled at its top speed, the wind behind it: on faster than it rolls by itself; two gusts, faster still.
+    const run = (wind: { x: number; z: number }) => { let b: Ball = { ...ballAt(0, 0), vx: MAX_ROLL }; for (let i = 0; i < 60; i++) b = roll(b, { x: 1, z: 0 }, 1 / 60, FLOE_START * 10, PLAIN, wind); return b; };
+    const none = run({ x: 0, z: 0 }), one = run({ x: GUST_ACCEL, z: 0 }), two = run({ x: 2 * GUST_ACCEL, z: 0 });
+    expect(none.vx).toBeLessThanOrEqual(MAX_ROLL);
+    expect(one.vx).toBeGreaterThan(MAX_ROLL + 0.5);
+    expect(two.vx).toBeGreaterThan(one.vx + 3);
+    // One left standing still is blown some way across the floe by a gust, and on as far again on the ice after it.
+    let still = ballAt(0, 0);
+    for (let i = 0; i < (GUST_MS / 1000) * 60; i++) still = roll(still, { x: 0, z: 0 }, 1 / 60, FLOE_START * 10, PLAIN, { x: 0, z: GUST_ACCEL });
+    expect(still.z).toBeGreaterThan(5);
+    expect(still.vz).toBeGreaterThan(5);
+    // Rolled against one gust it still gets on, slowly; against two it is blown back.
+    const against = (n: number) => { let b = ballAt(0, 0); for (let i = 0; i < 90; i++) b = roll(b, { x: 1, z: 0 }, 1 / 60, FLOE_START * 10, PLAIN, { x: -n * GUST_ACCEL, z: 0 }); return b.x; };
+    expect(against(1)).toBeGreaterThan(0);
+    expect(against(2)).toBeLessThan(0);
+    // Nobody blows a ball up in the air, nor one in the sea.
+    const up: Ball = { ...ballAt(0, 0), y: 3, vy: 5 };
+    expect(roll(up, { x: 0, z: 0 }, 0.1, FLOE_START, PLAIN, { x: 50, z: 0 }).vx).toBe(0);
+    // Once out of a round, as often as GUST_EVERY_MS.
+    expect(canBlow(-Infinity, 0)).toBe(true);
+    expect(canBlow(5000, 5000 + GUST_EVERY_MS - 1)).toBe(false);
+    expect(canBlow(5000, 5000 + GUST_EVERY_MS)).toBe(true);
   });
 
   it('rolls toward a spot held, full on from afar, and brakes to stop on it', () => {
@@ -356,8 +390,11 @@ describe('Bonk, the rounds (core/bonk.ts)', () => {
     expect(advance(r, at(r, COUNT_MS - 1), here({ who: A, n: 1, known: 1, alive: true }, { who: B, n: 1, known: 1, alive: true }))).toBe(r);
     r = advance(r, at(r, COUNT_MS), here({ who: A, n: 1, known: 1, alive: true }, { who: B, n: 1, known: 1, alive: true }));
     expect(r.phase).toBe('play');
-    expect(advance(r, at(r, 30_000), here({ who: A, n: 1, known: 1, alive: true }, { who: B, n: 1, known: 1, alive: true }))).toBe(r);
+    r = advance(r, at(r, 30_000), here({ who: A, n: 1, known: 1, alive: true }, { who: B, n: 1, known: 1, alive: true }));
+    expect(r).toMatchObject({ phase: 'play', standing: [A, B] });
     r = advance(r, at(r, 31_000), here({ who: A, n: 1, known: 1, alive: true }, { who: B, n: 1, known: 1, alive: false }));
+    expect(r.phase).toBe('play');
+    r = advance(r, at(r, 31_000 + TIE_MS), here({ who: A, n: 1, known: 1, alive: true }, { who: B, n: 1, known: 1, alive: false }));
     expect(r).toMatchObject({ phase: 'over', winner: A, wins: { [A]: 1 } });
     expect(advance(r, at(r, OVER_MS - 1), here({ who: A, n: 1, known: 1, alive: true }, { who: B, n: 1, known: 1, alive: true }))).toBe(r);
     r = advance(r, at(r, OVER_MS), here({ who: A, n: 1, known: 1, alive: true }, { who: B, n: 1, known: 1, alive: true }, { who: C, n: 0, known: 0, alive: true }));
@@ -367,17 +404,51 @@ describe('Bonk, the rounds (core/bonk.ts)', () => {
   it('counts a player gone from the game as fallen, one not yet in the round as standing, and a draw for nobody', () => {
     let r: Round = { ...firstRound(0), n: 3, phase: 'play', players: [A, B, C] };
     // C's app has not taken round 3 yet: still in it.
-    expect(advance(r, 1000, here({ who: A, n: 3, known: 3, alive: true }, { who: B, n: 3, known: 3, alive: false }, { who: C, n: 2, known: 2, alive: false }))).toBe(r);
-    // C reloaded, and watches round 3: out of it, and A wins; with B back too, the round still ends.
+    expect(advance(r, 1000, here({ who: A, n: 3, known: 3, alive: true }, { who: B, n: 3, known: 3, alive: false }, { who: C, n: 2, known: 2, alive: false }))).toMatchObject({ phase: 'play', standing: [A, C] });
+    // C reloaded, and watches round 3: out of it, and A wins, at once to a leader that never counted two standing; with B
+    // back too, the round still ends.
     expect(advance(r, 1000, here({ who: A, n: 3, known: 3, alive: true }, { who: B, n: 3, known: 3, alive: false }, { who: C, n: 0, known: 3, alive: false }))).toMatchObject({ phase: 'over', winner: A });
     expect(advance(r, 1000, here({ who: A, n: 3, known: 3, alive: false }, { who: B, n: 0, known: 3, alive: false }, { who: C, n: 0, known: 3, alive: false }))).toMatchObject({ phase: 'over', winner: null });
     // C left the game: A stands alone.
     expect(advance(r, 1000, here({ who: A, n: 3, known: 3, alive: true }, { who: B, n: 3, known: 3, alive: false }))).toMatchObject({ phase: 'over', winner: A });
-    // The last two fell together.
+    // All fell at once, to a leader that never counted them standing (it took over just now): nobody's.
     r = advance(r, 1000, here({ who: A, n: 3, known: 3, alive: false }, { who: B, n: 3, known: 3, alive: false }, { who: C, n: 3, known: 3, alive: false }));
     expect(r).toMatchObject({ phase: 'over', winner: null, wins: {} });
+    expect(r.tied).toBeUndefined();
     // Alone after it: the wait.
     expect(advance(r, at(r, OVER_MS), here({ who: A, n: 3, known: 3, alive: true }))).toMatchObject({ phase: 'wait', players: [] });
+  });
+
+  it('waits TIE_MS on the last one standing: who falls within it shares the round with who fell last, each given a win', () => {
+    const play: Led = { ...firstRound(0), n: 3, phase: 'play', players: [A, B, C], wins: { [A]: 2 } };
+    const of = (a: boolean, b: boolean, c: boolean) => here({ who: A, n: 3, known: 3, alive: a }, { who: B, n: 3, known: 3, alive: b }, { who: C, n: 3, known: 3, alive: c });
+    // Three on the floe, then two: counted, and nothing else changes; counted the same again, the round as it was.
+    let r = advance(play, 1000, of(true, true, true));
+    expect(r).toMatchObject({ phase: 'play', standing: [A, B, C] });
+    r = advance(r, 2000, of(true, true, false));
+    expect(r).toMatchObject({ phase: 'play', standing: [A, B] });
+    expect(advance(r, 2100, of(true, true, false))).toBe(r);
+    // B falls: A is on alone, but not the winner yet.
+    r = advance(r, 3000, of(true, false, false));
+    expect(r).toMatchObject({ phase: 'play', closing: { at: 3000, who: [A, B] } });
+    expect(advance(r, 3000 + TIE_MS - 1, of(true, false, false))).toBe(r);
+    // A falls too, within it: a photo finish, A and B each a win, and C, who fell long before, none.
+    const tie = advance(r, 3000 + TIE_MS - 1, of(false, false, false));
+    expect(tie).toEqual({ n: 3, phase: 'over', since: 3000 + TIE_MS - 1, players: [A, B, C], winner: null, tied: [A, B], wins: { [A]: 3, [B]: 1 } });
+    // A stands TIE_MS: A wins alone.
+    expect(advance(r, 3000 + TIE_MS, of(true, false, false))).toEqual({ n: 3, phase: 'over', since: 3000 + TIE_MS, players: [A, B, C], winner: A, wins: { [A]: 3 } });
+    // The last two fall in the same count: theirs, at once; three at once, the three's.
+    expect(advance(advance(play, 1000, of(true, true, false)), 1050, of(false, false, false))).toMatchObject({ phase: 'over', winner: null, tied: [A, B], wins: { [A]: 3, [B]: 1 } });
+    expect(advance(advance(play, 1000, of(true, true, true)), 1050, of(false, false, false))).toMatchObject({ tied: [A, B, C], wins: { [A]: 3, [B]: 1, [C]: 1 } });
+    // A leader that counts only now and then (its tab hidden) sees B down, then none, past TIE_MS: A stood it out.
+    expect(advance(r, 3000 + TIE_MS + 400, of(false, false, false))).toMatchObject({ phase: 'over', winner: A, wins: { [A]: 3 } });
+    // Two fall at once, one stands TIE_MS on: that one wins.
+    r = advance(advance(play, 1000, of(true, true, true)), 1050, of(true, false, false));
+    expect(advance(r, 1050 + TIE_MS, of(true, false, false))).toMatchObject({ phase: 'over', winner: A });
+    // A tie is shown until the next round counts down, which starts with nothing of it, nor of the play's counting.
+    const next = advance(tie, at(tie, OVER_MS), of(true, true, true));
+    expect(next).toEqual({ n: 4, phase: 'count', since: at(tie, OVER_MS), players: [A, B, C], winner: null, wins: { [A]: 3, [B]: 1 } });
+    expect(advance(tie, at(tie, OVER_MS), here({ who: A, n: 3, known: 3, alive: true }))).toEqual({ n: 3, phase: 'wait', since: at(tie, OVER_MS), players: [], winner: null, wins: { [A]: 3, [B]: 1 } });
   });
 
   it('goes back to the wait when the second player leaves during the countdown', () => {
@@ -428,6 +499,23 @@ describe('Bonk, on the wire (core/bonk.ts)', () => {
     expect(parseFrame(JSON.stringify(p))).toEqual({ k: 'p', id: 3, vx: 4.44, vz: -1, up: 0 });
     expect(parseFrame(JSON.stringify({ k: 'd', n: 4 }))).toEqual({ k: 'd', n: 4 });
     for (const off of [{ ...i, id: 0 }, { ...i, x: 'x' }, { ...p, vx: 500 }, { ...p, up: -1 }, { k: 'd', n: 0 }, { k: 'd' }]) expect(parseFrame(JSON.stringify(off))).toBeNull();
+  });
+
+  it('reads back a tie with the round, and a wind; leaves out a tie that is off, the round kept', () => {
+    const r: Round = { n: 2, phase: 'over', since: 1000, players: [A, B, C], winner: null, tied: [A, B], wins: { [A]: 1, [B]: 1 } };
+    const f = roundFrame(r, 1500, 7);
+    expect(f.ti).toEqual([A, B]);
+    expect(parseFrame(JSON.stringify(f))).toEqual(f);
+    expect(roundOf(f, 90_000)).toEqual({ ...r, since: 89_500 });
+    // No tie, no field: as apps from before ties send it, and read it.
+    expect(roundFrame({ ...r, tied: [] }, 1500, 7)).not.toHaveProperty('ti');
+    for (const ti of [[A, 'x'], 'x', Array(17).fill(A)]) expect(parseFrame(JSON.stringify({ ...f, ti }))).toEqual(roundFrame({ ...r, tied: [] }, 1500, 7));
+    const w = gustFrame(3, gust({ x: 1, z: 2 }, 0)!);
+    expect(w).toEqual({ k: 'w', n: 3, x: 0.45, z: 0.89 });
+    const back = parseFrame(JSON.stringify(w));
+    expect(back).toMatchObject({ k: 'w', n: 3 });
+    expect(Math.hypot((back as typeof w).x, (back as typeof w).z)).toBeCloseTo(1, 10);
+    for (const off of [{ n: 0 }, { x: 2 }, { x: 0, z: 0 }, { z: 'x' }, { n: 1.5 }]) expect(parseFrame(JSON.stringify({ ...w, ...off }))).toBeNull();
   });
 
   it('drops anything off', () => {

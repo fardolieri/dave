@@ -1,11 +1,12 @@
 // Bonk on screen (core/bonk.ts): my ball, everyone else's as their apps say, the floe and the sea, in three.js; the keys,
 // a stick on a touch screen, the mouse held followed, the sounds; the round and its items, run by its leader, who moves
-// the mystery ball too. Loaded only once a friend plays (client/Game.tsx): three.js is most of a megabyte.
+// the mystery ball too; the wind that who fell off blows. Loaded only once a friend plays (client/Game.tsx): three.js is most of a megabyte.
 import * as THREE from 'three';
 import {
-  BALL_RADIUS, DROP_Y, FELT_HIT, FLOE_START, RESPAWN_MS, SUNK_Y, BONK_AGAIN_MS, advance, ahead, ask, ballAt, ballFrame, bonk, dash, dropDue, dropIn, dropTime, dropped, dropsLeft, effectsOf, fastFrom,
-  firstRound, firstStage, floeRadius, gigaPower, gigaTier, gone, hitFrame, itemFrame, itemOf, knocked, leaderOf, movesOf, parseFrame, playClock, pushFrame, roll, roundOf, spawnAt, speedAt,
-  stageFrame, stageOf, stageOfFrame, steer, toward, touched, whoOf, COUNT_MS, ITEMS, type Ball, type BallFrame, type Counted, type GameView, type Item, type Round, type Stage,
+  BALL_RADIUS, DROP_Y, FELT_HIT, FLOE_START, GUST_EVERY_MS, GUST_MS, PLAIN, RESPAWN_MS, STILL, SUNK_Y, BONK_AGAIN_MS, advance, ahead, ask, ballAt, ballFrame, bonk, canBlow, dash, dropDue, dropIn,
+  dropTime, dropped, dropsLeft, effectsOf, fastFrom, firstRound, firstStage, floeRadius, gigaPower, gigaTier, gone, gust, gustFrame, hitFrame, itemFrame, itemOf, knocked, leaderOf, movesOf,
+  parseFrame, playClock, pushFrame, roll, roundOf, spawnAt, speedAt, stageFrame, stageOf, stageOfFrame, steer, toward, touched, whoOf, windAt, COUNT_MS, ITEMS, type Ball, type BallFrame,
+  type Counted, type GameView, type Gust, type Item, type Led, type Stage,
 } from '../core/bonk';
 import type { GameLinks } from './gamelinks';
 import { exposeHooks } from './hooks';
@@ -67,7 +68,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   let ball: Ball = { ...ballAt(0, 0), ...spawnAt(0, 1) };
   /** The round I play; 0 while I watch one or none is on. */
   let playing = 0;
-  let round: Round = firstRound(performance.now());
+  let round: Led = firstRound(performance.now());
   /**
    * Whose round frames I take, and the newest of each: by its sender's clock (ms), so a leader who reloads, and counts
    * again, still counts on from where they were.
@@ -97,6 +98,15 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   let giga = 0;
   /** The felt bonks my ball had with others' in the game, which the leader counts toward the next mystery ball. */
   let felt = 0;
+  /**
+   * The wind: the gusts blowing on the floe (core `Gust`), mine too, which push my ball and the mystery ball where I roll
+   * it; each as it came, to be shown (`gale`); and when I last blew one, out of this round (-Infinity for not yet).
+   */
+  let gusts: Gust[] = [];
+  const blown: { who: string; g: Gust }[] = [];
+  let blewAt = -Infinity;
+  /** For the suite: my ball off the floe once `Date.now()` comes to this (`__daveFall`). */
+  let fallAt: number | null = null;
   /** A felt bonk my ball had with another's (core FELT_HIT): one more, and its giga spent by it. */
   const hadBonk = (spent: boolean) => { felt++; if (spent) giga = 0; };
 
@@ -132,7 +142,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   };
 
   // The round: who plays it, where they start, and what I do in it.
-  const took = (next: Round, now: number) => {
+  const took = (next: Led, now: number) => {
     const was = round;
     round = next;
     if (next.n === was.n && next.phase === was.phase) return;
@@ -140,6 +150,9 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       const i = next.players.indexOf(myWho);
       if (i >= 0) { playing = next.n; ball = { ...ballAt(0, 0), ...spawnAt(i, next.players.length) }; fellAt = null; }
       else { playing = 0; ball = { ...ball, alive: false, y: SUNK_Y }; }
+      blewAt = -Infinity;
+      gusts = [];
+      lastWay = null;
     } else if (next.phase === 'play' && playing !== next.n) {
       // Came in after the countdown: this round is watched.
       playing = 0;
@@ -149,11 +162,35 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       if (!ball.alive) { ball = { ...ballAt(0, 0), ...spawnAt(0, 1) }; fellAt = null; }
     } else if (next.phase === 'over') {
       lastFloe = floeRadius('play', playClock(now - was.since, was.n === stage.n ? fastFrom(stage) : null), lastFloe);
-      if (next.winner === myWho) thump(6, true);
+      if (next.winner === myWho || next.tied?.includes(myWho)) thump(6, true);
+      // A tie: who shares it, said over the banner, which says only that it is one (it is too big for names).
+      if (next.tied?.length) {
+        const names = next.tied.map(nameOf).sort((a, b) => (a === 'You' ? -1 : b === 'You' ? 1 : 0));
+        say(`${names.slice(0, -1).join(', ')} and ${names.at(-1)} share the round`, now);
+      }
     }
   };
 
   const heard = (now: number): Other[] => [...others.values()].filter((o) => now - o.at < HEARD_MS);
+  /** A player by the start of their key (core `whoOf`), as the HUD names them. */
+  const nameOf = (who: string): string => {
+    if (who === myWho) return 'You';
+    const o = [...others.values()].find((x) => whoOf(x.key) === who);
+    return o ? opts.faceOf(o.key).name : 'Someone';
+  };
+  /** Out of the round I play: fallen off, and blowing the wind (core `Gust`). */
+  const isOut = () => round.phase === 'play' && playing !== 0 && playing === round.n && !ball.alive;
+  /**
+   * Which way I would blow, out: toward a spot on the floe pointed at, from its middle, else as steered; else the way last
+   * chosen, so a thumb let go of the stick still blows where it pointed; else, before any, across the floe from where I
+   * went in, so Blow on a touch screen does something from the start.
+   */
+  let lastWay: { x: number; z: number } | null = null;
+  const blowWay = (spot: { x: number; z: number } | null) => {
+    const way = spot ?? sticked ?? keyed;
+    if (Math.hypot(way.x, way.z) >= 0.1) lastWay = way;
+    return lastWay ?? (Math.hypot(ball.x, ball.z) >= 0.1 ? { x: -ball.x, z: -ball.z } : way);
+  };
 
   const offFrames = links.listen((from, data) => {
     const f = parseFrame(data);
@@ -183,6 +220,14 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     }
     if (f.k === 'd') {
       if (leader === me && f.n === round.n) { stage = ask(current(), round, whoOf(from), now); lastRoundSent = 0; }
+      return;
+    }
+    if (f.k === 'w') {
+      // A wind from one who plays the round on now: blowing from when it came, by my clock, on top of any other.
+      if (round.phase !== 'play' || f.n !== round.n || !round.players.includes(whoOf(from))) return;
+      const g = { x: f.x, z: f.z, until: now + GUST_MS };
+      gusts.push(g);
+      blown.push({ who: whoOf(from), g });
       return;
     }
     if (f.k === 'h') {
@@ -250,6 +295,20 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     }
     const watching = playing === 0 && (round.phase === 'count' || round.phase === 'play');
     if (watching) { dashAsked = false; dashAim = null; }
+    if (fallAt !== null && Date.now() >= fallAt) {
+      fallAt = null;
+      const a = Math.atan2(ball.z, ball.x);
+      if (ball.alive && !watching) { ball = { ...ball, x: Math.cos(a) * (FLOE_START + 1), z: Math.sin(a) * (FLOE_START + 1), alive: false, vy: 0 }; fellAt = now; }
+    }
+    // Out of the round: a dash asked for blows a wind instead, once in a while, the way chosen.
+    if (dashAsked && isOut()) {
+      const g = canBlow(blewAt, now) ? gust(blowWay(dashTo), now) : null;
+      if (g) { blewAt = now; gusts.push(g); blown.push({ who: myWho, g }); links.broadcast(JSON.stringify(gustFrame(round.n, g))); }
+      dashAsked = false;
+      dashAim = null;
+    }
+    gusts = round.phase === 'play' ? gusts.filter((g) => g.until > now) : [];
+    const wind = windAt(gusts, now);
     // The mystery ball, rolled as a ball nobody steers. By the leader's app, until it is off the floe, when what was in it
     // goes to who bonked it last, and on until it has sunk; by the others' from where its frames last said, so it falls
     // and rolls on smoothly between them (they come only so often: a fall seen from them alone goes by in steps), from
@@ -259,7 +318,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       while (left > 0) {
         const h = Math.min(left, MAX_STEP_S / 3);
         left -= h;
-        item.ball = roll(item.ball, { x: 0, z: 0 }, h * speed, floe);
+        item.ball = roll(item.ball, STILL, h * speed, floe, PLAIN, wind);
         // Off the floe: what was in it is given, once; by a new leader too, whose copy went off before it took over.
         if (leader === me && !item.ball.alive && stage.ball === item.id) {
           stage = gone(stage, playClock(ms, fast), forced ?? itemOf(Math.random()), gigaPower(Math.random()));
@@ -277,7 +336,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       if (round.phase === 'count') break; // standing at the start, until the go
       if (dashAsked) { const d = dash(ball, dashTo ? { x: dashTo.x - ball.x, z: dashTo.z - ball.z } : input, now); if (d !== ball) { ball = d; dashed = true; lastDash = { vx: d.vx, vz: d.vz }; thump(2, true); } dashAsked = false; dashAim = null; }
       const wasAlive = ball.alive;
-      ball = roll(ball, input, h * speed, floe, moves);
+      ball = roll(ball, input, h * speed, floe, moves, wind);
       if (wasAlive && !ball.alive) fellAt = now;
       for (const o of around) {
         const f = o.frame;
@@ -546,6 +605,32 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   aimRing.renderOrder = 9;
   scene.add(aimRing);
 
+  // Which way I would blow a wind, out of the round: an arrow over the middle of the floe, faint until I may.
+  const arrowShape = new THREE.Shape([[-0.35, 0], [-0.35, 2], [-0.9, 2], [0, 3.2], [0.9, 2], [0.35, 2], [0.35, 0]].map(([x, y]) => new THREE.Vector2(x, y)));
+  const arrowGeometry = new THREE.ShapeGeometry(arrowShape);
+  arrowGeometry.translate(0, -1.6, 0);
+  arrowGeometry.rotateX(-Math.PI / 2);
+  const windArrow = new THREE.Mesh(arrowGeometry, new THREE.MeshBasicMaterial({ color: '#2a8fd8', transparent: true, depthTest: false }));
+  windArrow.renderOrder = 9;
+  windArrow.visible = false;
+  scene.add(windArrow);
+  /** A gust on screen: streaks of air going the way it blows, across the floe, while it lasts. */
+  const gales: { lines: THREE.LineSegments; g: Gust; born: number }[] = [];
+  const gale = (g: Gust, now: number) => {
+    const n = 45, at = new Float32Array(n * 6);
+    for (let i = 0; i < n; i++) {
+      // Across the floe and up to a long way upwind, so the streaks keep coming over it while the gust lasts.
+      const side = (Math.random() - 0.5) * 26, back = -10 - Math.random() * 22, y = 0.2 + Math.random() * 2.2, l = 1 + Math.random() * 1.5;
+      const x = g.x * back - g.z * side, z = g.z * back + g.x * side;
+      at.set([x, y, z, x + g.x * l, y, z + g.z * l], i * 6);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(at, 3));
+    const lines = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false }));
+    scene.add(lines);
+    gales.push({ lines, g, born: now });
+  };
+
   const marker = new THREE.Mesh(new THREE.RingGeometry(BALL_RADIUS * 1.15, BALL_RADIUS * 1.4, 40), new THREE.MeshBasicMaterial({ color: '#ffc400', transparent: true, opacity: 0.85 }));
   marker.rotation.x = -Math.PI / 2;
   scene.add(marker);
@@ -668,11 +753,15 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     const t = now / 1000;
     seaTime.value = seaClock;
 
+    // The snow goes with the wind, and comes back in on the other side.
+    const wind = windAt(gusts, now);
+    const wrap = (v: number) => (v > 25 ? v - 50 : v < -25 ? v + 50 : v);
     for (let i = 0; i < snowCount; i++) {
       let y = snowAt[i * 3 + 1]! - dt * pace * 1.2;
       if (y < -0.5) y = 20;
       snowAt[i * 3 + 1] = y;
-      snowAt[i * 3] = snowAt[i * 3]! + Math.sin(t + i) * dt * 0.3;
+      snowAt[i * 3] = wrap(snowAt[i * 3]! + Math.sin(t + i) * dt * 0.3 + wind.x * dt * 0.6);
+      snowAt[i * 3 + 2] = wrap(snowAt[i * 3 + 2]! + wind.z * dt * 0.6);
     }
     snowGeometry.attributes['position']!.needsUpdate = true;
 
@@ -778,6 +867,28 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       if (g.item !== 'giga' && s) pop(look.word, look.colour, s.x, s.z, now, 1.2, 1400);
       if (g.item === 'fast') flashOf(look.colour, 0.3, 500);
     }
+    // The wind: a gust blown is said, and seen going across the floe; mine is aimed with an arrow while I am out.
+    for (const b of blown.splice(0)) {
+      // Not one that blew out while nothing was drawn (a hidden tab).
+      if (b.g.until <= now) continue;
+      gale(b.g, now);
+      pop('WHOOSH!', '#e8f6ff', -b.g.x * 5, -b.g.z * 5, now, 1, 900);
+      say(`${nameOf(b.who)} blew a wind 💨`, now);
+    }
+    for (const w of [...gales]) {
+      const age = (now - w.born) / GUST_MS;
+      w.lines.position.x += w.g.x * 16 * dt;
+      w.lines.position.z += w.g.z * 16 * dt;
+      (w.lines.material as THREE.LineBasicMaterial).opacity = Math.max(0, Math.min(1, age * 6, (1 - age) * 3)) * 0.75;
+      if (age >= 1) { scene.remove(w.lines); dispose(w.lines); gales.splice(gales.indexOf(w), 1); }
+    }
+    const way = isOut() ? gust(blowWay(aimAt), now) : null;
+    windArrow.visible = way !== null;
+    if (way) {
+      windArrow.rotation.y = Math.atan2(-way.x, -way.z);
+      windArrow.position.set(0, 0.05 + bob, 0);
+      (windArrow.material as THREE.MeshBasicMaterial).opacity = canBlow(blewAt, now) ? 0.85 : 0.25;
+    }
     marker.visible = !watching && ball.alive;
     aimRing.visible = aimAt !== null && marker.visible;
     if (aimAt) aimRing.position.set(aimAt.x, 0.03 + bob, aimAt.z);
@@ -870,17 +981,19 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     const ms = now - round.since;
     const alone = heard(now).length === 0;
     const watching = playing === 0 && (round.phase === 'count' || round.phase === 'play');
-    const name = (who: string | null) => {
-      if (who === null) return null;
-      if (who === myWho) return 'You';
-      const o = [...others.values()].find((x) => whoOf(x.key) === who);
-      return o ? opts.faceOf(o.key).name : 'Someone';
-    };
+    const name = (who: string | null) => (who === null ? null : nameOf(who));
+    // Out of the round: when I may blow a wind again, in seconds; 0 for now.
+    const out = isOut(), again = out ? Math.max(0, Math.ceil((GUST_EVERY_MS - (now - blewAt)) / 1000)) : 0;
     let text: string;
     if (round.phase === 'wait') text = alone ? 'Waiting for a friend to join… roll around meanwhile' : 'Next round starts soon';
     else if (round.phase === 'count') text = watching ? 'You are in the next round' : String(Math.max(1, Math.ceil((COUNT_MS - ms) / 1000)));
-    else if (round.phase === 'play') text = watching ? 'You are in the next round' : ms < 900 ? 'Bonk!' : !ball.alive ? 'Splash! You are out' : '';
+    else if (round.phase === 'play') text = watching ? 'You are in the next round' : ms < 900 ? 'Bonk!' : !out ? '' : again ? `Splash! You are out · 💨 again in ${again}` : 'Splash! You are out · blow them a wind 💨';
+    else if (round.tied?.length) text = '📸 Photo finish!';
     else { const w = name(round.winner); text = w === null ? 'Splash! Nobody is left' : w === 'You' ? '🏆 You win!' : `🏆 ${w} wins!`; }
+    const helpText = !renderer ? help.textContent ?? '' : out
+      ? 'Out: aim a wind with the arrows, WASD or the mouse held · Space or the right button blows it, every 10 s'
+      : 'Arrows, WASD or the mouse held to roll · Space or the right button to dash · bonk everyone into the sea';
+    const dashText = out ? (again ? `💨 ${again}` : 'Blow') : 'Dash';
     const wins = Object.entries(round.wins).sort((a, b) => b[1] - a[1]);
     const gigaText = giga > 0 && !watching ? `${lookOf(giga).name}: your next bonk` : '';
     const st = lasting(), fx = effectsOf(st, myWho);
@@ -889,9 +1002,11 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     const left = dropsLeft(round.wins[myWho] ?? 0, st.used[myWho] ?? 0);
     const dropText = canDrop() ? `${left}` : '';
     const toastText = now < toastUntil ? toast.textContent ?? '' : '';
-    const key = `${text}|${JSON.stringify(wins)}|${round.phase}|${gigaText}|${effectsText}|${dropText}|${toastText}`;
+    const key = `${text}|${JSON.stringify(wins)}|${round.phase}|${gigaText}|${effectsText}|${dropText}|${toastText}|${helpText}|${dashText}`;
     if (key === hudKey) return;
     hudKey = key;
+    help.textContent = helpText;
+    dashButton.textContent = dashText;
     effectsLine.textContent = effectsText;
     dropButton.hidden = !dropText;
     dropButton.dataset['left'] = left > 1 ? dropText : '';
@@ -935,7 +1050,12 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       const now = performance.now();
       return {
         phase: round.phase, round: round.n, leader, playing: playing !== 0, spectating: playing === 0 && (round.phase === 'count' || round.phase === 'play'), webgl: renderer !== null,
-        me: { x: ball.x, z: ball.z, vx: ball.vx, vz: ball.vz, alive: ball.alive, lastDash, giga, ...effectsOf(lasting(), myWho), drops: dropsLeft(round.wins[myWho] ?? 0, current().used[myWho] ?? 0) }, aim: aimAt,
+        winner: round.winner, tied: round.tied ?? [],
+        me: {
+          x: ball.x, z: ball.z, vx: ball.vx, vz: ball.vz, alive: ball.alive, lastDash, giga, ...effectsOf(lasting(), myWho), drops: dropsLeft(round.wins[myWho] ?? 0, current().used[myWho] ?? 0),
+          wind: windAt(gusts, now), blow: isOut() ? Math.max(0, GUST_EVERY_MS - (now - blewAt)) : -1,
+        },
+        aim: aimAt,
         item: item && { x: item.ball.x, z: item.ball.z, y: item.ball.y, vx: item.ball.vx, vz: item.ball.vz, alive: item.ball.alive },
         got: current().got.map((g) => ({ who: g.who, item: g.item })), fast: fastNow() !== null,
         others: heard(now).map((o) => ({ key: o.key, x: o.frame.x, z: o.frame.z, alive: o.frame.a, giga: o.frame.g ?? 0 })),
@@ -950,6 +1070,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       if (ITEMS.includes(what)) { forced = what; forcedAt = { x, z, y }; }
     };
     (window as unknown as { __daveWins?: (who: string, wins: number) => void }).__daveWins = (who, wins) => { round = { ...round, wins: { ...round.wins, [who]: wins } }; lastRoundSent = 0; };
+    // My ball off the floe, once `Date.now()` comes to `at` (now, by default): two pages fall together by one clock.
+    (window as unknown as { __daveFall?: (at?: number) => void }).__daveFall = (at = 0) => { fallAt = at; };
     // Where a spot on the floe is on the page, for the mouse.
     (window as unknown as { __daveScreen?: (x: number, z: number) => { x: number; y: number } }).__daveScreen = (x, z) => {
       const p = new THREE.Vector3(x, 0, z).project(camera), r = host.getBoundingClientRect();
@@ -978,6 +1100,6 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     renderer?.dispose();
     renderer?.domElement.remove();
     hud.remove();
-    if (exposeHooks) for (const hook of ['__daveGame', '__daveGiga', '__daveItem', '__daveWins', '__daveScreen']) delete (window as unknown as Record<string, unknown>)[hook];
+    if (exposeHooks) for (const hook of ['__daveGame', '__daveGiga', '__daveItem', '__daveWins', '__daveFall', '__daveScreen']) delete (window as unknown as Record<string, unknown>)[hook];
   };
 }

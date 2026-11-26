@@ -1,5 +1,6 @@
 // Bonk, the first game (core/game.ts): every player is a ball with their face on it, on an ice floe in the sea. Roll,
-// dash, bonk the others off; the floe shrinks while a round goes on, and the last one on it wins the round. Now and then
+// dash, bonk the others off; the floe shrinks while a round goes on, and the last one on it wins the round, or the last
+// ones share it, fallen together (TIE_MS). Who fell off blows a wind across the floe now and then (`Gust`). Now and then
 // a mystery ball falls in the middle, and whoever bonked it last when it goes off gets what is in it: a giga, its next
 // bonk many times as hard (`gigaPower`), or heavy, handling or double speed for the rest of the round (`Item`).
 //
@@ -35,6 +36,12 @@ export const RESPAWN_MS = 1200;
 /** How long the countdown before a round lasts, and how long the winner is shown after it. */
 export const COUNT_MS = 3000;
 export const OVER_MS = 4000;
+/**
+ * How soon after the last but one the last ball must fall to share the round with it: a photo finish. The leader hears of
+ * a fall from each ball's own app, a frame and a link later, so who fell first by less than this is as much the links'
+ * doing as the players'.
+ */
+export const TIE_MS = 500;
 /** While a round plays: the floe stays whole for a moment, shrinks to FLOE_MID, then on to nothing, so every round ends. */
 export const SHRINK_FROM_MS = 5000;
 export const SHRINK_MID_MS = 45_000;
@@ -112,13 +119,39 @@ export function dash(b: Ball, dir: { x: number; z: number }, now: number): Ball 
 export type Moves = { mass: number; accel: number; top: number; drag: number };
 export const PLAIN: Moves = { mass: 1, accel: ACCEL, top: MAX_ROLL, drag: DRAG };
 
+// Wind.
+
 /**
- * The ball `dt` seconds on: rolled the way it is steered (to its top speed, `moves`; faster only by a dash or a bonk,
- * which then slow by themselves), slowed by the ice. Off the floe (`floe`, its radius) it falls, and is out. Thrown up
+ * A wind a player who fell off blew (`GustFrame`), the way they chose, of length 1: it pushes every ball on the floe that
+ * way for GUST_MS, until `until` by the app's own clock that felt it. Gusts blown at once add up.
+ */
+export type Gust = { x: number; z: number; until: number };
+/** How often a player who fell off may blow, how long a gust lasts, and how hard it pushes (units/s²; a player rolls ACCEL). */
+export const GUST_EVERY_MS = 10_000;
+export const GUST_MS = 1500;
+export const GUST_ACCEL = 8;
+export const STILL = { x: 0, z: 0 };
+
+/** The gust a player blows at `now` the way `dir` points (any length), or null for no way at all. */
+export function gust(dir: { x: number; z: number }, now: number): Gust | null {
+  const l = Math.hypot(dir.x, dir.z);
+  return l < 0.1 ? null : { x: dir.x / l, z: dir.z / l, until: now + GUST_MS };
+}
+
+/** The wind on the floe at `now`: every gust still blowing, added up (units/s²). */
+export const windAt = (gusts: readonly Gust[], now: number): { x: number; z: number } =>
+  gusts.reduce((w, g) => (g.until > now ? { x: w.x + g.x * GUST_ACCEL, z: w.z + g.z * GUST_ACCEL } : w), STILL);
+
+/** Whether a player who fell off, who last blew at `last` (-Infinity for not this round), may blow again at `now`. */
+export const canBlow = (last: number, now: number): boolean => now - last >= GUST_EVERY_MS;
+
+/**
+ * The ball `dt` seconds on: rolled the way it is steered (to its top speed, `moves`; faster only by a dash, a bonk or the
+ * wind, `windAt`, which then slow by themselves), slowed by the ice. Off the floe (`floe`, its radius) it falls, and is out. Thrown up
  * by a giga (`giga`), or dropped from the sky, it flies, steered by nobody, and comes down on the floe; out over the sea,
  * it is out.
  */
-export function roll(b: Ball, dir: { x: number; z: number }, dt: number, floe: number, moves: Moves = PLAIN): Ball {
+export function roll(b: Ball, dir: { x: number; z: number }, dt: number, floe: number, moves: Moves = PLAIN, wind: { x: number; z: number } = STILL): Ball {
   if (!b.alive) {
     if (b.y <= SUNK_Y) return b;
     const vy = b.vy - GRAVITY * dt;
@@ -140,6 +173,8 @@ export function roll(b: Ball, dir: { x: number; z: number }, dt: number, floe: n
   const speed = Math.hypot(vx, vz);
   const cap = Math.max(was, moves.top);
   if (speed > cap) { vx = (vx / speed) * cap; vz = (vz / speed) * cap; }
+  // The wind past the cap: it blows a ball on faster than it rolls itself.
+  vx += wind.x * dt; vz += wind.z * dt;
   const slow = Math.exp(-moves.drag * dt);
   vx *= slow; vz *= slow;
   const x = b.x + vx * dt, z = b.z + vz * dt;
@@ -378,21 +413,31 @@ export type Counted = { who: string; n: number; known: number; alive: boolean };
 
 /** What the inspection hooks show of the game (`window.__daveGame`, client/bonk.ts). */
 export type GameView = {
-  phase: Phase; round: number; leader: string | null; playing: boolean; spectating: boolean; webgl: boolean;
-  me: { x: number; z: number; vx: number; vz: number; alive: boolean; lastDash: { vx: number; vz: number } | null; giga: number; heavy: boolean; handling: boolean; drops: number };
+  phase: Phase; round: number; leader: string | null; playing: boolean; spectating: boolean; webgl: boolean; winner: string | null; tied: string[];
+  /** `wind`: what blows on my ball now (`windAt`); `blow`: ms until I may blow one, 0 for now, -1 for not at all (I am not out). */
+  me: { x: number; z: number; vx: number; vz: number; alive: boolean; lastDash: { vx: number; vz: number } | null; giga: number; heavy: boolean; handling: boolean; drops: number; wind: { x: number; z: number }; blow: number };
   item: { x: number; z: number; y: number; vx: number; vz: number; alive: boolean } | null; got: { who: string; item: Item }[]; fast: boolean;
   aim: { x: number; z: number } | null; others: { key: string; x: number; z: number; alive: boolean; giga: number }[]; wins: Record<string, number>; connected: number;
 };
 
 /**
- * The round at `now`, with `here` the players the leader hears from (the leader too). A second player starts a round;
- * the countdown runs to the play; the play runs until one player or none is left on the floe; the winner is shown, and
- * the next round starts, or the wait if only one player is left. A player who came in after the countdown watches.
+ * The round as its leader runs it: what the leader's app keeps of the play besides, for a tie, which goes to nobody else
+ * (a new leader decides without it). `standing`: who stood on the floe, as last counted while more than one did.
+ * `closing`: when one or none was left, and who stood until then, who share the round if the last (`last`, for one left)
+ * falls within TIE_MS.
  */
-export function advance(r: Round, now: number, here: readonly Counted[]): Round {
+export type Led = Round & { standing?: string[]; closing?: { at: number; who: string[]; last?: string } };
+
+/**
+ * The round at `now`, with `here` the players the leader hears from (the leader too). A second player starts a round;
+ * the countdown runs to the play; the play runs until one player or none is left on the floe, and TIE_MS on for one; the
+ * winner is shown, or those who tied, and the next round starts, or the wait if only one player is left. A player who
+ * came in after the countdown watches.
+ */
+export function advance(r: Led, now: number, here: readonly Counted[]): Led {
   const ms = now - r.since;
   const enough = here.length >= 2;
-  const count = (n: number): Round => ({ ...r, n, phase: 'count', since: now, players: here.map((p) => p.who).sort(), winner: null });
+  const count = (n: number): Led => ({ n, phase: 'count', since: now, players: here.map((p) => p.who).sort(), winner: null, wins: r.wins });
   switch (r.phase) {
     case 'wait':
       return enough ? count(r.n + 1) : r;
@@ -404,15 +449,28 @@ export function advance(r: Round, now: number, here: readonly Counted[]): Round 
       // Gone from the game counts as fallen, and so does one who came back and only watches (a reload); one whose app
       // has not yet taken the round stands on it still.
       const standing = r.players.filter((who) => { const p = here.find((h) => h.who === who); return p !== undefined && (p.known < r.n || (p.n === r.n && p.alive)); });
-      if (standing.length > 1) return r;
-      const winner = standing[0] ?? null;
-      return { ...r, phase: 'over', since: now, winner, wins: winner ? { ...r.wins, [winner]: (r.wins[winner] ?? 0) + 1 } : r.wins };
+      if (standing.length > 1) return r.closing === undefined && same(standing, r.standing) ? r : { ...settled(r), standing };
+      // One left, or none: those who stood until then share the round if the last one falls too, within TIE_MS. A leader
+      // that never counted more than the one standing (it took over just now) has nobody to wait for.
+      const closing = r.closing ?? { at: now, who: r.standing ?? standing, ...(standing.length === 1 ? { last: standing[0] } : {}) };
+      const late = now - closing.at >= TIE_MS;
+      if (standing.length === 1 && closing.who.length > 1 && !late) return r.closing ? r : { ...r, closing };
+      // None left, counted only after TIE_MS (a leader whose tab is hidden counts once a second): the last one stood it out.
+      const winner = standing[0] ?? (late ? closing.last ?? null : null);
+      const tied = winner === null && closing.who.length > 1 ? closing.who : [];
+      const wins = { ...r.wins };
+      for (const who of winner ? [winner] : tied) wins[who] = (wins[who] ?? 0) + 1;
+      return { ...settled(r), phase: 'over', since: now, winner, wins, ...(tied.length ? { tied } : {}) };
     }
     case 'over':
       if (ms < OVER_MS) return r;
-      return enough ? count(r.n + 1) : { ...r, phase: 'wait', since: now, players: [], winner: null };
+      return enough ? count(r.n + 1) : { ...settled(r), phase: 'wait', since: now, players: [], winner: null };
   }
 }
+
+/** The round alone, without what its leader keeps of the play (`Led`), nor a tie of the round before. */
+const settled = (r: Led): Round => ({ n: r.n, phase: r.phase, since: r.since, players: r.players, winner: r.winner, wins: r.wins });
+const same = (a: readonly string[], b: readonly string[] | undefined): boolean => b !== undefined && a.length === b.length && a.every((x, i) => x === b[i]);
 
 // On the wire: as core/rounds.ts says.
 
@@ -442,7 +500,9 @@ export type ItemFrame = { k: 'i'; id: number; x: number; z: number; vx: number; 
 export type PushFrame = { k: 'p'; id: number; vx: number; vz: number; up: number };
 /** For the leader: I drop a mystery ball in round `n` (`ask`). */
 export type DropFrame = { k: 'd'; n: number };
-export type Frame = BallFrame | StageFrame | HitFrame | ItemFrame | PushFrame | DropFrame;
+/** For everyone: I fell off in round `n`, and blow a wind the way `x`, `z` point (`gust`), of length 1. */
+export type GustFrame = { k: 'w'; n: number; x: number; z: number };
+export type Frame = BallFrame | StageFrame | HitFrame | ItemFrame | PushFrame | DropFrame | GustFrame;
 
 export const ballFrame = (b: Ball, r: number, n: number, dashed: boolean, giga = 0, felt = 0): BallFrame =>
   ({ k: 'b', r, n, x: round2(b.x), z: round2(b.z), vx: round2(b.vx), vz: round2(b.vz), y: round2(b.y), a: b.alive, d: dashed, ...(giga ? { g: giga } : {}), ...(felt ? { c: felt } : {}) });
@@ -464,6 +524,8 @@ export const stageOfFrame = (f: StageFrame): Stage | null => (f.st
 
 export const itemFrame = (id: number, b: Ball): ItemFrame =>
   ({ k: 'i', id, x: round2(b.x), z: round2(b.z), vx: round2(b.vx), vz: round2(b.vz), y: round2(b.y), vy: round2(b.vy), a: b.alive });
+
+export const gustFrame = (n: number, g: Gust): GustFrame => ({ k: 'w', n, x: round2(g.x), z: round2(g.z) });
 
 export const pushFrame = (id: number, knock: Knock): PushFrame => ({ k: 'p', id, vx: round2(knock.vx), vz: round2(knock.vz), up: round2(knock.up) });
 
@@ -515,6 +577,12 @@ export function parseFrame(text: unknown): Frame | null {
     return { k: 'p', id: f['id'], vx, vz, up };
   }
   if (f['k'] === 'd') return Number.isSafeInteger(f['n']) && (f['n'] as number) > 0 ? { k: 'd', n: f['n'] as number } : null;
+  if (f['k'] === 'w') {
+    const { n, x, z } = f;
+    if (!Number.isSafeInteger(n) || (n as number) <= 0 || !num(x, 1) || !num(z, 1) || Math.hypot(x, z) < 0.9) return null;
+    const l = Math.hypot(x, z);
+    return { k: 'w', n: n as number, x: x / l, z: z / l };
+  }
   return null;
 }
 
