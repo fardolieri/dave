@@ -1,12 +1,12 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-26T21:23 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-26T21:28 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: preview 173, branch 163, nightly 9.
+Runs recorded: preview 172, branch 163, nightly 9.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
@@ -61,4 +61,3 @@ Runs recorded: preview 173, branch 163, nightly 9.
 | 1 | 1 | preview 1 | attachment.spec.ts › a photo copied from a page whose img src is a placeholder goes as the photo the browser copied | expect(locator).toHaveCount(expected) failed | [10-28](https://github.com/fardolieri/dave/actions/runs/40762088318/attempts/1) | [10-28](https://github.com/fardolieri/dave/actions/runs/40762088318/attempts/1) |  |
 | 1 | 1 | preview 1 | resilience.spec.ts › an offer stuck for a friend who then reloads leaves their new connection alone (the impolite side reloads, the first to join) | Bob sends the stuck offer again | [10-28](https://github.com/fardolieri/dave/actions/runs/40762088318/attempts/1) | [10-28](https://github.com/fardolieri/dave/actions/runs/40762088318/attempts/1) | 68 |
 | 1 | 1 | preview 1 | attachment.spec.ts › Send waits for a picture whose original is still coming; then the pictures go in the order shown, and the text after them | expect(locator).toHaveCount(expected) failed | [10-28](https://github.com/fardolieri/dave/actions/runs/40762088318/attempts/1) | [10-28](https://github.com/fardolieri/dave/actions/runs/40762088318/attempts/1) |  |
-| 1 | 1 | preview 1 | attachment.spec.ts › regression: a pull tried again after its friend could not be reached is answered | expect(locator).toHaveCount(expected) failed | [10-27](https://github.com/fardolieri/dave/actions/runs/40585343590/attempts/1) | [10-27](https://github.com/fardolieri/dave/actions/runs/40585343590/attempts/1) | 61 |
