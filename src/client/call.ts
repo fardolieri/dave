@@ -80,11 +80,13 @@ export type CallDiagnostics = {
   /**
    * The call's AudioContext, whether the browser held the call's sound back until a click, and the one element that plays
    * every friend (reports of 2026-11-22 and 11-26): how long its place in the stream has stood still, how often it was
-   * found stopped or failed and played again, and whether a speaker was chosen for it (not which: a device id stays here).
+   * found stopped or failed and played again, the error it last failed with (gone from the element once its stream is given
+   * again), whether it has a stream yet (none until a friend's sound first arrives), and whether a speaker was chosen for it
+   * (not which: a device id stays here).
    */
   playback: {
-    context: AudioContextState | null; blocked: boolean;
-    paused: boolean; ended: boolean; readyState: number; error: number | null; stillMs: number | null; restarts: number; speaker: 'default' | 'chosen';
+    context: AudioContextState | null; blocked: boolean; attached: boolean;
+    paused: boolean; ended: boolean; readyState: number; error: number | null; stillMs: number | null; restarts: number; lastError: number | null; speaker: 'default' | 'chosen';
   };
   peers: PeerDiagnostics[];
 };
@@ -942,6 +944,8 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
   let outputMovedAt = 0;
   /** How often `output` was found stopped or failed and played again in this call (playbackTimer). */
   let outputRestarts = 0;
+  /** The error code it last failed with in this call, kept after the element's own is cleared by playing it again. */
+  let outputLastError: number | null = null;
   /** Where a friend's sound goes: the mix, which `output` plays from the first friend of a call on. */
   function mixIn(ctx: AudioContext): MediaStreamAudioDestinationNode {
     mix ??= ctx.createMediaStreamDestination();
@@ -959,6 +963,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     outputTime = 0;
     outputMovedAt = 0;
     outputRestarts = 0;
+    outputLastError = null;
   }
 
   /**
@@ -976,7 +981,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
     const error = output.error?.code ?? null;
     if (!output.paused && !output.ended && error === null) return;
     if (++outputRestarts <= PLAYBACK_RESTARTS_REPORTED) posthog.capture('voice_playback_restarted', { restarts: outputRestarts, ended: output.ended, ready_state: output.readyState, error, peers: peers.size, visible: document.visibilityState === 'visible' });
-    if (error !== null) { output.srcObject = null; output.srcObject = mix.stream; }
+    if (error !== null) { outputLastError = error; output.srcObject = null; output.srcObject = mix.stream; }
     output.play().catch(refused);
   }, PLAYBACK_CHECK_MS);
 
@@ -1522,9 +1527,9 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
       shareSettings: untrack(shareSettings), viewerSettings: untrack(viewerSettings), audioProcessing: { echoCancellation, noiseSuppression, autoGainControl, noiseRemoval: untrack(noiseRemoval), voiceThreshold, path: voice?.path ?? null, stop: untrack(noiseRemovalStop), load: voiceLoad, micRate: voiceTrack?.getSettings().sampleRate ?? null }, lowBandwidthVoice: lowVoiceOn, voiceRepair,
       ice: { servers: iceServers.length, turn: hasTurn(), ageMinutes: iceIssuedAt ? Math.round((Date.now() - iceIssuedAt) / 60000) : null },
       playback: {
-        context: audioCtx?.state ?? null, blocked: untrack(audioBlocked),
+        context: audioCtx?.state ?? null, blocked: untrack(audioBlocked), attached: output.srcObject !== null,
         paused: output.paused, ended: output.ended, readyState: output.readyState, error: output.error?.code ?? null,
-        stillMs: outputMovedAt ? Date.now() - outputMovedAt : null, restarts: outputRestarts, speaker: (output as HTMLAudioElement & { sinkId?: string }).sinkId ? 'chosen' : 'default',
+        stillMs: outputMovedAt ? Date.now() - outputMovedAt : null, restarts: outputRestarts, lastError: outputLastError, speaker: (output as HTMLAudioElement & { sinkId?: string }).sinkId ? 'chosen' : 'default',
       },
       peers: await Promise.all([...peers.values()].map(peerDiag)),
     };

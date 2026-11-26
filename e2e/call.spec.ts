@@ -254,9 +254,9 @@ test('regression: the call\'s sound that stopped playing while voices arrive pla
   await alice.connectedTo('Bob');
   await needHooks(alice);
   await alice.hearing('Bob');
-  const playing = async () => (await alice.hook<{ output: boolean | null }>('playback')).output === true;
-  await expect.poll(playing, { message: "the call's sound plays for Alice" }).toBe(true);
+  // Bob's voice arrives, so the call's sound is being played: stopped now, as a browser that stops it on its own does.
   expect(await alice.hook('pauseOutput')).toBe('paused');
+  const playing = async () => (await alice.hook<{ output: boolean | null }>('playback')).output === true;
   await expect.poll(playing, { message: "the call's sound plays again for Alice" }).toBe(true);
 
   // A report from the one who cannot hear says whether the call's sound plays there, and how loud each friend arrives.
@@ -270,7 +270,7 @@ test('regression: the call\'s sound that stopped playing while voices arrive pla
   await dialog.getByRole('button', { name: 'Send' }).click();
   const report = JSON.parse((await sent).postDataJSON().properties.report);
   const playback = report.call.playback;
-  expect(playback).toMatchObject({ blocked: false, paused: false, ended: false, error: null, restarts: 1, speaker: 'default' });
+  expect(playback).toMatchObject({ blocked: false, attached: true, paused: false, ended: false, error: null, restarts: 1, lastError: null, speaker: 'default' });
   expect(typeof playback.stillMs).toBe('number');
   if (browserName === 'chromium') expect(playback.stillMs, "the call's sound moves on").toBeLessThan(3000);
   expect(report.call.peers[0].playback).toMatchObject({ gain: 1 });
