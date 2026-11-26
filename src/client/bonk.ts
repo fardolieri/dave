@@ -145,7 +145,10 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   const took = (next: Led, now: number) => {
     const was = round;
     round = next;
-    if (next.n === was.n && next.phase === was.phase) return;
+    // The same round, and for a countdown or a play the same players: a round counted down again with others (core
+    // `advance`), or taken from a new leader who counted it with others, places me anew, or has me watch.
+    const reseated = (next.phase === 'count' || next.phase === 'play') && next.players.join() !== was.players.join();
+    if (next.n === was.n && next.phase === was.phase && !reseated) return;
     if (next.phase === 'count') {
       const i = next.players.indexOf(myWho);
       if (i >= 0) { playing = next.n; ball = { ...ballAt(0, 0), ...spawnAt(i, next.players.length) }; fellAt = null; }
@@ -153,8 +156,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       blewAt = -Infinity;
       gusts = [];
       lastWay = null;
-    } else if (next.phase === 'play' && playing !== next.n) {
-      // Came in after the countdown: this round is watched.
+    } else if (next.phase === 'play' && (playing !== next.n || !next.players.includes(myWho))) {
+      // Came in after the countdown, or left out of the round by the leader who counts it: this round is watched.
       playing = 0;
       ball = { ...ball, alive: false, y: SUNK_Y };
     } else if (next.phase === 'wait') {

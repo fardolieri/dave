@@ -430,9 +430,9 @@ export type Led = Round & { standing?: string[]; closing?: { at: number; who: st
 
 /**
  * The round at `now`, with `here` the players the leader hears from (the leader too). A second player starts a round;
- * the countdown runs to the play; the play runs until one player or none is left on the floe, and TIE_MS on for one; the
- * winner is shown, or those who tied, and the next round starts, or the wait if only one player is left. A player who
- * came in after the countdown watches.
+ * the countdown runs to the play, and starts over with everyone when who is here changes; the play runs until one player
+ * or none is left on the floe, and TIE_MS on for one; the winner is shown, or those who tied, and the next round starts,
+ * or the wait if only one player is left. A player who came in after the countdown watches.
  */
 export function advance(r: Led, now: number, here: readonly Counted[]): Led {
   const ms = now - r.since;
@@ -443,6 +443,9 @@ export function advance(r: Led, now: number, here: readonly Counted[]): Led {
       return enough ? count(r.n + 1) : r;
     case 'count': {
       if (!enough) return { ...r, phase: 'wait', since: now, players: [] };
+      // Who is here changed while it counts down: a friend linked or went, or two apps each counted the round down with
+      // some of the players, and one now leads them all. Counted down again, with everyone in.
+      if (!same(here.map((p) => p.who).sort(), r.players)) return count(r.n);
       return ms >= COUNT_MS ? { ...r, phase: 'play', since: now } : r;
     }
     case 'play': {
