@@ -184,6 +184,38 @@ test('ticket 23: join and leave cues follow each friend\'s profile picture', asy
   expect(await heard(carol)).toBeTruthy(); // Carol heard her own leave
 });
 
+test('the cues\' audio sleeps while nothing sounds, and wakes for the next cue', async ({ crowd }) => {
+  // A running AudioContext keeps the audio device and the browser's audio renderer at work while it plays nothing:
+  // about 9 % of a core on the dev box, from the first click on, for as long as the page is open (2026-11-26).
+  const alice = await crowd.open('Alice', { picture: '😀' });
+  const bob = await crowd.open('Bob', { picture: '🦊' });
+  await needHooks(alice);
+  const cues = () => alice.hook<{ cues: string | null }>('playback').then((p) => p.cues);
+  await alice.composer.click(); // her first gesture starts the cues' audio
+  // Headless Firefox on a runner without a sound device never gets a running AudioContext.
+  await expect.poll(cues, { timeout: 3000 }).toMatch(/^(running|asleep)$/).catch(() => {});
+  const first = await cues();
+  test.skip(first !== 'running' && first !== 'asleep', `no running AudioContext for cues here (${first}), so no cue can play`);
+  await expect.poll(cues, { message: 'with nothing to play, the cues\' audio sleeps', timeout: 15_000 }).toBe('asleep');
+  await alice.cuesPlayed();
+
+  // Bob joins the call: Alice, out of it, hears his cue, and it is played, not only scheduled on a stopped clock.
+  await bob.join();
+  await expect.poll(async () => (await alice.cuesPlayed()).length, { message: 'Alice hears Bob join' }).toBeGreaterThan(0);
+  await expect.poll(cues, { message: 'the cue wakes the cues\' audio' }).toBe('running');
+  await expect.poll(cues, { message: 'and it sleeps again once the cue has rung out', timeout: 15_000 }).toBe('asleep');
+
+  // Sounds that come together while it sleeps, two friends' texts, a game's chord: all play, not the first alone.
+  const play = (n: number) => alice.page.evaluate((k) => (window as unknown as { __davePlayCues: (n: number) => void }).__davePlayCues(k), n);
+  await alice.cuesPlayed();
+  await play(1);
+  const one = (await alice.cuesPlayed()).length;
+  expect(one, 'one cue starts its oscillators').toBeGreaterThan(0);
+  await expect.poll(cues, { message: 'asleep again', timeout: 15_000 }).toBe('asleep');
+  await play(2);
+  expect((await alice.cuesPlayed()).length, 'two cues at once, while it sleeps, both play').toBe(2 * one);
+});
+
 test('the title says whether I am heard in my call, and that I am muted, and nothing once out', async ({ crowd }) => {
   const alice = await crowd.open('Alice', { picture: '🦊' });
   const bob = await crowd.open('Bob', { picture: '😀' });

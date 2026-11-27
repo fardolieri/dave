@@ -150,6 +150,8 @@ export function createAttention(links: () => RoomLink[], myKey: string, privateT
   // A friend's private text, once per text (client/privates.ts), whichever room carried it.
   if (privateTexts) onCleanup(privateTexts(() => { cues++; cue(MESSAGE_CUE); }));
   if (exposeHooks) (window as unknown as { __daveCues?: () => number }).__daveCues = () => cues;
+  // Plays the message cue `n` times at once, as friends' texts or joins that come together do (sound.ts, a sleeping context).
+  if (exposeHooks) (window as unknown as { __davePlayCues?: (n: number) => void }).__davePlayCues = (n) => { for (let i = 0; i < n; i++) playCue(MESSAGE_CUE); };
 
   // ---- wake lock while watching at least one live share, or while in a call on a touch device: a phone that
   // dims to black mid-call drops the call (report of Sep 23). Serialised so overlapping triggers cannot double-request.
