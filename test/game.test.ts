@@ -481,7 +481,7 @@ describe('Bonk, the rounds (core/bonk.ts)', () => {
 describe('Bonk, on the wire (core/bonk.ts)', () => {
   it('reads back a ball and a round, and a follower takes the round where the leader has it', () => {
     const b = ballFrame({ ...ballAt(1.23456, -2), vx: 3.333, alive: false, y: -1 }, 4, 5, true);
-    expect(parseFrame(JSON.stringify(b))).toEqual({ k: 'b', r: 4, n: 5, x: 1.23, z: -2, vx: 3.33, vz: 0, y: -1, a: false, d: true });
+    expect(parseFrame(JSON.stringify(b))).toEqual({ k: 'b', r: 4, n: 5, x: 1.23, z: -2, vx: 3.33, vz: 0, y: -1, a: false, d: true, m: 1 });
     const r: Round = { n: 2, phase: 'play', since: 1000, players: [A, B], winner: null, wins: { [A]: 2 } };
     const f = roundFrame(r, 1500, 7);
     expect(parseFrame(JSON.stringify(f))).toEqual(f);
@@ -507,7 +507,7 @@ describe('Bonk, on the wire (core/bonk.ts)', () => {
     expect(parseFrame(JSON.stringify(roundFrame(r, 1500, 7)))).toEqual(roundFrame(r, 1500, 7));
     expect(stageOfFrame(roundFrame(r, 1500, 7))).toBeNull();
     // A stage that is off is left out, the round kept.
-    expect(parseFrame(JSON.stringify({ ...f, st: { ...f.st, g: [[1, B, 'banana', 0, 0]] } }))).toEqual(roundFrame(r, 1500, 7));
+    expect(parseFrame(JSON.stringify({ ...f, st: { ...f.st, g: [[1, B, 'banana', 0, 0]] } }))).toEqual({ ...roundFrame(r, 1500, 7), mp: 1 });
     const i = itemFrame(3, { ...ballAt(1.234, -2), vx: 5, y: 7.891 });
     expect(parseFrame(JSON.stringify(i))).toEqual({ k: 'i', id: 3, x: 1.23, z: -2, vx: 5, vz: 0, y: 7.89, vy: 0, a: true });
     const p = pushFrame(3, { vx: 4.444, vz: -1, up: 0 });

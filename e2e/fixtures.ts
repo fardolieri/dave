@@ -250,6 +250,9 @@ export class Friend {
         console.warn = (...a: unknown[]) => warn(...(typeof a[0] === 'string' && /^\[[A-Z_]+\] /.test(a[0]) ? [`${a[0]}\n${new Error().stack?.split('\n').filter((l) => l !== 'Error').slice(1, 15).join('\n')}`, ...a.slice(1)] : a));
       });
     }
+    // Bonk's tests play on the floe it always was, with no hole in it, unless a test of its maps says otherwise
+    // (client/bonk.ts, `__daveArena`): a pillar, a slope or a hole opening now and then would move the balls they move.
+    await this.context.addInitScript(() => { (window as unknown as { __daveArena: unknown }).__daveArena = { map: 'floe', hole: false }; });
     // Every oscillator a page starts is recorded as "type Hz", so a test can tell which cue played (ticket 23).
     await this.context.addInitScript(() => {
       const played: string[] = [];

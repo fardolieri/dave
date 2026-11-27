@@ -512,12 +512,18 @@ button.play { flex: 1; min-width: 0; padding-inline: 4px; font-weight: 600; font
 .bonk-drop:not([data-left=""])::after { content: attr(data-left); position: absolute; top: -6px; right: -6px; min-width: 20px; padding: 0 4px; border-radius: 999px; background: #ff3b3b; color: #fff; font-size: 12px; font-weight: 900; line-height: 20px; }
 @media (prefers-reduced-motion: no-preference) { .bonk-drop { animation: bonk-drop-glow .8s ease-in-out infinite alternate; } }
 @keyframes bonk-drop-glow { to { box-shadow: 0 0 26px #ff4fd8, 0 0 6px #fff; } }
+/* The map the round is played on (core/bonkmaps.ts), and which of its rounds */
+.bonk-map { position: absolute; top: 10px; right: 10px; padding: 3px 10px; border-radius: 999px; background: rgba(255,255,255,.8); font-size: 13px; font-weight: 800; white-space: nowrap; }
+.bonk-map:empty { display: none; }
+.bonk-hud:not(.clink-hud) .bonk-banner:not(.big) { max-width: min(90%, calc(100% - 300px)); }
 .bonk-toast { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); max-width: 60%; padding: 4px 14px; border-radius: 999px; background: rgba(11,32,51,.8); color: #fff; font-size: 14px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* On a narrow tile, above the dash button, clear of the wins */
 @container (max-width: 480px) {
   .bonk-giga { top: auto; bottom: 104px; right: 50%; transform: translateX(50%); }
   .bonk-effects { top: auto; bottom: 136px; right: 50%; transform: translateX(50%); }
   .bonk-toast { top: 78px; max-width: 90%; }
+  .bonk-map { top: 44px; }
+  .bonk-hud:not(.clink-hud) .bonk-banner:not(.big) { max-width: 90%; }
 }
 .bonk-giga[data-tier="5"] { background: linear-gradient(90deg, #ffd23f, #fff6c8, #ffb703, #ffd23f); background-size: 300% 100%; color: #3a2208; text-shadow: none; }
 @media (prefers-reduced-motion: no-preference) {

@@ -528,3 +528,32 @@ test('Bonk: one who fell off blows a wind the way they choose, every ten seconds
       .toEqual({ blown: true, told: true });
   }
 });
+
+test('Bonk maps: the first rounds are played on the star, and a hole in it swallows the ball over it, out of the round', async ({ crowd }) => {
+  test.setTimeout(90_000);
+  const alice = await open(crowd, 'Alice');
+  await needHooks(alice);
+  const bob = await open(crowd, 'Bob');
+  await alice.join();
+  await bob.join();
+  // The maps in turn, as friends play them, with no hole until this test puts one (fixtures.ts plays the floe).
+  for (const f of [alice, bob]) await f.page.evaluate(() => { (window as unknown as { __daveArena: unknown }).__daveArena = { hole: false }; });
+  await alice.page.getByRole('button', { name: /Play Bonk/ }).click();
+  await tile(bob).click();
+  for (const f of [alice, bob]) await expect.poll(async () => { const v = await view(f); return v?.phase === 'play' && v.round === 1 && v.connected === 1; }, { timeout: 45_000 }).toBe(true);
+  for (const f of [alice, bob]) {
+    expect((await view(f))!.map).toBe('star');
+    await expect(tile(f).locator('.bonk-map')).toHaveText('⭐ Star · 1/5');
+  }
+  const bobWho = (await view(alice))!.others[0]!.key.slice(0, 11);
+
+  // A hole opens where Alice stands: she falls through it, and Bob wins, on both screens.
+  const { x, z } = (await view(alice))!.me;
+  for (const f of [alice, bob]) await f.page.evaluate((at) => { (window as unknown as { __daveArena: unknown }).__daveArena = { hole: at }; }, { x, z });
+  await expect.poll(async () => (await view(alice))!.me.alive, { timeout: 10_000 }).toBe(false);
+  for (const f of [alice, bob]) {
+    await expect.poll(async () => { const v = (await view(f))!; return { winner: v.winner, hole: v.hole && { x: v.hole.x, z: v.hole.z } }; }, { timeout: 15_000, message: `${f.name} sees Bob win` })
+      .toEqual({ winner: bobWho, hole: { x, z } });
+  }
+  await expect(tile(alice).locator('.bonk-banner')).toHaveText('🏆 Bob wins!');
+});

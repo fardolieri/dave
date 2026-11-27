@@ -1,13 +1,15 @@
 // Bonk on screen (core/bonk.ts): my ball, everyone else's as their apps say, the floe and the sea, in three.js; the keys,
 // a stick on a touch screen, the mouse held followed, the sounds; the round and its items, run by its leader, who moves
-// the mystery ball too; the wind that who fell off blows. Loaded only once a friend plays (client/Game.tsx): three.js is most of a megabyte.
+// the mystery ball too; the wind that who fell off blows; the map the round is played on, its pillars and its hole
+// (core/bonkmaps.ts). Loaded only once a friend plays (client/Game.tsx): three.js is most of a megabyte.
 import * as THREE from 'three';
 import {
-  BALL_RADIUS, DROP_Y, FELT_HIT, FLOE_START, GUST_EVERY_MS, GUST_MS, PLAIN, RESPAWN_MS, STILL, SUNK_Y, BONK_AGAIN_MS, advance, ahead, ask, ballAt, ballFrame, bonk, canBlow, dash, dropDue, dropIn,
+  BALL_RADIUS, DROP_Y, FELT_HIT, FLOE_START, GUST_EVERY_MS, PILLAR_H, GUST_MS, PLAIN, RESPAWN_MS, STILL, SUNK_Y, BONK_AGAIN_MS, advance, ahead, ask, ballAt, ballFrame, bonk, canBlow, dash, dropDue, dropIn,
   dropTime, dropped, dropsLeft, effectsOf, fastFrom, firstRound, firstStage, floeRadius, gigaPower, gigaTier, gone, gust, gustFrame, hitFrame, itemFrame, itemOf, knocked, leaderOf, movesOf,
-  parseFrame, playClock, pushFrame, roll, roundOf, spawnAt, speedAt, stageFrame, stageOf, stageOfFrame, steer, toward, touched, whoOf, windAt, COUNT_MS, ITEMS, TIE_MS, type Ball, type BallFrame,
-  type Counted, type GameView, type Gust, type Item, type Led, type Stage,
+  parseFrame, playClock, pushFrame, roll, roundOf, speedAt, stageFrame, stageOf, stageOfFrame, steer, toward, touched, whoOf, windAt, COUNT_MS, ITEMS, TIE_MS, type Ball, type BallFrame,
+  type Counted, type GameView, type Gust, type Item, type Led, type Round, type Stage,
 } from '../core/bonk';
+import { HOLE_R, MAPS, ROUNDS_PER_MAP, groundOf, holeAt, holePlan, mapOf, postAt, reachOf, riseOf, roundOnMap, seatOn, stands, type BonkMap, type Hole, type HolePlan } from '../core/bonkmaps';
 import type { GameLinks } from './gamelinks';
 import { exposeHooks } from './hooks';
 import { colourOf, isSoftware, isTyping, nameTag, popWord, skin, splash, thump, type Face } from './gamekit';
@@ -65,7 +67,37 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   const { me, links } = opts;
   const myWho = whoOf(me);
   const others = new Map<string, Other>();
-  let ball: Ball = { ...ballAt(0, 0), ...spawnAt(0, 1) };
+  /**
+   * For the suite: the map every round is played on, and its hole, none or one standing at a spot from the start of the
+   * play, in place of the maps in turn and a hole now and then (`window.__daveArena`, set before the game starts).
+   */
+  const pinned = (): { map?: string; hole?: false | { x: number; z: number } } | undefined =>
+    (exposeHooks ? (window as unknown as { __daveArena?: { map?: string; hole?: false | { x: number; z: number } } }).__daveArena : undefined);
+  /**
+   * Who plays on an app from before the maps, as their ball's frames say (core `BallFrame`, `m`): it plays every round on
+   * the floe, with no hole. A round one of them plays is played so here too, decided once for the round (`plainRounds`, by
+   * its number and players), so it stays so if they leave or reload in the middle of it.
+   */
+  const oldApps = new Set<string>();
+  const plainRounds = new Map<string, boolean>();
+  const roundKey = (r: Round) => `${r.n}|${r.players.join()}`;
+  const decided = (r: Round, old: boolean) => { if (plainRounds.size > 100) plainRounds.clear(); plainRounds.set(roundKey(r), old); return old; };
+  /**
+   * Decided by the round's leader, who hears from every player in it, and said in its round frames (core `StageFrame`,
+   * `mp`), which the others take before they take the round; the first said for a round holds, so a leader who comes in
+   * later does not change it. Until one is heard, this app's own guess.
+   */
+  const plain = (r: Round): boolean => {
+    const known = plainRounds.get(roundKey(r));
+    if (known !== undefined) return known;
+    const old = r.players.some((who) => oldApps.has(who));
+    return leader === me && r.players.length > 0 ? decided(r, old) : old;
+  };
+  const FLOE_MAP = MAPS.find((m) => m.id === 'floe')!;
+  /** The map round `r` is played on (core `mapOf`): the floe, if an app from before the maps plays it. */
+  const mapFor = (r: Round): BonkMap => MAPS.find((m) => m.id === pinned()?.map) ?? (plain(r) ? FLOE_MAP : mapOf(r.n));
+  // Before any round, and before the leader is known (`plain`): the first map.
+  let ball: Ball = { ...ballAt(0, 0), ...seatOn(MAPS.find((m) => m.id === pinned()?.map) ?? mapOf(0), 0, 1) };
   /** The round I play; 0 while I watch one or none is on. */
   let playing = 0;
   let round: Led = firstRound(performance.now());
@@ -77,7 +109,12 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   let sentRound = 0;
   let leader: string | null = me;
   let fellAt: number | null = null;
+  /** The floe's radius as the last round ended, and how far its play clock had gone (core `playClock`): the map stays so. */
   let lastFloe = FLOE_START;
+  let lastClock = 0;
+  /** The hole drawn for the round on now (core `holePlan`), by the map, the round and who plays it; the round it was said in. */
+  let plan: { key: string; plan: HolePlan | null } = { key: '', plan: null };
+  let holeSaid = 0;
   /** How the keys steer, the stick if one is on, and how the game steers in the end: toward the spot held, if one is, else by the stick, else the keys. */
   let keyed = { x: 0, z: 0 };
   let sticked: { x: number; z: number } | null = null;
@@ -152,20 +189,23 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     if (next.n === was.n && next.phase === was.phase && !reseated) return;
     if (next.phase === 'count') {
       const i = next.players.indexOf(myWho);
-      if (i >= 0) { playing = next.n; ball = { ...ballAt(0, 0), ...spawnAt(i, next.players.length) }; fellAt = null; }
+      if (i >= 0) { playing = next.n; ball = { ...ballAt(0, 0), ...seatOn(mapFor(next), i, next.players.length) }; fellAt = null; }
       else { playing = 0; ball = { ...ball, alive: false, y: SUNK_Y }; }
       blewAt = -Infinity;
       gusts = [];
       lastWay = null;
+      const map = mapFor(next);
+      if (map.id !== mapFor(was).id || was.n === 0) say(`${map.mark} ${map.name}: ${ROUNDS_PER_MAP} rounds on this map`, now);
     } else if (next.phase === 'play' && (playing !== next.n || !next.players.includes(myWho))) {
       // Came in after the countdown, or left out of the round by the leader who counts it: this round is watched.
       playing = 0;
       ball = { ...ball, alive: false, y: SUNK_Y };
     } else if (next.phase === 'wait') {
       playing = 0;
-      if (!ball.alive) { ball = { ...ballAt(0, 0), ...spawnAt(0, 1) }; fellAt = null; }
+      if (!ball.alive) { ball = { ...ballAt(0, 0), ...seatOn(mapFor(next), 0, 1) }; fellAt = null; }
     } else if (next.phase === 'over') {
-      lastFloe = floeRadius('play', playClock(now - was.since, was.n === stage.n ? fastFrom(stage) : null), lastFloe);
+      lastClock = playClock(now - was.since, was.n === stage.n ? fastFrom(stage) : null);
+      lastFloe = floeRadius('play', lastClock, lastFloe);
       if (next.winner === myWho || next.tied?.includes(myWho)) thump(6, true);
       // A tie: who shares it, said over the banner, which says only that it is one (it is too big for names).
       if (next.tied?.length) {
@@ -176,6 +216,28 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   };
 
   const heard = (now: number): Other[] => [...others.values()].filter((o) => now - o.at < HEARD_MS);
+  /**
+   * What the round on now is played on at `now` (core/bonkmaps.ts): its map, the floe's radius (`r`) and its share of its
+   * full size, the play clock (still between rounds, and as it ended once one is over), its hole, and the ground a ball
+   * rolls on.
+   */
+  const arena = (now: number) => {
+    const map = mapFor(round);
+    const ms = now - round.since, fast = fastNow();
+    const clock = round.phase === 'play' ? playClock(ms, fast) : round.phase === 'over' ? lastClock : 0;
+    const r = floeRadius(round.phase, playClock(ms, fast), lastFloe), size = r / FLOE_START;
+    let hole: Hole | null = null;
+    const pin = pinned()?.hole;
+    if (round.phase === 'play' || round.phase === 'over') {
+      if (pin) hole = { ...pin, r: HOLE_R * size };
+      else if (pin !== false && !plain(round)) {
+        const key = `${map.id}|${round.n}|${round.players.join()}`;
+        if (plan.key !== key) plan = { key, plan: holePlan(map, round.n, round.players) };
+        hole = holeAt(plan.plan, map, clock, size);
+      }
+    }
+    return { map, r, size, clock, hole, ground: groundOf(map, size, clock, hole, round.phase === 'play') };
+  };
   /** A player by the start of their key (core `whoOf`), as the HUD names them. */
   const nameOf = (who: string): string => {
     if (who === myWho) return 'You';
@@ -205,6 +267,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     const now = performance.now();
     if (f.k === 'b') {
       others.set(from, { frame: f, at: now, key: from });
+      if (f.m === undefined) oldApps.add(whoOf(from)); else oldApps.delete(whoOf(from));
       const seen = feltSeen.get(from);
       if (f.c !== undefined) {
         if (leader === me && seen !== undefined && f.c > seen) stage = { ...stage, bonks: stage.bonks + f.c - seen };
@@ -253,6 +316,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     if (from !== leader || f.q <= (roundSeq.get(from) ?? -1)) return;
     roundSeq.set(from, f.q);
     const next = roundOf(f, now);
+    if ((next.phase === 'count' || next.phase === 'play') && !plainRounds.has(roundKey(next))) decided(next, f.mp !== 1);
     // The same phase as I have it: the time it began stays put, unless it is well off, so the floe does not judder.
     took(next.n === round.n && next.phase === round.phase && Math.abs(next.since - round.since) < 150 ? { ...next, since: round.since } : next, now);
     const st = stageOfFrame(f);
@@ -282,7 +346,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       if (round.phase === 'play') {
         if (!item && stage.ball === 0 && (stage.waiting || dropDue(stage) || forced)) dropItem(forced && !stage.waiting ? forcedAt : undefined);
       } else if (item || stage.ball !== 0) { item = null; stage = { ...stage, ball: 0, by: null }; }
-      if (now - lastRoundSent >= ROUND_SEND_MS) { sentRound = Math.max(Date.now(), sentRound + 1); links.broadcast(JSON.stringify(stageFrame(round, stage, now, sentRound))); lastRoundSent = now; }
+      if (now - lastRoundSent >= ROUND_SEND_MS) { sentRound = Math.max(Date.now(), sentRound + 1); links.broadcast(JSON.stringify(stageFrame(round, stage, now, sentRound, !plain(round)))); lastRoundSent = now; }
     } else {
       feltCounted = felt;
       // Kept while the stage has it, though its leader goes quiet a while (a hidden tab), so a new one goes on with it;
@@ -292,7 +356,9 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     const ms = now - round.since;
     const fast = fastNow();
     const speed = round.phase === 'play' ? speedAt(ms, fast) : 1;
-    const floe = floeRadius(round.phase, playClock(ms, fast), lastFloe);
+    const here = arena(now), floe = here.ground;
+    // A hole opening is said, once a round.
+    if (here.hole && round.phase === 'play' && holeSaid !== round.n) { holeSaid = round.n; say('A hole opens in the floe 🕳️', now); }
     const moves = movesOf(effectsOf(lasting(), myWho));
     const massOf = new Map(around.map((o) => [o.key, movesOf(effectsOf(lasting(), whoOf(o.key))).mass]));
     // A giga got from a mystery ball: mine, once.
@@ -386,8 +452,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     }
     // Fell off between rounds: back in a moment.
     if (!ball.alive && fellAt !== null && now - fellAt > RESPAWN_MS && round.phase === 'wait') {
-      const a = Math.random() * Math.PI * 2;
-      ball = ballAt(Math.cos(a) * FLOE_START * 0.5, Math.sin(a) * FLOE_START * 0.5);
+      const a = Math.random() * Math.PI * 2, seat = mapFor(round).seat;
+      ball = ballAt(Math.cos(a) * seat, Math.sin(a) * seat);
       fellAt = null;
     }
     if (now - lastSent >= SEND_MS) {
@@ -462,11 +528,14 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   dropButton.hidden = true;
   dropButton.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); if (canDrop()) drop(); });
   dropButton.addEventListener('click', () => { if (canDrop()) drop(); });
+  /** The map the round is played on, and which of its rounds it is. */
+  const mapLabel = document.createElement('div');
+  mapLabel.className = 'bonk-map';
   const toast = document.createElement('div');
   toast.className = 'bonk-toast';
   toast.setAttribute('role', 'status');
   let toastUntil = 0;
-  hud.append(gigaFlash, banner, gigaBadge, effectsLine, board, help, dashButton, dropButton, toast, stick);
+  hud.append(gigaFlash, banner, mapLabel, gigaBadge, effectsLine, board, help, dashButton, dropButton, toast, stick);
   host.append(hud);
 
   /** Whether I may drop a mystery ball now: at the start of a round I play (core `dropTime`), one my wins earned, none dropped yet. */
@@ -577,19 +646,103 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   sea.position.y = -0.7;
   scene.add(sea);
 
+  // The map (core/bonkmaps.ts): the floe at its full size, scaled along it as it shrinks; on it, its rises, scaled as a
+  // whole; its pillars, each where it is now; and the hole. Built anew when the map changes.
   const floe = new THREE.Group();
-  const top = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.04, 0.6, 72), new THREE.MeshStandardMaterial({ color: '#f4fbff', roughness: 0.3 }));
-  top.position.y = -0.3;
-  top.receiveShadow = true;
-  const under = new THREE.Mesh(new THREE.CylinderGeometry(1.04, 0.7, 1.8, 72), new THREE.MeshStandardMaterial({ color: '#9fd6f2', roughness: 0.15, transparent: true, opacity: 0.85 }));
-  under.position.y = -1.5;
-  floe.add(top, under);
-  scene.add(floe);
-  // Cracks of a darker blue round the edge, a ring that shows where the floe ends.
-  const rim = new THREE.Mesh(new THREE.RingGeometry(0.97, 1, 72), new THREE.MeshBasicMaterial({ color: '#6fb6dd' }));
-  rim.rotation.x = -Math.PI / 2;
-  rim.position.y = 0.005;
-  floe.add(rim);
+  const rises = new THREE.Group();
+  scene.add(floe, rises);
+  const iceTop = new THREE.MeshStandardMaterial({ color: '#f4fbff', roughness: 0.3 });
+  const iceUnder = new THREE.MeshStandardMaterial({ color: '#9fd6f2', roughness: 0.15, transparent: true, opacity: 0.85 });
+  // Cracks of a darker blue round the edge, a band that shows where the floe ends.
+  const iceRim = new THREE.MeshBasicMaterial({ color: '#6fb6dd' });
+  const snowBank = new THREE.MeshStandardMaterial({ color: '#e6f3fb', roughness: 0.35 });
+  const pillarStill = new THREE.MeshStandardMaterial({ color: '#ff5d73', roughness: 0.45 });
+  const pillarMoving = new THREE.MeshStandardMaterial({ color: '#ffb020', roughness: 0.45 });
+  const pillarTop = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.4 });
+  const pillarGeometry = new THREE.CylinderGeometry(1, 1, PILLAR_H, 28);
+  let pillars: THREE.Mesh[] = [];
+  let builtMap = '';
+  /** An outline at full size (core `BonkMap`) as a slab `depth` deep, under the floe's top, `top` and `bottom` times as wide at either face. */
+  const slab = (outline: readonly { x: number; z: number }[], depth: number, top: number, bottom: number) => {
+    const g = new THREE.ExtrudeGeometry(new THREE.Shape(outline.map((p) => new THREE.Vector2(p.x, -p.z))), { depth, bevelEnabled: false });
+    g.rotateX(-Math.PI / 2);
+    const at = g.attributes['position']!;
+    for (let i = 0; i < at.count; i++) { const k = bottom + ((top - bottom) * at.getY(i)) / depth; at.setXYZ(i, at.getX(i) * k, at.getY(i) - depth, at.getZ(i) * k); }
+    g.computeVertexNormals();
+    return g;
+  };
+  const build = (map: BonkMap) => {
+    builtMap = map.id;
+    for (const group of [floe, rises]) for (const c of [...group.children]) { group.remove(c); dispose(c); }
+    for (const p of pillars) { scene.remove(p); }
+    let top: THREE.Mesh, under: THREE.Mesh, rim: THREE.Mesh;
+    if (!map.outline) {
+      top = new THREE.Mesh(new THREE.CylinderGeometry(FLOE_START, FLOE_START * 1.04, 0.6, 72), iceTop);
+      top.position.y = -0.3;
+      under = new THREE.Mesh(new THREE.CylinderGeometry(FLOE_START * 1.04, FLOE_START * 0.7, 1.8, 72), iceUnder);
+      under.position.y = -1.5;
+      rim = new THREE.Mesh(new THREE.RingGeometry(FLOE_START * 0.97, FLOE_START, 72), iceRim);
+      rim.rotation.x = -Math.PI / 2;
+    } else {
+      top = new THREE.Mesh(slab(map.outline, 0.6, 1, 1.04), iceTop);
+      under = new THREE.Mesh(slab(map.outline, 1.8, 1.04, 0.7), iceUnder);
+      under.position.y = -0.6;
+      const band = new THREE.Shape(map.outline.map((p) => new THREE.Vector2(p.x, -p.z)));
+      band.holes.push(new THREE.Path(map.outline.map((p) => new THREE.Vector2(p.x * 0.97, -p.z * 0.97))));
+      const g = new THREE.ShapeGeometry(band);
+      g.rotateX(-Math.PI / 2);
+      rim = new THREE.Mesh(g, iceRim);
+    }
+    top.receiveShadow = true;
+    rim.position.y = 0.005;
+    floe.add(top, under, rim);
+    for (const r of map.rises) {
+      let mesh: THREE.Mesh;
+      if (r.kind === 'cone') {
+        mesh = new THREE.Mesh(new THREE.ConeGeometry(r.r, r.h, 56, 1, true), snowBank);
+        mesh.position.set(r.x, r.h / 2, r.z);
+      } else {
+        // As high as the ground the balls roll on is, point by point.
+        const g = new THREE.PlaneGeometry(r.length, r.width, 26, 12);
+        g.rotateX(-Math.PI / 2);
+        const at = g.attributes['position']!, c = Math.cos(r.angle), sn = Math.sin(r.angle);
+        for (let i = 0; i < at.count; i++) {
+          const u = at.getX(i), w = at.getZ(i), x = r.x + u * c - w * sn, z = r.z + u * sn + w * c;
+          at.setXYZ(i, x, riseOf(map, x, z) + 0.01, z);
+        }
+        g.computeVertexNormals();
+        mesh = new THREE.Mesh(g, snowBank);
+      }
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      rises.add(mesh);
+    }
+    pillars = map.posts.map((p) => {
+      const mesh = new THREE.Mesh(pillarGeometry, [p.ms ? pillarMoving : pillarStill, pillarTop, pillarTop]);
+      mesh.castShadow = true;
+      scene.add(mesh);
+      return mesh;
+    });
+  };
+  // The hole: dark in the middle, its edge melting into the ice.
+  const holeCanvas = document.createElement('canvas');
+  holeCanvas.width = holeCanvas.height = 128;
+  {
+    const g = holeCanvas.getContext('2d')!;
+    const fade = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    fade.addColorStop(0, '#02101c');
+    fade.addColorStop(0.72, '#06243a');
+    fade.addColorStop(0.86, 'rgba(40,110,150,0.85)');
+    fade.addColorStop(1, 'rgba(160,215,240,0)');
+    g.fillStyle = fade;
+    g.fillRect(0, 0, 128, 128);
+  }
+  const holeMap = new THREE.CanvasTexture(holeCanvas);
+  holeMap.colorSpace = THREE.SRGBColorSpace;
+  const holeDisc = new THREE.Mesh(new THREE.CircleGeometry(1.12, 48), new THREE.MeshBasicMaterial({ map: holeMap, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+  holeDisc.rotation.x = -Math.PI / 2;
+  holeDisc.visible = false;
+  scene.add(holeDisc);
 
   const snowCount = 500;
   const snowGeometry = new THREE.BufferGeometry();
@@ -609,7 +762,16 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     const r = host.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) return null;
     raycaster.setFromCamera(pointed.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1), camera);
-    return raycaster.ray.intersectPlane(floor, hit) ? { x: hit.x, z: hit.z } : null;
+    // On the ground where it rises, too: met at the height it has where the line last met it, a few times over.
+    const ground = arena(performance.now()).ground;
+    floor.constant = 0;
+    for (let i = 0; i < 4; i++) {
+      if (!raycaster.ray.intersectPlane(floor, hit)) return null;
+      const h = ground.height(hit.x, hit.z);
+      if (Math.abs(h + floor.constant) < 0.01) break;
+      floor.constant = -h;
+    }
+    return { x: hit.x, z: hit.z };
   }
   const aimRing = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.42, 32), new THREE.MeshBasicMaterial({ color: '#ffc400', transparent: true, opacity: 0.7, depthTest: false }));
   aimRing.rotation.x = -Math.PI / 2;
@@ -753,14 +915,30 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
   const axis = new THREE.Vector3();
   function draw(now: number, dt: number): void {
     const ms = now - round.since;
-    const r = floeRadius(round.phase, playClock(ms, fastNow()), lastFloe);
+    const here = arena(now), r = here.r, ground = here.ground;
     // Double speed: the sea and the snow too.
     const pace = round.phase === 'play' ? speedAt(ms, fastNow()) : 1;
     seaClock += dt * pace;
     const bob = Math.sin(now / 900) * 0.04;
-    floe.scale.set(Math.max(r, 0.001), 1, Math.max(r, 0.001));
+    if (here.map.id !== builtMap) build(here.map);
+    const size = Math.max(here.size, 0.001);
+    floe.scale.set(size, 1, size);
     floe.position.y = bob;
     floe.visible = r > 0.01;
+    rises.scale.setScalar(size);
+    rises.position.y = bob;
+    rises.visible = floe.visible;
+    // Each where it is, and gone down into the sea once the floe's edge passed under it.
+    here.map.posts.forEach((post, i) => {
+      const mesh = pillars[i];
+      if (!mesh) return;
+      const p = postAt(post, here.clock);
+      mesh.position.set(p.x, PILLAR_H / 2 + bob, p.z);
+      mesh.scale.set(p.r, 1, p.r);
+      mesh.visible = floe.visible && stands(here.map, post, here.size);
+    });
+    holeDisc.visible = here.hole !== null && here.hole.r > 0.05 && floe.visible;
+    if (here.hole) { holeDisc.position.set(here.hole.x, 0.012 + bob, here.hole.z); holeDisc.scale.set(here.hole.r, here.hole.r, 1); }
 
     const t = now / 1000;
     seaTime.value = seaClock;
@@ -799,7 +977,9 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       keysShown.add(key);
       const ease = key === me ? 1 : 1 - Math.exp(-dt * 18);
       const ox = s.x, oz = s.z;
-      s.x += (x - s.x) * ease; s.z += (z - s.z) * ease; s.y += (y - s.y) * ease;
+      // Up on a rise as high as it is there.
+      const lift = ground.height(x, z);
+      s.x += (x - s.x) * ease; s.z += (z - s.z) * ease; s.y += (y + lift - s.y) * ease;
       s.group.position.set(s.x, s.y + BALL_RADIUS + bob, s.z);
       s.group.visible = s.y > SUNK_Y + 0.5;
       // Rolled as far as it went.
@@ -854,7 +1034,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
       const at = item.ball;
       const ease = shownItem.id === item.id && leader !== me ? 1 - Math.exp(-dt * 25) : 1;
       const ox = shownItem.x, oz = shownItem.z;
-      shownItem.x += (at.x - shownItem.x) * ease; shownItem.z += (at.z - shownItem.z) * ease; shownItem.y += (at.y - shownItem.y) * ease;
+      shownItem.x += (at.x - shownItem.x) * ease; shownItem.z += (at.z - shownItem.z) * ease; shownItem.y += (at.y + ground.height(at.x, at.z) - shownItem.y) * ease;
       if (shownItem.id !== item.id) shownItem.splashed = false;
       shownItem.id = item.id;
       mystery.position.set(shownItem.x, shownItem.y + BALL_RADIUS + bob, shownItem.z);
@@ -912,8 +1092,9 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     }
     marker.visible = !watching && ball.alive;
     aimRing.visible = aimAt !== null && marker.visible;
-    if (aimAt) aimRing.position.set(aimAt.x, 0.03 + bob, aimAt.z);
-    marker.position.set(shown.get(me)?.x ?? ball.x, 0.02 + bob, shown.get(me)?.z ?? ball.z);
+    if (aimAt) aimRing.position.set(aimAt.x, ground.height(aimAt.x, aimAt.z) + 0.03 + bob, aimAt.z);
+    const mx = shown.get(me)?.x ?? ball.x, mz = shown.get(me)?.z ?? ball.z;
+    marker.position.set(mx, ground.height(mx, mz) + 0.02 + bob, mz);
     (marker.material as THREE.MeshBasicMaterial).opacity = 0.55 + Math.sin(now / 200) * 0.3;
 
     for (const e of events.splice(0)) {
@@ -957,7 +1138,8 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     // Held still on a desktop, watching or not, and a little further back to keep the whole floe in sight: moved with the
     // ball, the spot under the mouse held still would move on ahead of it, off the floe. The fog goes as far back with it,
     // or a tall screen (a phone's in fullscreen) sees the floe through a haze.
-    const back = desk ? 1.15 : 1;
+    // A map that reaches further out than the floe (core `reachOf`), as far back again, while it is that big.
+    const back = (desk ? 1.15 : 1) * Math.max(1, (reachOf(here.map) * here.size) / (FLOE_START * 1.1));
     const far = Math.max(1, 1.25 / camera.aspect) * back;
     fog.near = 30 * far;
     fog.far = 70 * far;
@@ -1023,7 +1205,9 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     const left = dropsLeft(round.wins[myWho] ?? 0, st.used[myWho] ?? 0);
     const dropText = canDrop() ? `${left}` : '';
     const toastText = now < toastUntil ? toast.textContent ?? '' : '';
-    const key = `${text}|${JSON.stringify(wins)}|${round.phase}|${gigaText}|${effectsText}|${dropText}|${toastText}|${helpText}|${dashText}`;
+    const map = mapFor(round);
+    const mapText = `${map.mark} ${map.name}${round.phase === 'wait' || round.n === 0 ? '' : ` · ${roundOnMap(round.n)}/${ROUNDS_PER_MAP}`}`;
+    const key = `${mapText}|${text}|${JSON.stringify(wins)}|${round.phase}|${gigaText}|${effectsText}|${dropText}|${toastText}|${helpText}|${dashText}`;
     if (key === hudKey) return;
     hudKey = key;
     help.textContent = helpText;
@@ -1036,6 +1220,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
     dropButton.title = label;
     if (!toastText) toast.textContent = '';
     banner.textContent = text;
+    mapLabel.textContent = mapText;
     gigaBadge.textContent = gigaText;
     gigaBadge.dataset['tier'] = giga > 0 ? String(gigaTier(giga)) : '';
     gigaBadge.style.setProperty('--giga', giga > 0 ? lookOf(giga).colour : '');
@@ -1081,6 +1266,7 @@ export function mountBonk(host: HTMLElement, opts: { me: string; links: GameLink
         got: current().got.map((g) => ({ who: g.who, item: g.item })), fast: fastNow() !== null,
         others: heard(now).map((o) => ({ key: o.key, x: o.frame.x, z: o.frame.z, alive: o.frame.a, giga: o.frame.g ?? 0 })),
         wins: { ...round.wins }, connected: links.connected().length,
+        map: arena(now).map.id, hole: arena(now).hole,
       };
     };
     // Giga now, for the suite: a mystery ball's would take it minutes.

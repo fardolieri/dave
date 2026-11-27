@@ -146,12 +146,63 @@ export const windAt = (gusts: readonly Gust[], now: number): { x: number; z: num
 export const canBlow = (last: number, now: number): boolean => now - last >= GUST_EVERY_MS;
 
 /**
- * The ball `dt` seconds on: rolled the way it is steered (to its top speed, `moves`; faster only by a dash, a bonk or the
- * wind, `windAt`, which then slow by themselves), slowed by the ice. Off the floe (`floe`, its radius) it falls, and is out. Thrown up
- * by a giga (`giga`), or dropped from the sky, it flies, steered by nobody, and comes down on the floe; out over the sea,
- * it is out.
+ * What a ball rolls on (core/bonkmaps.ts), as it is at one moment: the floe's outline, a hole in it, the slopes on it and
+ * the pillars standing on it, in the game's units.
  */
-export function roll(b: Ball, dir: { x: number; z: number }, dt: number, floe: number, moves: Moves = PLAIN, wind: { x: number; z: number } = STILL): Ball {
+export type Ground = {
+  /** Whether a spot is over the floe, a hole in it or not: off it, a ball's middle is over the sea. */
+  within(x: number, z: number): boolean;
+  /** Whether a spot is over a hole in the floe, where a ball rolling on it falls through. */
+  hole(x: number, z: number): boolean;
+  /** How high the floe is at a spot, 0 for flat, and which way and how steeply it rises there. */
+  height(x: number, z: number): number;
+  slope(x: number, z: number): { x: number; z: number };
+  /** The pillars on the floe: where each is, how wide, and how fast it moves (units/s). */
+  pillars: readonly Pillar[];
+};
+export type Pillar = { x: number; z: number; r: number; vx: number; vz: number };
+
+/** The floe as it always was: round, of radius `r`, flat, with nothing on it. */
+export const roundGround = (r: number): Ground => ({
+  within: (x, z) => Math.hypot(x, z) <= r, hole: () => false, height: () => 0, slope: () => STILL, pillars: [],
+});
+
+/**
+ * How hard a slope pulls a ball down it (units/s² for a rise of 1 in 1): up one rising 1 in 2, a ball rolls itself on at
+ * some 5 units/s; up the steepest, at a crawl, and one that got heavy not at all.
+ */
+export const SLOPE_PULL = 22;
+/** How much sooner a ball leaves the ground over a crest than not (units/s): rolled slowly over it, it stays down. */
+export const LAUNCH_MIN = 3;
+/** How tall a pillar stands: a ball up higher than this goes over it. */
+export const PILLAR_H = 2.2;
+/** How much a pillar gives back of a ball's speed into it: a bumper. */
+export const PILLAR_BOUNCE = 0.9;
+/** How much of its speed along the floe a ball keeps once it fell into a hole: it drops through, not on across the ice. */
+const INTO_HOLE = 0.2;
+
+/** A ball at `x`, `z` with speed `vx`, `vz`, pushed out of every pillar it is in, and bounced off one it rolls into. */
+function bumped(x: number, z: number, vx: number, vz: number, pillars: readonly Pillar[]): { x: number; z: number; vx: number; vz: number } {
+  for (const p of pillars) {
+    const dx = x - p.x, dz = z - p.z, d = Math.hypot(dx, dz), least = p.r + BALL_RADIUS;
+    if (d >= least) continue;
+    const nx = d > 1e-6 ? dx / d : 1, nz = d > 1e-6 ? dz / d : 0;
+    x = p.x + nx * least; z = p.z + nz * least;
+    const into = (vx - p.vx) * nx + (vz - p.vz) * nz;
+    if (into < 0) { vx -= (1 + PILLAR_BOUNCE) * into * nx; vz -= (1 + PILLAR_BOUNCE) * into * nz; }
+  }
+  return { x, z, vx, vz };
+}
+
+/**
+ * The ball `dt` seconds on: rolled the way it is steered (to its top speed, `moves`; faster only by a dash, a bonk, the
+ * wind, `windAt`, or a slope, which then slow by themselves), slowed by the ice, and bounced off the pillars. Off the floe
+ * (`floe`, its radius, or the `Ground` of a map) it falls, and is out; so it does over a hole. `y` is how high it is over
+ * the floe where it is: rolled fast over a crest, it leaves the ground. Thrown up by a giga (`giga`), or dropped from the
+ * sky, it flies, steered by nobody, and comes down on the floe; out over the sea, it is out.
+ */
+export function roll(b: Ball, dir: { x: number; z: number }, dt: number, floe: number | Ground, moves: Moves = PLAIN, wind: { x: number; z: number } = STILL): Ball {
+  const g = typeof floe === 'number' ? roundGround(floe) : floe;
   if (!b.alive) {
     if (b.y <= SUNK_Y) return b;
     const vy = b.vy - GRAVITY * dt;
@@ -160,12 +211,15 @@ export function roll(b: Ball, dir: { x: number; z: number }, dt: number, floe: n
   if (b.y > 0 || b.vy > 0) {
     const vy = b.vy - GRAVITY * dt;
     const slow = Math.exp(-AIR_DRAG * dt);
-    const x = b.x + b.vx * dt, z = b.z + b.vz * dt, y = b.y + vy * dt;
+    let x = b.x + b.vx * dt, z = b.z + b.vz * dt, vx = b.vx, vz = b.vz;
+    if (b.y < PILLAR_H) ({ x, z, vx, vz } = bumped(x, z, vx, vz, g.pillars));
+    // Over the floe as it rises or falls away under it.
+    const y = b.y + vy * dt - (g.height(x, z) - g.height(b.x, b.z));
     // Out over the sea it cannot come back, steered by nobody: out at once, not when it comes down, so the one who
     // threw it does not lose the round to a ball still in the air.
-    if (!(Math.hypot(x, z) <= floe)) return { ...b, x, z, y, vy, alive: false };
-    if (y > 0) return { ...b, x, z, y, vy, vx: b.vx * slow, vz: b.vz * slow };
-    return { ...b, x, z, y: 0, vy: 0 };
+    if (!g.within(x, z)) return { ...b, x, z, vx, vz, y, vy, alive: false };
+    if (y > 0) return { ...b, x, z, y, vy, vx: vx * slow, vz: vz * slow };
+    return { ...b, x, z, vx, vz, y: 0, vy: 0 };
   }
   const was = Math.hypot(b.vx, b.vz);
   let vx = b.vx + dir.x * moves.accel * dt;
@@ -173,13 +227,24 @@ export function roll(b: Ball, dir: { x: number; z: number }, dt: number, floe: n
   const speed = Math.hypot(vx, vz);
   const cap = Math.max(was, moves.top);
   if (speed > cap) { vx = (vx / speed) * cap; vz = (vz / speed) * cap; }
-  // The wind past the cap: it blows a ball on faster than it rolls itself.
-  vx += wind.x * dt; vz += wind.z * dt;
+  // The wind and the slope past the cap: they blow or pull a ball on faster than it rolls itself.
+  const up = g.slope(b.x, b.z);
+  vx += (wind.x - up.x * SLOPE_PULL) * dt; vz += (wind.z - up.z * SLOPE_PULL) * dt;
   const slow = Math.exp(-moves.drag * dt);
   vx *= slow; vz *= slow;
-  const x = b.x + vx * dt, z = b.z + vz * dt;
-  // Off once its middle is past the edge: half of it hangs over the water, and over it goes.
-  if (!(Math.hypot(x, z) <= floe)) return { ...b, x, z, vx, vz, alive: false, vy: 0 };
+  let x = b.x + vx * dt, z = b.z + vz * dt;
+  ({ x, z, vx, vz } = bumped(x, z, vx, vz, g.pillars));
+  // Off once its middle is past the edge: half of it hangs over the water, and over it goes. Into a hole, it drops.
+  if (!g.within(x, z)) return { ...b, x, z, vx, vz, alive: false, vy: 0 };
+  if (g.hole(x, z)) return { ...b, x, z, vx: vx * INTO_HOLE, vz: vz * INTO_HOLE, alive: false, vy: 0 };
+  // Over a crest: it went up (or along) as fast as the ground rose where it was, and the ground falls away where it is
+  // now. Faster than LAUNCH_MIN, it flies on, as high as the ground fell away.
+  const there = g.slope(x, z);
+  const rose = vx * up.x + vz * up.z, rises = vx * there.x + vz * there.z;
+  if (rose - rises > LAUNCH_MIN) {
+    const y = Math.max(0.001, Math.max(0, rose) * dt - (g.height(x, z) - g.height(b.x, b.z)));
+    return { ...b, x, z, vx, vz, y, vy: Math.max(0, rose) };
+  }
   return { ...b, x, z, vx, vz };
 }
 
@@ -424,6 +489,8 @@ export type GameView = {
   };
   item: { x: number; z: number; y: number; vx: number; vz: number; alive: boolean } | null; got: { who: string; item: Item }[]; fast: boolean;
   aim: { x: number; z: number } | null; others: { key: string; x: number; z: number; alive: boolean; giga: number }[]; wins: Record<string, number>; connected: number;
+  /** The map the round is played on (core/bonkmaps.ts, its `id`), and its hole now, null for none. */
+  map: string; hole: { x: number; z: number; r: number } | null;
 };
 
 /**
@@ -488,17 +555,23 @@ const same = (a: readonly string[], b: readonly string[] | undefined): boolean =
  * Where a player's ball is, from that player: `r` the round they play (0 for none: they watch), `n` the newest round
  * they know (core `leaderOf`). `a`: on the floe (or up over it); `d`: dashed just now; `g`: its giga (`gigaPower`), left
  * out for none, as apps from before giga send it; `c`: the felt bonks it had in the game, which the leader counts
- * toward the next mystery ball (`dropIn`), left out by apps from before items.
+ * toward the next mystery ball (`dropIn`), left out by apps from before items. `m`: 1 from an app that plays the maps
+(core/bonkmaps.ts), left out by apps from before them, which play every round on the floe with no hole; `y` is then how
+high the ball is over the map where it is.
  */
-export type BallFrame = { k: 'b'; r: number; n: number; x: number; z: number; vx: number; vz: number; y: number; a: boolean; d: boolean; g?: number; c?: number };
+export type BallFrame = { k: 'b'; r: number; n: number; x: number; z: number; vx: number; vz: number; y: number; a: boolean; d: boolean; g?: number; c?: number; m?: 1 };
 /**
  * A bonk my app worked out, for the ball of `to` (the start of its key): the change in its speed (`bonk`, `knock`), with
  * `up` how fast a giga throws it up. `g`: my giga, spent on it; `u`: theirs, spent on my own ball's change, so their app
  * knows it is gone (`bonk`, `spent`). Each left out for none.
  */
 export type HitFrame = { k: 'h'; to: string; vx: number; vz: number; hit: number; up?: number; g?: number; u?: number };
-/** The round with Bonk's items (`Stage`, of the round's `n`), from the leader; `st` is left out by apps from before items. */
-export type StageFrame = RoundFrame & { st?: StageWire };
+/**
+ * The round with Bonk's items (`Stage`, of the round's `n`), from the leader; `st` is left out by apps from before items.
+ * `mp`: 1 for a round played on the maps (core/bonkmaps.ts), as its leader decided; left out for one on the floe with no
+ * hole, as an app from before the maps plays every round.
+ */
+export type StageFrame = RoundFrame & { st?: StageWire; mp?: 1 };
 /**
  * A stage on the wire: `u` used, `a` asked, `w` waiting, `g` got (`id`, `who`, `item`, `power`, `t`), `b` ball, `by`,
  * `i` ids, `f` bonks, `nx` next.
@@ -515,10 +588,11 @@ export type GustFrame = { k: 'w'; n: number; x: number; z: number };
 export type Frame = BallFrame | StageFrame | HitFrame | ItemFrame | PushFrame | DropFrame | GustFrame;
 
 export const ballFrame = (b: Ball, r: number, n: number, dashed: boolean, giga = 0, felt = 0): BallFrame =>
-  ({ k: 'b', r, n, x: round2(b.x), z: round2(b.z), vx: round2(b.vx), vz: round2(b.vz), y: round2(b.y), a: b.alive, d: dashed, ...(giga ? { g: giga } : {}), ...(felt ? { c: felt } : {}) });
+  ({ k: 'b', r, n, x: round2(b.x), z: round2(b.z), vx: round2(b.vx), vz: round2(b.vz), y: round2(b.y), a: b.alive, d: dashed, ...(giga ? { g: giga } : {}), ...(felt ? { c: felt } : {}), m: 1 });
 
-export const stageFrame = (r: Round, s: Stage, now: number, q: number): StageFrame => ({
+export const stageFrame = (r: Round, s: Stage, now: number, q: number, maps = true): StageFrame => ({
   ...roundFrame(r, now, q),
+  ...(maps ? { mp: 1 as const } : {}),
   st: {
     u: Object.entries(s.used), a: s.asked, w: s.waiting, g: s.got.map((g) => [g.id, g.who, g.item, g.power, g.t]), b: s.ball, by: s.by, i: s.ids,
     f: s.bonks, nx: s.next,
@@ -559,7 +633,7 @@ export function parseFrame(text: unknown): Frame | null {
     if (!Number.isSafeInteger(r) || (r as number) < 0 || !Number.isSafeInteger(n) || (n as number) < 0 || !num(x) || !num(z) || !num(vx) || !num(vz) || !num(y) || typeof a !== 'boolean' || typeof d !== 'boolean') return null;
     const g = gigaOf(f['g']);
     const c = Number.isSafeInteger(f['c']) && (f['c'] as number) > 0 ? (f['c'] as number) : undefined;
-    return { k: 'b', r: r as number, n: n as number, x, z, vx, vz, y, a, d, ...(g !== undefined ? { g } : {}), ...(c !== undefined ? { c } : {}) };
+    return { k: 'b', r: r as number, n: n as number, x, z, vx, vz, y, a, d, ...(g !== undefined ? { g } : {}), ...(c !== undefined ? { c } : {}), ...(f['m'] === 1 ? { m: 1 as const } : {}) };
   }
   if (f['k'] === 'h') {
     const { to, vx, vz, hit } = f;
@@ -573,7 +647,7 @@ export function parseFrame(text: unknown): Frame | null {
     if (!r) return null;
     // A stage that is off is left out, not the round with it: the round still goes on.
     const st = parseStage(f['st']);
-    return st ? { ...r, st } : r;
+    return { ...r, ...(st ? { st } : {}), ...(f['mp'] === 1 ? { mp: 1 as const } : {}) };
   }
   const id = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0;
   if (f['k'] === 'i') {
