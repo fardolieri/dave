@@ -1,16 +1,17 @@
 # Flake ledger
 
-Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-27T19:32 UTC.
+Every e2e try that failed in the last 30 days, by test and error, newest data 2026-11-27T19:38 UTC.
 Written by `flakes.yml` after each e2e and preview run (`scripts/flakes/ledger.mjs` on master). A flaky try failed and
 passed on its retry; against nightly a test that failed both tries counts too, on branches and previews only flaky
 ones do (failing twice there is mostly the branch's own bug). A failure seen locally, on code that passed CI, is added by hand and counts. Runs hunting a flake (-g, --repeat-each) are kept but not counted. The ticket
 column comes from `causes.json` here: one ticket per cause, its rows matched by a regex over "file › test | error".
 
-Runs recorded: branch 172, preview 178, nightly 8.
+Runs recorded: branch 173, preview 179, nightly 8.
 
 | Seen | Flaky | Where | Test | Error | First | Last | Ticket |
 |---:|---:|---|---|---|---|---|---|
 | 4 | 4 | preview 4 | text.spec.ts › regression: a live text before the first sync is answered does not move where the next sync asks from | asked again from where the first asked, not from the live text | [11-09](https://github.com/fardolieri/dave/actions/runs/42721836657/attempts/1) | [11-27](https://github.com/fardolieri/dave/actions/runs/45960255147/attempts/2) | 77 |
+| 2 | 2 | preview 2 | game.spec.ts › a game: started from the call in one click, joined from its tile, rounds counted down and played, a bonk felt on both sides | expect(received).toBe(expected) // Object.is equality | [11-27](https://github.com/fardolieri/dave/actions/runs/45966429580/attempts/1) | [11-27](https://github.com/fardolieri/dave/actions/runs/46057508475/attempts/1) |  |
 | 2 | 2 | preview 1, branch 1 | attachment.spec.ts › a video goes big over the page on its button and back, playing on, the same video, the chat where it was | expect(received).toBeGreaterThan(expected) | [11-16](https://github.com/fardolieri/dave/actions/runs/43887858846/attempts/1) | [11-22](https://github.com/fardolieri/dave/actions/runs/45076080909/attempts/1) | 82 |
 | 2 | 2 | preview 1, branch 1 | skid.spec.ts › skid: a race counted down on the grid, each kart seen by the other, places on both screens, ended when one leaves | Alice held on the grid through the countdown | [11-22](https://github.com/fardolieri/dave/actions/runs/45047144263/attempts/1) | [11-22](https://github.com/fardolieri/dave/actions/runs/45061133654/attempts/1) | 93 |
 | 2 | 2 | preview 2 | attachment.spec.ts › ADR 0009: a picture sent while nobody else was there comes from the server, sealed, once its sender is gone | expect(received).toBe(expected) // Object.is equality | [11-13](https://github.com/fardolieri/dave/actions/runs/43480133149/attempts/1) | [11-22](https://github.com/fardolieri/dave/actions/runs/44967075281/attempts/1) | 81 |
@@ -18,7 +19,6 @@ Runs recorded: branch 172, preview 178, nightly 8.
 | 2 | 2 | preview 2 | attachment.spec.ts › ADR 0009: a picture sent while nobody else was there comes from the server, sealed, once its sender is gone | expect(locator).toHaveCount(expected) failed | [11-05](https://github.com/fardolieri/dave/actions/runs/42064671698/attempts/1) | [11-17](https://github.com/fardolieri/dave/actions/runs/44168521032/attempts/1) | 92 |
 | 2 | 2 | preview 2 | attachment.spec.ts › a picture that could not be pulled while its sender was frozen is pulled once she is back | expect(received).not.toContain(expected) // indexOf | [11-12](https://github.com/fardolieri/dave/actions/runs/43127137009/attempts/1) | [11-17](https://github.com/fardolieri/dave/actions/runs/44151462674/attempts/1) | 51 |
 | 2 | 2 | nightly 1, preview 1 | resilience.spec.ts › regression: a socket gone silent without a close is given up, and the text written into it arrives once | Alice gives the silent socket up herself | [10-28](https://github.com/fardolieri/dave/actions/runs/40765359543/attempts/1) | [11-05](https://github.com/fardolieri/dave/actions/runs/42066686999/attempts/1) | 61 |
-| 1 | 1 | preview 1 | game.spec.ts › a game: started from the call in one click, joined from its tile, rounds counted down and played, a bonk felt on both sides | expect(received).toBe(expected) // Object.is equality | [11-27](https://github.com/fardolieri/dave/actions/runs/45966429580/attempts/1) | [11-27](https://github.com/fardolieri/dave/actions/runs/45966429580/attempts/1) |  |
 | 1 | 1 | preview 1 | game.spec.ts › a game: started from the call in one click, joined from its tile, rounds counted down and played, a bonk felt on both sides | Alice sees Alice win | [11-27](https://github.com/fardolieri/dave/actions/runs/45964640230/attempts/1) | [11-27](https://github.com/fardolieri/dave/actions/runs/45964640230/attempts/1) |  |
 | 1 | 1 | preview 1 | game.spec.ts › a friend back from a gap, moved over to the game of a kind started since, comes into it anew, without the rounds of the one that ended | expect(locator).toHaveCount(expected) failed | [11-26](https://github.com/fardolieri/dave/actions/runs/45902757852/attempts/1) | [11-26](https://github.com/fardolieri/dave/actions/runs/45902757852/attempts/1) |  |
 | 1 | 1 | preview 1 | game.spec.ts › Bonk: one who fell off blows a wind the way they choose, every ten seconds, and it pushes the balls still on the floe | expect(received).toBeCloseTo(expected, precision) | [11-26](https://github.com/fardolieri/dave/actions/runs/45902757852/attempts/1) | [11-26](https://github.com/fardolieri/dave/actions/runs/45902757852/attempts/1) |  |
