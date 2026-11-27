@@ -50,8 +50,8 @@ export class Wire {
   up: Tamper | null = null;
   /** Server to client. */
   down: Tamper | null = null;
-  /** Every frame seen, both directions, for assertions about what the server gets to see. */
-  readonly log: Array<{ dir: 'up' | 'down'; frame: string }> = [];
+  /** Every frame seen, both directions, for assertions about what the server gets to see, with its socket's URL. */
+  readonly log: Array<{ dir: 'up' | 'down'; frame: string; url: string }> = [];
   /**
    * Every socket's end: the side that closed it first, when, and how long the log was then (where it falls among the frames).
    * A server side closed with 1006 on a socket that was let in is the network dropping it (seen against nightly and the
@@ -75,14 +75,14 @@ export class Wire {
     // already in CLOSING or CLOSED state." in the friend's console, a line the app itself never causes (ticket 41).
     route.onMessage((m) => {
       const frame = typeof m === 'string' ? m : m.toString();
-      this.log.push({ dir: 'up', frame });
+      this.log.push({ dir: 'up', frame, url: route.url() });
       if (pair.severed) return;
       const out = this.up ? this.up(frame, (f) => { if (!pair.closing) server.send(f); }) : frame;
       if (out !== null && !pair.closing) server.send(out);
     });
     server.onMessage((m) => {
       const frame = typeof m === 'string' ? m : m.toString();
-      this.log.push({ dir: 'down', frame });
+      this.log.push({ dir: 'down', frame, url: route.url() });
       if (pair.severed) return;
       const out = this.down ? this.down(frame, (f) => { if (!pair.closing) route.send(f); }) : frame;
       if (out !== null) route.send(out);
@@ -144,9 +144,9 @@ export class Wire {
     for (const { page } of this.routes) if (url === undefined || page.url() === url) page.send(frame);
   }
 
-  /** Parsed frames of one type in one direction, as seen by the proxy (before tampering). */
-  frames<T = Record<string, unknown>>(dir: 'up' | 'down', t?: string): T[] {
-    return this.log.filter((l) => l.dir === dir).map((l) => { try { return JSON.parse(l.frame) as T & { t?: string }; } catch { return null; } })
+  /** Parsed frames of one type in one direction, as seen by the proxy (before tampering); `room`: on that room's sockets only. */
+  frames<T = Record<string, unknown>>(dir: 'up' | 'down', t?: string, room?: string): T[] {
+    return this.log.filter((l) => l.dir === dir && (room === undefined || new URL(l.url).pathname === `/ws/${room}`)).map((l) => { try { return JSON.parse(l.frame) as T & { t?: string }; } catch { return null; } })
       .filter((m): m is T & { t?: string } => m !== null && (t === undefined || m.t === t));
   }
 }

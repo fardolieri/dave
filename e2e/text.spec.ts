@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { expect, newSecret, test, openRoomMenu } from './fixtures';
+import { roomIdOf } from '../src/core/rooms';
 
 // Text chat as it works today (server relay, history per browser, and what the server keeps for those away: ADR 0009). These tests pin the behaviour friends see, so they
 // must keep passing through any change to the transport underneath.
@@ -340,14 +341,18 @@ test('regression: a live text before the first sync is answered does not move wh
   const bob = await crowd.open('Bob', { connect: false });
   bob.wire.down = (frame) => (frame.includes('"t":"history"') ? null : frame);
   await bob.open();
-  const sinces = () => bob.wire.frames<{ since: number }>('up', 'sync').map((s) => s.since);
+  // This room's syncs only: Bob's room of two with Alice (ADR 0011) syncs on a socket of its own (ticket 77).
+  const room = await roomIdOf(crowd.room.secret);
+  const sinces = () => bob.wire.frames<{ since: number }>('up', 'sync', room).map((s) => s.since);
   await expect.poll(() => sinces().length).toBeGreaterThan(0);
   expect(sinces(), 'the first asks from the start of the window').toEqual(sinces().map(() => 0));
   await alice.say('live');
   await expect.poll(() => bob.chatTexts()).toEqual(['live']);
   const asked = sinces().length;
-  bob.wire.down = null;
+  // Answers are let through only once the sockets are gone: one still on its way would otherwise come in full, and the
+  // next sync rightly ask from after it (ticket 77).
   await bob.wire.cut();
+  bob.wire.down = null;
   bob.wire.restore();
   await bob.connected();
   await expect.poll(() => sinces().length).toBeGreaterThan(asked);
