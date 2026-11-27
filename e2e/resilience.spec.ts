@@ -758,10 +758,11 @@ test('a friend whose server socket drops and comes back plays no join cue for a 
   await needHooks(carol);
   // Out of the call, Carol's cues start on her first gesture, as anyone's do who has clicked into the page.
   await carol.composer.click();
-  // Cues only play on a running AudioContext. Headless Firefox on a runner without a sound device never gets one.
-  await expect.poll(() => carol.hook<{ cues: string | null }>('playback').then((p) => p.cues), { timeout: 3000 }).toBe('running').catch(() => {});
+  // Cues only play on a running AudioContext, or one asleep between sounds (client/sound.ts). Headless Firefox on a
+  // runner without a sound device never gets one.
+  await expect.poll(() => carol.hook<{ cues: string | null }>('playback').then((p) => p.cues), { timeout: 3000 }).toMatch(/^(running|asleep)$/).catch(() => {});
   const cues = await carol.hook<{ cues: string | null }>('playback').then((p) => p.cues);
-  test.skip(cues !== 'running', `no running AudioContext for cues here (${cues}), so no cue can play`);
+  test.skip(cues !== 'running' && cues !== 'asleep', `no running AudioContext for cues here (${cues}), so no cue can play`);
   await expect.poll(async () => (await carol.cuesPlayed()).length, { message: 'the join cues are done' }).toBe(0);
   await carol.page.waitForTimeout(2000);
   await carol.cuesPlayed();
@@ -801,7 +802,7 @@ test('a call whose audio device fails under it plays again: the friends\' voices
   const playback = () => alice.hook<Playback>('playback');
   // Headless Firefox on a runner without a sound device never gets a running AudioContext: nothing to fail.
   const before = await playback();
-  test.skip(before.context !== 'running' || before.cues !== 'running', `no running AudioContexts here (call ${before.context}, cues ${before.cues})`);
+  test.skip(before.context !== 'running' || (before.cues !== 'running' && before.cues !== 'asleep'), `no running AudioContexts here (call ${before.context}, cues ${before.cues})`);
   await expect.poll(async () => (await alice.cuesPlayed()).length + (await bob.cuesPlayed()).length, { message: 'the join cues are done' }).toBe(0);
 
   expect(await alice.hook('failAudio', 'call')).toBe('failed');
@@ -812,8 +813,8 @@ test('a call whose audio device fails under it plays again: the friends\' voices
   const clock = (await playback()).clock!;
   await expect.poll(async () => (await playback()).clock!, { message: 'the call\'s context renders' }).toBeGreaterThan(clock + 0.5);
   expect((await playback()).blocked, 'no "Click to hear the call" was needed').toBe(false);
-  // And the cues: Bob's leave plays one for Alice.
-  await expect.poll(async () => (await playback()).cues, { message: 'the cues\' context runs again' }).toBe('running');
+  // And the cues: Bob's leave plays one for Alice. Running again, it may soon sleep until a sound wakes it (client/sound.ts).
+  await expect.poll(async () => (await playback()).cues, { message: 'the cues\' context runs again' }).toMatch(/^(running|asleep)$/);
   await bob.leave();
   await expect.poll(async () => (await alice.cuesPlayed()).length, { message: 'Alice hears Bob leave' }).toBeGreaterThan(0);
 });

@@ -13,7 +13,7 @@ import { createTable } from '../core/clinktable';
 import { whoOf } from '../core/rounds';
 import type { GameLinks } from './gamelinks';
 import { exposeHooks } from './hooks';
-import { cueContext } from './sound';
+import { cueAudio } from './sound';
 import { isSoftware, isTyping, nameTag, popWord, skin, threeColourOf, thump, type Face } from './gamekit';
 
 /** The tower: a coin's radius and thickness, where the first sits, how long the next takes to drop onto it. */
@@ -59,8 +59,8 @@ function hashed(...xs: number[]): number {
 
 // The sounds, made as they play, through the cues' audio (client/sound.ts).
 function tone(f: number, at: number, len: number, gain: number, type: OscillatorType = 'sine'): void {
-  const c = cueContext();
-  if (!c || c.state !== 'running') return;
+  const c = cueAudio(at + len);
+  if (!c) return;
   const t = c.currentTime + at;
   const osc = c.createOscillator();
   const g = c.createGain();
@@ -79,8 +79,8 @@ const clinkSound = (h: number, at = 0, loud = 0.12): void => { const f = 1400 + 
 const pour = (n: number): void => { for (let i = 0; i < n; i++) clinkSound(Math.random() * 14, i * 0.045 + Math.random() * 0.02, 0.06); };
 const fanfare = (): void => { [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, i * 0.09, 0.35, 0.12, 'triangle')); };
 const crash = (): void => {
-  const c = cueContext();
-  if (!c || c.state !== 'running') return;
+  const c = cueAudio(0.7);
+  if (!c) return;
   const t = c.currentTime;
   const buf = c.createBuffer(1, Math.floor(c.sampleRate * 0.7), c.sampleRate);
   const d = buf.getChannelData(0);

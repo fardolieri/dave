@@ -23,7 +23,7 @@ import {
 } from '../core/settings';
 import { REJOIN_HEARTBEAT_MS, rejoinFor, type RejoinMarker } from '../core/rejoin';
 import type { createRoom } from './room';
-import { cueContext, tryUnlockSound } from './sound';
+import { cueContext, cueState, tryUnlockSound } from './sound';
 import { restartOnFailure, type ContextStarter } from './audiofailure';
 import { local, type LocalValue } from './storage';
 import { holding } from './update';
@@ -2146,7 +2146,7 @@ export function createCall(room: ReturnType<typeof createRoom>, identity: LocalI
         for (let i = 0; i + step <= data.length; i += step) { let sum = 0; for (let j = i; j < i + step; j++) sum += data[j]! * data[j]!; peak = Math.max(peak, Math.sqrt(sum / step)); }
         return { seconds: buf.duration, peak };
       },
-      playback: () => untrack(() => ({ context: audioCtx?.state ?? null, clock: audioCtx?.currentTime ?? null, cues: cueContext()?.state ?? null, blocked: audioBlocked(), output: output.srcObject ? !output.paused : null, paused: [...peers.values()].map((p) => ({ name: p.name, keepAlive: p.keepAlive.paused })) })),
+      playback: () => untrack(() => ({ context: audioCtx?.state ?? null, clock: audioCtx?.currentTime ?? null, cues: cueState(), blocked: audioBlocked(), output: output.srcObject ? !output.paused : null, paused: [...peers.values()].map((p) => ({ name: p.name, keepAlive: p.keepAlive.paused })) })),
       /** The loudest the call's mix has been since first asked, as the element that plays the call gets it (reports of 2026-11-26). */
       loudestOutput: () => {
         if (!mix || !audioCtx) return null;

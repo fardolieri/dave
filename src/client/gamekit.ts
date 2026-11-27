@@ -2,7 +2,7 @@
 // their name over it, a word that pops up, a thump and a splash, through the cues' audio (client/sound.ts); whether the
 // browser draws without a GPU.
 import * as THREE from 'three';
-import { cueContext } from './sound';
+import { cueAudio } from './sound';
 
 /** A player as the game shows them: the name this browser shows, and their profile picture, if any. */
 export type Face = { name: string; picture: string | null };
@@ -92,8 +92,8 @@ export function popWord(text: string, colour: string): THREE.Sprite {
 
 /** A short thump for a bonk, as loud as it was hard, through the cues' audio (client/sound.ts). */
 export function thump(hard: number, high = false): void {
-  const c = cueContext();
-  if (!c || c.state !== 'running') return;
+  const c = cueAudio(0.25);
+  if (!c) return;
   const t = c.currentTime;
   const osc = c.createOscillator();
   const gain = c.createGain();
@@ -111,8 +111,8 @@ export function thump(hard: number, high = false): void {
 
 /** A splash: falling water noise, for a ball that went in. */
 export function splash(): void {
-  const c = cueContext();
-  if (!c || c.state !== 'running') return;
+  const c = cueAudio(0.5);
+  if (!c) return;
   const t = c.currentTime;
   const buf = c.createBuffer(1, Math.floor(c.sampleRate * 0.5), c.sampleRate);
   const d = buf.getChannelData(0);
