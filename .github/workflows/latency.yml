@@ -1,0 +1,71 @@
+name: latency
+# Mouth to ear, browser to browser (ticket 96): scripts/latency/rig.sh on a runner of its own, which the dev VM is not (its
+# browsers' speakers underrun a few times a second, each gap adding delay). Two passes: as the runner is, and with busy
+# loops beside the browsers, as a game takes the CPU. The table goes to the run's summary; the numbers and PulseAudio's
+# log to an artifact. Writes no status and gates nothing.
+#   - on every push to a branch named latency/*, to measure a change before it lands
+#   - by hand from the Actions tab on any branch
+on:
+  push:
+    branches: ['latency/**']
+  workflow_dispatch:
+    inputs:
+      repeat:
+        description: "runs of every scenario in each pass"
+        default: "3"
+      only:
+        description: "only these scenarios, comma-separated; empty for all"
+        default: ""
+      loads:
+        description: "a pass for each number of busy loops beside the browsers"
+        default: "0 3"
+permissions:
+  contents: read
+concurrency:
+  group: latency-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  latency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    # Playwright's own image, as in e2e.yml, which says why. Root inside.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --ipc=host
+    steps:
+      - uses: actions/checkout@v5
+      - run: git config --system --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install chromium
+      # PulseAudio from the image's apt sources, which hung or crawled before (e2e.yml): bounded, and tried three times.
+      - name: PulseAudio
+        run: |
+          for i in 1 2 3; do
+            timeout 300 apt-get update && timeout 300 apt-get install -y --no-install-recommends pulseaudio pulseaudio-utils && break
+            sleep 10
+          done
+          pulseaudio --version
+      - name: Measure
+        run: |
+          for load in $LOADS; do
+            LATENCY_LOAD=$load HOME=/root scripts/latency/rig.sh || echo "::warning::the pass with $load busy loops failed"
+          done
+          cat latency-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+        env:
+          LOADS: ${{ inputs.loads || '0 3' }}
+          LATENCY_REPEAT: ${{ inputs.repeat || '3' }}
+          LATENCY_ONLY: ${{ inputs.only }}
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: latency-results
+          path: |
+            latency-results/results.jsonl
+            latency-results/summary.md
+            /tmp/dave-latency-*/pulse.log
+          retention-days: 14

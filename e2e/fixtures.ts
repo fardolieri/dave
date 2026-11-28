@@ -16,7 +16,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { test as base, expect, type Browser, type BrowserContext, type Locator, type Page, type TestInfo, type WebSocketRoute } from '@playwright/test';
 import type { BridgePayload } from '@solidjs/diagnostics/browser';
-import { environmentNoise, launchOptions, originFor, type Autoplay, type Engine } from './browsers';
+import { environmentNoise, launchOptions, originFor, type Autoplay, type Engine, type PulseDevices } from './browsers';
 import { unexplained, type Recovery } from './console';
 
 export { expect };
@@ -176,6 +176,8 @@ export type FriendOptions = {
   engine?: Engine;
   /** Autoplay policy of this friend's browser; `blocked` is Brave's and Firefox's "Block" setting. Default: allowed. */
   autoplay?: Autoplay;
+  /** A browser of its own on these PulseAudio devices instead of the fake ones (Chromium; scripts/latency/). */
+  pulse?: PulseDevices;
   /** Profile picture, one emoji, pre-seeded like the name. */
   picture?: string;
   /** Look like a normal browser, not "HeadlessChrome" or webdriver: posthog-js drops every event from what it takes for a bot. */
@@ -659,9 +661,9 @@ export const test = base.extend<{ crowd: Crowd }>({
     const browserFor = (o: Partial<FriendOptions>): Promise<Browser> => {
       const engine = o.engine ?? (browserName as Engine);
       const autoplay = o.autoplay ?? 'allowed';
-      if (engine === browserName && autoplay === 'allowed') return Promise.resolve(browser);
-      const key = `${engine}-${autoplay}`;
-      if (!extra.has(key)) extra.set(key, playwright[engine].launch(launchOptions(engine, { autoplay })));
+      if (engine === browserName && autoplay === 'allowed' && !o.pulse) return Promise.resolve(browser);
+      const key = `${engine}-${autoplay}-${o.pulse ? `${o.pulse.source}-${o.pulse.sink}` : ''}`;
+      if (!extra.has(key)) extra.set(key, playwright[engine].launch(launchOptions(engine, { autoplay, pulse: o.pulse })));
       return extra.get(key)!;
     };
     /** Friends let in so far, with the secrets of their rooms. */

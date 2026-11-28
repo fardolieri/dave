@@ -69,8 +69,25 @@ const noSound = process.platform === 'linux' && !existsSync('/dev/snd');
 /** `allowed`: plays without a gesture (the suite's default). `default`: the browser's own policy. `blocked`: nothing plays without a fresh gesture. */
 export type Autoplay = 'allowed' | 'default' | 'blocked';
 
-export function launchOptions(engine: Engine, opts: { autoplay?: Autoplay } = {}): LaunchOptions {
+/**
+ * A browser on real audio devices instead of the fake ones: PulseAudio's, named for this browser alone (the server from
+ * PULSE_SERVER). For measuring what a friend hears and when (scripts/latency/), not for the suite.
+ */
+export type PulseDevices = { source: string; sink: string };
+
+export function launchOptions(engine: Engine, opts: { autoplay?: Autoplay; pulse?: PulseDevices } = {}): LaunchOptions {
   const autoplay = opts.autoplay ?? 'allowed';
+  if (opts.pulse && engine === 'chromium') {
+    return {
+      env: { ...process.env, PULSE_SOURCE: opts.pulse.source, PULSE_SINK: opts.pulse.sink },
+      ignoreDefaultArgs: ['--mute-audio'], // Playwright's headless default: the speaker must be heard
+      args: [
+        '--use-fake-ui-for-media-stream',
+        ...({ allowed: ['--autoplay-policy=no-user-gesture-required'], default: [], blocked: ['--autoplay-policy=user-gesture-required'] }[autoplay]),
+        '--disable-features=WebRtcHideLocalIpsWithMdns',
+      ],
+    };
+  }
   if (engine === 'firefox') {
     return {
       firefoxUserPrefs: {
