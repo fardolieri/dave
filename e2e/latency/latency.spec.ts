@@ -21,7 +21,7 @@ const SIGNAL = process.env['LATENCY_SIGNAL'] ?? 'e2e/latency/speech.ogg';
 const REPEAT = Number(process.env['LATENCY_REPEAT']) || 1;
 const LOAD = Number(process.env['LATENCY_LOAD']) || 0;
 const LOOPS = Number(process.env['LATENCY_LOOPS']) || 1;
-const ONLY = process.env['LATENCY_ONLY']?.split(',');
+const ONLY = process.env['LATENCY_ONLY'] ? process.env['LATENCY_ONLY'].split(',') : undefined;
 /** PulseAudio's log at debug level (rig.sh): each underrun of a browser's speaker is a gap that may add delay for good. */
 const PA_LOG = process.env['LATENCY_PA_LOG'];
 const underruns = (): number => { if (!PA_LOG) return NaN; try { return (readFileSync(PA_LOG, 'utf8').match(/Implicit underrun of 'Playback'/g) ?? []).length; } catch { return NaN; } };
